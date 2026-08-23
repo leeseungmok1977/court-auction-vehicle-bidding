@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block pagetitle %}물건 목록{% endblock %}
+{% block content %}
+
+<!-- 필터 바 -->
+<div class="bg-surface border border-line rounded-lg p-3">
+  <form method="get" action="/vehicles" class="flex flex-wrap gap-2 items-center">
+    <select name="judgment" class="inp py-1.5">
+      <option value="">전체 판정</option>
+      {% for j in judgments %}<option value="{{ j }}" {% if j==judgment %}selected{% endif %}>{{ j|jshort }}</option>{% endfor %}
+    </select>
+    <select name="maker" class="inp py-1.5">
+      <option value="">전체 제조사</option>
+      {% for m in makers %}<option value="{{ m }}" {% if m==maker %}selected{% endif %}>{{ m }}</option>{% endfor %}
+    </select>
+    <select name="sort" class="inp py-1.5">
+      <option value="sale_date" {% if sort=='sale_date' %}selected{% endif %}>매각기일순</option>
+      <option value="upper_bid" {% if sort=='upper_bid' %}selected{% endif %}>상한가 높은순</option>
+      <option value="min_sale_price" {% if sort=='min_sale_price' %}selected{% endif %}>최저매각가순</option>
+      <option value="fail_count" {% if sort=='fail_count' %}selected{% endif %}>유찰 많은순</option>
+    </select>
+    <div class="relative">
+      <span class="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-mut text-base">search</span>
+      <input name="q" value="{{ q }}" class="inp py-1.5 pl-9 w-56" placeholder="차명·사건번호·법원">
+    </div>
+    <input type="hidden" name="upcoming" value="{{ upcoming or '' }}">
+    <input type="hidden" name="result" value="{{ result or '' }}">
+    <button class="bg-background border border-line text-txt text-sm px-4 py-1.5 rounded-md hover:bg-line/40 transition flex items-center gap-1">
+      <span class="material-symbols-outlined text-base">filter_list</span> 적용</button>
+    {% if result %}<a href="/vehicles" class="text-xs bg-sky-500/15 text-sky-300 border border-sky-500/30 rounded-full px-3 py-1">결과={{ result }} ✕</a>{% endif %}
+    {% if upcoming %}
+    <a href="/vehicles" class="text-xs bg-primary/15 text-primary border border-primary/30 rounded-full px-3 py-1 flex items-center gap-1">입찰예정 {{ upcoming }}일 ✕</a>
+    {% else %}
+    <a href="/vehicles?upcoming=30&sort=sale_date" class="text-xs border border-line text-mut rounded-full px-3 py-1 hover:text-txt hover:bg-line/40">입찰예정 30일만</a>
+    {% endif %}
+    <span class="text-sm text-mut ml-auto">총 <b class="text-txt">{{ rows|length }}</b>건</span>
+  </form>
+</div>
+
+<!-- 상태 범례 -->
+<div class="flex flex-wrap gap-x-5 gap-y-1 text-xs text-mut items-center px-1">
+  <span class="inline-flex items-center gap-1.5"><span class="px-2 py-0.5 rounded bg-[#1E293B] text-mut border border-line">미분석</span> 목록만 수집 · 상세/시세 미계산</span>
+  <span><b class="text-emerald-400">검토 가능</b> · <b class="text-amber-400">유찰 대기</b> · <b class="text-sky-300">신뢰도 낮음</b>(시세 부족·수입/상용) = 분석 완료</span>
+  <span class="ml-auto text-mut/80">미분석은 대시보드 <b class="text-txt">[시세 분석]</b> 또는 물건 클릭 → 개별 분석 (수입·상용 포함)</span>
+</div>
+
+<!-- 테이블 -->
+<div class="bg-surface border border-line rounded-lg overflow-hidden">
+  <div class="overflow-x-auto custom-scrollbar">
+    <table class="w-full text-left min-w-[1340px]">
+      <thead class="bg-surface border-b border-line">
+        <tr class="text-xs text-mut">
+          <th class="py-3 px-4 font-semibold w-8"></th>
+          <th class="py-3 px-4 font-semibold">사건번호</th>
+          <th class="py-3 px-4 font-semibold">차량</th>
+          <th class="py-3 px-4 font-semibold">법원</th>
+          <th class="py-3 px-4 font-semibold">소재지</th>
+          <th class="py-3 px-4 font-semibold w-16">연식</th>
+          <th class="py-3 px-4 font-semibold text-right">주행(km)</th>
+          <th class="py-3 px-4 font-semibold text-right">최저매각가</th>
+          <th class="py-3 px-4 font-semibold text-right">시세중앙값</th>
+          <th class="py-3 px-4 font-semibold text-right w-16">표본</th>
+          <th class="py-3 px-4 font-semibold text-right">상한가</th>
+          <th class="py-3 px-4 font-semibold text-center">판정</th>
+          <th class="py-3 px-4 font-semibold">매각기일</th>
+          <th class="py-3 px-4 font-semibold text-right">결과</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-line/40 text-sm bg-background">
+        {% for v in rows %}
+        <tr class="hover:bg-line/30 transition-colors">
+          <td class="py-2.5 px-4 text-amber-300">{% if v.starred %}★{% endif %}</td>
+          <td class="py-2.5 px-4 font-mono text-mut">{{ v.case_no }}</td>
+          <td class="py-2.5 px-4"><a href="/vehicle/{{ v.id }}" class="text-primary font-medium hover:underline">{{ v.model or '—' }}</a></td>
+          <td class="py-2.5 px-4 text-mut whitespace-nowrap">{{ (v.court or '—')|replace('지방법원','지법') }}</td>
+          <td class="py-2.5 px-4 text-mut max-w-[240px] truncate" title="{{ v.location or '' }}">{{ v.location or '—' }}</td>
+          <td class="py-2.5 px-4 font-mono">{{ v.year or '—' }}</td>
+          <td class="py-2.5 px-4 font-mono text-right">{{ v.mileage_km|won }}</td>
+          <td class="py-2.5 px-4 font-mono text-right">{{ v.min_sale_price|won }}</td>
+          <td class="py-2.5 px-4 font-mono text-right">{{ v.median_price|won }}</td>
+          <td class="py-2.5 px-4 font-mono text-right">{{ v.sample_count if v.sample_count is not none else '—' }}</td>
+          <td class="py-2.5 px-4 font-mono text-right {{ 'text-emerald-400' if v.judgment=='입찰 검토 가능' else '' }}">{{ v.upper_bid|won }}</td>
+          <td class="py-2.5 px-4 text-center">
+            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium {{ v.judgment|bcls }}">{{ v.judgment|jshort if v.judgment else (v.status or '—') }}</span>
+          </td>
+          <td class="py-2.5 px-4 font-mono text-mut">{{ v.sale_date or '—' }}</td>
+          <td class="py-2.5 px-4 text-right">
+            {% if v.auction_result == '낙찰' %}<span class="text-sky-300 font-mono">낙찰 {{ v.winning_price|won }}</span>
+            {% elif v.auction_result %}<span class="text-mut">{{ v.auction_result }}</span>
+            {% else %}<span class="text-mut">—</span>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="bg-surface border-t border-line px-4 py-2.5 text-xs text-mut">
+    총 {{ rows|length }}건 표시 {% if judgment or maker or q %}(필터 적용){% endif %}
+  </div>
+</div>
+{% if not rows %}<p class="text-sm text-mut">조건에 맞는 물건이 없습니다. 대시보드에서 수집을 실행하세요.</p>{% endif %}
+{% endblock %}

@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block pagetitle %}관심 목록{% endblock %}
+{% block content %}
+<div class="flex items-center gap-2">
+  <span class="material-symbols-outlined text-amber-300" style="font-variation-settings:'FILL' 1">star</span>
+  <h1 class="text-xl font-semibold">관심 목록 <span class="text-mut text-sm font-normal">입찰 검토</span></h1>
+</div>
+
+{% if rows %}
+<div class="bg-surface border border-line rounded-lg overflow-hidden">
+  <div class="overflow-x-auto custom-scrollbar">
+    <table class="w-full text-left min-w-[900px]">
+      <thead class="bg-surface border-b border-line">
+        <tr class="text-xs text-mut">
+          <th class="py-3 px-4 font-semibold">사건번호</th>
+          <th class="py-3 px-4 font-semibold">차량</th>
+          <th class="py-3 px-4 font-semibold text-right">최저매각가</th>
+          <th class="py-3 px-4 font-semibold text-right">상한가</th>
+          <th class="py-3 px-4 font-semibold text-center">판정</th>
+          <th class="py-3 px-4 font-semibold text-right">최종입찰가</th>
+          <th class="py-3 px-4 font-semibold">메모</th>
+          <th class="py-3 px-4 font-semibold">매각기일</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-line/40 text-sm bg-background">
+        {% for v in rows %}
+        <tr class="hover:bg-line/30 transition-colors">
+          <td class="py-2.5 px-4 font-mono text-mut">{{ v.case_no }}</td>
+          <td class="py-2.5 px-4"><a href="/vehicle/{{ v.id }}" class="text-primary font-medium hover:underline">{{ v.model }}</a>
+            <span class="text-xs text-mut ml-1">{{ v.year or '—' }}</span></td>
+          <td class="py-2.5 px-4 font-mono text-right">{{ v.min_sale_price|won }}</td>
+          <td class="py-2.5 px-4 font-mono text-right">{{ v.upper_bid|won }}</td>
+          <td class="py-2.5 px-4 text-center">{% if v.judgment %}<span class="inline-flex px-2 py-0.5 rounded text-xs font-medium {{ v.judgment|bcls }}">{{ v.judgment|jshort }}</span>{% endif %}</td>
+          <td class="py-2.5 px-4 font-mono text-right text-emerald-400">{{ v.final_bid|won }}</td>
+          <td class="py-2.5 px-4 text-mut">{{ v.memo or '' }}</td>
+          <td class="py-2.5 px-4 font-mono text-mut">{{ v.sale_date or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="bg-surface border border-line rounded-lg p-10 text-center">
+  <span class="material-symbols-outlined text-mut text-5xl">star</span>
+  <p class="text-mut mt-2">아직 관심 물건이 없습니다. 물건 상세에서 ☆ 관심 추가를 눌러 담으세요.</p>
+</div>
+{% endif %}
+{% endblock %}

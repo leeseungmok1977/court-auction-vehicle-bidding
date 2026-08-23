@@ -1,0 +1,31 @@
+# === 민감/중간 산출물 (설계서 C.4-4) ===
+# 사람 입력 캡처 3종 세트 (쿠키·헤더 포함)
+capture/
+# 중간 JSON·PDF·사진 등 수집 산출물
+data/
+*.har
+
+# Power Automate 가져오기 패키지 (재생성 가능)
+powerautomate/package/*.zip
+
+# === 환경변수/비밀 (배포용) ===
+.env
+.env.*
+!.env.example
+*.local
+
+# === Python ===
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+*.egg-info/
+
+# === OS/편집기 ===
+.DS_Store
+Thumbs.db
+.vscode/
+
+# Node (Tailwind 정적 빌드 도구)
+node_modules/

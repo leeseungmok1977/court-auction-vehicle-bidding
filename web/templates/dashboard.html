@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% block pagetitle %}대시보드{% endblock %}
+{% block content %}
+
+<!-- KPI -->
+<div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
+  {% macro kpi(label, value, icon, color, href, vid) %}
+  <a {% if href %}href="{{ href }}"{% endif %} class="bg-surface border border-line rounded-lg p-4 block {{ 'hover:border-primary transition' if href }}">
+    <div class="flex justify-between items-start mb-2">
+      <span class="text-xs text-mut">{{ label }}</span>
+      <span class="material-symbols-outlined {{ color or 'text-primary' }} opacity-60">{{ icon }}</span>
+    </div>
+    <div class="text-4xl font-bold {{ color }}" id="{{ vid }}">{{ value }}</div>
+  </a>
+  {% endmacro %}
+  {{ kpi('입찰예정 (30일)', upcoming, 'event_upcoming', 'text-primary', '/vehicles?upcoming=30&sort=sale_date', 'kpi-upcoming') }}
+  {{ kpi('분석 대기', pending, 'pending', 'text-mut', '/vehicles', 'kpi-pending') }}
+  {{ kpi('입찰 검토 가능', counts.get('입찰 검토 가능', 0), 'check_circle', 'text-emerald-400', '/vehicles?judgment=입찰 검토 가능', 'kpi-ok') }}
+  {{ kpi('유찰 대기', counts.get('유찰 대기', 0), 'hourglass_empty', 'text-amber-400', '/vehicles?judgment=유찰 대기', 'kpi-wait') }}
+  {{ kpi('관심 물건', starred, 'star', 'text-amber-300', '/watchlist', 'kpi-star') }}
+  {{ kpi('낙찰 (매각)', won, 'gavel', 'text-sky-300', '/vehicles?result=낙찰&sort=sale_date', 'kpi-won') }}
+</div>
+
+<!-- 매일 자동 갱신 -->
+<div class="bg-surface border border-line rounded-lg p-5">
+  <div class="flex items-center gap-2 mb-1">
+    <span class="material-symbols-outlined text-primary">event_repeat</span>
+    <h3 class="text-lg font-semibold">매일 자동 갱신 — 1개월 이내 입찰예정</h3>
+  </div>
+  <p class="text-sm text-mut mb-4">차종을 고르지 않고, 전국 자동차 경매 중 <b>매각기일이 지정 기간 이내</b>인 물건 전체를
+    매일 지정 시각에 갱신하고, <b class="text-txt">이어서 국산차 시세 분석까지 자동 진행</b>합니다. (앱이 실행 중일 때 동작)</p>
+  <div class="flex flex-wrap gap-6 items-end">
+    <form method="post" action="/daily/settings" class="flex flex-wrap gap-3 items-end">
+      <label class="flex items-center gap-2 text-sm bg-background border border-line rounded-md px-3 py-2.5 cursor-pointer">
+        <input type="checkbox" name="enabled" value="1" class="accent-primary" {% if settings.get('daily_enabled')=='1' %}checked{% endif %}>
+        자동 갱신 사용</label>
+      <div><label class="lbl">실행 시각</label><input class="inp w-28" type="time" name="daily_time" value="{{ settings.get('daily_time','06:00') }}"></div>
+      <div><label class="lbl">기간(일)</label><input class="inp w-20" type="number" name="daily_within" value="{{ settings.get('daily_within','30') }}" min="1" max="90"></div>
+      <label class="flex items-center gap-2 text-sm bg-background border border-line rounded-md px-3 py-2.5 cursor-pointer">
+        <input type="checkbox" name="analyze" value="1" class="accent-primary" {% if settings.get('daily_analyze','1')!='0' %}checked{% endif %}>
+        시세 분석까지</label>
+      <div><label class="lbl">분석 상한(0=전체)</label><input class="inp w-24" type="number" name="analyze_limit" value="{{ settings.get('daily_analyze_limit','0') }}" min="0"></div>
+      <button class="bg-background border border-line text-txt text-sm px-4 py-2.5 rounded-md hover:bg-line/40 transition">설정 저장</button>
+    </form>
+    <form method="post" action="/daily/run-now" class="flex gap-3 items-end">
+      <input type="hidden" name="within" value="{{ settings.get('daily_within','30') }}">
+      <input type="hidden" name="analyze" value="{{ '1' if settings.get('daily_analyze','1')!='0' else '' }}">
+      <input type="hidden" name="analyze_limit" value="{{ settings.get('daily_analyze_limit','0') }}">
+      <button class="bg-primary text-[#00354a] font-semibold text-sm px-5 py-2.5 rounded-md hover:opacity-90 transition flex items-center gap-1.5" {% if running %}disabled{% endif %}>
+        <span class="material-symbols-outlined text-lg">refresh</span> 지금 갱신 (목록+분석)</button>
+    </form>
+  </div>
+  <div class="text-xs text-mut mt-3 flex flex-wrap gap-x-4 gap-y-1">
+    <span>마지막 갱신: <b class="text-txt">{{ settings.get('last_upcoming_at','—') }}</b></span>
+    <span>입찰예정: <b class="text-txt">{{ settings.get('last_upcoming_count','—') }}</b>건</span>
+    {% if settings.get('daily_enabled')=='1' %}<span class="text-primary">● 자동 갱신 ON · 매일 {{ settings.get('daily_time','06:00') }}{% if settings.get('daily_analyze','1')!='0' %} · 분석 포함{% endif %}</span>{% else %}<span>○ 자동 갱신 OFF</span>{% endif %}
+    <span class="text-mut/70">※ 앱 종료 중에도 실행하려면 run_daily.bat 을 Windows 작업 스케줄러에 등록</span>
+  </div>
+</div>
+
+<!-- 검색 수집 -->
+<div class="bg-surface border border-line rounded-lg p-5">
+  <div class="flex items-center gap-2 mb-1">
+    <span class="material-symbols-outlined text-primary">search</span>
+    <h3 class="text-lg font-semibold">원하는 차량 검색 수집</h3>
+  </div>
+  <p class="text-sm text-mut mb-4">특정 차명(예: 그랜저·K5·쏘렌토·G80)만 조회·분석하고 싶을 때 사용합니다.</p>
+  <form method="post" action="/run" class="flex flex-wrap gap-3 items-end">
+    <div><label class="lbl">차명 *</label><input class="inp w-36" name="car_nm" placeholder="예: 그랜저" required></div>
+    <div><label class="lbl">구분</label>
+      <select class="inp" name="car_type"><option value="Y">국산</option><option value="N">수입</option></select></div>
+    <div><label class="lbl">연식 ≥</label><input class="inp w-24" type="number" name="year_min" placeholder="2018"></div>
+    <div><label class="lbl">연식 ≤</label><input class="inp w-24" type="number" name="year_max" placeholder="2022"></div>
+    <div><label class="lbl">최저가 ≥ (만원)</label><input class="inp w-28" type="number" name="price_min" placeholder="1000"></div>
+    <div><label class="lbl">최저가 ≤ (만원)</label><input class="inp w-28" type="number" name="price_max" placeholder="3000"></div>
+    <div><label class="lbl">유찰 ≥</label><input class="inp w-20" type="number" name="fail_min" placeholder="0"></div>
+    <div><label class="lbl">분석 건수</label><input class="inp w-24" type="number" name="max_items" value="5" min="1" max="200"></div>
+    <input type="hidden" name="scan_limit" value="40"><input type="hidden" name="repair_cost" value="500000">
+    <button class="bg-primary text-[#00354a] font-semibold text-sm px-5 py-2.5 rounded-md hover:opacity-90 transition flex items-center gap-1.5" {% if running %}disabled{% endif %}>
+      <span class="material-symbols-outlined text-lg">search</span> 검색 수집</button>
+  </form>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+  <!-- 분석 실행 + 진행률 -->
+  <div class="bg-surface border border-line rounded-lg p-5">
+    <h3 class="text-lg font-semibold mb-1">시세 분석 실행</h3>
+    <p class="text-sm text-mut mb-4">갱신된 목록(<b>국산·수입·상용 모두</b>)에 상세·시세·입찰가 산정을 적용합니다.
+      수입차는 엔카 수입 시세, 상용/특수차는 상세만 확보(시세 수동 확인). (미분석 대상, 소량·저속)</p>
+    <form method="post" action="/reanalyze" class="flex flex-wrap gap-3 items-end">
+      <div><label class="lbl">분석 건수</label><input class="inp w-28" type="number" name="max_items" value="50" min="1" max="2000"></div>
+      <button class="bg-primary text-[#00354a] font-semibold text-sm px-5 py-2.5 rounded-md hover:opacity-90 transition flex items-center gap-1.5" {% if running %}disabled{% endif %}>
+        <span class="material-symbols-outlined text-lg">analytics</span> 시세 분석</button>
+    </form>
+    <div class="flex flex-wrap gap-3 items-end mt-3 pt-3 border-t border-line">
+      <form method="post" action="/run" class="flex gap-3 items-end">
+        <div><label class="lbl">전체 스캔(매핑)</label><input class="inp w-24" type="number" name="max_items" value="5" min="1" max="200"></div>
+        <input type="hidden" name="scan_limit" value="40"><input type="hidden" name="repair_cost" value="500000">
+        <button class="bg-background border border-line text-txt text-sm px-4 py-2.5 rounded-md hover:bg-line/40 transition flex items-center gap-1.5" {% if running %}disabled{% endif %}>
+          <span class="material-symbols-outlined text-lg">play_arrow</span> 상위 스캔 수집</button>
+      </form>
+      <form method="post" action="/results/run-now" class="flex gap-3 items-end">
+        <input type="hidden" name="max_items" value="300">
+        <button class="bg-background border border-line text-txt text-sm px-4 py-2.5 rounded-md hover:bg-line/40 transition flex items-center gap-1.5" {% if running %}disabled{% endif %}>
+          <span class="material-symbols-outlined text-lg">gavel</span> 낙찰결과 갱신</button>
+      </form>
+      <form method="post" action="/recompute-all" class="flex gap-3 items-end"
+            onsubmit="return confirm('기존 물건 전체의 시세를 개선 로직으로 재교정합니다. 수 분 걸립니다. 진행할까요?')">
+        <button class="bg-background border border-line text-txt text-sm px-4 py-2.5 rounded-md hover:bg-line/40 transition flex items-center gap-1.5" {% if running %}disabled{% endif %}>
+          <span class="material-symbols-outlined text-lg">refresh</span> 시세 전체 재교정</button>
+      </form>
+    </div>
+
+    <div id="status" class="mt-5">
+      {% if run %}
+      <div class="flex items-center justify-between mb-2">
+        <span class="text-xs text-mut border border-line rounded px-2 py-0.5">실행 #{{ run.id }} · {{ run.status }}</span>
+        <span class="text-sm text-mut" id="msg">{{ run.message }}</span>
+      </div>
+      <div class="h-2.5 bg-background rounded-full overflow-hidden">
+        <div id="bar" class="h-full bg-primary transition-all" style="width:{{ (100*run.processed/run.target)|round if run.target else 0 }}%"></div>
+      </div>
+      <div class="text-xs text-mut mt-2">스캔 <span id="sc">{{ run.scanned }}</span> · 완료 <span id="pr">{{ run.processed }}</span>{% if run.target %}/<span id="tg">{{ run.target }}</span>{% endif %}</div>
+      {% else %}
+      <p class="text-sm text-mut">아직 실행 이력이 없습니다.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- 유망 물건 -->
+  <div class="bg-surface border border-line rounded-lg p-5">
+    <div class="flex items-center justify-between mb-3">
+      <h3 class="text-lg font-semibold">유망 물건 <span class="text-mut text-sm font-normal">(입찰 검토 가능)</span></h3>
+      <a href="/vehicles?judgment=입찰 검토 가능" class="text-sm text-primary hover:underline">전체 →</a>
+    </div>
+    {% if candidates %}
+    <table class="w-full text-sm">
+      <thead><tr class="text-xs text-mut border-b border-line">
+        <th class="text-left py-2 font-medium">차량</th>
+        <th class="text-right py-2 font-medium">최저매각가</th>
+        <th class="text-right py-2 font-medium">상한가</th></tr></thead>
+      <tbody class="divide-y divide-line/50">
+      {% for v in candidates %}
+      <tr class="hover:bg-line/20">
+        <td class="py-2"><a href="/vehicle/{{ v.id }}" class="text-primary hover:underline">{{ v.model }}</a>
+          <span class="text-xs text-mut ml-1">{{ v.year or '—' }}</span></td>
+        <td class="py-2 text-right font-mono">{{ v.min_sale_price|won }}</td>
+        <td class="py-2 text-right font-mono text-emerald-400">{{ v.upper_bid|won }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="text-sm text-mut">아직 없습니다. 목록 갱신 후 시세 분석을 실행하세요.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

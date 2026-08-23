@@ -1,0 +1,44 @@
+# 입찰가 산정 파라미터 (설계서 A.6)
+# 흐름/코드 수정 없이 이 파일만 조정한다.
+
+# 플랫폼 가중 (기준시세 = 시세요약 중앙값 × 가중)
+platform_weight:
+  encar: 1.00      # 엔카
+  kcar: 0.95       # 케이카
+
+# 사고 감가율 (기준시세 대비 차감 비율)
+accident_depreciation_rate:
+  none: 0.00       # 무사고
+  minor: 0.05      # 단순수리 (5%)
+  accident: 0.15   # 사고 (10~20% 범위의 중앙값)
+  flood: 1.00      # 침수의심 → 입찰 보류 (계산 무의미, 판정만 사용)
+
+risk_premium_rate: 0.07     # 리스크 프리미엄 (기준시세의 5~10%)
+acquisition_tax_rate: 0.07  # 취득세율 (취득 부대비용)
+margin_rate: 0.15           # 목표 절감/마진 (재판매 목적 → 상단 15%)
+
+# 취득 부대 고정비 (원)
+fixed_costs:
+  transfer_fee: 300000      # 이전비
+  delivery_fee: 200000      # 탁송비
+
+# 동급 매칭 기준 (설계서 A.4-5)
+year_tol: 1            # 연식 허용 오차 (±년)
+mileage_tol: 0.30      # 주행거리 허용 오차 (±비율)
+
+# 모델 매핑 테이블 (경매 차명 → 엔카 제조사/모델그룹). 미매핑 시 알림 후 원문 사용.
+# 엔카 표기 그대로 사용 (예: 벤츠는 CarType=N(수입) + '메르세데스-벤츠')
+model_mapping:
+  "모하비":   { car_type: "Y", manufacturer: "기아",   model_group: "모하비" }
+  "카니발":   { car_type: "Y", manufacturer: "기아",   model_group: "카니발" }
+  "쏘렌토":   { car_type: "Y", manufacturer: "기아",   model_group: "쏘렌토" }
+  "그랜저":   { car_type: "Y", manufacturer: "현대",   model_group: "그랜저" }
+  "쏘나타":   { car_type: "Y", manufacturer: "현대",   model_group: "쏘나타" }
+  "싼타페":   { car_type: "Y", manufacturer: "현대",   model_group: "싼타페" }
+  "G80":     { car_type: "Y", manufacturer: "제네시스", model_group: "G80" }
+
+# 자동 판정 기준
+min_sample_count: 5                    # 시세 표본 최소 건수 (미만 시 신뢰도 낮음)
+flood_keywords: ["침수", "전손"]        # 감지 시 입찰 보류
+# 사고 1차 판정 참고 (감정평가 요항 텍스트 스캔). 설계 A.4-4 기본 + 손상 표현 보강
+accident_keywords: ["사고", "판금", "교환", "부식", "훼손", "파손", "손상"]
