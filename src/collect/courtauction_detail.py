@@ -18,6 +18,7 @@ from typing import Optional
 import requests
 
 from .courtauction_list import BASE, INDEX, new_session, warmup, REQUEST_DELAY_SEC, _check_block
+from ..paths import DATA_DIR
 from ..parse.detail_parser import parse_detail
 
 DETAIL_ENDPOINT = f"{BASE}/pgj/pgj15B/selectAuctnCsSrchRslt.on"
@@ -57,10 +58,10 @@ def _photo_bytes(pic: dict) -> Optional[bytes]:
 
 
 def save_item_folder(resp_json: dict, folder_key: str, config: Optional[dict] = None,
-                     base_dir: str = "data") -> Path:
+                     base_dir: Optional[str] = None) -> Path:
     """물건 폴더 생성: detail.json + appraisal.txt + photos/ (설계서 TASK-03 산출물)."""
     result = (resp_json.get("data", {}) or {}).get("dma_result", {}) or {}
-    folder = Path(base_dir) / folder_key
+    folder = (Path(base_dir) if base_dir else DATA_DIR) / folder_key
     (folder / "photos").mkdir(parents=True, exist_ok=True)
     (folder / "appraisal").mkdir(parents=True, exist_ok=True)
 

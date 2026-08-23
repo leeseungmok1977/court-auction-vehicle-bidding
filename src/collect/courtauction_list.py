@@ -21,6 +21,8 @@ from typing import Optional
 
 import requests
 
+from ..paths import DATA_DIR
+
 BASE = "https://www.courtauction.go.kr"
 LIST_ENDPOINT = f"{BASE}/pgj/pgjsearch/searchControllerMain.on"
 INDEX = f"{BASE}/pgj/index.on"
@@ -142,7 +144,7 @@ def _summarize(resp: requests.Response) -> dict:
 
 
 def main() -> None:
-    Path("data").mkdir(exist_ok=True)
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
     s = new_session()
     warmup(s)
     print("cookies:", list(s.cookies.get_dict().keys()))
@@ -155,7 +157,7 @@ def main() -> None:
     summary = _summarize(resp)
     print(json.dumps(summary, ensure_ascii=False, indent=2))
 
-    out_path = Path("data") / "응답_L1.json"
+    out_path = DATA_DIR / "응답_L1.json"
     ctype = resp.headers.get("Content-Type", "")
     if "json" in ctype:
         out_path.write_text(

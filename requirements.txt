@@ -8,5 +8,8 @@ uvicorn>=0.34
 jinja2>=3.1
 python-multipart>=0.0.9
 
+# 사진 비전 분류 파이프라인 (scripts/photo_classify.py — 몽타주 생성)
+Pillow>=10.0
+
 # 테스트
 pytest>=8.0

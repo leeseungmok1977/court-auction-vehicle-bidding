@@ -11,7 +11,9 @@ import sqlite3
 from pathlib import Path
 from typing import Any, Optional
 
-DB_PATH = Path("data") / "auction.db"
+from src.paths import DATA_DIR
+
+DB_PATH = DATA_DIR / "auction.db"
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS vehicles (
@@ -131,7 +133,7 @@ _JSON_COLS = {"accident_hits", "insurance_history", "breakdown", "dxdy_history",
 
 
 def connect() -> sqlite3.Connection:
-    DB_PATH.parent.mkdir(exist_ok=True)
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     # timeout: 분석 스레드의 쓰기와 상태 폴링의 읽기가 겹칠 때 잠금 대기
     conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=15.0)
     conn.row_factory = sqlite3.Row

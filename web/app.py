@@ -39,7 +39,7 @@ def _css_version() -> str:
 templates.env.globals["css_v"] = _css_version()  # 시작 시점 CSS 버전(재빌드 반영은 재기동 시)
 templates.env.globals["alert_count"] = lambda: service.alert_count(3)
 
-DATA_DIR = ROOT / "data"
+from src.paths import DATA_DIR  # noqa: E402  (배포 시 DATA_DIR 환경변수로 영속 볼륨 지정)
 
 JUDGMENTS = ["입찰 검토 가능", "유찰 대기", "시세 신뢰도 낮음, 수동 검토", "입찰 보류", "종결"]
 

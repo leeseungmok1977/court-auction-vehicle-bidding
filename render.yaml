@@ -1,0 +1,20 @@
+# Render Blueprint — https://render.com/docs/blueprint-spec
+# 주의: 영속 디스크(disk)는 유료 인스턴스(starter 이상)에서만 지원된다(무료 플랜 불가).
+services:
+  - type: web
+    name: court-auction
+    runtime: python
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn web.app:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: DATA_DIR
+        value: /var/data          # 아래 disk.mountPath 와 반드시 일치
+      - key: PYTHON_VERSION
+        value: "3.12.10"
+      - key: PYTHONIOENCODING
+        value: utf-8
+    disk:
+      name: court-data
+      mountPath: /var/data        # DB(auction.db) + 물건 사진이 여기 저장됨(영속)
+      sizeGB: 5                    # 사진 ~1.2GB + 여유. 필요 시 상향

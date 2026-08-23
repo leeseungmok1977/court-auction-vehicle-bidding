@@ -12,7 +12,7 @@ from typing import Optional
 
 from PIL import Image, ImageDraw, ImageFont
 
-DATA_DIR = Path(__file__).resolve().parents[2] / "data"
+from ..paths import DATA_DIR  # 배포 시 DATA_DIR 환경변수로 영속 볼륨 지정
 
 
 def _font(size: int):
