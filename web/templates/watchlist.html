@@ -1,43 +1,86 @@
 {% extends "base.html" %}
+{% import "_macros.html" as ui %}
 {% block pagetitle %}관심 목록{% endblock %}
 {% block content %}
-<div class="flex items-center gap-2">
-  <span class="material-symbols-outlined text-amber-300" style="font-variation-settings:'FILL' 1">star</span>
-  <h1 class="text-xl font-semibold">관심 목록 <span class="text-mut text-sm font-normal">입찰 검토</span></h1>
+{% macro dday_badge(dd) %}{% if dd is not none and dd >= 0 %}<span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full whitespace-nowrap {{ 'bg-rose-100 text-rose-700' if dd<=1 else 'bg-amber-100 text-amber-700' if dd<=3 else 'bg-slate-100 text-mut' }}">{{ 'D-DAY' if dd==0 else 'D-' ~ dd }}</span>{% endif %}{% endmacro %}
+<div class="flex flex-wrap items-center gap-3">
+  <div class="flex items-center gap-2">
+    <span class="material-symbols-outlined text-amber-500" style="font-variation-settings:'FILL' 1">star</span>
+    <h1 class="text-xl font-semibold">관심 목록 <span class="text-mut text-sm font-normal">— 후보 비교</span></h1>
+  </div>
+  {% if rows %}
+  <form method="get" action="/watchlist" class="ml-auto flex items-center gap-2">
+    <label class="text-xs text-mut">정렬</label>
+    <select name="sort" onchange="this.form.submit()" class="inp py-1.5 text-sm">
+      <option value="sale_date" {% if sort=='sale_date' %}selected{% endif %}>매각기일순</option>
+      <option value="dday" {% if sort=='dday' %}selected{% endif %}>임박(D-day)순</option>
+      <option value="margin" {% if sort=='margin' %}selected{% endif %}>여유(예상−최저) 큰순</option>
+      <option value="expected" {% if sort=='expected' %}selected{% endif %}>예상낙찰가 높은순</option>
+      <option value="min_sale_price" {% if sort=='min_sale_price' %}selected{% endif %}>최저매각가 낮은순</option>
+    </select>
+  </form>
+  {% endif %}
 </div>
 
 {% if rows %}
 <div class="bg-surface border border-line rounded-lg overflow-hidden">
-  <div class="overflow-x-auto custom-scrollbar">
-    <table class="w-full text-left min-w-[900px]">
+  <div class="hidden lg:block overflow-x-auto custom-scrollbar">
+    <table class="w-full text-left min-w-[1080px]">
       <thead class="bg-surface border-b border-line">
         <tr class="text-xs text-mut">
-          <th class="py-3 px-4 font-semibold">사건번호</th>
-          <th class="py-3 px-4 font-semibold">차량</th>
-          <th class="py-3 px-4 font-semibold text-right">최저매각가</th>
-          <th class="py-3 px-4 font-semibold text-right">상한가</th>
+          <th class="py-3 px-4 font-semibold">차량 · 사건</th>
           <th class="py-3 px-4 font-semibold text-center">판정</th>
+          <th class="py-3 px-4 font-semibold whitespace-nowrap">매각기일</th>
+          <th class="py-3 px-4 font-semibold text-right whitespace-nowrap">최저매각가</th>
+          <th class="py-3 px-4 font-semibold text-right whitespace-nowrap" title="재판매 마진 차감 후 손익분기가 — 예상낙찰가보다 낮은 것이 정상">상한가 <span class="text-mut/60 font-normal">재판매</span></th>
+          <th class="py-3 px-4 font-semibold text-right whitespace-nowrap bg-primary/5 text-primary">예상낙찰가</th>
+          <th class="py-3 px-4 font-semibold text-right whitespace-nowrap">시세중앙값</th>
+          <th class="py-3 px-4 font-semibold text-right whitespace-nowrap" title="예상낙찰가 − 최저매각가 (클수록 가격 여유)">여유</th>
           <th class="py-3 px-4 font-semibold text-right">최종입찰가</th>
           <th class="py-3 px-4 font-semibold">메모</th>
-          <th class="py-3 px-4 font-semibold">매각기일</th>
         </tr>
       </thead>
-      <tbody class="divide-y divide-line/40 text-sm bg-background">
+      <tbody class="divide-y divide-line text-sm bg-surface">
         {% for v in rows %}
-        <tr class="hover:bg-line/30 transition-colors">
-          <td class="py-2.5 px-4 font-mono text-mut">{{ v.case_no }}</td>
-          <td class="py-2.5 px-4"><a href="/vehicle/{{ v.id }}" class="text-primary font-medium hover:underline">{{ v.model }}</a>
-            <span class="text-xs text-mut ml-1">{{ v.year or '—' }}</span></td>
-          <td class="py-2.5 px-4 font-mono text-right">{{ v.min_sale_price|won }}</td>
-          <td class="py-2.5 px-4 font-mono text-right">{{ v.upper_bid|won }}</td>
+        {% set overfloor = v.min_sale_price and v.upper_bid and v.min_sale_price > v.upper_bid %}
+        <tr class="even:bg-slate-50 hover:bg-slate-50 transition-colors">
+          <td class="py-2.5 px-4">
+            <a href="/vehicle/{{ v.id }}" class="text-primary font-medium hover:underline" style="word-break:keep-all">{{ v.model|mdl }}</a>
+            <div class="text-xs text-mut/70 font-mono">{{ v.case_no }}{% if v.year %} · {{ v.year }}년{% endif %}</div>
+          </td>
           <td class="py-2.5 px-4 text-center">{% if v.judgment %}<span class="inline-flex px-2 py-0.5 rounded text-xs font-medium {{ v.judgment|bcls }}">{{ v.judgment|jshort }}</span>{% endif %}</td>
-          <td class="py-2.5 px-4 font-mono text-right text-emerald-400">{{ v.final_bid|won }}</td>
-          <td class="py-2.5 px-4 text-mut">{{ v.memo or '' }}</td>
-          <td class="py-2.5 px-4 font-mono text-mut">{{ v.sale_date or '—' }}</td>
+          <td class="py-2.5 px-4 font-mono text-mut whitespace-nowrap">{{ v.sale_date or '—' }} {{ dday_badge(v.dday) }}</td>
+          <td class="py-2.5 px-4 font-mono text-right whitespace-nowrap {{ 'text-rose-600' if overfloor else 'text-mut' }}"
+              {% if overfloor %}title="최저매각가가 산정 상한가보다 높음"{% endif %}>{{ v.min_sale_price|won }}</td>
+          <td class="py-2.5 px-4 font-mono text-right text-mut whitespace-nowrap">{{ v.upper_bid|won }}</td>
+          <td class="py-2.5 px-4 font-mono text-right font-semibold text-txt bg-primary/5 whitespace-nowrap">{{ v.expected_win|won if v.expected_win else '—' }}</td>
+          <td class="py-2.5 px-4 font-mono text-right text-mut whitespace-nowrap">{{ v.median_price|won if v.median_price is not none else '—' }}</td>
+          <td class="py-2.5 px-4 font-mono text-right whitespace-nowrap {{ 'text-emerald-700' if v.margin_room and v.margin_room>0 else 'text-rose-600' if v.margin_room is not none and v.margin_room<0 else 'text-mut' }}">{% if v.margin_room is not none %}{{ '+' if v.margin_room>=0 else '' }}{{ v.margin_room|won }}{% else %}—{% endif %}</td>
+          <td class="py-2.5 px-4 font-mono text-right text-txt">{{ v.final_bid|won }}</td>
+          <td class="py-2.5 px-4 text-mut max-w-[160px] truncate" title="{{ v.memo or '' }}">{{ v.memo or '' }}</td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
+  </div>
+  <!-- 모바일 카드 -->
+  <div class="lg:hidden divide-y divide-line">
+    {% for v in rows %}
+    {% set overfloor = v.min_sale_price and v.upper_bid and v.min_sale_price > v.upper_bid %}
+    <a href="/vehicle/{{ v.id }}" class="block px-4 py-3 hover:bg-slate-50 transition-colors">
+      <div class="flex items-center justify-between gap-2">
+        <span class="font-semibold text-primary truncate" style="word-break:keep-all">{{ v.model|mdl }} <span class="text-xs text-mut font-normal">{{ v.year or '' }}</span></span>
+        <div class="flex items-center gap-1.5 shrink-0">{{ dday_badge(v.dday) }}{% if v.judgment %}<span class="inline-flex px-2 py-0.5 rounded text-xs font-medium whitespace-nowrap {{ v.judgment|bcls }}">{{ v.judgment|jshort }}</span>{% endif %}</div>
+      </div>
+      <div class="text-xs text-mut/70 font-mono mt-0.5">{{ v.case_no }}{% if v.sale_date %} · {{ v.sale_date }}{% endif %}</div>
+      <div class="grid grid-cols-3 gap-2 mt-2 text-right tabular-nums">
+        <div><div class="text-[10px] text-mut">최저매각가</div><div class="font-mono text-sm {{ 'text-rose-600' if overfloor else 'text-mut' }}">{{ v.min_sale_price|won }}</div></div>
+        <div class="rounded-md bg-primary/5 px-1.5 py-0.5"><div class="text-[10px] text-primary">예상낙찰가</div><div class="font-mono text-sm font-bold text-txt">{{ v.expected_win|won if v.expected_win else '—' }}</div></div>
+        <div><div class="text-[10px] text-mut">여유</div><div class="font-mono text-sm {{ 'text-emerald-700' if v.margin_room and v.margin_room>0 else 'text-mut' }}">{% if v.margin_room is not none %}{{ '+' if v.margin_room>=0 else '' }}{{ v.margin_room|won }}{% else %}—{% endif %}</div></div>
+      </div>
+      {% if v.final_bid or v.memo %}<div class="flex items-center gap-3 text-xs text-mut mt-2 border-t border-line pt-2">{% if v.final_bid %}<span>최종입찰 <b class="text-txt font-mono">{{ v.final_bid|won }}</b></span>{% endif %}{% if v.memo %}<span class="truncate">{{ v.memo }}</span>{% endif %}</div>{% endif %}
+    </a>
+    {% endfor %}
   </div>
 </div>
 {% else %}

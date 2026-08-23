@@ -102,8 +102,19 @@ def fetch_list_page(session: requests.Session, page_no: int = 1,
         "X-Requested-With": "XMLHttpRequest",
     }
     time.sleep(REQUEST_DELAY_SEC)  # C.4-2
-    return session.post(LIST_ENDPOINT, data=json.dumps(body),
-                        headers=headers, timeout=30)
+    r = session.post(LIST_ENDPOINT, data=json.dumps(body), headers=headers, timeout=30)
+    _check_block(r)                   # C.4-5 차단(상태코드+소프트) 즉시 중단
+    return r
+
+
+def _check_block(r: requests.Response) -> None:
+    """403/429 + 소프트 차단(HTTP 200이지만 캡차·비JSON) 감지 시 즉시 중단."""
+    if r.status_code in (403, 429):
+        raise RuntimeError(f"법원경매 차단 상태코드 {r.status_code}")
+    ct = (r.headers.get("Content-Type") or "").lower()
+    head = r.text[:600]
+    if "json" not in ct or any(m in head for m in ("captcha", "보안문자", "자동입력 방지")):
+        raise RuntimeError("법원경매 차단 감지 — 비정상 응답(캡차/비JSON)")
 
 
 def _summarize(resp: requests.Response) -> dict:

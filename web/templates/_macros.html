@@ -1,0 +1,56 @@
+{# 재사용 UI 매크로 #}
+
+{# 미니 가격 게이지: 최저매각가 → 예상낙찰가(마커) → 시세중앙값(틱) 위치를 한 줄 바로 #}
+{% macro minigauge(floor, exp, median) %}
+{% if floor and exp and median and ([median, exp]|max) > floor %}
+  {% set hi = [median, exp]|max %}
+  {% set span = (hi - floor) %}
+  {# 예상<최저(유찰 대기)면 위치가 음수가 되어 마커가 옆 칸으로 튐 → [0,100]로 클램프 #}
+  {% set ep = ([[ (exp - floor) / span * 100, 0]|max, 100]|min)|round(1) %}
+  {% set mp = ([[ (median - floor) / span * 100, 0]|max, 100]|min)|round(1) %}
+  <div class="relative h-1.5 rounded-full bg-slate-200/70 mt-1.5"
+       title="최저 {{ floor|won }} → 예상 {{ exp|won }} → 시세중앙값 {{ median|won }} (단위 원)">
+    <div class="absolute inset-y-0 left-0 rounded-full bg-primary/25" style="width:{{ ep }}%"></div>
+    <div class="absolute top-0 bottom-0 w-px bg-slate-400/70" style="left:{{ mp }}%"></div>
+    <div class="absolute top-1/2 w-2 h-2 rounded-full bg-primary ring-2 ring-white -translate-y-1/2 -translate-x-1/2"
+         style="left:{{ ep }}%"></div>
+  </div>
+{% endif %}
+{% endmacro %}
+
+{# 동급 매물 실제 시세 분포 히스토그램 + 예상낙찰가 ±MAE 신뢰구간 음영 + 최저·예상·시세 마커
+   라벨은 2행 배치(예상=1행, 최저·시세=2행)로 겹침 방지, y축 최다 건수 표기 #}
+{% macro histogram(d) %}
+{% if d %}
+<div class="mt-2">
+  <div class="relative" style="height:110px">
+    {# 라벨 밴드 — 예상(1행), 최저·시세(2행) #}
+    {% if d.exp_pct is not none %}<span class="absolute text-[9px] font-semibold text-primary whitespace-nowrap" style="top:0;left:{{ d.exp_pct }}%">▎예상 {{ (d.exp/10000)|round|int }}만</span>{% endif %}
+    {% if d.floor_pct is not none %}<span class="absolute text-[9px] text-slate-500 whitespace-nowrap" style="top:14px;left:{{ d.floor_pct }}%">최저 {{ (d.floor/10000)|round|int }}만</span>{% endif %}
+    {% if d.median_pct is not none %}<span class="absolute text-[9px] text-mut whitespace-nowrap" style="top:14px;left:{{ d.median_pct }}%;transform:translateX(-100%);padding-right:3px">{{ (d.median/10000)|round|int }}만 시세</span>{% endif %}
+    <span class="absolute text-[9px] text-mut/60" style="top:28px;right:0">최다 {{ d.maxc }}건</span>
+    {# 차트 영역 #}
+    <div class="absolute left-0 right-0" style="top:30px;bottom:16px">
+      <div class="absolute inset-x-0 top-0 border-t border-dashed border-slate-200"></div>
+      {% if d.band %}<div class="absolute inset-y-0 bg-primary/15 border-x border-primary/30" style="left:{{ d.band.lo }}%;width:{{ (d.band.hi - d.band.lo)|round(1) }}%" title="예상낙찰가 ±오차 구간"></div>{% endif %}
+      <div class="relative flex items-end gap-px h-full border-b border-slate-300">
+        {% for b in d.bins %}<div class="flex-1 bg-slate-300 rounded-t-sm hover:bg-slate-400 transition-colors" style="height:{{ b.h }}%;min-height:1px" title="{{ b.c }}건"></div>{% endfor %}
+      </div>
+      {% if d.median_pct is not none %}<div class="absolute top-0 bottom-0 border-l border-dashed border-slate-400" style="left:{{ d.median_pct }}%"></div>{% endif %}
+      {% if d.floor_pct is not none %}<div class="absolute top-0 bottom-0 border-l border-slate-500" style="left:{{ d.floor_pct }}%"></div>{% endif %}
+      {% if d.exp_pct is not none %}<div class="absolute top-0 bottom-0 border-l-2 border-primary" style="left:{{ d.exp_pct }}%"></div>{% endif %}
+    </div>
+    {# x축 — 5개 가격 눈금 #}
+    <div class="absolute bottom-0 left-0 right-0 flex justify-between text-[9px] text-mut/60 font-mono">
+      {% for f in [0, 0.25, 0.5, 0.75, 1.0] %}<span>{{ ((d.lo + (d.hi-d.lo)*f)/10000)|round|int }}만</span>{% endfor %}
+    </div>
+  </div>
+  <div class="flex items-center justify-center gap-3 text-[10px] text-mut/70 mt-1">
+    <span>동급 {{ d.n }}건 실매물</span>
+    <span class="inline-flex items-center gap-1"><span class="inline-block w-2.5 border-t-2 border-primary"></span>예상</span>
+    <span class="inline-flex items-center gap-1"><span class="inline-block w-2.5 border-t border-dashed border-slate-400"></span>시세</span>
+    {% if d.band %}<span class="inline-flex items-center gap-1"><span class="inline-block w-2.5 h-2 bg-primary/15 border-x border-primary/30"></span>±오차</span>{% endif %}
+  </div>
+</div>
+{% endif %}
+{% endmacro %}

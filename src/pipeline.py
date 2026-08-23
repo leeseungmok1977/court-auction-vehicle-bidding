@@ -66,14 +66,20 @@ def run(max_items: int = 3, scan_limit: int = 15, repair_cost: int = 500_000,
         detail = parse_detail(dresp, config)
         save_item_folder(dresp, item.folder_key, config)
 
-        # 엔카 동급 시세
+        # 엔카 동급 시세 (운영 경로와 동일: 연식범위·연료·트림·premium·표본게이팅)
         try:
+            yf = (item.year - 1) * 100 if item.year else None
+            yt = ((item.year + 1) * 100 + 99) if item.year else None
             res = encar.search(es, manufacturer=mp["manufacturer"],
                                model_group=mp["model_group"], car_type=mp.get("car_type", "Y"),
-                               limit=100)
+                               premium=mp.get("premium", False),
+                               year_from=yf, year_to=yt, limit=100)
             listings = encar.normalize(res["results"])
             stats = summarize(listings, form_year=item.year, mileage_km=detail.mileage_km,
-                              platform="encar", year_tol=year_tol, mileage_tol=mileage_tol)
+                              platform="encar", year_tol=year_tol, mileage_tol=mileage_tol,
+                              fuel=detail.fuel_name, min_sample=config.get("min_sample_count", 5),
+                              trim=encar.trim_hint(item.model),
+                              appraisal_value=detail.appraisal_value, config=config)
         except Exception as e:  # noqa: BLE001
             results.append({"case_no": item.case_no, "model": item.model,
                             "status": f"엔카 오류: {e}"})

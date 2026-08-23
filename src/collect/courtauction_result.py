@@ -18,7 +18,7 @@ from typing import Optional
 
 import requests
 
-from .courtauction_list import BASE, INDEX, new_session, warmup, REQUEST_DELAY_SEC
+from .courtauction_list import BASE, INDEX, new_session, warmup, REQUEST_DELAY_SEC, _check_block
 from ..parse.list_parser import _to_int, _fmt_date
 
 RESULT_ENDPOINT = f"{BASE}/pgj/pgjsearch/selectDspslSchdRsltSrch.on"
@@ -53,9 +53,7 @@ def fetch_results(session: requests.Session, bo_cd: str, page_no: int = 1,
     time.sleep(REQUEST_DELAY_SEC)
     r = session.post(RESULT_ENDPOINT, data=json.dumps(_body(bo_cd, page_no, page_size)),
                      headers=headers, timeout=30)
-    if r.status_code in (403, 429):
-        raise RuntimeError(f"차단 상태코드 {r.status_code}")
-    r.raise_for_status()
+    _check_block(r)                   # C.4-5 차단(상태코드+소프트) 즉시 중단
     j = r.json()
     data = j.get("data", {}) or {}
     return (data.get("dlt_srchResult") or [],
@@ -63,15 +61,20 @@ def fetch_results(session: requests.Session, bo_cd: str, page_no: int = 1,
 
 
 def fetch_all_results(session: requests.Session, bo_cd: str, max_pages: int = 15) -> list[dict]:
-    """한 법원의 자동차 매각결과 전체(페이지 순회)."""
+    """한 법원의 자동차 매각결과 전체(페이지 순회).
+
+    groupTotalCount가 빈값이어도 조기 중단하지 않는다 — 총계가 없으면 '가득 찬 페이지'가
+    올 때까지 계속 순회하고, 부분 페이지(40건 미만)에서 종료한다(누락 방지)."""
     out: list[dict] = []
     page = 1
     while page <= max_pages:
-        rows, total = fetch_results(session, bo_cd, page)
+        rows, total = fetch_results(session, bo_cd, page, page_size=40)
         if not rows:
             break
         out.extend(rows)
-        if page * 40 >= (total or 0):
+        if total and page * 40 >= total:   # 총계 알 때만 총계 기준 종료
+            break
+        if len(rows) < 40:                 # 총계 미상: 부분 페이지면 마지막
             break
         page += 1
     return out

@@ -115,6 +115,19 @@ def detect_import(court_maker: Optional[str], car_nm: Optional[str]) -> Optional
     return None
 
 
+def trim_hint(car_nm: Optional[str]) -> Optional[str]:
+    """고가 서브트림(마이바흐·AMG)을 감지. 엔카 Badge에 이 토큰이 있는 매물로 좁혀
+    상위 트림이 기본 트림 시세에 섞이지 않게 한다(예: 마이바흐 S580 ≠ 일반 S클래스).
+    오탐 위험이 큰 토큰(BMW 'M', 현대 'N' 등 단문자)은 넣지 않는다."""
+    s = car_nm or ""
+    su = s.upper()
+    if "마이바흐" in s or "MAYBACH" in su:
+        return "마이바흐"
+    if "AMG" in su:
+        return "AMG"
+    return None
+
+
 def _benz_group(car_nm: str) -> Optional[str]:
     s = car_nm or ""; su = s.upper()
     for gl in ("GLC", "GLE", "GLA", "GLB", "GLS"):

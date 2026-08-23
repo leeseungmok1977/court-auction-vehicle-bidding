@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>법원경매 차량, 얼마에 낙찰될지 데이터로 봅니다</title>
+<meta name="description" content="전국 법원경매 차량을 자동 수집하고 실제 낙찰가로 검증한 예상 낙찰가·종합 리포트를 제공합니다."/>
+<link rel="stylesheet" href="/static/app.css?v={{ css_v }}"/>
+</head>
+<body class="bg-background text-txt tabular-nums" style="height:auto;overflow:auto;display:block">
+
+<!-- 상단 내비 -->
+<header class="sticky top-0 z-30 bg-background/85 backdrop-blur border-b border-line">
+  <div class="max-w-6xl mx-auto px-5 h-16 flex items-center gap-3">
+    <a href="/landing" class="flex items-center gap-2.5">
+      <span class="material-symbols-outlined text-primary text-3xl" style="font-variation-settings:'FILL' 1">gavel</span>
+      <span class="font-semibold tracking-tight">법원경매 입찰가 산정</span>
+    </a>
+    <div class="flex-1"></div>
+    <a href="/vehicles" class="hidden sm:inline text-sm text-mut hover:text-txt mr-2">물건 목록</a>
+    <a href="/" class="btn-primary text-sm">무료로 시작 <span class="material-symbols-outlined text-base">arrow_forward</span></a>
+  </div>
+</header>
+
+<!-- 히어로 -->
+<section class="mesh">
+  <div class="max-w-6xl mx-auto px-5 pt-16 pb-14 sm:pt-24 sm:pb-20 text-center">
+    <div class="inline-flex items-center gap-2 text-xs font-medium text-primary bg-primary/10 border border-primary/20 rounded-full px-3 py-1 mb-6">
+      <span class="material-symbols-outlined text-sm">verified</span> 실제 낙찰가로 검증하는 예상 낙찰가
+    </div>
+    <h1 class="text-4xl sm:text-6xl font-bold tracking-tight leading-[1.1]" style="text-wrap:balance">
+      이 차, 얼마에 낙찰될지<br class="hidden sm:block"> <span class="text-primary">데이터로 먼저</span> 봅니다
+    </h1>
+    <p class="mt-6 text-lg text-mut max-w-2xl mx-auto" style="text-wrap:pretty">
+      전국 법원경매 차량을 자동 수집·분석하고, 과거 <b class="text-txt">실제 낙찰가</b>로 보정한
+      예상 낙찰가와 종합 리포트를 제공합니다. 정확도를 부풀리지 않고 <b class="text-txt">범위와 오차로 정직하게</b>.
+    </p>
+    <div class="mt-9 flex flex-wrap items-center justify-center gap-3">
+      <a href="/vehicles" class="btn-primary">무료로 물건 보기 <span class="material-symbols-outlined text-lg">arrow_forward</span></a>
+      <a href="/vehicles?judgment=입찰 검토 가능&sort=expected" class="btn-ghost">지금 검토 가능한 물건 →</a>
+    </div>
+    <div class="mt-6 text-sm text-mut">
+      가입·결제 없이 바로 이용 · 실제 낙찰 <b class="text-txt">{{ won }}건</b> 검증 · 현재 <b class="text-txt">{{ total }}건</b> 분석 중
+    </div>
+  </div>
+</section>
+
+<!-- 증명 스트립 -->
+<section class="border-y border-line bg-surface">
+  <div class="max-w-6xl mx-auto px-5 py-8 grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
+    <div><div class="text-3xl font-bold font-mono">{{ total }}</div><div class="text-sm text-mut mt-1">전국 물건 분석</div></div>
+    <div><div class="text-3xl font-bold font-mono">{{ won }}</div><div class="text-sm text-mut mt-1">실제 낙찰 검증{% if sample %} <span class="text-mut/60">({{ sample }}건 대조)</span>{% endif %}</div></div>
+    <div><div class="text-3xl font-bold font-mono">{% if discount %}{{ discount }}%{% else %}—{% endif %}</div><div class="text-sm text-mut mt-1">평균 낙찰률 <span class="text-mut/60">(낙찰가/시세)</span></div></div>
+    <div><div class="text-3xl font-bold font-mono text-amber-600">{% if mae %}±{{ mae }}%{% else %}—{% endif %}</div><div class="text-sm text-mut mt-1">예상 오차 <span class="text-mut/60">(정직 공개)</span></div></div>
+  </div>
+</section>
+
+<!-- 핵심 가치 -->
+<section class="max-w-6xl mx-auto px-5 py-16 sm:py-24">
+  <div class="text-center max-w-2xl mx-auto mb-14">
+    <h2 class="text-3xl sm:text-4xl font-bold tracking-tight">감으로 입찰하지 않습니다</h2>
+    <p class="mt-4 text-mut text-lg">시세 조회를 넘어, 실제 낙찰 데이터·취득원가·리스크까지 반영한 판단 근거를 드립니다.</p>
+  </div>
+  <div class="grid md:grid-cols-3 gap-6">
+    <div class="bg-surface border border-line rounded-xl p-7">
+      <div class="w-11 h-11 rounded-lg bg-primary/10 text-primary flex items-center justify-center mb-4"><span class="material-symbols-outlined">insights</span></div>
+      <h3 class="text-lg font-semibold">검증된 예상 낙찰가</h3>
+      <p class="text-sm text-mut mt-2 leading-relaxed">과거 실제 낙찰가로 낙찰률을 보정하고, 유찰 횟수까지 반영합니다. 단일 숫자가 아니라 <b class="text-txt">범위·신뢰도</b>로 알려드립니다.</p>
+    </div>
+    <div class="bg-surface border border-line rounded-xl p-7">
+      <div class="w-11 h-11 rounded-lg bg-primary/10 text-primary flex items-center justify-center mb-4"><span class="material-symbols-outlined">description</span></div>
+      <h3 class="text-lg font-semibold">종합 분석 리포트</h3>
+      <p class="text-sm text-mut mt-2 leading-relaxed">핵심 결론·시세 분포·<b class="text-txt">총 취득원가</b>·수익 시뮬레이션·민감도·법원 자료까지 <b class="text-txt">한 페이지</b>에. 인쇄·PDF 저장.</p>
+    </div>
+    <div class="bg-surface border border-line rounded-xl p-7">
+      <div class="w-11 h-11 rounded-lg bg-primary/10 text-primary flex items-center justify-center mb-4"><span class="material-symbols-outlined">shield</span></div>
+      <h3 class="text-lg font-semibold">안전한 산정 로직</h3>
+      <p class="text-sm text-mut mt-2 leading-relaxed">취득세·이전등록·마진까지 반영한 상한가를 계산하고, <b class="text-txt">사고·침수 이력 시 자동 경고(STOP RULE)</b>로 손실을 막습니다.</p>
+    </div>
+  </div>
+</section>
+
+<!-- 정직 배너 (신뢰도 최우선) -->
+<section class="max-w-6xl mx-auto px-5 pb-16 sm:pb-24">
+  <div class="bg-surface border border-line rounded-2xl p-8 sm:p-12 text-center">
+    <span class="material-symbols-outlined text-primary text-4xl">balance</span>
+    <h2 class="text-2xl sm:text-3xl font-semibold tracking-tight mt-3" style="text-wrap:balance">정확도를 부풀리지 않습니다</h2>
+    <p class="mt-4 text-mut max-w-2xl mx-auto leading-relaxed">
+      경매 낙찰가는 본질적으로 변동이 큽니다{% if mae %}(현재 평균 오차 <b class="text-txt">±{{ mae }}%</b>){% endif %}.
+      우리는 이 불확실성을 감추는 대신 <b class="text-txt">예상 범위·시세 분포·신뢰도</b>로 그대로 보여주고,
+      낙찰 데이터가 쌓일수록 예측이 <b class="text-txt">스스로 정교</b>해집니다. 판단의 근거는 투명해야 신뢰할 수 있습니다.
+    </p>
+  </div>
+</section>
+
+<!-- 작동 방식 -->
+<section class="bg-surface border-y border-line">
+  <div class="max-w-6xl mx-auto px-5 py-16 sm:py-20">
+    <h2 class="text-3xl font-bold tracking-tight text-center mb-14">작동 방식</h2>
+    <div class="grid md:grid-cols-3 gap-8">
+      {% for step in [
+        ('1','자동 수집','대법원 법원경매정보에서 전국 차량 물건·감정요항·사진·사고이력을 소량·저속으로 수집합니다.'),
+        ('2','분석·검증','동급 시세와 비교해 예상 낙찰가·취득원가를 산정하고, 실제 낙찰가로 정확도를 백테스트합니다.'),
+        ('3','리포트·판단','물건별 종합 리포트로 지금 입찰할지·얼마에 넣을지를 30초 안에 판단합니다.')
+      ] %}
+      <div class="text-center">
+        <div class="w-12 h-12 rounded-full bg-primary text-white font-bold flex items-center justify-center mx-auto text-lg font-mono">{{ step[0] }}</div>
+        <h3 class="text-lg font-semibold mt-4">{{ step[1] }}</h3>
+        <p class="text-sm text-mut mt-2 leading-relaxed max-w-xs mx-auto">{{ step[2] }}</p>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<!-- 가격(건당 리포트, 준비 중) -->
+<section class="max-w-3xl mx-auto px-5 py-16 sm:py-24 text-center">
+  <h2 class="text-3xl font-bold tracking-tight">지금은 전부 무료입니다</h2>
+  <p class="mt-4 text-mut text-lg">물건 조회·시세 분석·종합 리포트까지 가입·결제 없이 이용하세요.</p>
+  <div class="mt-8 bg-surface border border-line rounded-2xl p-8 text-left max-w-md mx-auto">
+    <div class="flex items-center justify-between">
+      <div>
+        <div class="text-sm text-mut">물건별 종합 리포트</div>
+        <div class="text-3xl font-bold mt-1">무료 <span class="text-base font-normal text-mut line-through decoration-mut/40">건당 결제 예정</span></div>
+      </div>
+      <span class="text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full px-3 py-1">지금 이용 가능</span>
+    </div>
+    <ul class="mt-6 space-y-2.5 text-sm">
+      {% for f in ['11개 섹션 종합 분석 리포트 (인쇄·PDF)','검증된 예상 낙찰가 + 시세 분포','총 취득원가·수익 시뮬레이션·민감도','법원 감정평가서 원본 연결'] %}
+      <li class="flex items-start gap-2"><span class="material-symbols-outlined text-emerald-600 text-lg">check_circle</span><span class="text-txt">{{ f }}</span></li>
+      {% endfor %}
+    </ul>
+    <a href="/vehicles" class="btn-primary w-full justify-center mt-7">무료로 리포트 만들기</a>
+  </div>
+  <p class="mt-6 text-xs text-mut/70">향후 건당 유료 리포트로 전환될 수 있으며, 전환 시 사전 안내드립니다.</p>
+</section>
+
+<!-- 최종 CTA -->
+<section class="mesh border-t border-line">
+  <div class="max-w-4xl mx-auto px-5 py-16 sm:py-20 text-center">
+    <h2 class="text-3xl sm:text-4xl font-bold tracking-tight" style="text-wrap:balance">지금 검토 가능한 물건이 <span class="text-primary">기다립니다</span></h2>
+    <p class="mt-4 text-mut text-lg">이번 달 매각예정 {{ upcoming }}건 중, 데이터가 추천하는 유망 물건부터 확인하세요.</p>
+    <a href="/vehicles?judgment=입찰 검토 가능&sort=expected" class="btn-primary mt-8 text-base px-6 py-3">유망 물건 보기 <span class="material-symbols-outlined">arrow_forward</span></a>
+  </div>
+</section>
+
+<!-- 푸터 -->
+<footer class="border-t border-line bg-surface">
+  <div class="max-w-6xl mx-auto px-5 py-10 text-sm text-mut">
+    <div class="flex flex-wrap items-center gap-x-6 gap-y-2 mb-4">
+      <span class="flex items-center gap-2 font-semibold text-txt"><span class="material-symbols-outlined text-primary">gavel</span> 법원경매 입찰가 산정</span>
+      <a href="/" class="hover:text-txt">대시보드</a>
+      <a href="/vehicles" class="hover:text-txt">물건 목록</a>
+      <a href="/watchlist" class="hover:text-txt">관심 목록</a>
+    </div>
+    <p class="text-xs leading-relaxed text-mut/80">
+      데이터: 대법원 법원경매정보 · SK엔카(검증용). 본 서비스는 참고용 분석 도구이며 투자 권유가 아닙니다.
+      예상 낙찰가는 실측 통계 기반 추정치로 오차가 있고, 최종 입찰 판단과 결과의 책임은 이용자 본인에게 있습니다.
+      차량 실물 확인·등기/공부 열람을 대체하지 않습니다.
+    </p>
+  </div>
+</footer>
+
+</body>
+</html>

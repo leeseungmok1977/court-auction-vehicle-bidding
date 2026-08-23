@@ -60,6 +60,7 @@ class BidInput:
     accident_grade: str = "none"  # none | minor | accident | flood
     repair_cost: float = 0.0     # 예상 수리비 (사용자 입력, 원)
     appraisal_text: str = ""     # 감정평가서 텍스트 (침수 키워드 판정용)
+    photo_count: Optional[int] = None  # 차량 사진 수(None=미상 → 감가 안 함, 0=사진없음 → 감가)
 
 
 @dataclass
@@ -85,11 +86,15 @@ def load_config(path: Optional[str | Path] = None) -> dict:
 
 
 def _is_flood(inp: BidInput, config: dict) -> bool:
-    """침수·전손 판정: 등급이 flood 이거나 감정평가서에 키워드 존재."""
+    """침수·전손 판정: 등급이 flood 이거나 감정평가서 자유서술에 키워드 존재.
+
+    보험사고이력 정형구('전손 보험사고 : 0건' 등)는 제거 후 스캔한다 — '0건'을
+    침수로 오판해 무사고 차량이 '입찰 보류'로 표기되는 모순을 막는다."""
     if inp.accident_grade == AccidentGrade.FLOOD.value:
         return True
     keywords = config.get("flood_keywords", [])
-    text = inp.appraisal_text or ""
+    from ..parse.detail_parser import _strip_report
+    text = _strip_report(inp.appraisal_text or "")
     return any(kw in text for kw in keywords)
 
 
@@ -110,6 +115,20 @@ def calculate(inp: BidInput, config: dict) -> BidResult:
     fixed = config["fixed_costs"]["transfer_fee"] + config["fixed_costs"]["delivery_fee"]
     margin = base_price * config["margin_rate"]
 
+    # 감정 요항 기반 상태·검사 추가 정비/비용(외관 손상·관리불량·검사경과·시동불가).
+    # 요항 텍스트가 없거나 config.condition_costs 미설정이면 0(기존 동작 유지).
+    from ..parse.appraisal import condition_adjustment
+    cond = condition_adjustment(inp.appraisal_text or "", config)
+    condition_cost = cond.get("add", 0)
+    cond_flags = list(cond.get("flags", []))
+
+    # 차량 사진 없음 → 실물 확인 불가 리스크 감가(사진수 0으로 명시된 경우만; None=미상은 제외)
+    no_photo_cost = 0
+    if inp.photo_count == 0:
+        no_photo_cost = int((config.get("condition_costs", {}) or {}).get("no_photos", 0))
+        if no_photo_cost:
+            cond_flags.append("차량 사진 없음")
+
     upper_bid = (
         base_price
         - inp.repair_cost
@@ -118,6 +137,8 @@ def calculate(inp: BidInput, config: dict) -> BidResult:
         - acquisition_tax
         - fixed
         - margin
+        - condition_cost
+        - no_photo_cost
     )
 
     # 자동 판정 (우선순위: 침수 > 표본부족 > 유찰대기 > 가능)
@@ -142,6 +163,8 @@ def calculate(inp: BidInput, config: dict) -> BidResult:
         "취득세": round(acquisition_tax),
         "고정부대비": fixed,
         "마진": round(margin),
+        "상태정비추가": round(condition_cost + no_photo_cost),
+        "상태사유": cond_flags,
         "표본수": inp.sample_count,
         "현재최저매각가": round(inp.min_sale_price),
     }

@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>{{ v.model|mdl }} 분석 리포트 · {{ v.case_no }}</title>
+<link rel="stylesheet" href="/static/app.css?v={{ css_v }}"/>
+{% set med = v.median_price or 0 %}
+{% set floor = v.min_sale_price or 0 %}
+{% set exp = (report.exp if report else 0) or 0 %}
+{% set upper = v.upper_bid or 0 %}
+{% set conf = v.market_confidence or 0 %}
+<style>
+:root{
+  --paper:#F6F7F9;--card:#fff;--ink:#16233A;--ink-soft:#4B5A73;--ink-faint:#8A97AB;
+  --line:#E3E7EE;--line-strong:#C9D1DD;--cobalt:#2153D4;--cobalt-deep:#12306E;--cobalt-tint:#EDF2FE;
+  --amber:#D97B06;--amber-tint:#FDF3E3;--green:#0E9F5B;--green-tint:#E7F7EF;--red:#D5403F;--red-tint:#FCEDED;
+  --mono:'JetBrains Mono',monospace;--sans:'Pretendard','Malgun Gothic',sans-serif;
+}
+body{background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased;font-feature-settings:"ss01"}
+.page{max-width:880px;margin:0 auto;padding:24px 20px 64px}
+.num{font-family:var(--mono);font-feature-settings:"tnum";letter-spacing:-.01em}
+.no-print{margin-bottom:18px;display:flex;justify-content:flex-end;gap:8px}
+.btn{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:8px 16px;font-size:13px;font-weight:600;border:1px solid var(--line);background:#fff;color:var(--ink);cursor:pointer;text-decoration:none}
+.btn.pri{background:var(--cobalt);color:#fff;border-color:var(--cobalt)}
+.masthead{background:var(--cobalt-deep);color:#fff;border-radius:14px;padding:28px 32px 24px}
+.mh-top{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:10px}
+.brand-mark{width:34px;height:34px;border-radius:8px;background:#fff;color:var(--cobalt-deep);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:17px}
+.brand-name{font-weight:700;font-size:15px}.brand-sub{font-size:10.5px;color:rgba(255,255,255,.55);letter-spacing:.12em;text-transform:uppercase}
+.badges{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.badge{font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;padding:5px 12px;border-radius:99px;border:1px solid rgba(255,255,255,.3);color:rgba(255,255,255,.9)}
+.badge.fill{background:rgba(255,255,255,.12)}.badge b{color:#8FD9AE}
+.mh-eyebrow{font-family:var(--mono);font-size:11.5px;color:rgba(255,255,255,.6);margin:22px 0 6px}
+.mh-title{font-weight:700;font-size:clamp(22px,4vw,30px);line-height:1.28;letter-spacing:-.01em}
+.mh-meta{margin-top:20px;padding-top:16px;border-top:1px solid rgba(255,255,255,.18);display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px 24px}
+.mh-meta dt{font-size:11px;color:rgba(255,255,255,.55);margin-bottom:2px}.mh-meta dd{font-size:13px;font-weight:600}
+.section{margin-top:36px}
+.sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:14px}
+.sec-no{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--cobalt)}
+.sec-head h2{font-size:19px;font-weight:700;letter-spacing:-.01em}
+.sec-note{margin-left:auto;font-size:12px;color:var(--ink-faint);text-align:right}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:24px 26px}
+.verdict{border:1px solid var(--line-strong);border-top:3px solid var(--cobalt)}
+.vgrid{display:grid;grid-template-columns:auto 1fr;gap:28px;align-items:start}
+.v-label{font-size:12px;color:var(--ink-soft);font-weight:600;margin-bottom:6px}
+.v-band{font-family:var(--mono);font-weight:700;font-size:clamp(24px,4.5vw,32px);color:var(--cobalt);letter-spacing:-.02em;white-space:nowrap}
+.v-band small{font-size:.5em;color:var(--ink-soft);font-weight:500}
+.v-sub{margin-top:8px;font-size:12.5px;color:var(--ink-soft)}.v-sub b{font-family:var(--mono);color:var(--ink)}
+.vpts{border-left:1px solid var(--line);padding-left:26px;list-style:none}
+.vpts li{position:relative;padding-left:15px;font-size:13.2px;color:var(--ink-soft);line-height:1.55}.vpts li+li{margin-top:9px}
+.vpts li::before{content:"";position:absolute;left:0;top:8px;width:6px;height:6px;border-radius:2px;background:var(--cobalt)}
+.vpts b{color:var(--ink)}
+.stop{margin-top:20px;display:flex;gap:12px;align-items:flex-start;border-radius:10px;padding:13px 16px}
+.stop.on{background:var(--red-tint);border:1px solid #F2C8C8}.stop.off{background:#F4F6F9;border:1px solid var(--line)}
+.stop .tg{flex:none;font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.08em;color:#fff;padding:4px 9px;border-radius:5px;margin-top:1px}
+.stop.on .tg{background:var(--red)}.stop.off .tg{background:var(--ink-faint)}
+.stop p{font-size:12.5px;line-height:1.55}.stop.on p{color:#7A2B2A}.stop.on b{color:var(--red)}.stop.off p{color:var(--ink-soft)}
+.spectrum{margin-top:22px;padding-top:22px;border-top:1px dashed var(--line-strong)}
+.sp-title{font-size:12px;font-weight:600;color:var(--ink-soft);margin-bottom:40px}
+.sp-wrap{position:relative;margin:0 6px}
+.sp-track{height:9px;border-radius:99px;background:#E8ECF3;position:relative;overflow:hidden}
+.sp-fill{position:absolute;top:0;bottom:0;background:linear-gradient(90deg,var(--cobalt),#4F79E8);border-radius:99px}
+.sp-pin{position:absolute;top:-32px;transform:translateX(-50%);text-align:center;white-space:nowrap}
+.sp-pin .pl{font-size:10px;color:var(--ink-faint)}.sp-pin .pv{font-family:var(--mono);font-size:11px;font-weight:600}
+.sp-pin::after{content:"";display:block;width:1px;height:13px;background:var(--line-strong);margin:2px auto 0}
+.sp-pin.acc .pv{color:var(--cobalt)}
+.sp-blabel{position:absolute;bottom:-34px;transform:translateX(-50%);font-size:10px;font-weight:700;color:var(--cobalt);white-space:nowrap}
+.sp-foot{margin-top:48px;font-size:11.5px;color:var(--ink-faint)}
+.confw{display:grid;grid-template-columns:180px 1fr;gap:28px;align-items:start}
+.cscore{text-align:center;padding:16px 8px;border:1px solid var(--line);border-radius:12px;background:#FAFBFD}
+.cscore .n{font-family:var(--mono);font-size:42px;font-weight:700;line-height:1.1;color:var(--green)}
+.cscore .n.mid{color:var(--amber)}.cscore .n small{font-size:15px;color:var(--ink-faint);font-weight:500}
+.cscore .l{font-size:11.5px;font-weight:600;color:var(--ink-soft);margin-top:4px}
+.cscore .s{font-size:11px;color:var(--ink-faint);margin-top:8px;line-height:1.5}
+.cbars{display:grid;gap:12px}
+.cbar{display:grid;grid-template-columns:110px 1fr 78px;gap:12px;align-items:center}
+.cbar .nm{font-size:12.5px;font-weight:600}.cbar .tk{height:8px;border-radius:99px;background:#EDF0F5;overflow:hidden}
+.cbar .fl{height:100%;border-radius:99px;background:var(--cobalt)}.cbar.warn .fl{background:var(--amber)}
+.cbar .vv{font-size:11px;text-align:right;white-space:nowrap}
+.tag{display:inline-block;font-family:var(--mono);font-size:9px;font-weight:700;letter-spacing:.04em;padding:2px 6px;border-radius:4px}
+.tag.confirmed{background:var(--green-tint);color:var(--green)}.tag.verified{background:var(--cobalt-tint);color:var(--cobalt)}
+.tag.estimated{background:var(--amber-tint);color:var(--amber)}.tag.unverified{background:#EEF1F5;color:var(--ink-faint)}
+.legend{margin-top:16px;padding-top:12px;border-top:1px dashed var(--line);display:flex;gap:16px;flex-wrap:wrap;font-size:11px;color:var(--ink-soft)}
+.legend span{display:flex;align-items:center;gap:6px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+thead th{text-align:left;font-size:11px;font-weight:600;color:var(--ink-soft);padding:0 10px 9px;border-bottom:1.5px solid var(--line-strong);white-space:nowrap}
+tbody td{padding:10px;border-bottom:1px solid var(--line);vertical-align:top}
+tbody tr:last-child td{border-bottom:none}
+td.r,th.r{text-align:right}td.c,th.c{text-align:center}
+.row-hl td{background:var(--cobalt-tint)}.row-sum td{border-top:1.5px solid var(--line-strong);font-weight:700;background:#FAFBFD}
+.note{margin-top:11px;font-size:11.5px;color:var(--ink-faint);line-height:1.6}
+.kv-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:0 36px}
+.kv{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--line);font-size:13px;align-items:baseline}
+.kv dt{color:var(--ink-soft);white-space:nowrap}.kv dd{font-weight:600;text-align:right}
+.chip{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:5px}
+.chip.ok{background:var(--green-tint);color:var(--green)}.chip.warn{background:var(--amber-tint);color:var(--amber)}.chip.risk{background:var(--red-tint);color:var(--red)}
+.pos{color:var(--green)}.neu{color:var(--amber)}.neg{color:var(--red)}
+.matrix td,.matrix th{text-align:center;padding:9px 6px}.matrix .axis{font-size:11px;color:var(--ink-faint);font-weight:600}
+.cell-pos{background:var(--green-tint);color:var(--green);font-weight:700}.cell-neu{background:var(--amber-tint);color:var(--amber);font-weight:700}.cell-neg{background:var(--red-tint);color:var(--red);font-weight:700}
+.logic{display:grid;grid-template-columns:24px 1fr auto;gap:12px;align-items:baseline;padding:11px 4px;border-bottom:1px solid var(--line)}
+.logic:last-child{border-bottom:none;background:var(--cobalt-tint);border-radius:8px;padding:12px;margin-top:6px}
+.logic .ln{font-family:var(--mono);font-size:11px;color:var(--ink-faint);font-weight:700}
+.logic .ld{font-size:13px}.logic .ld small{display:block;color:var(--ink-faint);font-size:11.5px}
+.logic .lv{font-family:var(--mono);font-weight:700;font-size:13.5px;white-space:nowrap}.logic:last-child .lv{color:var(--cobalt);font-size:15px}
+pre.body{white-space:pre-wrap;font-family:var(--sans);font-size:12.5px;color:var(--ink-soft);line-height:1.6;margin:0;max-height:260px;overflow:auto}
+.disc{margin-top:44px;padding:20px 24px;background:#EEF1F5;border-radius:12px;font-size:11.5px;color:var(--ink-soft);line-height:1.7}
+.disc b{color:var(--ink)}
+.foot{margin-top:22px;display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;font-family:var(--mono);font-size:10.5px;color:var(--ink-faint)}
+@media (max-width:660px){.vgrid,.confw{grid-template-columns:1fr}.vpts{border-left:none;border-top:1px solid var(--line);padding-left:0;padding-top:16px}.sp-pin .pl{display:none}.card{padding:18px 16px}}
+@media print{body{background:#fff}.page{padding:0;max-width:none}.no-print{display:none}.card,.masthead{border-radius:0;break-inside:avoid}.section{break-inside:avoid}@page{size:A4;margin:12mm}}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="no-print">
+    <a href="/vehicle/{{ v.id }}" class="btn"
+       onclick="if(window.opener&&!window.opener.closed){window.opener.focus();window.close();}return true;"><span class="material-symbols-outlined" style="font-size:18px">arrow_back</span> 상세로</a>
+    <button onclick="window.print()" class="btn pri"><span class="material-symbols-outlined" style="font-size:18px">print</span> 인쇄 / PDF 저장</button>
+    <span class="btn" style="opacity:.5;cursor:not-allowed;gap:6px" title="곧 제공 — 리포트를 계정에 보관하고 건당 구매(현재 무료·인쇄로 저장하세요)" aria-disabled="true"><span class="material-symbols-outlined" style="font-size:18px">bookmark_add</span> 보관·구매 <span style="font-size:10px;background:var(--line);color:var(--ink-soft);padding:1px 6px;border-radius:99px">준비 중</span></span>
+  </div>
+
+  <!-- 마스트헤드 -->
+  <header class="masthead">
+    <div class="mh-top">
+      <div class="brand"><div class="brand-mark">A</div>
+        <div><div class="brand-name">차량경매 분석 리포트</div><div class="brand-sub">Court Auction Vehicle Intelligence</div></div></div>
+      <div class="badges">
+        {% if conf %}<div class="badge fill">CONFIDENCE <b>{{ conf }}</b>/100</div>{% endif %}
+        <div class="badge">{{ v.market_confidence_label or '—' }}</div>
+      </div>
+    </div>
+    <div class="mh-eyebrow">차량 경매 분석 리포트 · {{ v.court }} · {{ now }}</div>
+    <div class="mh-title">{{ v.year or '' }} {{ v.maker }} {{ v.model|mdl }}</div>
+    <dl class="mh-meta">
+      <div><dt>사건번호</dt><dd class="num">{{ v.case_no }}</dd></div>
+      <div><dt>관할 법원</dt><dd>{{ v.court or '—' }}</dd></div>
+      <div><dt>매각기일</dt><dd class="num">{{ v.sale_date or '—' }}</dd></div>
+      <div><dt>발행일</dt><dd class="num">{{ now }}</dd></div>
+    </dl>
+  </header>
+
+  {% if report %}
+  {% set opp = floor and floor <= exp %}
+  {% set thin_margin = upper and exp and exp > upper %}
+  <!-- 01 핵심 결론 -->
+  <section class="section">
+    <div class="sec-head"><span class="sec-no">01</span><h2>핵심 결론</h2><span class="sec-note">결론 먼저, 근거는 이하 참조</span></div>
+    <div class="card verdict">
+      <div class="vgrid">
+        <div>
+          <div class="v-label">예상 낙찰가 (일반 매수 실입찰{% if report.mae %} ±{{ report.mae|round|int }}%{% endif %})</div>
+          <div class="v-band num">{% if report.lo and report.hi %}{{ (report.lo/10000)|round|int }} <small>~</small> {{ (report.hi/10000)|round|int }}{% else %}{{ (exp/10000)|round|int }}{% endif %}<small> 만원</small></div>
+          <div class="v-sub">중심값 <b class="num">{{ exp|won }}원</b> · 재판매 상한가 <b class="num">{{ upper|won }}원</b></div>
+        </div>
+        <ul class="vpts">
+          <li>현 최저매각가 <b class="num">{{ floor|won }}원</b>은 예상낙찰가 {{ '이하 — 지금 입찰 검토 가능' if opp else '초과 — 추가 유찰 대기 권장' }}</li>
+          <li>엔카 시세중앙값 <b class="num">{{ med|won }}원</b> 대비 예상낙찰가는 약 <b>{{ ((report.discount or 0)*100)|round|int }}%</b> {% if v.fail_count %}(유찰 {{ v.fail_count }}회 반영){% endif %}</li>
+          {% if thin_margin %}<li style="color:var(--amber)"><b style="color:var(--amber)">재판매 부적합 신호</b> — 예상낙찰가가 마진 확보선(<b class="num">{{ upper|won }}원</b>)을 초과. 시세에 가깝게 낙찰될 물건이라 <b>재판매 차익은 어렵고 실사용 목적</b>에 적합</li>
+          {% else %}<li>재판매 목적이면 마진 확보선 <b class="num">{{ upper|won }}원</b> 이하가 기준 (목표마진 {{ report.target_margin|won }}원)</li>{% endif %}
+          <li>본 결론의 신뢰도 <b>{{ conf }}/100</b> — 미확정 요소는 현장확인(상태·정비비)뿐이며 결과에 따라 밴드가 조정될 수 있음(09)</li>
+        </ul>
+      </div>
+      <div class="stop {{ 'on' if report.stop_active else 'off' }}">
+        <span class="tg">STOP RULE</span>
+        <p>{% if report.stop_active %}<b>사고/침수 이력이 감지</b>되었습니다. 현장에서 골격(프레임) 손상·침수 확정 시 본 리포트의 권장가는 <b>즉시 무효</b>이며 입찰 보류를 권장합니다.
+        {% else %}현장/서류에서 <b>골격(프레임) 사고 · 침수 · 미기재 중대 결함 · 인수 부담 권리관계</b> 중 하나라도 확인되면 본 리포트의 권장가는 무효로 간주하고 입찰을 보류하십시오.{% endif %}</p>
+      </div>
+      <!-- 가격 스펙트럼 -->
+      {% if med and floor and exp %}
+      {% set gmax = [med, floor, upper, report.hi or exp]|max %}
+      <div class="spectrum">
+        <div class="sp-title">가격 스펙트럼 <span style="font-weight:400;color:var(--ink-faint)">— 단위: 만원</span></div>
+        <div class="sp-wrap">
+          <div class="sp-track"><div class="sp-fill" style="left:{{ (floor/gmax*100)|round(1) }}%;width:{{ ((exp-floor)/gmax*100)|round(1) if exp>floor else 0.5 }}%"></div></div>
+          <div class="sp-pin" style="left:{{ (floor/gmax*100)|round(1) }}%"><div class="pl">최저매각가</div><div class="pv num">{{ (floor/10000)|round|int }}</div></div>
+          <div class="sp-pin acc" style="left:{{ (exp/gmax*100)|round(1) }}%"><div class="pl">예상낙찰가</div><div class="pv num">{{ (exp/10000)|round|int }}</div></div>
+          {% if upper %}<div class="sp-pin" style="left:{{ (upper/gmax*100)|round(1) }}%"><div class="pl">상한가</div><div class="pv num">{{ (upper/10000)|round|int }}</div></div>{% endif %}
+          <div class="sp-pin" style="left:{{ (med/gmax*100)|round(1) }}%"><div class="pl">시세중앙값</div><div class="pv num">{{ (med/10000)|round|int }}</div></div>
+          <div class="sp-blabel" style="left:{{ (((floor+exp)/2)/gmax*100)|round(1) }}%">{{ '실사용 적합 · 재판매 마진 낮음' if thin_margin else '지금 입찰 가능' if opp else '유찰 대기 구간' }}</div>
+        </div>
+        <div class="sp-foot">예상낙찰가는 과거 낙찰 실측(낙찰가/시세 분포)에 유찰횟수를 반영한 중심 추정치이며, 밴드는 분위수 기반 불확실 구간입니다(산출: 10).</div>
+      </div>
+      {% endif %}
+    </div>
+  </section>
+
+  <!-- 02 데이터 신뢰도 -->
+  <section class="section">
+    <div class="sec-head"><span class="sec-no">02</span><h2>데이터 신뢰도</h2><span class="sec-note">"이 결론을 얼마나 믿어도 되는가"</span></div>
+    <div class="card">
+      <div class="confw">
+        <div class="cscore">
+          <div class="n {{ 'mid' if conf<70 else '' }} num">{{ conf }}<small>/100</small></div>
+          <div class="l">{{ v.market_confidence_label or '—' }}</div>
+          <div class="s">동급 표본 {{ v.sample_count or 0 }}건{% if v.market_cv is not none %} · 편차 ±{{ (v.market_cv*100)|round|int }}%{% endif %}<br>현장확인 시 신뢰도 상향</div>
+        </div>
+        <div class="cbars">
+          {% for c in report.cats %}
+          <div class="cbar {{ 'warn' if c.score<70 else '' }}">
+            <span class="nm">{{ c.name }}</span>
+            <div class="tk"><div class="fl" style="width:{{ c.score }}%"></div></div>
+            <span class="vv num">{{ c.score }} <span class="tag {{ c.tag }}">{{ {'confirmed':'확정','verified':'검증','estimated':'추정','unverified':'미확인'}[c.tag] }}</span></span>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="legend">
+        <span><span class="tag confirmed">확정</span> 공식자료·직접확인(대법원·등록)</span>
+        <span><span class="tag verified">검증</span> 복수출처 교차검증(보험이력·매물)</span>
+        <span><span class="tag estimated">추정</span> 시나리오·보정치(현장확인 전)</span>
+      </div>
+      <p class="note">데이터가 부족한 항목은 낙관적으로 추정하지 않고 신뢰도를 낮추며, 미확인분은 취득원가의 리스크 충당금(현금)으로 보수 반영합니다.</p>
+    </div>
+  </section>
+
+  <!-- 03 차량·경매 개요 -->
+  <section class="section">
+    <div class="sec-head"><span class="sec-no">03</span><h2>차량 · 경매 개요</h2></div>
+    <div class="card">
+      <dl class="kv-grid">
+        <div class="kv"><dt>차량명</dt><dd>{{ v.maker }} {{ v.model|mdl }}</dd></div>
+        <div class="kv"><dt>연식</dt><dd class="num">{{ v.year or '—' }}</dd></div>
+        <div class="kv"><dt>주행거리</dt><dd class="num">{{ v.mileage_km|won }} km {% if v.mileage_km %}<span class="tag confirmed">확정</span>{% endif %}</dd></div>
+        <div class="kv"><dt>배기량 / 연료</dt><dd class="num">{{ v.displacement_cc or '—' }}cc {{ (v.fuel_code and '') or '' }}</dd></div>
+        <div class="kv"><dt>감정가</dt><dd class="num">{{ v.appraisal_value|won }}원 {% if v.appraisal_value %}<span class="tag confirmed">확정</span>{% endif %}</dd></div>
+        <div class="kv"><dt>최저매각가</dt><dd class="num">{{ v.min_sale_price|won }}원{% if v.appraisal_value and v.min_sale_price %} ({{ (100*v.min_sale_price/v.appraisal_value)|round|int }}%){% endif %}</dd></div>
+        <div class="kv"><dt>유찰횟수</dt><dd class="num">{{ v.fail_count if v.fail_count is not none else '—' }}회</dd></div>
+        <div class="kv"><dt>사고판정</dt><dd>{{ v.accident_grade|acc }}{% if v.accident_hits %} <span class="chip warn">{{ v.accident_hits|join(', ') }}</span>{% endif %}</dd></div>
+        <div class="kv"><dt>소재지</dt><dd style="font-size:12px">{{ v.location or '—' }}</dd></div>
+        <div class="kv"><dt>결과</dt><dd>{% if v.auction_result=='낙찰' %}낙찰 {{ v.winning_price|won }}원{% else %}{{ v.auction_result or '진행 예정' }}{% endif %}</dd></div>
+      </dl>
+    </div>
+  </section>
+
+  <!-- 04 감정평가·이력 -->
+  {% if v.spec_remark or appraisal %}
+  <section class="section">
+    <div class="sec-head"><span class="sec-no">04</span><h2>감정평가 · 이력 요약</h2><span class="sec-note">법원 제공 자료 요약{% if v.appraisal_ecdoc_id %} · 감정평가서 원본 별도{% endif %}</span></div>
+    <div class="card">
+      {% if v.spec_remark %}<div class="v-label">매각물건명세 요약</div><pre class="body" style="margin-bottom:16px">{{ v.spec_remark }}</pre>{% endif %}
+      {% if v.insurance_history %}<div class="v-label">보험 이력</div>
+      <p class="note" style="margin-top:4px;color:var(--ink-soft)">전손 {{ v.insurance_history.get('total_loss','?') }} · 침수 {{ v.insurance_history.get('flood','?') }} · 내차피해 {{ v.insurance_history.get('own_damage','?') }} · 소유자변경 {{ v.insurance_history.get('owner_changes','?') }} <span class="tag verified">검증</span></p>{% endif %}
+      {% if appraisal %}<div class="v-label" style="margin-top:16px">감정평가 요항 <span class="tag confirmed">확정</span></div><pre class="body">{{ appraisal }}</pre>{% endif %}
+    </div>
+  </section>
+  {% endif %}
+
+  <!-- 05 시세 비교 -->
+  {% if v.comps %}
+  <section class="section">
+    <div class="sec-head"><span class="sec-no">05</span><h2>시세 비교 — 동급 매물</h2><span class="sec-note">SK엔카 동급 표본{% if v.kcar_median %} · 케이카 참고{% endif %}</span></div>
+    <div class="card">
+      <table>
+        <thead><tr><th>연식</th><th class="r">주행(km)</th><th class="r">가격</th><th>트림</th></tr></thead>
+        <tbody>
+        {% for c in v.comps[:8] %}
+          <tr><td class="num">{{ c.year or '—' }}</td><td class="r num">{{ c.mileage_km|won }}</td><td class="r num">{{ c.price_won|won }}</td><td style="font-size:12px;color:var(--ink-soft)">{{ (c.badge or c.model or '—')|truncate(30) }}</td></tr>
+        {% endfor %}
+          <tr class="row-hl"><td colspan="2"><b>시세중앙값</b> (동급 {{ v.sample_count }}건){% if v.market_cv is not none %} · 편차 ±{{ (v.market_cv*100)|round|int }}%{% endif %}</td><td class="r num" style="font-weight:700;color:var(--cobalt)">{{ med|won }}원</td><td><span class="tag verified">검증</span></td></tr>
+        </tbody>
+      </table>
+      {% if dist %}
+      <div style="margin-top:18px">
+        <div class="v-label" style="margin-bottom:4px">실매물 시세 분포 <span style="font-weight:400;color:var(--ink-faint)">— 동급 {{ dist.n }}건 · 예상낙찰가가 분포 어디에 위치하는가</span></div>
+        <div style="position:relative;height:104px">
+          {% if dist.exp_pct is not none %}<span style="position:absolute;top:0;left:{{ dist.exp_pct }}%;font-size:9px;font-weight:700;color:var(--cobalt);white-space:nowrap">▎예상 {{ (dist.exp/10000)|round|int }}만</span>{% endif %}
+          {% if dist.floor_pct is not none %}<span style="position:absolute;top:14px;left:{{ dist.floor_pct }}%;font-size:9px;color:var(--ink-soft);white-space:nowrap">최저 {{ (dist.floor/10000)|round|int }}만</span>{% endif %}
+          {% if dist.median_pct is not none %}<span style="position:absolute;top:14px;left:{{ dist.median_pct }}%;transform:translateX(-100%);padding-right:3px;font-size:9px;color:var(--ink-faint);white-space:nowrap">{{ (dist.median/10000)|round|int }}만 시세</span>{% endif %}
+          <span style="position:absolute;top:28px;right:0;font-size:9px;color:var(--ink-faint)">최다 {{ dist.maxc }}건</span>
+          <div style="position:absolute;left:0;right:0;top:30px;bottom:16px">
+            <div style="position:absolute;left:0;right:0;top:0;border-top:1px dashed var(--line-strong)"></div>
+            {% if dist.band %}<div style="position:absolute;top:0;bottom:0;left:{{ dist.band.lo }}%;width:{{ (dist.band.hi-dist.band.lo)|round(1) }}%;background:var(--cobalt-tint);border-left:1px solid var(--cobalt);border-right:1px solid var(--cobalt)"></div>{% endif %}
+            <div style="position:relative;display:flex;align-items:flex-end;gap:1px;height:100%;border-bottom:1px solid var(--line-strong)">
+              {% for b in dist.bins %}<div style="flex:1;height:{{ b.h }}%;min-height:1px;background:#B9CBEF;border-radius:2px 2px 0 0" title="{{ b.c }}건"></div>{% endfor %}
+            </div>
+            {% if dist.median_pct is not none %}<div style="position:absolute;top:0;bottom:0;left:{{ dist.median_pct }}%;border-left:1px dashed var(--ink-faint)"></div>{% endif %}
+            {% if dist.floor_pct is not none %}<div style="position:absolute;top:0;bottom:0;left:{{ dist.floor_pct }}%;border-left:1px solid var(--ink-soft)"></div>{% endif %}
+            {% if dist.exp_pct is not none %}<div style="position:absolute;top:0;bottom:0;left:{{ dist.exp_pct }}%;border-left:2px solid var(--cobalt)"></div>{% endif %}
+          </div>
+          <div style="position:absolute;bottom:0;left:0;right:0;display:flex;justify-content:space-between;font-family:var(--mono);font-size:9px;color:var(--ink-faint)">{% for f in [0,0.25,0.5,0.75,1.0] %}<span>{{ ((dist.lo+(dist.hi-dist.lo)*f)/10000)|round|int }}만</span>{% endfor %}</div>
+        </div>
+        <div style="text-align:center;font-size:10px;color:var(--ink-faint);margin-top:2px">동급 {{ dist.n }}건 실매물 · <b style="color:var(--cobalt)">▎</b>예상 · <span style="color:var(--ink-faint)">┆</span>시세{% if dist.band %} · <span style="background:var(--cobalt-tint);border-left:1px solid var(--cobalt);border-right:1px solid var(--cobalt);padding:0 4px">음영</span>=예상 ±{{ report.mae|round|int if report and report.mae else 30 }}%{% endif %}</div>
+      </div>
+      {% endif %}
+      <p class="note">이상치(IQR)를 제거한 동급 매물의 중앙값입니다. 게시가 기준이며 실거래가와 차이가 있을 수 있어, 예상낙찰가는 실측 낙찰률로 별도 보정합니다(10).</p>
+    </div>
+  </section>
+  {% endif %}
+
+  <!-- 06 총 취득원가 -->
+  <section class="section">
+    <div class="sec-head"><span class="sec-no">06</span><h2>총 취득원가 (All-in Cost)</h2><span class="sec-note">예상낙찰가 {{ exp|won }}원 기준</span></div>
+    <div class="card">
+      {% set a = report.allin_ref %}
+      <table>
+        <thead><tr><th>비용 항목</th><th>산정 근거</th><th class="r">금액</th><th class="c">성격</th></tr></thead>
+        <tbody>
+          <tr><td>낙찰가</td><td>예상낙찰가(중심 추정)</td><td class="r num">{{ a.bid|won }}원</td><td class="c"><span class="tag estimated">추정</span></td></tr>
+          <tr><td>취득세</td><td>비영업용 승용 {{ (report.tax_rate*100)|round|int }}% · 낙찰가 연동</td><td class="r num">{{ a.tax|won }}원</td><td class="c"><span class="tag confirmed">세율확정</span></td></tr>
+          <tr><td>이전등록·탁송</td><td>이전 {{ (report.transfer/10000)|round|int }}만 + 탁송 {{ (report.delivery/10000)|round|int }}만(고정)</td><td class="r num">{{ a.fixed|won }}원</td><td class="c"><span class="tag estimated">추정</span></td></tr>
+          <tr><td>정비비</td><td>기본 정비 충당(현장확인 시 조정)</td><td class="r num">{{ a.repair|won }}원</td><td class="c"><span class="tag estimated">추정</span></td></tr>
+          <tr><td>리스크 충당금</td><td>미확인 결함 대비 현금 충당</td><td class="r num">{{ a.reserve|won }}원</td><td class="c"><span class="tag estimated">충당</span></td></tr>
+          <tr class="row-sum"><td colspan="2">총 취득원가</td><td class="r num">{{ a.total|won }}원</td><td class="c"><span class="tag estimated">시나리오</span></td></tr>
+        </tbody>
+      </table>
+      <p class="note">취득세는 낙찰가에 연동되어 낙찰가별로 재계산됩니다(07). 개인 실사용이면 리스크 충당금 일부를 제외해 판단할 수 있습니다.</p>
+    </div>
+  </section>
+
+  <!-- 07 수익 시뮬레이션 -->
+  <section class="section">
+    <div class="sec-head"><span class="sec-no">07</span><h2>낙찰가별 수익 시뮬레이션</h2><span class="sec-note">재판매가 {{ report.resale|won }}원(시세중앙값) 기준</span></div>
+    <div class="card">
+      <table>
+        <thead><tr><th class="r">낙찰가</th><th class="r">취득세</th><th class="r">부대+충당*</th><th class="r">총 취득원가</th><th class="r">예상 마진</th><th class="c">판정</th></tr></thead>
+        <tbody>
+        {% for s in report.sim %}
+          <tr class="{{ 'row-hl' if s.is_exp else '' }}">
+            <td class="r num">{{ s.bid|won }}{% if s.is_exp %} <span class="tag verified">예상</span>{% elif s.is_upper %} <span class="tag estimated">상한</span>{% endif %}</td>
+            <td class="r num">{{ s.tax|won }}</td>
+            <td class="r num">{{ (s.fixed+s.repair+s.reserve)|won }}</td>
+            <td class="r num">{{ s.total|won }}</td>
+            <td class="r num {{ 'pos' if s.margin>=report.target_margin else 'neu' if s.margin>0 else 'neg' }}"><b>{{ '+' if s.margin>=0 else '' }}{{ s.margin|won }}</b></td>
+            <td class="c"><span class="chip {{ 'ok' if s.grade in ('우량','적정') else 'warn' if s.grade=='주의' else 'risk' }}">{{ s.grade }}</span></td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      <p class="note">* 부대비(이전·탁송) + 정비비 + 리스크 충당금. 예상 마진 = 재판매가 − 총 취득원가. 목표마진 {{ report.target_margin|won }}원 이상이면 '우량/적정'. 재판매가는 시세중앙값(보수적)이며 실제 매도가에 따라 달라집니다.</p>
+    </div>
+  </section>
+
+  <!-- 08 민감도 -->
+  <section class="section">
+    <div class="sec-head"><span class="sec-no">08</span><h2>민감도 분석 — 정비비 × 재판매가</h2><span class="sec-note">낙찰가 {{ exp|won }}원 고정</span></div>
+    <div class="card">
+      <table class="matrix">
+        <thead><tr><th class="axis">추가 정비비 ↓ / 재판매가 →</th>
+          <th class="num">{{ ((report.resale-1000000)/10000)|round|int }}만<br><span class="axis">보수</span></th>
+          <th class="num">{{ (report.resale/10000)|round|int }}만<br><span class="axis">기준</span></th>
+          <th class="num">{{ ((report.resale+1000000)/10000)|round|int }}만<br><span class="axis">호조</span></th></tr></thead>
+        <tbody>
+        {% for row in report.sens %}
+          <tr><td class="num axis">+{{ (row.repair_delta/10000)|round|int }}만</td>
+          {% for m in row.cells %}<td class="num {{ 'cell-pos' if m>=report.target_margin else 'cell-neu' if m>0 else 'cell-neg' }}">{{ '+' if m>=0 else '' }}{{ (m/10000)|round|int }}</td>{% endfor %}
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      <p class="note">단위: 만원(마진). 현장에서 정비비가 예상보다 크거나 매도가가 낮아질수록 마진이 빠르게 줄어듭니다. 음수(적자) 구간에 진입하면 STOP RULE에 준해 입찰을 재검토하십시오.</p>
+    </div>
+  </section>
+
+  <!-- 09 리스크·현장확인 -->
+  <section class="section">
+    <div class="sec-head"><span class="sec-no">09</span><h2>리스크 · 현장확인 항목</h2></div>
+    <div class="card">
+      <table>
+        <thead><tr><th>항목</th><th>내용</th><th class="c">상태</th></tr></thead>
+        <tbody>
+          <tr><td>권리·저당</td><td>인수 부담 권리(별도 등기부·문건 확인 필요)</td><td class="c"><span class="chip warn">현장확인</span></td></tr>
+          <tr><td>사고·침수</td><td>{{ v.accident_grade|acc }}{% if v.accident_hits %} — {{ v.accident_hits|join(', ') }}{% endif %} · 골격 손상 여부 현장 확인</td><td class="c"><span class="chip {{ 'risk' if report.stop_active else 'ok' }}">{{ 'STOP 대상' if report.stop_active else '이력상 양호' }}</span></td></tr>
+          <tr><td>기관·하체</td><td>시동·누유·변속·하체 부식 — 매각기일 전 보관장소 확인</td><td class="c"><span class="chip warn">현장확인</span></td></tr>
+          <tr><td>상태·옵션·정비</td><td>정비 필요 범위(타이어·소모품)에 따라 정비비 변동 → 06·08 반영</td><td class="c"><span class="chip warn">현장확인</span></td></tr>
+          <tr><td>자동차세 체납</td><td>체납 승계 가능 — 관할 구청 사전 확인 권장</td><td class="c"><span class="chip warn">확인 권장</span></td></tr>
+        </tbody>
+      </table>
+      <p class="note">현장확인에서 결함 발견 시 항목별로 취득원가(정비비/충당금)에 반영하거나, 중대 결함(STOP RULE)이면 입찰을 보류합니다.</p>
+    </div>
+  </section>
+
+  <!-- 10 산출 로직 -->
+  <section class="section">
+    <div class="sec-head"><span class="sec-no">10</span><h2>산출 로직</h2></div>
+    <div class="card">
+      <div class="v-label" style="margin-bottom:8px">예상낙찰가 (일반 매수)</div>
+      <div class="logic"><span class="ln">1</span><div class="ld">엔카 시세중앙값<small>동급 이상치 제거 후 중앙값</small></div><span class="lv num">{{ med|won }}</span></div>
+      <div class="logic"><span class="ln">2</span><div class="ld">× 실측 낙찰률(유찰횟수 반영)<small>과거 낙찰가/시세 분포{% if v.fail_count %} · 유찰 {{ v.fail_count }}회 버킷{% endif %}</small></div><span class="lv num">×{{ ((report.discount or 0)*100)|round|int }}%</span></div>
+      <div class="logic"><span class="ln">＝</span><div class="ld"><b>예상낙찰가</b><small>참고 정확도 ±{{ report.mae|round|int if report.mae else 30 }}% · 분위수 밴드 {{ report.lo|won if report.lo else '—' }}~{{ report.hi|won if report.hi else '—' }}</small></div><span class="lv num">{{ exp|won }}</span></div>
+      {% if v.breakdown %}
+      <div class="v-label" style="margin:18px 0 8px">재판매 상한가 (마진 기준)</div>
+      {% set bd = v.breakdown %}
+      <div class="logic"><span class="ln">1</span><div class="ld">기준시세</div><span class="lv num">{{ bd['기준시세']|won }}</span></div>
+      <div class="logic"><span class="ln">2</span><div class="ld">− 수리비 − 사고감가 − 리스크프리미엄<small>{{ bd['예상수리비']|won }} + {{ bd['사고감가']|won }} + {{ bd['리스크프리미엄']|won }}</small></div><span class="lv num">−{{ (bd['예상수리비']+bd['사고감가']+bd['리스크프리미엄'])|won }}</span></div>
+      <div class="logic"><span class="ln">3</span><div class="ld">− 취득세 − 고정부대비 − 목표마진<small>{{ bd['취득세']|won }} + {{ bd['고정부대비']|won }} + {{ bd['마진']|won }}</small></div><span class="lv num">−{{ (bd['취득세']+bd['고정부대비']+bd['마진'])|won }}</span></div>
+      <div class="logic"><span class="ln">＝</span><div class="ld"><b>재판매 상한가</b><small>이 값 이하로 낙찰 시 목표마진 확보</small></div><span class="lv num">{{ upper|won }}</span></div>
+      {% endif %}
+      <p class="note" style="margin-top:14px">모든 상수(취득세율·마진·감가율)는 config로 외부화되어 있으며, 예상낙찰가의 낙찰률은 낙찰 데이터가 쌓일수록 모델별로 자동 정교화됩니다.</p>
+    </div>
+  </section>
+
+  <!-- 11 법적 확인 -->
+  <section class="section">
+    <div class="sec-head"><span class="sec-no">11</span><h2>법적 확인사항 — 반복 매매 시</h2></div>
+    <div class="card">
+      <p class="note" style="margin-top:0"><b class="pos" style="color:var(--ink)">자동차매매업 등록</b> · 영리 목적으로 반복 매입·판매 시 자동차관리법상 매매업 등록 대상일 수 있어 관할 지자체·전문가 확인이 필요합니다.</p>
+      <p class="note"><b style="color:var(--ink)">매도 시 고지의무</b> · 성능·상태 점검 내용, 사고·침수 사실 고지의무가 있으며 누락 시 손해배상 책임이 발생할 수 있습니다.</p>
+      <p class="note">근거: 자동차관리법 제2·58·58조의3 (법령 개정 가능 — 거래 전 국가법령정보센터 확인 및 전문가 검토 권장).</p>
+    </div>
+  </section>
+  {% else %}
+  <section class="section"><div class="card"><p class="note" style="margin:0">시세가 아직 산정되지 않아 종합 리포트를 생성할 수 없습니다. 물건 상세에서 <b>[다시 분석]</b> 후 다시 시도하세요.</p></div></section>
+  {% endif %}
+
+  <div class="disc">
+    <b>이용 안내 및 면책</b><br>
+    본 리포트는 대법원 법원경매정보·감정평가서·보험이력·SK엔카(+케이카) 공개 매물 정보를 기반으로 발행 시점에 자동 생성된 참고자료입니다. 시세·낙찰 경쟁·차량 상태는 매각기일까지 변동될 수 있으며, 최종 입찰 판단과 결과의 책임은 입찰자 본인에게 있습니다. 예상낙찰가는 실측 통계 기반 중심 추정치로 오차(±{{ report.mae|round|int if report and report.mae else 30 }}%)가 있고 단일 경매를 정밀 예측하지 않습니다. 본 리포트는 투자 권유가 아니며, 차량 실물 확인·등기/공부 열람을 대체하지 않습니다. <b style="color:var(--red)">STOP RULE 해당 사전 발견 시 권장가는 무효입니다.</b>
+  </div>
+  <footer class="foot">
+    <span>AUTOBID REPORT · {{ v.case_no }}</span>
+    <span>발행 {{ now }} · 유효기간 매각기일까지{% if conf %} · CONFIDENCE {{ conf }}/100{% endif %}</span>
+  </footer>
+</div>
+</body>
+</html>

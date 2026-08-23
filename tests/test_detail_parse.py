@@ -106,3 +106,42 @@ def test_flood_true_positive():
     assert info.insurance_history.get("flood") == 1
     assert info.accident_grade == "flood"
     assert "침수이력" in info.flood_hits
+
+
+def _dxdy_resp(rows):
+    return {"data": {"dma_result": {"gdsDspslDxdyLst": rows}}}
+
+
+def test_dxdy_conservative_nakchal():
+    """낙찰가가 있어도 결과코드가 변경(003)이면 낙찰로 인정하지 않는다."""
+    info = parse_detail(_dxdy_resp([
+        {"auctnDxdyKndCd": "01", "dxdyYmd": "20260721", "auctnDxdyRsltCd": "002",
+         "tsLwsDspslPrc": "31000000", "dspslAmt": "0"},
+        {"auctnDxdyKndCd": "01", "dxdyYmd": "20260825", "auctnDxdyRsltCd": "003",
+         "tsLwsDspslPrc": "21700000", "dspslAmt": "25000000"},  # 변경 → 낙찰 아님
+    ]))
+    assert info.winning_price is None
+    assert [h["result"] for h in info.dxdy_history] == ["유찰", "변경"]
+
+
+def test_dxdy_true_nakchal_and_sort():
+    """매각 결과코드(비-비매각)+낙찰가면 낙찰, 기일순 정렬로 최신 낙찰가 채택."""
+    info = parse_detail(_dxdy_resp([
+        {"auctnDxdyKndCd": "01", "dxdyYmd": "20260825", "auctnDxdyRsltCd": "001",
+         "tsLwsDspslPrc": "21700000", "dspslAmt": "23000000"},
+        {"auctnDxdyKndCd": "01", "dxdyYmd": "20260721", "auctnDxdyRsltCd": "002",
+         "tsLwsDspslPrc": "31000000", "dspslAmt": "0"},
+    ]))
+    assert info.winning_price == 23000000
+    assert info.dxdy_history[0]["ymd"] <= info.dxdy_history[1]["ymd"]  # 기일순
+
+
+def test_dxdy_sale_then_reauction_resets_winning():
+    """낙찰 후 후속 재매각/유찰 회차가 오면 이전 낙찰가를 무효화한다."""
+    info = parse_detail(_dxdy_resp([
+        {"auctnDxdyKndCd": "01", "dxdyYmd": "20260601", "auctnDxdyRsltCd": "001",
+         "tsLwsDspslPrc": "20000000", "dspslAmt": "22000000"},   # 낙찰(뒤에 재매각)
+        {"auctnDxdyKndCd": "01", "dxdyYmd": "20260710", "auctnDxdyRsltCd": "002",
+         "tsLwsDspslPrc": "20000000", "dspslAmt": "0"},          # 이후 유찰 → 무효
+    ]))
+    assert info.winning_price is None

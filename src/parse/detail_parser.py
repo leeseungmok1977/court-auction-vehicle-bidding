@@ -130,6 +130,7 @@ class DetailInfo:
     sale_date: Optional[str]
     round_prices: list[int] = field(default_factory=list)  # 회차별 최저매각가
     appraisal_ecdoc_id: str = ""     # 감정평가서/명세서 전자문서 ID
+    spec_remark: str = ""            # 매각물건명세 요약(gdsSpcfcRmk: 연식·주행·연료·유효검사·보험사고이력)
     # 감정 요항 / 사고 판정
     appraisal_text: str = ""
     insurance_history: dict = field(default_factory=dict)  # 구조화된 사고이력 카운트
@@ -151,25 +152,33 @@ def _vehicle_obj(result: dict) -> dict:
     return lst[0] if lst else {}
 
 
-# 기일 결과 코드 (확인분). 낙찰(매각)은 dspslAmt(낙찰가) 유무로 판정.
+# 기일 결과 코드 (확인분). 매각(낙찰)은 낙찰가 + '비매각이 아닌' 코드로 판정.
 DXDY_RESULT = {"002": "유찰", "003": "변경", "004": "취하", "005": "정지"}
+_NON_SALE_CODES = {"002", "003", "004", "005"}  # 유찰·변경·취하·정지 = 매각 아님
 
 
 def _parse_dxdy(result: dict):
-    """기일내역(gdsDspslDxdyLst) → 회차별 목록 + 낙찰가(있으면). 매각기일(kndCd 01)만."""
+    """기일내역(gdsDspslDxdyLst) → 회차별 목록(기일순) + 낙찰가. 매각기일(kndCd 01)만.
+
+    낙찰은 낙찰가(dspslAmt>0)가 있고 결과코드가 유찰/변경/취하/정지가 **아닐** 때만
+    인정한다(불허·재매각 잔액을 낙찰로 오인하지 않도록). 기일순 정렬로 최신 확정
+    낙찰가를 채택한다.
+    """
+    rows = [r for r in (result.get("gdsDspslDxdyLst") or [])
+            if str(r.get("auctnDxdyKndCd") or "") == "01"]
+    rows.sort(key=lambda r: str(r.get("dxdyYmd") or ""))
     hist = []
     winning = None
-    for r in (result.get("gdsDspslDxdyLst") or []):
-        if str(r.get("auctnDxdyKndCd") or "") != "01":
-            continue
+    for r in rows:
         amt = _to_int(r.get("dspslAmt"))
         code = str(r.get("auctnDxdyRsltCd") or "")
-        if amt and amt > 0:
-            winning = amt
+        is_sale = bool(amt and amt > 0 and code not in _NON_SALE_CODES)
+        # 기일순 진행: 매각이면 낙찰가 설정, 이후 비매각(재매각·유찰) 회차가 오면 무효화
+        winning = amt if is_sale else None
         hist.append({
             "ymd": _fmt_date(r.get("dxdyYmd")),
             "result_code": code,
-            "result": ("낙찰" if (amt and amt > 0) else DXDY_RESULT.get(code, "")),
+            "result": ("낙찰" if is_sale else DXDY_RESULT.get(code, "")),
             "lws_price": _to_int(r.get("tsLwsDspslPrc")),
             "dspsl_amt": amt,
         })
@@ -258,6 +267,7 @@ def parse_detail(resp_json: dict, config: Optional[dict] = None) -> DetailInfo:
         sale_date=_fmt_date(dx.get("dspslDxdyYmd")),
         round_prices=rounds,
         appraisal_ecdoc_id=str(dx.get("dspslGdsSpcfcEcdocId") or "").strip(),
+        spec_remark=_clean(dx.get("gdsSpcfcRmk")),
         appraisal_text=appraisal_text,
         insurance_history=hist,
         accident_hits=accident_hits,

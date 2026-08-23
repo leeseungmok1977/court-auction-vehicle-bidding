@@ -22,6 +22,15 @@ fixed_costs:
   transfer_fee: 300000      # 이전비
   delivery_fee: 200000      # 탁송비
 
+# 감정 요항(상태·검사) 기반 추가 정비/비용 (원) — 상한가에서 차감. 보수적으로.
+# 요항 텍스트가 없으면 미적용. 실물 확인으로 조정 가능(참고용).
+condition_costs:
+  fair: 300000              # 외관 경미 손상(긁힘·스크래치 등)
+  poor: 700000             # 외관·관리 불량(라이트 깨짐·범퍼 파손·부식 등)
+  inspection_expired: 250000  # 자동차검사 유효기간 경과(검사·정비)
+  not_runnable: 1500000    # 시동·운행 불가 언급(정비 리스크 큼)
+  no_photos: 300000        # 차량 사진 없음(실물 상태 확인 불가 리스크)
+
 # 동급 매칭 기준 (설계서 A.4-5)
 year_tol: 1            # 연식 허용 오차 (±년)
 mileage_tol: 0.30      # 주행거리 허용 오차 (±비율)
@@ -36,6 +45,29 @@ model_mapping:
   "쏘나타":   { car_type: "Y", manufacturer: "현대",   model_group: "쏘나타" }
   "싼타페":   { car_type: "Y", manufacturer: "현대",   model_group: "싼타페" }
   "G80":     { car_type: "Y", manufacturer: "제네시스", model_group: "G80" }
+
+# 시세-감정가 괴리 가드 (엔카 오매칭 감지 → 신뢰도 하향)
+# 실측 시세/감정가 중앙값 ≈ 0.93, p10 ≈ 0.71. 법원 감정가는 통상 시세보다 높게 잡히므로
+# 저측(시세<감정가)은 흔하고 정상 → 느슨하게, 고측(시세>감정가, 오매칭·인플레 의심)은 엄격하게.
+appraisal_guard:
+  strong_low: 0.50     # 이 미만(또는 strong_high 초과) → 신뢰도 낮음(38)
+  strong_high: 1.80
+  mild_low: 0.65       # 이 미만(또는 mild_high 초과) → 신뢰도 보통(60)
+  mild_high: 1.28
+  cap_strong: 38
+  cap_mild: 60
+  soft_max: 30         # |log(시세/감정가)|에 비례한 연속 감점 상한
+  soft_low_factor: 0.35  # 저측(시세<감정가)은 흔하므로 감점을 이 비율로 완화
+  wellmatched_cv: 0.15   # 표본 충분+cv 이 이하면 하드캡 대신 경고만(양질 실측 보호)
+  single_source_cap: 88  # 교차검증(케이카 2차 소스) 없는 단일 소스는 이 점수 초과 불가
+  cross_source_cap: 96   # 케이카와 일치(2소스 교차검증 통과) 시 상한 (단일소스 88 해제)
+  cross_agree_bonus: 6   # 2소스 일치 시 신뢰도 가점(독립 소스 확인으로 위험 완화)
+  cross_diverge_cap: 55  # 두 소스가 tol 초과로 벌어지면 상한(매칭/시세 불확실)
+
+# 2차 소스 교차검증(케이카)
+cross_source_tol: 0.10   # 엔카·케이카 중앙값 상대편차 이 이하면 '일치'
+kcar_cross_enabled: true # 분석·재교정 시 케이카를 자동으로 함께 조회(2소스 기본). false면 온디맨드 버튼만
+kcar_max_requests: 250   # 재교정 1회당 케이카 외부요청 하드캡(C.4-1) — (모델·연식·연료)당 1회 캐시
 
 # 자동 판정 기준
 min_sample_count: 5                    # 시세 표본 최소 건수 (미만 시 신뢰도 낮음)

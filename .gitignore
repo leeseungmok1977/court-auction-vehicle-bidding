@@ -29,3 +29,10 @@ Thumbs.db
 
 # Node (Tailwind 정적 빌드 도구)
 node_modules/
+
+# 디자인 리뷰 스크린샷(개발 산출물·재생성 가능·용량)
+screenshots/
+
+# Claude Code 로컬 설정(에이전트 정의 .claude/agents 는 커밋)
+.claude/settings.local.json
+.claude/settings.json

@@ -17,7 +17,7 @@ from typing import Optional
 
 import requests
 
-from .courtauction_list import BASE, INDEX, new_session, warmup, REQUEST_DELAY_SEC
+from .courtauction_list import BASE, INDEX, new_session, warmup, REQUEST_DELAY_SEC, _check_block
 from ..parse.detail_parser import parse_detail
 
 DETAIL_ENDPOINT = f"{BASE}/pgj/pgj15B/selectAuctnCsSrchRslt.on"
@@ -41,8 +41,9 @@ def fetch_detail(session: requests.Session, cs_no: str, cort_ofc_cd: str,
         "X-Requested-With": "XMLHttpRequest",
     }
     time.sleep(REQUEST_DELAY_SEC)  # C.4-2
-    return session.post(DETAIL_ENDPOINT, data=json.dumps(body),
-                        headers=headers, timeout=30)
+    r = session.post(DETAIL_ENDPOINT, data=json.dumps(body), headers=headers, timeout=30)
+    _check_block(r)                   # C.4-5 차단(상태코드+소프트) 즉시 중단
+    return r
 
 
 def _photo_bytes(pic: dict) -> Optional[bytes]:

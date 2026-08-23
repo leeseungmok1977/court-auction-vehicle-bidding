@@ -118,6 +118,17 @@ def test_flood_grade_holds(cfg):
     assert r.judgment == Judgment.HOLD_FLOOD.value
 
 
+def test_flood_report_zero_count_not_holds(cfg):
+    """보험사고이력 정형구 '전손 보험사고 : 0건'은 침수로 오판하지 않는다(무사고 유지)."""
+    inp = BidInput(
+        median_price=20_000_000, min_sale_price=8_000_000, sample_count=8,
+        platform="encar", accident_grade="none",
+        appraisal_text="사고이력정보 보고서 - 전손 보험사고 : 0건 - 침수 보험사고 : 0건 - 내차 피해 : 0회",
+    )
+    r = calculate(inp, cfg)
+    assert r.judgment != Judgment.HOLD_FLOOD.value   # 오탐 방지
+
+
 # ⑤ 경계값 (감가 0%, 유찰 0회, 표본 정확히 5건) ----------------------------
 def test_boundary_values(cfg):
     inp = BidInput(

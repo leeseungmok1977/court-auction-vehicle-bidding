@@ -1,40 +1,24 @@
 <!DOCTYPE html>
-<html class="dark" lang="ko">
+<html lang="ko">
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>{% block title %}법원경매 차량 입찰가 산정{% endblock %}</title>
-<script src="https://cdn.tailwindcss.com"></script>
-<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap" rel="stylesheet"/>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
-<script>
-  tailwind.config = { darkMode:"class", theme:{ extend:{
-    colors:{ background:"#0F172A", surface:"#1E293B", low:"#0d1c2d",
-      line:"#334155", primary:"#38BDF8", txt:"#d4e4fa", mut:"#94A3B8" },
-    fontFamily:{ sans:["Inter","Malgun Gothic","sans-serif"], mono:["JetBrains Mono","monospace"] }
-  }}}
-</script>
-<style>
-  body{font-family:Inter,"Malgun Gothic",sans-serif}
-  .material-symbols-outlined{font-variation-settings:'FILL' 0,'wght' 400,'opsz' 24;vertical-align:middle}
-  .custom-scrollbar::-webkit-scrollbar{width:8px;height:8px}
-  .custom-scrollbar::-webkit-scrollbar-track{background:#0F172A}
-  .custom-scrollbar::-webkit-scrollbar-thumb{background:#1E293B;border-radius:4px}
-  .custom-scrollbar::-webkit-scrollbar-thumb:hover{background:#334155}
-  .inp{background:#0F172A;border:1px solid #334155;color:#d4e4fa;border-radius:.375rem;
-    padding:.5rem .75rem;font-size:14px;outline:none}
-  .inp:focus{border-color:#38BDF8}
-  .lbl{display:block;font-size:12px;color:#94A3B8;margin-bottom:4px}
-</style>
+<!-- 정적 빌드 CSS + self-host 폰트 (CDN 의존 제거 — 오프라인 안전·FOUC 제거) -->
+<link rel="stylesheet" href="/static/app.css?v={{ css_v }}"/>
 </head>
 <body class="bg-background text-txt h-screen overflow-hidden flex">
 {% set path = request.url.path %}
+<input type="checkbox" id="navToggle" class="peer hidden">
+<!-- 모바일 오버레이 (사이드바 열릴 때) -->
+<label for="navToggle" class="fixed inset-0 bg-black/50 z-10 hidden peer-checked:block lg:peer-checked:hidden lg:hidden"></label>
 <!-- Sidebar -->
-<aside class="w-72 h-screen fixed left-0 top-0 bg-low border-r border-line flex flex-col py-6 z-20">
+<aside class="w-72 h-screen fixed left-0 top-0 bg-low border-r border-line flex flex-col py-6 z-20
+             -translate-x-full peer-checked:translate-x-0 lg:translate-x-0 transition-transform duration-200">
   <div class="px-5 mb-8 flex items-center gap-3">
     <span class="material-symbols-outlined text-primary text-4xl" style="font-variation-settings:'FILL' 1">gavel</span>
     <div>
-      <h1 class="text-base font-bold text-primary leading-tight">법원경매 입찰가 산정</h1>
+      <h1 class="text-base font-semibold text-txt leading-tight tracking-tight">법원경매 입찰가 산정</h1>
       <p class="text-xs text-mut">차량 경매 분석</p>
     </div>
   </div>
@@ -51,26 +35,33 @@
     {{ navitem('/watchlist', 'star', '관심 목록', path.startswith('/watchlist')) }}
   </nav>
   <div class="px-5 mt-auto border-t border-line pt-4 text-xs text-mut leading-relaxed">
+    <a href="/landing" class="inline-flex items-center gap-1 text-primary hover:underline mb-2"><span class="material-symbols-outlined text-sm">campaign</span> 서비스 소개</a><br>
     데이터: 대법원 법원경매정보 · SK엔카<br>산정 파라미터: config.yaml<br>검증용 소량·저속 수집
   </div>
 </aside>
 
 <!-- Main -->
-<main class="ml-72 flex-1 flex flex-col h-screen overflow-hidden">
-  <header class="h-16 flex justify-between items-center px-8 bg-background border-b border-line shrink-0 sticky top-0 z-10">
-    <form action="/vehicles" method="get" class="relative w-96">
-      <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-mut text-lg">search</span>
-      <input name="q" class="w-full bg-surface border border-line text-txt text-sm rounded-md py-2 pl-10 pr-4 focus:outline-none focus:border-primary placeholder:text-mut/60" placeholder="차명·사건번호·법원 검색…"/>
+<main class="lg:ml-72 flex-1 flex flex-col h-screen overflow-hidden w-full">
+  <header class="h-16 flex items-center gap-3 px-4 lg:px-8 bg-background border-b border-line shrink-0 sticky top-0 z-10">
+    <label for="navToggle" class="lg:hidden cursor-pointer text-mut hover:text-txt shrink-0" title="메뉴">
+      <span class="material-symbols-outlined">menu</span></label>
+    <h2 class="text-2xl font-light tracking-tight text-txt shrink-0">{% block pagetitle %}{% endblock %}</h2>
+    <div class="flex-1"></div>
+    <a href="/" id="runBadge" class="items-center gap-2 text-sm bg-primary/10 border border-primary/30 rounded-full px-3 py-1.5 shrink-0" style="display:none">
+      <span class="material-symbols-outlined text-primary text-base animate-spin">progress_activity</span>
+      <span id="runText" class="text-primary font-semibold">진행 중…</span>
+    </a>
+    {% set _ac = alert_count() %}
+    <a href="/#alerts" class="relative shrink-0 text-mut hover:text-txt p-1.5 rounded-md hover:bg-line/40 transition-colors" title="임박 매각기일 알림 {{ _ac }}건">
+      <span class="material-symbols-outlined" style="font-variation-settings:'FILL' {{ 1 if _ac else 0 }}">notifications</span>
+      {% if _ac %}<span class="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center">{{ _ac if _ac < 100 else '99+' }}</span>{% endif %}
+    </a>
+    <form action="/vehicles" method="get" class="relative w-40 sm:w-56 lg:w-72 shrink-0">
+      <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-mut text-lg pointer-events-none">search</span>
+      <input name="q" class="w-full bg-surface border border-line text-txt text-sm rounded-md py-2 pl-11 pr-4 focus:outline-none focus:border-primary placeholder:text-mut/60" placeholder="차명·제조사·사건번호·법원 검색…"/>
     </form>
-    <div class="flex items-center gap-4">
-      <a href="/" id="runBadge" class="items-center gap-2 text-sm bg-primary/10 border border-primary/30 rounded-full px-3 py-1.5" style="display:none">
-        <span class="material-symbols-outlined text-primary text-base animate-spin">progress_activity</span>
-        <span id="runText" class="text-primary font-semibold">진행 중…</span>
-      </a>
-      <h2 class="text-xl font-semibold hidden lg:block">{% block pagetitle %}{% endblock %}</h2>
-    </div>
   </header>
-  <div class="flex-1 overflow-y-auto custom-scrollbar p-8 space-y-6">
+  <div class="flex-1 overflow-y-auto custom-scrollbar p-4 lg:p-8 space-y-6">
     {% block content %}{% endblock %}
   </div>
 </main>
@@ -90,10 +81,11 @@
     if(d.running && d.run){
       const r=d.run;
       if(badge) badge.style.display='flex';
-      setTxt('runText', r.target ? `분석 중 ${r.processed}/${r.target}` : '목록 수집 중…');
+      const done = r.target ? Math.min(r.processed, r.target) : r.processed;  // 100% 초과 방지
+      setTxt('runText', r.target ? `분석 중 ${done}/${r.target}` : '목록 수집 중…');
       // 대시보드 진행 요소
-      setTxt('sc', r.scanned); setTxt('pr', r.processed); setTxt('msg', r.message||'');
-      const bar=$('bar'); if(bar && r.target) bar.style.width=Math.round(100*r.processed/r.target)+'%';
+      setTxt('sc', r.scanned); setTxt('pr', done); setTxt('msg', r.message||'');
+      const bar=$('bar'); if(bar && r.target) bar.style.width=Math.min(100,Math.round(100*r.processed/r.target))+'%';
       // KPI 실시간
       setTxt('kpi-upcoming', fmt(d.upcoming)); setTxt('kpi-pending', fmt(d.pending));
       setTxt('kpi-ok', fmt(d.ok)); setTxt('kpi-wait', fmt(d.wait));

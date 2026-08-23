@@ -1,48 +1,123 @@
 {% extends "base.html" %}
-{% block title %}{{ v.model }} — {{ v.case_no }}{% endblock %}
+{% import "_macros.html" as ui %}
+{% block title %}{{ v.model|mdl }} — {{ v.case_no }}{% endblock %}
 {% block pagetitle %}물건 상세{% endblock %}
 {% block content %}
 
 <!-- 헤더 -->
-<div class="flex items-start justify-between gap-4 flex-wrap">
-  <div>
-    <div class="flex items-center gap-3">
-      <h1 class="text-2xl font-bold">{{ v.maker }} {{ v.model }}</h1>
+<div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+  <div class="min-w-0 flex-1">
+    <div class="flex items-center gap-3 flex-wrap">
+      <h1 class="text-2xl font-bold">{{ v.maker }} {{ v.model|mdl }}</h1>
       <span class="text-sm text-mut border border-line rounded px-2 py-0.5">{{ v.year or '—' }}년식</span>
       {% if v.judgment %}<span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-semibold {{ v.judgment|bcls }}">{{ v.judgment }}</span>{% endif %}
     </div>
     <p class="text-sm text-mut mt-1">{{ v.court }} · 사건 {{ v.case_no }} · 물건 {{ v.item_no }}</p>
   </div>
-  <div class="flex gap-2">
+  <div class="flex flex-wrap gap-2 sm:shrink-0">
     {% if can_analyze and v.status == '완료' %}
     <form method="post" action="/vehicle/{{ v.id }}/analyze"
           onsubmit="var b=this.querySelector('button');b.innerHTML='<span class=&quot;material-symbols-outlined text-lg animate-spin&quot;>progress_activity</span> 분석 중…';b.disabled=true;">
-      <button class="border border-line text-txt text-sm px-4 py-2 rounded-md hover:bg-line/40 transition flex items-center gap-1.5" {% if running %}disabled{% endif %}>
+      <button class="btn-ghost text-sm flex items-center gap-1.5" {% if running %}disabled{% endif %}>
         <span class="material-symbols-outlined text-lg">autorenew</span> 다시 분석</button>
     </form>
     {% endif %}
     <form method="post" action="/vehicle/{{ v.id }}/star">
-      <button class="border border-amber-500/40 text-amber-300 text-sm px-4 py-2 rounded-md hover:bg-amber-500/10 transition flex items-center gap-1.5">
+      <button class="border border-amber-200 text-amber-700 text-sm px-4 py-2 rounded-full hover:bg-amber-50 transition flex items-center gap-1.5">
         <span class="material-symbols-outlined text-lg" style="font-variation-settings:'FILL' {{ 1 if v.starred else 0 }}">star</span>
         {{ '관심 해제' if v.starred else '관심 추가' }}</button>
     </form>
-    <a href="{{ back_url or '/vehicles' }}" class="border border-line text-txt text-sm px-4 py-2 rounded-md hover:bg-line/40 transition flex items-center gap-1.5">
+    {% if v.appraisal_ecdoc_id %}
+    <a href="/vehicle/{{ v.id }}/appraisal" target="auctionAppraisal" class="btn-ghost text-sm flex items-center gap-1.5" title="법원 감정평가서 원본(KAPA) — 새 탭에서 열림">
+      <span class="material-symbols-outlined text-lg">gavel</span> 감정평가서</a>
+    {% endif %}
+    {% if v.median_price is not none %}
+    <a href="/vehicle/{{ v.id }}/report" target="auctionReport" class="btn-ghost text-sm flex items-center gap-1.5" title="분석 리포트(인쇄·PDF) — 새 탭에서 열림">
+      <span class="material-symbols-outlined text-lg">description</span> 리포트</a>
+    {% endif %}
+    <a href="{{ back_url or '/vehicles' }}" class="btn-ghost text-sm flex items-center gap-1.5">
       <span class="material-symbols-outlined text-lg">arrow_back</span> 이전 목록</a>
   </div>
 </div>
 
-{% if v.status != '완료' %}
+{# 시세 미계산 시에만 안내(데이터가 있으면 모순 배너 표시하지 않음) #}
+{% if v.median_price is none %}
 <div class="bg-surface border border-line rounded-lg p-4 flex items-center justify-between gap-4 flex-wrap">
-  <div class="text-sm text-mut">
-    현재 <b class="text-txt">{{ v.status or '미분석' }}</b> 상태입니다 — 주행거리·시세·입찰가가 아직 계산되지 않았습니다.
+  <div class="text-sm text-mut" title="{{ v.status or '' }}">
+    {% if v.auction_result == '낙찰' or v.judgment == '종결' %}<b class="text-txt">매각 종료</b>된 물건입니다 — 시세·입찰가는 계산하지 않습니다.
+    {% else %}현재 <b class="text-txt">{{ (v.status or '미분석')|sstat }}</b> 상태입니다 — 시세·입찰가가 아직 계산되지 않았습니다.{% endif %}
   </div>
-  {% if can_analyze %}
+  {% if can_analyze and not (v.auction_result == '낙찰' or v.judgment == '종결') %}
   <form method="post" action="/vehicle/{{ v.id }}/analyze" onsubmit="this.querySelector('button').innerHTML='<span class=&quot;material-symbols-outlined text-lg animate-spin&quot;>progress_activity</span> 분석 중…';this.querySelector('button').disabled=true;">
-    <button class="bg-primary text-[#00354a] font-semibold text-sm px-5 py-2.5 rounded-md hover:opacity-90 transition flex items-center gap-1.5" {% if running %}disabled{% endif %}>
+    <button class="btn-primary text-sm flex items-center gap-1.5" {% if running %}disabled{% endif %}>
       <span class="material-symbols-outlined text-lg">analytics</span> 이 물건 분석 (약 10초)</button>
   </form>
-  {% else %}
-  <span class="text-xs text-mut">수입·상용/특수차는 국산 승용 자동 시세 대상이 아닙니다. (대시보드 검색 수집에서 구분=수입 사용)</span>
+  {% elif not can_analyze %}
+  <span class="text-xs text-mut">수입·상용/특수차는 국산 승용 자동 시세 대상이 아닙니다.</span>
+  {% endif %}
+</div>
+{% endif %}
+
+{# ── 한눈 요약 히어로: "이 물건에 얼마 쓸지"를 30초 안에 (판정·예상낙찰가·지금입찰가능·신뢰도+게이지) ── #}
+{% if v.median_price is not none and expected and expected.price %}
+{% set closed = v.auction_result == '낙찰' or v.judgment == '종결' %}
+{% set opp = v.min_sale_price and v.min_sale_price <= expected.price %}
+{% set lowconf = v.market_confidence_label == '낮음' %}
+{% set cl = v.market_confidence_label %}
+{% set cbg = 'bg-emerald-50 text-emerald-700 border-emerald-200' if cl=='높음' else 'bg-amber-50 text-amber-700 border-amber-200' if cl=='보통' else 'bg-rose-50 text-rose-700 border-rose-200' %}
+<div class="bg-surface border border-line rounded-lg p-5">
+  {% if verdict %}
+  {% set vtone = {'ok':'bg-emerald-50 border-emerald-200 text-emerald-900','wait':'bg-amber-50 border-amber-200 text-amber-900','caution':'bg-sky-50 border-sky-200 text-sky-900','closed':'bg-slate-50 border-line text-mut'}[verdict.tone] %}
+  <div class="flex items-start gap-2.5 rounded-lg border px-4 py-3 mb-5 {{ vtone }}">
+    <span class="material-symbols-outlined text-lg shrink-0 mt-px">{{ 'thumb_up' if verdict.tone=='ok' else 'schedule' if verdict.tone=='wait' else 'info' if verdict.tone=='caution' else 'lock' }}</span>
+    <p class="text-sm font-medium leading-snug" style="text-wrap:pretty">{{ verdict.text }}</p>
+  </div>
+  {% endif %}
+  <div class="flex flex-wrap items-end gap-x-8 gap-y-4">
+    <div>
+      <div class="text-xs text-mut mb-1">판정</div>
+      <span class="inline-flex items-center px-2.5 py-1 rounded text-sm font-semibold {{ v.judgment|bcls }}">{{ v.judgment|jshort if v.judgment else '—' }}</span>
+      {% if closed %}<span class="text-xs text-mut ml-2">매각 종료(참고용)</span>{% endif %}
+    </div>
+    <div>
+      <div class="text-xs text-primary mb-0.5" style="word-break:keep-all"><span class="whitespace-nowrap">예상낙찰가</span> <span class="text-mut/70 font-normal">일반 매수 실입찰{% if expected.mae %} ±{{ expected.mae|round|int }}%{% endif %}{% if v.fail_count %} · 유찰 {{ v.fail_count }}회 반영{% endif %}</span></div>
+      <div class="font-mono text-3xl font-bold tnum {{ 'text-mut' if lowconf else 'text-txt' }}">{{ expected.price|won }}<span class="text-base font-normal text-mut"> 원</span></div>
+    </div>
+    <div>
+      <div class="text-xs text-mut mb-0.5">현 최저매각가</div>
+      <div class="font-mono text-xl font-semibold tnum text-txt">{{ v.min_sale_price|won }} 원</div>
+    </div>
+    <div class="ml-auto text-right">
+      <div class="text-xs text-mut mb-1">시세 신뢰도</div>
+      <span class="text-xs font-semibold px-2.5 py-1 rounded-full border {{ cbg }}">{{ cl }}{% if v.market_confidence %} · {{ v.market_confidence }}점{% endif %}</span>
+    </div>
+  </div>
+  {# 게이지: 최저매각가·예상낙찰가·시세중앙값 위치 + 기회/대기 밴드 #}
+  {% if v.min_sale_price and v.median_price %}
+  {% set gmax = [v.median_price, v.min_sale_price, expected.hi or expected.price]|max %}
+  {% set p_min = (v.min_sale_price / gmax * 100)|round(1) %}
+  {% set p_exp = (expected.price / gmax * 100)|round(1) %}
+  {% set p_med = (v.median_price / gmax * 100)|round(1) %}
+  <div class="mt-4">
+    <div class="relative h-2 rounded-full bg-slate-100">
+      <div class="absolute top-0 left-0 h-2 rounded-full bg-slate-200" style="width:{{ p_med }}%"></div>
+      <div class="absolute top-0 h-2 rounded-full {{ 'bg-emerald-400' if opp else 'bg-amber-400' }}" style="left:{{ [p_min,p_exp]|min }}%; width:{{ (p_exp-p_min)|abs|round(1) }}%"></div>
+      <div class="absolute -top-1 w-0.5 h-4 bg-txt" style="left:{{ p_min }}%"></div>
+      <div class="absolute -top-1 w-1 h-4 rounded bg-primary" style="left:calc({{ p_exp }}% - 2px)"></div>
+    </div>
+    <div class="flex justify-between items-baseline text-[11px] mt-2 gap-2" style="word-break:keep-all">
+      <span class="text-mut whitespace-nowrap">최저 {{ (v.min_sale_price/10000)|round|int }}만</span>
+      <span class="{{ 'text-emerald-700' if opp else 'text-amber-700' }} font-semibold text-center leading-tight">{{ '✓ 지금 입찰 검토 가능' if opp else '↑ 추가 유찰 대기' }}<span class="hidden sm:inline font-normal text-mut/70"> ({{ '최저가 ≤ 예상' if opp else '최저가 > 예상' }})</span></span>
+      <span class="text-mut whitespace-nowrap">시세 {{ (v.median_price/10000)|round|int }}만</span>
+    </div>
+  </div>
+  {% endif %}
+  {# 동급 매물 실제 시세 분포 — 표가 아닌 히스토그램으로 '어느 가격대에 베팅하는가' #}
+  {% if dist %}
+  <div class="mt-4 pt-4 border-t border-line">
+    <div class="text-xs text-mut mb-1">동급 매물 시세 분포 <span class="text-mut/60">— 예상낙찰가가 실매물 분포의 어디에 위치하는가</span></div>
+    {{ ui.histogram(dist) }}
+  </div>
   {% endif %}
 </div>
 {% endif %}
@@ -56,12 +131,16 @@
         <dt class="text-mut">주행거리</dt><dd class="font-mono">{{ v.mileage_km|won }} km</dd>
         <dt class="text-mut">배기량</dt><dd class="font-mono">{{ v.displacement_cc or '—' }} cc</dd>
         <dt class="text-mut">감정가</dt><dd class="font-mono">{{ v.appraisal_value|won }} 원</dd>
-        <dt class="text-mut">최저매각가</dt><dd class="font-mono text-lg font-bold">{{ v.min_sale_price|won }} 원</dd>
+        <dt class="text-mut">최저매각가</dt><dd class="font-mono text-lg font-semibold text-txt tnum">{{ v.min_sale_price|won }} 원</dd>
         <dt class="text-mut">유찰횟수</dt><dd class="font-mono">{{ v.fail_count if v.fail_count is not none else '—' }} 회</dd>
         <dt class="text-mut">매각기일</dt><dd class="font-mono">{{ v.sale_date or '—' }}</dd>
         <dt class="text-mut">소재지</dt><dd>{{ v.location or '—' }}</dd>
         <dt class="text-mut">사고판정</dt>
-        <dd><span class="inline-flex px-2 py-0.5 rounded text-xs font-medium {{ '' if v.accident_grade=='none' else 'bg-red-500/15 text-red-400 border border-red-500/30' }} {{ 'bg-[#1E293B] text-mut border border-line' if v.accident_grade=='none' else '' }}">{{ v.accident_grade or '—' }}</span>
+        <dd><span class="inline-flex px-2 py-0.5 rounded text-xs font-medium {{
+              'bg-emerald-50 text-emerald-700 border border-emerald-200' if v.accident_grade=='none'
+              else 'bg-amber-50 text-amber-700 border border-amber-200' if v.accident_grade=='minor'
+              else 'bg-rose-50 text-rose-600 border border-rose-200' if v.accident_grade in ('accident','flood')
+              else 'bg-slate-100 text-mut border border-line' }}">{{ v.accident_grade|acc }}</span>
           {% if v.accident_hits %}<span class="text-mut text-xs ml-1">{{ v.accident_hits|join(', ') }}</span>{% endif %}</dd>
         {% if v.insurance_history %}
         <dt class="text-mut">보험이력</dt>
@@ -74,14 +153,17 @@
     <div class="bg-surface border border-line rounded-lg p-5">
       <h3 class="text-lg font-semibold mb-3">기일내역 · 낙찰결과</h3>
       {% if v.auction_result == '낙찰' %}
-      <div class="bg-sky-500/10 border border-sky-500/30 rounded-lg p-3 mb-3 text-center">
-        <span class="text-sky-300 font-semibold">🔨 낙찰</span>
-        <span class="text-xl font-bold font-mono ml-2">{{ v.winning_price|won }} 원</span>
+      <div class="bg-sky-50 border border-sky-200 rounded-lg p-3 mb-3 text-center">
+        <span class="text-sky-700 font-semibold">🔨 낙찰</span>
+        <span class="text-xl font-semibold font-mono text-txt tnum ml-2">{{ v.winning_price|won }} 원</span>
+        <span class="text-xs ml-2 px-2 py-0.5 rounded-full {{ 'bg-emerald-50 text-emerald-700' if v.result_source=='result_search' else 'bg-amber-50 text-amber-700' }}">{{ '확정' if v.result_source=='result_search' else '잠정(재확인 예정)' }}</span>
+        {% if v.winning_price %}
         <div class="text-xs text-mut mt-1">
           {% if v.appraisal_value %}감정가 대비 <b class="text-txt">{{ (100*v.winning_price/v.appraisal_value)|round|int }}%</b>{% endif %}
           {% if v.upper_bid %} · 우리 산정 상한가 {{ v.upper_bid|won }}원
-            {% if v.winning_price <= v.upper_bid %}<span class="text-emerald-400">이내(적정)</span>{% else %}<span class="text-amber-400">초과</span>{% endif %}{% endif %}
+            {% if v.winning_price <= v.upper_bid %}<span class="text-emerald-700">이내(적정)</span>{% else %}<span class="text-amber-700">초과</span>{% endif %}{% endif %}
         </div>
+        {% endif %}
       </div>
       {% elif v.auction_result %}
       <div class="text-sm text-mut mb-3">현재 결과: <b class="text-txt">{{ v.auction_result }}</b>
@@ -94,12 +176,12 @@
           <th class="text-right py-1.5 font-medium">최저매각가</th>
           <th class="text-center py-1.5 font-medium">결과</th>
           <th class="text-right py-1.5 font-medium">낙찰가</th></tr></thead>
-        <tbody class="divide-y divide-line/40">
+        <tbody class="divide-y divide-line">
         {% for h in v.dxdy_history %}
         <tr>
           <td class="py-1.5 font-mono">{{ h.ymd or '—' }}</td>
           <td class="py-1.5 text-right font-mono">{{ h.lws_price|won }}</td>
-          <td class="py-1.5 text-center">{% if h.dspsl_amt %}<span class="text-sky-300">낙찰</span>{% elif h.result %}{{ h.result }}{% else %}<span class="text-mut">예정/미확정</span>{% endif %}</td>
+          <td class="py-1.5 text-center">{% if h.dspsl_amt %}<span class="text-sky-700">낙찰</span>{% elif h.result %}{{ h.result }}{% else %}<span class="text-mut">예정/미확정</span>{% endif %}</td>
           <td class="py-1.5 text-right font-mono">{{ h.dspsl_amt|won if h.dspsl_amt else '—' }}</td>
         </tr>
         {% endfor %}
@@ -115,17 +197,75 @@
         <span class="text-xs text-mut font-normal ml-1">— 클릭하면 크게 보기, ← → 로 넘기기</span></h3>
       <div class="grid grid-cols-3 sm:grid-cols-4 gap-2">
         {% for p in photos %}
-        <img src="/photo/{{ v.folder_key }}/{{ p }}" loading="lazy" onclick="openLB({{ loop.index0 }})"
-             class="w-full h-24 object-cover rounded-md border border-line hover:border-primary transition cursor-pointer">
+        <img src="/photo/{{ v.folder_key or v.id }}/{{ p }}" loading="lazy" onclick="openLB({{ loop.index0 }})"
+             class="hoverable w-full h-24 object-cover rounded-md border border-line hover:border-primary cursor-pointer">
         {% endfor %}
       </div>
     </div>
     {% endif %}
 
+    {% if v.spec_remark %}
+    <div class="bg-surface border border-line rounded-lg p-5">
+      <h3 class="text-lg font-semibold mb-3 flex items-center gap-2">
+        <span class="material-symbols-outlined text-primary text-xl">description</span>매각물건명세 요약
+        <span class="text-mut text-sm font-normal">— 법원 제공</span></h3>
+      <pre class="whitespace-pre-wrap text-sm text-txt/90 font-sans leading-relaxed m-0">{{ v.spec_remark }}</pre>
+    </div>
+    {% endif %}
+
     {% if appraisal %}
     <div class="bg-surface border border-line rounded-lg p-5">
-      <h3 class="text-lg font-semibold mb-3">감정평가 요항</h3>
+      <h3 class="text-lg font-semibold mb-3 flex items-center gap-2">
+        <span class="material-symbols-outlined text-primary text-xl">assignment</span>감정평가 요항
+        <span class="text-mut text-sm font-normal">— 법원 제공 · 핵심 요약</span></h3>
+      {% if asum %}
+      <dl class="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-3 text-sm">
+        <div><dt class="text-mut text-xs mb-0.5">색상</dt><dd>{{ asum.color or '—' }}</dd></div>
+        <div><dt class="text-mut text-xs mb-0.5">연료</dt><dd>{{ asum.fuel or '—' }}</dd></div>
+        <div><dt class="text-mut text-xs mb-0.5">주행(요항)</dt><dd class="font-mono">{% if asum.mileage %}{{ asum.mileage|won }} km{% else %}—{% endif %}</dd></div>
+        <div><dt class="text-mut text-xs mb-0.5">자동차검사 유효</dt>
+          <dd class="{{ 'text-rose-600 font-semibold' if asum.inspection and asum.inspection.expired else '' }}">
+          {% if asum.inspection %}{{ asum.inspection.valid_to }}{% if asum.inspection.expired %} · 경과{% else %} · D{{ asum.inspection.days_left }}{% endif %}{% else %}—{% endif %}</dd></div>
+      </dl>
+      {# 상태 플래그 — 긍정 감지 시에만(키워드 부재를 '양호'로 단정하지 않음) #}
+      {% set c = asum.condition %}
+      {% if c.damage or (asum.inspection and asum.inspection.expired) or c.runnable == false %}
+      <div class="flex flex-wrap gap-1.5 mt-4">
+        {% if c.major or c.poor %}<span class="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full bg-rose-50 text-rose-600 border border-rose-200"><span class="material-symbols-outlined text-sm">warning</span> 외관·상태 손상 언급</span>
+        {% elif c.minor %}<span class="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200"><span class="material-symbols-outlined text-sm">build</span> 외관 손상 언급</span>{% endif %}
+        {% if c.runnable == false %}<span class="text-xs font-semibold px-2.5 py-1 rounded-full bg-rose-50 text-rose-600 border border-rose-200">시동·운행 불가 언급</span>{% endif %}
+        {% if asum.inspection and asum.inspection.expired %}<span class="text-xs font-semibold px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200">검사 유효기간 경과</span>{% endif %}
+      </div>
+      {% endif %}
+      {# 차량 상태 — 요항 원문 발췌를 읽기 좋게(요약이 아닌 실제 서술 그대로) #}
+      {% if asum.note_lines %}
+      <div class="mt-4">
+        <div class="text-xs font-semibold text-mut mb-1.5">차량 상태 <span class="font-normal text-mut/70">— 감정 요항 서술</span></div>
+        <ul class="space-y-1.5">
+          {% for ln in asum.note_lines %}
+          <li class="flex gap-2 text-sm text-txt/90 leading-relaxed"><span class="text-mut/40 mt-0.5 shrink-0">•</span><span style="text-wrap:pretty">{{ ln }}</span></li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+      {% if asum.options %}
+      <div class="mt-3">
+        <span class="text-xs text-mut">옵션 </span>
+        {% for o in asum.options %}<span class="text-xs px-2 py-0.5 rounded bg-primary/5 text-primary/90 mr-1">{{ o }}</span>{% endfor %}
+      </div>
+      {% endif %}
+      {% if cond and cond.add %}
+      <div class="mt-4 text-xs bg-amber-50 border border-amber-200 text-amber-800 rounded-md px-3 py-2 leading-relaxed">
+        <b>상태·검사 반영</b> — 상한가에서 <b class="font-mono">−{{ cond.add|won }}원</b> 추가 차감{% if cond.flags %} ({{ cond.flags|join(', ') }}){% endif %}. <span class="text-amber-700/80">현장 확인 후 [다시 분석]하면 산정에 반영됩니다.</span>
+      </div>
+      {% endif %}
+      <details class="mt-4">
+        <summary class="cursor-pointer text-xs text-primary hover:underline select-none">법원 원문 요항 보기</summary>
+        <pre class="whitespace-pre-wrap text-sm text-mut leading-relaxed m-0 mt-2 pt-2 border-t border-line">{{ appraisal }}</pre>
+      </details>
+      {% else %}
       <pre class="whitespace-pre-wrap text-sm text-txt/90 font-sans leading-relaxed m-0">{{ appraisal }}</pre>
+      {% endif %}
     </div>
     {% endif %}
   </div>
@@ -133,14 +273,118 @@
   <!-- 우: 시세·산정·메모 -->
   <div class="space-y-6">
     <div class="bg-surface border border-line rounded-lg p-5">
-      <h3 class="text-lg font-semibold mb-3">시세 <span class="text-mut text-sm font-normal">(SK엔카)</span></h3>
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="text-lg font-semibold">시세 <span class="text-mut text-sm font-normal">(SK엔카)</span></h3>
+        {% if v.median_price is not none and v.market_confidence_label %}
+        {% set cl = v.market_confidence_label %}
+        {% set cbg = 'bg-emerald-50 text-emerald-700 border-emerald-200' if cl=='높음'
+                     else 'bg-amber-50 text-amber-700 border-amber-200' if cl=='보통'
+                     else 'bg-rose-50 text-rose-600 border-rose-200' %}
+        <span class="text-xs font-semibold px-2.5 py-1 rounded-full border {{ cbg }}"
+              title="표본수·매칭단계·가격분산·이상치를 종합한 시세 신뢰도">
+          신뢰도 {{ cl }}{% if v.market_confidence %} · {{ v.market_confidence }}점{% endif %}
+        </span>
+        {% endif %}
+      </div>
       <dl class="grid grid-cols-[130px_1fr] gap-y-2.5 text-sm">
+        <dt class="text-mut">시세 소스</dt>
+        <dd class="text-xs">
+          {% set cs = v.cross_source_status %}
+          {% if cs == 'agree' %}
+            <span class="text-emerald-700 font-semibold">✓ 2소스 교차검증 통과</span>
+            <span class="text-mut">— SK엔카 · 케이카 중앙값 일치{% if v.cross_source_rel is not none %}(±{{ (v.cross_source_rel*100)|round(0)|int }}%){% endif %}</span>
+          {% elif cs == 'diverge' %}
+            <span class="text-rose-600 font-semibold">⚠ 2소스 불일치</span>
+            <span class="text-mut">— SK엔카 · 케이카 중앙값 {% if v.cross_source_rel is not none %}{{ (v.cross_source_rel*100)|round(0)|int }}% {% endif %}차이 — 매칭·시세 확인 필요</span>
+          {% elif v.kcar_checked_at %}
+            <span class="text-txt font-medium">SK엔카 단일 소스</span>
+            <span class="text-mut">— 케이카 동급 표본 부족({{ v.kcar_sample or 0 }}건)으로 교차검증 미적용</span>
+          {% else %}
+            <span class="text-txt font-medium">SK엔카 단일 소스</span>
+          {% endif %}
+          {% if v.kcar_median %}<span class="text-mut block mt-0.5">케이카 참고 중앙값 {{ v.kcar_median|won }}원 · 표본 {{ v.kcar_sample }}건{% if v.kcar_checked_at %} · {{ v.kcar_checked_at }}{% endif %}</span>{% endif %}
+        </dd>
         <dt class="text-mut">동모델 전체</dt><dd class="font-mono">{{ v.encar_total|won }} 대</dd>
         <dt class="text-mut">동급 표본</dt><dd class="font-mono">{{ v.sample_count if v.sample_count is not none else '—' }} 건 <span class="text-mut text-xs">{% if v.match_label %}({{ v.match_label }}){% else %}(연식±1·주행±30%){% endif %}</span></dd>
         <dt class="text-mut">평균가</dt><dd class="font-mono">{{ v.mean_price|won }} 원</dd>
-        <dt class="text-mut">중앙값</dt><dd class="font-mono text-lg font-bold text-primary">{{ v.median_price|won }} 원</dd>
+        <dt class="text-mut">중앙값</dt><dd class="font-mono text-lg font-semibold text-txt tnum">{{ v.median_price|won }} 원</dd>
         <dt class="text-mut">최저가</dt><dd class="font-mono">{{ v.min_price|won }} 원</dd>
+        {% if v.market_cv is not none %}
+        <dt class="text-mut">가격 편차</dt><dd class="font-mono text-sm">±{{ (v.market_cv*100)|round(0)|int }}%
+          <span class="text-mut text-xs">(낮을수록 신뢰↑)</span></dd>
+        {% endif %}
+        {% if v.market_vs_appraisal is not none %}
+        <dt class="text-mut">감정가 대비</dt><dd class="font-mono text-sm">시세가 감정가의
+          <b class="{{ 'text-mut' if v.market_confidence_label == '낮음'
+                       else 'text-rose-600' if v.market_vs_appraisal < 0.50 or v.market_vs_appraisal > 1.8
+                       else 'text-amber-700' if v.market_vs_appraisal < 0.65 or v.market_vs_appraisal > 1.28
+                       else 'text-emerald-700' }}">{{ (v.market_vs_appraisal*100)|round(0)|int }}%</b>
+          {% if v.market_confidence_label == '낮음' %}<span class="text-mut text-xs">(신뢰도 낮음 — 참고용)</span>{% endif %}</dd>
+        {% endif %}
       </dl>
+      {% if v.min_sale_price and v.median_price and v.min_sale_price > v.median_price %}
+      <div class="mt-3 text-xs bg-rose-50 border border-rose-200 text-rose-600 rounded-md px-3 py-2">
+        ⛔ 현재 최저매각가({{ v.min_sale_price|won }}원)가 엔카 시세중앙값({{ v.median_price|won }}원)보다 <b>높습니다</b> — 시세보다 비싼 입찰이 됩니다. 추가 유찰을 기다리세요.
+      </div>
+      {% endif %}
+      {# 예상낙찰가·게이지는 상단 히어로로 이동(중복 제거). 여기 시세 카드는 근거 통계만. #}
+      {% if v.sample_count is not none and v.sample_count < 5 and v.median_price is not none %}
+      <div class="mt-3 text-xs bg-sky-50 border border-sky-200 text-sky-700 rounded-md px-3 py-2">
+        ⚠ 동급 표본이 <b>{{ v.sample_count }}건</b>뿐이라 중앙값이 소수 매물에 좌우됩니다. 아래 감사 테이블로 직접 대조하세요.
+      </div>
+      {% endif %}
+      {% if v.market_vs_appraisal is not none and (v.market_vs_appraisal < 0.65 or v.market_vs_appraisal > 1.28) %}
+      <div class="mt-3 text-xs bg-amber-50 border border-amber-200 text-amber-700 rounded-md px-3 py-2 leading-relaxed">
+        ⚠ 엔카 시세가 법원 감정가와 {{ '크게' if v.market_vs_appraisal < 0.50 or v.market_vs_appraisal > 1.8 else '다소' }} 차이납니다.
+        엔카가 <b>다른 트림·세대</b>를 매칭했거나 사고·특장 차량일 수 있으니, 엔카에서 직접 확인하세요.
+      </div>
+      {% endif %}
+
+      {# 케이카 2차 소스 교차검증은 분석 시 자동 수행됨(수동 버튼 제거) — 결과는 위 '시세 소스'에 표기.
+         강제 재조회가 필요하면 상단 [다시 분석]이 엔카+케이카를 함께 재실행한다. #}
+
+      {# 실측 캘리브레이션 — 사용자가 직접 확인한 시세로 오차 기록 #}
+      {% if v.median_price is not none %}
+      <form method="post" action="/vehicle/{{ v.id }}/actual" class="mt-3 flex items-end gap-2 flex-wrap border-t border-line pt-3">
+        <div><label class="lbl">내가 확인한 실측 시세(원)</label>
+          <input class="inp w-40" type="number" name="actual_price" value="{{ v.actual_price or '' }}" step="100000" placeholder="엔카 실측값"></div>
+        <button class="btn-ghost text-sm">기록</button>
+        {% if v.actual_price %}
+        {% set err = ((v.median_price - v.actual_price) / v.actual_price * 100)|round(1) %}
+        <span class="text-xs {{ 'text-emerald-700' if err|abs <= 10 else 'text-amber-700' if err|abs <= 20 else 'text-rose-600' }} ml-1">
+          시스템 시세 오차 <b>{{ '+' if err > 0 else '' }}{{ err }}%</b> (실측 {{ v.actual_price|won }}원)</span>
+        {% endif %}
+      </form>
+      {% endif %}
+
+      {# 동급 매물 감사 — 중앙값 산출에 실제 쓰인 개별 매물 #}
+      {% if v.comps %}
+      <details class="mt-3 group">
+        <summary class="cursor-pointer select-none text-sm text-primary hover:underline list-none flex items-center gap-1">
+          <span class="material-symbols-outlined text-base group-open:rotate-90 transition">chevron_right</span>
+          동급 매물 {{ v.comps|length }}건 감사 (엔카 실측 대조)</summary>
+        <div class="mt-2 overflow-x-auto custom-scrollbar">
+          <table class="w-full text-xs">
+            <thead><tr class="text-mut border-b border-line">
+              <th class="text-left py-1.5 font-medium">연식</th>
+              <th class="text-right py-1.5 font-medium">주행(km)</th>
+              <th class="text-right py-1.5 font-medium">가격</th>
+              <th class="text-left py-1.5 font-medium pl-3">트림/모델</th></tr></thead>
+            <tbody class="divide-y divide-line font-mono">
+            {% for c in v.comps %}
+            <tr>
+              <td class="py-1.5">{{ c.year or '—' }}</td>
+              <td class="py-1.5 text-right">{{ c.mileage_km|won }}</td>
+              <td class="py-1.5 text-right text-txt">{{ c.price_won|won }}</td>
+              <td class="py-1.5 pl-3 text-mut font-sans">{{ (c.badge or c.model or '—')|mdl }}</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="text-xs text-mut mt-1.5">이상치(IQR) 제외 후 중앙값 산출에 사용된 매물입니다. 엔카에서 직접 대조해 보세요.</div>
+      </details>
+      {% endif %}
     </div>
 
     <div class="bg-surface border border-line rounded-lg p-5">
@@ -150,40 +394,96 @@
         <div class="text-sm text-mut">분석 전 — 상단 [이 물건 분석]으로 산정하세요</div>
       </div>
       {% elif v.median_price is none %}
-      <div class="text-center bg-sky-500/10 border border-sky-500/30 rounded-lg py-4 mb-4">
-        <div class="text-xs text-sky-300 mb-1 font-semibold">시세 정보 없음 — 수동 확인 필요</div>
+      <div class="text-center bg-sky-50 border border-sky-200 rounded-lg py-4 mb-4">
+        <div class="text-xs text-sky-700 mb-1 font-semibold">시세 정보 없음 — 수동 확인 필요</div>
         <div class="text-sm text-mut px-4">수입·상용/특수차 등 엔카 자동 동급이 없어 시세를 계산하지 못했습니다.
           상세(주행거리·사진·사고이력)는 확보되었으니, 엔카에서 직접 시세를 확인하세요.</div>
       </div>
+      {% elif v.judgment == '입찰 보류' %}
+      <div class="text-center bg-rose-50 border border-rose-200 rounded-lg py-4 mb-4">
+        <div class="text-xs text-rose-600 mb-1 font-semibold">⛔ 입찰 보류 — 침수·전손 의심</div>
+        <div class="text-sm text-mut px-4">감정평가서에 침수·전손 이력이 감지되었습니다. 자동 산정을 제공하지 않으니
+          현장 점검 후 판단하세요.</div>
+      </div>
+      {% elif v.judgment == '시세 신뢰도 낮음, 수동 검토' %}
+      {% set reasons = [] %}
+      {% if v.sample_count is not none and v.sample_count < 5 %}{% set _ = reasons.append('표본 부족(' ~ v.sample_count ~ '건)') %}{% endif %}
+      {% if v.match_label and '미확인' in v.match_label %}{% set _ = reasons.append('트림 확인 불가') %}{% endif %}
+      {% if v.market_vs_appraisal is not none and (v.market_vs_appraisal < 0.65 or v.market_vs_appraisal > 1.28) %}{% set _ = reasons.append('감정가 괴리') %}{% endif %}
+      {% if v.median_price is none %}{% set _ = reasons.append('동급 시세 없음') %}{% endif %}
+      {% if v.match_label and ('확장' in v.match_label or '연식±3' in v.match_label) %}{% set _ = reasons.append('주행·연식 매칭 완화(동급 부족)') %}{% endif %}
+      {% if not reasons %}{% set _ = reasons.append('동급 대표성 부족(표본·분산)') %}{% endif %}
+      <div class="text-center bg-sky-50 border border-sky-200 rounded-lg py-4 mb-4">
+        <div class="text-xs text-sky-700 mb-1 font-semibold">🔎 시세 신뢰도 낮음 — 수동 검토 필요</div>
+        <div class="text-sm text-mut px-4">{% if reasons %}사유: <b class="text-txt">{{ reasons|join(', ') }}</b>. {% endif %}시세를 신뢰하기 어렵습니다.
+          아래 산정값은 참고용이며, 엔카에서 직접 시세를 확인하세요.</div>
+      </div>
       {% elif wait %}
-      <div class="text-center bg-amber-500/10 border border-amber-500/30 rounded-lg py-4 mb-4">
-        <div class="text-xs text-amber-300 mb-1 font-semibold">⏳ 유찰 대기 — 지금 입찰은 부적합</div>
-        <div class="text-xl font-bold font-mono">산정 상한가 {{ v.upper_bid|won }} 원</div>
+      <div class="text-center bg-amber-50 border border-amber-200 rounded-lg py-4 mb-4">
+        <div class="text-xs text-amber-700 mb-1 font-semibold">⏳ 유찰 대기 — <b>재판매</b> 목적엔 지금 부적합</div>
+        <div class="text-xl font-semibold font-mono text-txt tnum">산정 상한가(재판매) {{ v.upper_bid|won }} 원</div>
         <div class="text-xs text-mut mt-2 px-4 leading-relaxed">
-          현재 최저매각가 <b class="text-txt">{{ v.min_sale_price|won }}원</b>이 산정 상한가보다 높습니다.
-          최저가가 <b class="text-amber-300">{{ wait.target|won }}원 이하</b>로 내려오면 입찰을 검토하세요.<br>
-          통상 회차당 20~30% 저감 → <b class="text-txt">약 {{ wait.rounds_fast }}~{{ wait.rounds_slow }}회</b> 추가 유찰 예상.
+          현재 최저매각가 <b class="text-txt">{{ v.min_sale_price|won }}원</b>이 재판매 손익분기가보다 높습니다.
+          최저가가 <b class="text-amber-700">{{ wait.target|won }}원 이하</b>로 내려오면 재판매도 검토 가능.<br>
+          통상 회차당 20~30% 저감 →
+          <b class="text-txt">약 {% if wait.rounds_fast == wait.rounds_slow %}{{ wait.rounds_fast }}{% else %}{{ wait.rounds_fast }}~{{ wait.rounds_slow }}{% endif %}회</b> 추가 유찰 예상.
         </div>
+        {% if expected and expected.price and v.min_sale_price and v.min_sale_price <= expected.price %}
+        <div class="text-xs text-emerald-700 mt-2 px-4">✓ 일반 매수 목적이면 현재 최저매각가가 예상낙찰가({{ expected.price|won }}원) 이하라 <b>지금도 검토 가능</b>합니다.</div>
+        {% endif %}
+      </div>
+      {% elif v.upper_bid is none or v.upper_bid <= 0 %}
+      <div class="text-center bg-rose-50 border border-rose-200 rounded-lg py-4 mb-4">
+        <div class="text-xs text-rose-600 mb-1 font-semibold">산정 불가 — 상한가 0원 이하</div>
+        <div class="text-sm text-mut px-4">수리비·감가를 반영하면 잔존 가치가 없어 입찰 실익이 없습니다.</div>
       </div>
       {% else %}
       <div class="text-center bg-background border border-line rounded-lg py-4 mb-4">
         <div class="text-xs text-mut mb-1">권장 입찰 범위</div>
-        <div class="text-xl font-bold font-mono text-emerald-400">{{ v.lower_bound|won }} ~ {{ v.upper_bid|won }} 원</div>
+        <div class="text-xl font-semibold font-mono tnum text-emerald-700">{{ v.lower_bound|won }} ~ {{ v.upper_bid|won }} 원</div>
         <div class="text-xs text-mut mt-1">하한 = 현재 최저매각가 · 상한 = 산정 상한가</div>
       </div>
       {% endif %}
-      {% if v.breakdown %}
-      <dl class="grid grid-cols-[130px_1fr] gap-y-2 text-sm mb-4">
-        {% for k, val in v.breakdown.items() %}
-        <dt class="text-mut">{{ k }}</dt>
-        <dd class="font-mono">{% if val is number and val|abs >= 1000 %}{{ val|won }}{% else %}{{ val }}{% endif %}</dd>
+      {% if v.breakdown and v.median_price is not none %}
+      {% set bd = v.breakdown %}
+      {% set base = bd['기준시세'] or 1 %}
+      {% set steps = [('예상 수리비', bd.get('예상수리비', 0)),
+                      ('사고 감가', bd.get('사고감가', 0)),
+                      ('리스크 프리미엄', bd.get('리스크프리미엄', 0)),
+                      ('취득세', bd.get('취득세', 0)),
+                      ('고정 부대비', bd.get('고정부대비', 0)),
+                      ('목표 마진', bd.get('마진', 0))] %}
+      <div class="text-xs text-mut mb-2 font-medium">산정 근거 — 기준시세에서 차감</div>
+      <div class="space-y-1.5 mb-3">
+        <div class="flex items-center gap-2 text-xs">
+          <span class="w-36 shrink-0 text-mut whitespace-nowrap">기준시세</span>
+          <div class="flex-1 h-5 rounded bg-primary/10"><div class="bg-primary/70 h-5 rounded" style="width:100%"></div></div>
+          <span class="w-28 text-right font-mono text-txt tnum shrink-0">{{ base|won }}</span>
+        </div>
+        {% for label, amt in steps %}
+        <div class="flex items-center gap-2 text-xs">
+          <span class="w-36 shrink-0 text-mut whitespace-nowrap">− {{ label }}
+            {% if amt and base %}<span class="text-mut/60">{{ (amt / base * 100)|round(1) }}%</span>{% endif %}</span>
+          <div class="flex-1 h-4 rounded bg-slate-100"><div class="bg-rose-400 h-4 rounded" style="width:{{ (amt / base * 100)|round(1) if base else 0 }}%"></div></div>
+          <span class="w-28 text-right font-mono text-rose-600 tnum shrink-0">{% if amt %}−{{ amt|won }}{% else %}0{% endif %}</span>
+        </div>
         {% endfor %}
-      </dl>
+        <div class="flex items-center gap-2 text-xs pt-1.5 border-t border-line">
+          <span class="w-36 shrink-0 font-semibold whitespace-nowrap">= 상한가</span>
+          <div class="flex-1 h-6 rounded bg-emerald-100"><div class="bg-emerald-500 h-6 rounded" style="width:{{ (v.upper_bid / base * 100)|round(1) if base else 0 }}%"></div></div>
+          <span class="w-28 text-right font-mono font-semibold text-emerald-700 tnum shrink-0">{{ v.upper_bid|won }}</span>
+        </div>
+      </div>
+      <div class="text-xs text-mut mb-4 leading-relaxed border-t border-line pt-2">
+        사고등급 <b class="text-txt">{{ bd.get('사고등급')|acc }}</b>(감가 {{ (bd.get('사고감가율', 0) * 100)|round(1) }}%)
+        · 플랫폼 {{ bd.get('플랫폼') }}(×{{ bd.get('플랫폼가중') }})
+        · 시세 표본 {{ bd.get('표본수') }}건
+      </div>
       {% endif %}
       <form method="post" action="/vehicle/{{ v.id }}/recompute" class="flex gap-3 items-end pt-3 border-t border-line">
         <div class="flex-1"><label class="lbl">예상 수리비(원) 변경 → 재산정</label>
           <input class="inp w-full" type="number" name="repair_cost" value="{{ v.repair_cost or 0 }}" step="100000"></div>
-        <button class="bg-primary text-[#00354a] font-semibold text-sm px-5 py-2.5 rounded-md hover:opacity-90 transition">재산정</button>
+        <button class="btn-primary text-sm">재산정</button>
       </form>
     </div>
 
@@ -194,7 +494,7 @@
           <input class="inp w-48" type="number" name="final_bid" value="{{ v.final_bid or '' }}" step="10000"></div>
         <div><label class="lbl">메모</label>
           <input class="inp w-full" name="memo" value="{{ v.memo or '' }}" placeholder="현장 점검 결과, 특이사항 등"></div>
-        <button class="bg-primary text-[#00354a] font-semibold text-sm px-5 py-2.5 rounded-md hover:opacity-90 transition">저장</button>
+        <button class="btn-primary text-sm">저장</button>
       </form>
     </div>
   </div>
@@ -215,7 +515,7 @@
 {% block script %}
 {% if photos %}
 <script>
-const LB_BASE = "/photo/" + {{ v.folder_key | tojson }} + "/";
+const LB_BASE = "/photo/" + {{ (v.folder_key or v.id) | tojson }} + "/";
 const LB_FILES = {{ photos | tojson }};
 let lbIdx = 0;
 const _lb = () => document.getElementById('lb');

@@ -1,0 +1,119 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 한글+라틴 통합 웹폰트 self-host (오프라인 안전). Stripe 시그니처=thin(300) 디스플레이 */
+@font-face { font-family: "Pretendard"; font-weight: 300; font-display: swap;
+  src: url("/static/fonts/Pretendard-Light.woff2") format("woff2"); }
+@font-face { font-family: "Pretendard"; font-weight: 400; font-display: swap;
+  src: url("/static/fonts/Pretendard-Regular.woff2") format("woff2"); }
+@font-face { font-family: "Pretendard"; font-weight: 500; font-display: swap;
+  src: url("/static/fonts/Pretendard-Medium.woff2") format("woff2"); }
+@font-face { font-family: "Pretendard"; font-weight: 600; font-display: swap;
+  src: url("/static/fonts/Pretendard-SemiBold.woff2") format("woff2"); }
+@font-face { font-family: "Pretendard"; font-weight: 700; font-display: swap;
+  src: url("/static/fonts/Pretendard-Bold.woff2") format("woff2"); }
+@font-face { font-family: "JetBrains Mono"; font-weight: 400; font-display: swap;
+  src: url("/static/fonts/JetBrainsMono-400.woff2") format("woff2"); }
+@font-face { font-family: "JetBrains Mono"; font-weight: 500; font-display: swap;
+  src: url("/static/fonts/JetBrainsMono-500.woff2") format("woff2"); }
+@font-face { font-family: "Material Symbols Outlined"; font-style: normal; font-weight: 100 700;
+  font-display: block; src: url("/static/fonts/MaterialSymbolsOutlined.woff2") format("woff2"); }
+
+/* 전역: 라이트 캔버스 · 딥네이비 잉크 · ss01 스타일셋(브랜드 시그니처) */
+html, body { background: #f6f9fc; }
+body { font-family: "Pretendard", "Malgun Gothic", sans-serif; color: #0d253d;
+  font-feature-settings: "ss01"; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+
+/* 디스플레이 타이포: thin(300) + 음수 트래킹 (Stripe 시그니처) */
+.display { font-weight: 300; letter-spacing: -0.02em; color: #0d253d; }
+.display-xl { font-weight: 300; letter-spacing: -0.03em; line-height: 1.05; }
+/* 돈·수치 셀: 타뷸러 피겨(tnum) — 금융 데이터 시그니처 */
+.tnum { font-feature-settings: "tnum"; }
+.font-mono { font-feature-settings: "tnum"; }
+
+.material-symbols-outlined { font-family: "Material Symbols Outlined"; font-weight: normal; font-style: normal;
+  font-size: 24px; line-height: 1; letter-spacing: normal; text-transform: none; display: inline-block;
+  white-space: nowrap; direction: ltr; -webkit-font-feature-settings: 'liga';
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'opsz' 24; vertical-align: middle; }
+
+/* 스크롤바(라이트) */
+.custom-scrollbar::-webkit-scrollbar { width: 10px; height: 10px; }
+.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: #d3dbe6; border-radius: 6px; border: 2px solid #f6f9fc; }
+.custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #b6c2d2; }
+
+/* 입력 필드 (Stripe text-input: 흰 배경 · 6px · 포커스 인디고) */
+.inp { background: #ffffff; border: 1px solid #cdd7e3; color: #0d253d; border-radius: 6px;
+  padding: .5rem .75rem; font-size: 14px; outline: none; transition: border-color .15s, box-shadow .15s; }
+.inp:focus { border-color: #533afd; box-shadow: 0 0 0 3px rgba(83,58,253,.12); }
+.inp::placeholder { color: #94a3b8; }
+.lbl { display: block; font-size: 12px; color: #64748d; margin-bottom: 4px; }
+
+/* 인터랙션 곡선(Emil Kowalski 표준) — 진입/이탈은 강한 ease-out */
+:root { --ease-out: cubic-bezier(0.23, 1, 0.32, 1); --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1); }
+
+/* 버튼 (Stripe: pill · tight padding) — press 피드백(scale 0.97, Emil), 최소 히트영역 40px */
+.btn-primary { display: inline-flex; align-items: center; justify-content: center; gap: .375rem; background: #533afd; color: #fff;
+  border-radius: 9999px; padding: .5rem 1rem; min-height: 38px; font-size: 14px; font-weight: 500; border: 1px solid transparent;
+  transition: background .14s var(--ease-out), transform .12s var(--ease-out), box-shadow .14s var(--ease-out); }
+.btn-primary:hover { background: #4434d4; }
+.btn-primary:active { background: #2e2b8c; transform: scale(.97); }
+.btn-primary:disabled { opacity: .45; cursor: default; transform: none; }
+.btn-ghost { display: inline-flex; align-items: center; justify-content: center; gap: .375rem; background: #ffffff; color: #273951;
+  border: 1px solid #e3e8ee; border-radius: 9999px; padding: .5rem 1rem; min-height: 38px; font-size: 14px; font-weight: 500;
+  transition: background .14s var(--ease-out), transform .12s var(--ease-out), border-color .14s var(--ease-out); }
+.btn-ghost:hover { background: #f6f9fc; border-color: #cdd7e3; }
+.btn-ghost:active { transform: scale(.97); }
+.btn-ghost:disabled { opacity: .45; cursor: default; transform: none; }
+
+/* 카드 깊이감 — 레이어드 그림자(Jakub Krehel: 보더 대신 은은한 다층 그림자) */
+.bg-surface.rounded-lg, .bg-surface.rounded-xl {
+  box-shadow: 0 1px 2px -1px rgba(0,55,112,0.10), 0 2px 5px rgba(0,55,112,0.05);
+  transition: box-shadow .15s var(--ease-out); }
+.shadow-lift { box-shadow: 0 8px 24px rgba(0,55,112,0.08), 0 2px 6px rgba(0,55,112,0.04); }
+/* 인터랙티브 카드/행 — hover 시 부드러운 그림자 상승(체감 피드백) */
+.hoverable { transition: box-shadow .15s var(--ease-out), transform .15s var(--ease-out); }
+@media (hover: hover) and (pointer: fine) {
+  .hoverable:hover { box-shadow: 0 6px 18px rgba(0,55,112,0.10), 0 2px 6px rgba(0,55,112,0.05); }
+}
+
+/* 그라데이션 메시(Stripe 시그니처) — 히어로 상단 워시. cream→sherbet→lavender→indigo→ruby */
+.mesh {
+  background:
+    radial-gradient(60% 120% at 8% 0%, rgba(245,233,212,.85) 0%, rgba(245,233,212,0) 55%),
+    radial-gradient(50% 120% at 32% 0%, rgba(249,171,110,.55) 0%, rgba(249,171,110,0) 50%),
+    radial-gradient(55% 130% at 60% 0%, rgba(148,131,255,.55) 0%, rgba(148,131,255,0) 55%),
+    radial-gradient(55% 130% at 82% 0%, rgba(83,58,253,.45) 0%, rgba(83,58,253,0) 55%),
+    radial-gradient(50% 120% at 100% 0%, rgba(234,34,97,.35) 0%, rgba(234,34,97,0) 55%);
+}
+
+/* 링크·인터랙티브 색 전환(빠르게, hover=ease) */
+a { transition: color .14s ease; }
+
+/* 키보드 접근성 — focus-visible 인디고 링(마우스 클릭엔 안 보이게) */
+a:focus-visible, button:focus-visible, [role="button"]:focus-visible, summary:focus-visible {
+  outline: 2px solid rgba(83,58,253,.55); outline-offset: 2px; border-radius: 4px; }
+.inp:focus-visible { outline: none; }
+
+/* 텍스트 줄바꿈 품질(Jakub) — 제목 균형, 본문 고아단어 방지.
+   주의: .text-mut는 제외 — text-wrap:pretty가 text-wrap-mode를 wrap으로 재설정해
+   whitespace-nowrap(가격·기일 셀)을 무력화하는 부작용이 있어 본문 태그에만 적용. */
+h1, h2, h3, .display, .display-xl { text-wrap: balance; }
+p, dd, li { text-wrap: pretty; }
+
+/* 로딩 스켈레톤 시머 — 필터 적용·페이지 이동 시 인지 지연 완화 */
+@keyframes skshimmer { 100% { transform: translateX(100%); } }
+.skeleton { position: relative; overflow: hidden; background: #eef1f5; }
+.skeleton::after {
+  content: ""; position: absolute; inset: 0; transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.65), transparent);
+  animation: skshimmer 1.4s infinite;
+}
+
+/* 모션 저감 선호 — transform 모션만 제거, 색/투명도 전환은 유지(Emil) */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; }
+  .btn-primary:active, .btn-ghost:active, .hoverable:hover { transform: none !important; }
+  .skeleton::after { animation: none; }
+}
