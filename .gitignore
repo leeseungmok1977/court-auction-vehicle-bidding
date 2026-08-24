@@ -4,6 +4,11 @@ capture/
 # 중간 JSON·PDF·사진 등 수집 산출물
 data/
 *.har
+# 데이터 백업/이전용 압축본 (DB·사진 등 민감 — 커밋 금지)
+data.zip
+data*.zip
+data*.7z
+data*.tar*
 
 # Power Automate 가져오기 패키지 (재생성 가능)
 powerautomate/package/*.zip
