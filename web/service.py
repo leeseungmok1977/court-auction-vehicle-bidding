@@ -74,16 +74,19 @@ def _analyze_item(cs, es, raw: dict, item, config: dict, repair_cost: int,
     detail = parse_detail(dresp, config)
     # 법원 상세가 완전히 비어 있으면(종결·취하·조회불가) 기존에 확보한 사진·주행거리·요항을
     # 빈 값(0/None)으로 덮지 않고 보존한다. 저장(save_item_folder)도 건너뛴다.
+    # 단, 낙찰/기일 결과(dxdy·낙찰가)가 있으면 아래 정상 흐름에서 처리하도록 제외한다.
     if (detail.mileage_km is None and not detail.photo_count
-            and not (detail.appraisal_text or "").strip()):
+            and not (detail.appraisal_text or "").strip()
+            and not detail.dxdy_history and detail.winning_price is None):
         prev = db.get_vehicle(item.folder_key) or {}
         for k in ("photo_count", "mileage_km", "displacement_cc", "fuel_code",
                   "appraisal_value", "accident_grade", "spec_remark",
                   "inspection_to", "condition_level"):
             if prev.get(k) not in (None, 0, "", []):
                 base[k] = prev[k]
+        # 법원 상세가 비어 분석 불가 → '상세없음'(목록에서 숨김). 매각기일 지났으면 '종결'.
         base["status"] = ("종결" if item.sale_date and item.sale_date <= date.today().isoformat()
-                          else "미분석")
+                          else "상세없음")
         base["analyzed_at"] = _now()
         return base
     save_item_folder(dresp, item.folder_key, config)

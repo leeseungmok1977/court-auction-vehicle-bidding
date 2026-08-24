@@ -287,6 +287,10 @@ def list_vehicles(judgment: Optional[str] = None, maker: Optional[str] = None,
         where.append("status IN ('미분석','미매핑')")
     elif status:
         where.append("status=?"); params.append(status)
+    # '상세없음'(법원 상세 조회불가 → 분석 불가)은 목록에서 숨김
+    # — 단, 그 상태를 명시적으로 조회할 때만 노출
+    if status != "상세없음":
+        where.append("COALESCE(status,'') <> '상세없음'")
     if result:
         where.append("auction_result=?"); params.append(result)
     if starred:
