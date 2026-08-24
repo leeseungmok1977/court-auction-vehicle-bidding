@@ -326,14 +326,17 @@ def _reanalyze(max_items: int, repair_cost: int, run_id: int) -> None:
     """기존 '미매핑' 국산 물건에 상세·시세를 소급 적용."""
     config = load_config()
     try:
-        # 대상: 미매핑 + 자동매핑 가능 + docid로 saNo 복원 가능
+        # 대상: 미분석·미매핑·상세없음(재시도) + docid로 saNo 복원 가능
+        # '상세없음'도 재시도해 법원에 상세가 다시 생기면 목록에 복귀시킨다.
         targets = []
         for v in db.list_vehicles():
-            if v.get("status") not in ("미매핑", "미분석"):
+            if v.get("status") not in ("미매핑", "미분석", "상세없음"):
                 continue
             if not _sa_no_from_docid(v.get("doc_id") or ""):
                 continue
             targets.append(v)
+        # 아직 분석 안 한 물건 우선(상세없음 재조회는 남는 예산으로) → 죽은 물건 반복조회 낭비 완화
+        targets.sort(key=lambda v: (v.get("analyzed_at") is not None, v.get("analyzed_at") or ""))
         db.update_run(run_id, target=min(max_items, len(targets)) or 0,
                       message=f"재분석 대상 {len(targets)}건")
 

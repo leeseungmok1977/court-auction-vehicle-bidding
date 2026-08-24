@@ -265,7 +265,7 @@ def list_vehicles(judgment: Optional[str] = None, maker: Optional[str] = None,
                   q: Optional[str] = None, starred: Optional[bool] = None,
                   sort: str = "sale_date", upcoming_days: Optional[int] = None,
                   status: Optional[str] = None, result: Optional[str] = None,
-                  cond: Optional[str] = None) -> list[dict]:
+                  cond: Optional[str] = None, hide_incomplete: bool = False) -> list[dict]:
     where, params = [], []
     if cond == "insp_expired":       # 자동차검사 유효기간 경과
         where.append("inspection_to IS NOT NULL AND inspection_to <> '' "
@@ -287,10 +287,14 @@ def list_vehicles(judgment: Optional[str] = None, maker: Optional[str] = None,
         where.append("status IN ('미분석','미매핑')")
     elif status:
         where.append("status=?"); params.append(status)
-    # '상세없음'(법원 상세 조회불가 → 분석 불가)은 목록에서 숨김
-    # — 단, 그 상태를 명시적으로 조회할 때만 노출
-    if status != "상세없음":
-        where.append("COALESCE(status,'') <> '상세없음'")
+    # 목록 뷰에서만: 평가 불가한 물건 숨김(정보 채워지면 자동 재노출).
+    #  - '상세없음'(법원 상세 조회불가), 또는
+    #  - 아직 시세 미산출(median NULL)이면서 주행거리·사진이 없는 물건.
+    #  단, 시세가 산출된 '완료' 물건은 사진/주행이 없어도 유지. 내부 재분석은 이 필터를 안 씀.
+    if hide_incomplete and status not in ("상세없음", "pending"):
+        where.append("NOT (COALESCE(status,'')='상세없음' OR "
+                     "(median_price IS NULL AND "
+                     "(mileage_km IS NULL OR COALESCE(photo_count,0)=0)))")
     if result:
         where.append("auction_result=?"); params.append(result)
     if starred:

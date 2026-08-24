@@ -222,7 +222,7 @@ def vehicles(request: Request, judgment: str = "", maker: str = "", q: str = "",
     rows = db.list_vehicles(judgment=judgment or None, maker=maker or None,
                             q=q or None, sort=sort, result=result or None,
                             status=status or None, cond=cond or None,
-                            upcoming_days=up or None)
+                            upcoming_days=up or None, hide_incomplete=True)
     _bt = service.backtest_stats()
     disc = _bt.get("discount_median")
     mae = _bt.get("mae_pct")
