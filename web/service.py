@@ -696,22 +696,44 @@ def start_results(max_items: int = 300) -> Optional[int]:
 
 def backfill_mileage_from_files() -> int:
     """기존 분석 물건 중 주행거리가 빈 것을, 저장된 감정요항(appraisal.txt)에서 채운다(무네트워크)."""
-    import os
+    from src.paths import DATA_DIR
     from src.parse.detail_parser import _mileage_from_text
     updated = 0
     for v in db.list_vehicles():
         if v.get("mileage_km") is not None:
             continue
         fk = v.get("folder_key") or v.get("id")
-        fp = os.path.join("data", fk, "appraisal.txt")
-        if not os.path.exists(fp):
+        fp = DATA_DIR / fk / "appraisal.txt"
+        if not fp.exists():
             continue
         try:
-            km = _mileage_from_text(open(fp, encoding="utf-8").read())
+            km = _mileage_from_text(fp.read_text(encoding="utf-8"))
         except Exception:  # noqa: BLE001
             km = None
         if km:
             db.update_fields(v["id"], mileage_km=km)
+            updated += 1
+    return updated
+
+
+def backfill_photo_count() -> int:
+    """디스크엔 사진이 있는데 DB photo_count가 0/NULL인 물건을 실제 파일 수로 정정(무네트워크).
+
+    목록 재수집 등으로 photo_count가 어긋나면 ⑴ 목록에서 사진이 안 뜨고 ⑵ '사진없음 감가'가
+    잘못 적용되므로, 폴더의 실제 사진 수로 맞춘다.
+    """
+    from src.paths import DATA_DIR
+    updated = 0
+    for v in db.list_vehicles():
+        if v.get("photo_count"):
+            continue
+        fk = v.get("folder_key") or v.get("id")
+        pdir = DATA_DIR / fk / "photos"
+        if not pdir.exists():
+            continue
+        n = sum(1 for p in pdir.iterdir() if p.is_file())
+        if n > 0:
+            db.update_fields(v["id"], photo_count=n)
             updated += 1
     return updated
 

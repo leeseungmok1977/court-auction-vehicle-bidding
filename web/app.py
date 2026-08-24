@@ -119,6 +119,8 @@ def _startup():
     threading.Thread(target=service.backfill_sale_results, daemon=True).start()
     # 감정요항 검사만료일·상태등급 백필(무네트워크, 최초 1회) — 목록 필터·정렬용
     threading.Thread(target=service.backfill_appraisal_signals, daemon=True).start()
+    # 디스크엔 사진 있는데 photo_count=0으로 어긋난 물건 정정(목록 표시·감가 정합)
+    threading.Thread(target=service.backfill_photo_count, daemon=True).start()
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -238,7 +240,7 @@ def vehicles(request: Request, judgment: str = "", maker: str = "", q: str = "",
     for r in page_rows:      # 목록 썸네일용 사진 URL(현재 페이지만 폴더 스캔)
         fk = r.get("folder_key") or r["id"]
         pdir = DATA_DIR / fk / "photos"
-        if r.get("photo_count") and pdir.exists():
+        if pdir.exists():   # photo_count 대신 실제 디스크 사진 유무로 표시(정합성 어긋나도 안전)
             avail = {p.name for p in pdir.iterdir() if p.is_file()}
             order = [n for n in (r.get("photo_order") or []) if n in avail]  # 비전 분류 순서 우선
             names = (order + sorted(n for n in avail if n not in order))[:12]
