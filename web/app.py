@@ -276,7 +276,7 @@ def vehicles(request: Request, judgment: str = "", maker: str = "", q: str = "",
 
 
 @app.get("/vehicle/{vid}", response_class=HTMLResponse)
-def vehicle_detail(request: Request, vid: str, cc: str = ""):
+def vehicle_detail(request: Request, vid: str, cc: str = "", an: str = ""):
     v = db.get_vehicle(vid)
     if not v:
         return RedirectResponse("/vehicles", status_code=303)
@@ -324,7 +324,7 @@ def vehicle_detail(request: Request, vid: str, cc: str = ""):
         "can_analyze": service.can_analyze(v), "running": service.is_running(),
         "wait": wait, "back_url": back_url, "expected": expected, "dist": dist,
         "verdict": service.plain_verdict(v, expected),
-        "kcar_enabled": kcar.ENABLED, "cc_msg": cc,
+        "kcar_enabled": kcar.ENABLED, "cc_msg": cc, "an_msg": an,
     })
 
 
@@ -404,7 +404,19 @@ def photo(vid: str, filename: str):
 
 @app.post("/vehicle/{vid}/analyze")
 def analyze_one(vid: str):
-    service.analyze_single(vid)
+    r = service.analyze_single(vid)
+    an = ""
+    if r is None:
+        an = "분석 실패 — 사건번호 복원 불가(doc_id 없음)."
+    elif r.get("status") == "미매핑":
+        an = "국산 승용 자동 시세 매핑 대상이 아닙니다(수입·상용·특수차)."
+    elif r.get("median_price") is None and r.get("status") not in ("완료",) \
+            and r.get("auction_result") != "낙찰" and r.get("judgment") != "종결":
+        an = ("법원 상세정보가 비어 있어 분석할 수 없습니다(종결·취하·조회불가 가능). "
+              "목록의 사진은 이전 수집분입니다.")
+    if an:
+        from urllib.parse import quote
+        return RedirectResponse(f"/vehicle/{vid}?an={quote(an)}", status_code=303)
     return RedirectResponse(f"/vehicle/{vid}", status_code=303)
 
 

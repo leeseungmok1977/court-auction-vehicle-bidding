@@ -4,6 +4,13 @@
 {% block pagetitle %}물건 상세{% endblock %}
 {% block content %}
 
+{% if an_msg %}
+<div class="bg-amber-50 border border-amber-200 text-amber-800 rounded-lg px-4 py-3 text-sm flex items-start gap-2">
+  <span class="material-symbols-outlined text-lg leading-none">info</span>
+  <span>{{ an_msg }}</span>
+</div>
+{% endif %}
+
 <!-- 헤더 -->
 <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
   <div class="min-w-0 flex-1">
