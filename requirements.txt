@@ -1,15 +1,21 @@
+# 버전 고정(재현가능 빌드) — 미고정 시 서버마다 최신 Starlette 등이 깔려
+# 템플릿 렌더가 깨지는 문제가 있어 검증된 버전으로 핀. (로컬=배포 동일)
+
 # 수집·산정 파이프라인
-requests>=2.31
-PyYAML>=6.0
+requests==2.31.0
+PyYAML==6.0.3
 
 # 운영 웹도구 (FastAPI)
-fastapi>=0.115
-uvicorn>=0.34
-jinja2>=3.1
-python-multipart>=0.0.9
+fastapi==0.115.6
+starlette==0.41.3          # 템플릿(TemplateResponse) 호환 — 상위 버전에서 렌더 깨짐 방지
+uvicorn==0.34.0
+jinja2==3.1.6
+MarkupSafe==3.0.3
+python-multipart==0.0.31
+pydantic==2.12.5
 
 # 사진 비전 분류 파이프라인 (scripts/photo_classify.py — 몽타주 생성)
-Pillow>=10.0
+Pillow==11.3.0
 
 # 테스트
 pytest>=8.0
