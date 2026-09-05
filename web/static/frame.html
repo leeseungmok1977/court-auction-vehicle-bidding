@@ -9,13 +9,14 @@
 <link rel="apple-touch-icon" href="/static/icons/apple-touch-180.png"/>
 <link rel="icon" type="image/png" sizes="32x32" href="/static/icons/favicon-32.png"/>
 <style>
-  *{box-sizing:border-box} html,body{margin:0;height:100%}
-  body{background:radial-gradient(1200px 820px at 50% -8%,#16305e 0%,#0b142b 55%,#080f22 100%);
-       display:flex;align-items:center;justify-content:center;padding:14px;
+  *{box-sizing:border-box} html,body{margin:0}
+  body{min-height:100vh;background:radial-gradient(1200px 820px at 50% -8%,#16305e 0%,#0b142b 55%,#080f22 100%);
+       display:flex;align-items:center;justify-content:center;padding:16px;overflow-x:hidden;
        font-family:-apple-system,BlinkMacSystemFont,'Malgun Gothic',sans-serif}
 
-  /* 목업 — 화면 높이에 꽉 차게, 내용은 전부 이 안에(iframe). 어두운 베젤 없이 깔끔한 라운드 카드(InterSafety AI 방식) */
-  .phone{position:relative;width:min(420px,94vw);height:min(920px,96vh);
+  /* 목업 — 어두운 베젤 없는 깔끔한 라운드 카드(InterSafety AI 방식).
+     높이 = min(900px, 화면높이−여백) 으로 제한해 창이 짧아도 상단이 잘리지 않게(에지 오버플로 방지) */
+  .phone{position:relative;width:min(420px,94vw);height:min(900px, calc(100dvh - 40px));
          background:#fff;border-radius:32px;overflow:hidden;
          box-shadow:0 30px 80px rgba(0,0,0,.5)}
   .phone iframe{width:100%;height:100%;border:0;display:block}
