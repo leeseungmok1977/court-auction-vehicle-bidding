@@ -240,9 +240,11 @@ def vehicles(request: Request, judgment: str = "", maker: str = "", q: str = "",
     _bt = service.backtest_stats()
     disc = _bt.get("discount_median")
     mae = _bt.get("mae_pct")
-    for r in rows:      # 실측 기반 예상낙찰가(유찰횟수 반영, 대시보드와 동일 기준)
-        r["expected_win"] = service.expected_for(r, _bt)
+    # 예상낙찰가 계산은 비용이 있으므로 '예상낙찰가순' 정렬처럼 전체가 필요할 때만 전 행 계산,
+    # 그 외에는 아래에서 현재 페이지 12행에만 계산(성능 — 목록 렌더 8~26s → 1~2s).
     if sort == "expected":
+        for r in rows:
+            r["expected_win"] = service.expected_for(r, _bt)
         rows.sort(key=lambda r: (r.get("expected_win") or 0), reverse=True)
     # 페이지네이션 (필터·정렬 후 슬라이스)
     total = len(rows)
@@ -250,6 +252,9 @@ def vehicles(request: Request, judgment: str = "", maker: str = "", q: str = "",
     page = max(1, min(page, total_pages))
     start = (page - 1) * VEHICLES_PAGE_SIZE
     page_rows = rows[start:start + VEHICLES_PAGE_SIZE]
+    if sort != "expected":      # 정렬용 전체계산이 아니면 현재 페이지만
+        for r in page_rows:
+            r["expected_win"] = service.expected_for(r, _bt)
     mlot = service.multi_lot_ids()
     for r in page_rows:      # 목록 썸네일용 사진 URL(현재 페이지만 폴더 스캔)
         fk = r.get("folder_key") or r["id"]
@@ -315,7 +320,9 @@ def vehicle_detail(request: Request, vid: str, cc: str = "", an: str = ""):
 
         wait = {"target": ub, "rounds_fast": _rounds(0.30), "rounds_slow": _rounds(0.20)}
 
-    back_url = request.cookies.get("last_list") or "/vehicles"
+    _bk = request.cookies.get("last_list") or ""
+    # 쿠키값을 href에 그대로 넣지 않도록 내부 상대경로만 허용(javascript:·data:·//host 등 스킴 차단)
+    back_url = _bk if (_bk.startswith("/") and not _bk.startswith("//")) else "/vehicles"
     bt = service.backtest_stats()
     disc = bt.get("discount_median")
     _cd = service.comparable_discount(v, bt)     # 유사 낙찰(같은차종·유사연식·주행) 기반 보정
@@ -420,12 +427,18 @@ def vehicle_appraisal(vid: str):
 @app.get("/photo/{vid}/{filename}")
 def photo(vid: str, filename: str):
     # 경로 탈출 방지 — vid·filename 모두 basename으로 정제
-    safe_vid = os.path.basename(vid)
-    safe = os.path.basename(filename)
-    fp = (DATA_DIR / safe_vid / "photos" / safe).resolve()
-    photos_root = (DATA_DIR / safe_vid / "photos").resolve()
-    if photos_root in fp.parents and fp.exists() and fp.is_file():
-        return FileResponse(str(fp))
+    # NUL바이트(%00) 등 비정상 경로는 ValueError를 내므로 잡아서 404로(500 방지)
+    try:
+        safe_vid = os.path.basename(vid)
+        safe = os.path.basename(filename)
+        if "\x00" in safe_vid or "\x00" in safe:
+            raise ValueError("null byte")
+        fp = (DATA_DIR / safe_vid / "photos" / safe).resolve()
+        photos_root = (DATA_DIR / safe_vid / "photos").resolve()
+        if photos_root in fp.parents and fp.exists() and fp.is_file():
+            return FileResponse(str(fp))
+    except (ValueError, OSError):
+        pass
     return JSONResponse({"error": "not found"}, status_code=404)
 
 

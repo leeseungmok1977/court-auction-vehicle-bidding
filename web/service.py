@@ -31,8 +31,21 @@ _lock = threading.Lock()
 _active = {"running": False, "run_id": None}
 
 
+_config_cache = {"mtime": None, "data": None}
+
+
 def load_config(path: str = "config.yaml") -> dict:
-    return yaml.safe_load(open(path, encoding="utf-8"))
+    """config.yaml 로드(mtime 캐시). 예상낙찰가 등 행마다 호출되는 경로의 파일I/O·YAML파싱
+    반복을 제거해 목록 렌더 성능을 크게 개선. 파일이 바뀌면 자동 재로딩. (읽기전용 사용 전제)"""
+    import os as _os
+    try:
+        m = _os.path.getmtime(path)
+    except OSError:
+        m = None
+    if _config_cache["data"] is None or _config_cache["mtime"] != m:
+        _config_cache["data"] = yaml.safe_load(open(path, encoding="utf-8"))
+        _config_cache["mtime"] = m
+    return _config_cache["data"]
 
 
 def is_running() -> bool:
