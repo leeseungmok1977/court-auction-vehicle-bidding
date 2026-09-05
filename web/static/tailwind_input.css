@@ -79,13 +79,13 @@ body { font-family: "Pretendard", "Malgun Gothic", sans-serif; color: #0d253d;
 }
 
 /* 그라데이션 메시(Stripe 시그니처) — 히어로 상단 워시. cream→sherbet→lavender→indigo→ruby */
+/* 브랜드 워시(오렌지·인디고·네이비) — 흰 KPI 카드가 은은히 뜸. 무지개톤 대신 브랜드톤으로 통일 */
 .mesh {
   background:
-    radial-gradient(60% 120% at 8% 0%, rgba(245,233,212,.85) 0%, rgba(245,233,212,0) 55%),
-    radial-gradient(50% 120% at 32% 0%, rgba(249,171,110,.55) 0%, rgba(249,171,110,0) 50%),
-    radial-gradient(55% 130% at 60% 0%, rgba(148,131,255,.55) 0%, rgba(148,131,255,0) 55%),
-    radial-gradient(55% 130% at 82% 0%, rgba(83,58,253,.45) 0%, rgba(83,58,253,0) 55%),
-    radial-gradient(50% 120% at 100% 0%, rgba(234,34,97,.35) 0%, rgba(234,34,97,0) 55%);
+    radial-gradient(60% 120% at 6% 0%, rgba(243,182,62,.30) 0%, rgba(243,182,62,0) 55%),
+    radial-gradient(55% 120% at 40% 0%, rgba(83,58,253,.18) 0%, rgba(83,58,253,0) 55%),
+    radial-gradient(55% 130% at 74% 0%, rgba(36,59,114,.20) 0%, rgba(36,59,114,0) 55%),
+    radial-gradient(50% 120% at 100% 0%, rgba(83,58,253,.12) 0%, rgba(83,58,253,0) 55%);
 }
 
 /* 링크·인터랙티브 색 전환(빠르게, hover=ease) */

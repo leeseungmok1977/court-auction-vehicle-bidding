@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% import "_macros.html" as ui %}
-{% block title %}{{ v.model|mdl }} — {{ v.case_no }}{% endblock %}
+{% block title %}{% set _t = v.model|mdl %}{{ _t if _t != '—' else '차량' }} · {{ v.case_no }}{% endblock %}
 {% block pagetitle %}물건 상세{% endblock %}
 {% block content %}
 
@@ -15,7 +15,9 @@
 <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
   <div class="min-w-0 flex-1">
     <div class="flex items-center gap-3 flex-wrap">
-      <h1 class="text-2xl font-bold">{{ v.maker }} {{ v.model|mdl }}</h1>
+      {% set _mdl = v.model|mdl %}
+      {% set _name = ((v.maker or '') ~ ' ' ~ (_mdl if _mdl != '—' else ''))|trim %}
+      <h1 class="text-2xl font-bold">{% if _name %}{{ _name }}{% else %}<span class="text-mut">차명 미상</span>{% endif %}</h1>
       <span class="text-sm text-mut border border-line rounded px-2 py-0.5">{{ v.year or '—' }}년식</span>
       {% if v.judgment %}<span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-semibold {{ v.judgment|bcls }}">{{ v.judgment }}</span>{% endif %}
     </div>

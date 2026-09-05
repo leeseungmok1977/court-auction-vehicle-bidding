@@ -30,6 +30,22 @@
 <link rel="icon" type="image/png" sizes="16x16" href="/static/icons/favicon-16.png"/>
 <!-- 정적 빌드 CSS + self-host 폰트 (CDN 의존 제거 — 오프라인 안전·FOUC 제거) -->
 <link rel="stylesheet" href="/static/app.css?v={{ css_v }}"/>
+<!-- 브랜드 스플래시(초기화면) — 세션당 1회, 이후 페이지 이동엔 즉시 숨김 -->
+<style>
+  #splash{position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;
+    background:radial-gradient(900px 600px at 50% -5%,#16305e 0%,#0b142b 55%,#080f22 100%);
+    transition:opacity .45s ease;color:#e7ecf5;font-family:-apple-system,BlinkMacSystemFont,'Malgun Gothic',sans-serif}
+  #splash .s-logo{width:92px;height:92px;border-radius:22px;box-shadow:0 12px 40px rgba(0,0,0,.5)}
+  #splash .s-title{font-size:22px;font-weight:800;letter-spacing:-.3px;margin-top:2px}
+  #splash .s-title b{color:#f3b63e}
+  #splash .s-sub{font-size:13px;color:#9aa7c2}
+  #splash .s-bar{width:120px;height:3px;border-radius:3px;background:rgba(255,255,255,.15);overflow:hidden;margin-top:6px}
+  #splash .s-bar span{display:block;height:100%;width:40%;background:#f3b63e;border-radius:3px;animation:sload 1s ease-in-out infinite}
+  @keyframes sload{0%{transform:translateX(-120%)}100%{transform:translateX(320%)}}
+  .splash-done #splash{display:none}
+  @media (prefers-reduced-motion: reduce){ #splash .s-bar span{animation:none} }
+</style>
+<script>try{ if(sessionStorage.getItem("nc_splash")) document.documentElement.className += " splash-done"; }catch(e){}</script>
 <script>
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', function () {
@@ -39,6 +55,25 @@
 </script>
 </head>
 <body class="bg-background text-txt h-screen overflow-hidden flex" style="height:100dvh">
+<!-- 브랜드 스플래시(초기화면) -->
+<div id="splash" aria-hidden="true">
+  <img class="s-logo" src="/static/icons/icon-192.png" alt=""/>
+  <div class="s-title">경매로 <b>내차GET</b></div>
+  <div class="s-sub">법원 자동차 경매 · 예상낙찰가 분석</div>
+  <div class="s-bar"><span></span></div>
+</div>
+<script>
+  (function(){
+    var s=document.getElementById("splash"); if(!s) return;
+    if(document.documentElement.classList.contains("splash-done")){ if(s.parentNode) s.parentNode.removeChild(s); return; }
+    setTimeout(function(){
+      s.style.opacity="0";
+      try{ sessionStorage.setItem("nc_splash","1"); }catch(e){}
+      document.documentElement.classList.add("splash-done");
+      setTimeout(function(){ if(s.parentNode) s.parentNode.removeChild(s); }, 450);
+    }, 850);
+  })();
+</script>
 {% set path = request.url.path %}
 <input type="checkbox" id="navToggle" class="peer hidden">
 <!-- 모바일 오버레이 (사이드바 열릴 때) -->
@@ -92,10 +127,26 @@
       <input name="q" class="w-full bg-surface border border-line text-txt text-sm rounded-md py-2 pl-11 pr-4 focus:outline-none focus:border-primary placeholder:text-mut/60" placeholder="차명·제조사·사건번호·법원 검색…"/>
     </form>
   </header>
-  <div class="flex-1 overflow-y-auto custom-scrollbar p-4 pb-24 lg:p-8 lg:pb-8 space-y-6">
+  <div class="flex-1 overflow-y-auto custom-scrollbar p-4 pb-28 lg:p-8 lg:pb-8 space-y-6">
     {% block content %}{% endblock %}
   </div>
 </main>
+
+<!-- 하단 탭 바 (모바일 전용) — 설치형/데스크톱(lg)은 좌측 사이드바 사용 -->
+{% macro tab(href, icon, label, active, badge=0) %}
+<a href="{{ href }}" class="flex-1 flex flex-col items-center justify-center gap-0.5 py-1.5 relative transition-colors {{ 'text-primary' if active else 'text-mut hover:text-txt' }}">
+  <span class="material-symbols-outlined text-[22px] leading-none" style="font-variation-settings:'FILL' {{ 1 if active else 0 }}">{{ icon }}</span>
+  <span class="text-[10px] font-semibold tracking-tight">{{ label }}</span>
+  {% if badge %}<span class="absolute top-1 left-1/2 translate-x-1.5 min-w-4 h-4 px-1 rounded-full bg-rose-500 text-white text-[9px] font-bold flex items-center justify-center">{{ badge if badge < 100 else '99+' }}</span>{% endif %}
+</a>
+{% endmacro %}
+<nav class="lg:hidden fixed bottom-0 inset-x-0 z-30 flex items-stretch bg-surface/95 backdrop-blur border-t border-line shadow-[0_-4px_20px_rgba(15,23,42,0.06)]"
+     style="padding-bottom:env(safe-area-inset-bottom)">
+  {{ tab('/', 'home', '홈', path=='/') }}
+  {{ tab('/vehicles', 'directions_car', '목록', path.startswith('/vehicle')) }}
+  {{ tab('/watchlist', 'star', '관심', path.startswith('/watchlist')) }}
+  {{ tab('/#alerts', 'notifications_active', '임박', false, _ac) }}
+</nav>
 
 <!-- 전역 실시간 진행 표시 (모든 화면) -->
 <script>
