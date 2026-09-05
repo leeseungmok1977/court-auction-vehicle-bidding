@@ -46,6 +46,13 @@ def service_worker():
     return FileResponse(BASE / "static" / "sw.js", media_type="application/javascript",
                         headers={"Service-Worker-Allowed": "/", "Cache-Control": "no-cache"})
 
+
+# Android TWA Digital Asset Links — 앱 서명 지문 등록 시 URL 바 없는 신뢰 앱으로 검증됨
+@app.get("/.well-known/assetlinks.json", include_in_schema=False)
+def assetlinks():
+    return FileResponse(BASE / "static" / ".well-known" / "assetlinks.json",
+                        media_type="application/json")
+
 from src.paths import DATA_DIR  # noqa: E402  (배포 시 DATA_DIR 환경변수로 영속 볼륨 지정)
 
 JUDGMENTS = ["입찰 검토 가능", "유찰 대기", "시세 신뢰도 낮음, 수동 검토", "입찰 보류", "종결"]

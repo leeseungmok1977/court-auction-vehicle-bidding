@@ -1,0 +1,26 @@
+{
+  "_comment": "Bubblewrap TWA 설정 템플릿 — host를 실제 배포 도메인으로 바꾼 뒤 사용. 자세한 절차는 docs/ANDROID.md",
+  "packageId": "kr.co.naechaget.twa",
+  "host": "REPLACE_WITH_YOUR_DOMAIN",
+  "name": "경매로 내차GET",
+  "launcherName": "내차GET",
+  "display": "standalone",
+  "orientation": "portrait",
+  "themeColor": "#ffffff",
+  "themeColorDark": "#0b142b",
+  "navigationColor": "#ffffff",
+  "backgroundColor": "#0b142b",
+  "startUrl": "/?src=twa",
+  "iconUrl": "https://REPLACE_WITH_YOUR_DOMAIN/static/icons/icon-512.png",
+  "maskableIconUrl": "https://REPLACE_WITH_YOUR_DOMAIN/static/icons/icon-maskable-512.png",
+  "webManifestUrl": "https://REPLACE_WITH_YOUR_DOMAIN/static/manifest.webmanifest",
+  "fallbackType": "customtabs",
+  "features": {},
+  "shortcuts": [
+    { "name": "물건 목록", "shortName": "목록", "url": "/vehicles" },
+    { "name": "관심 목록", "shortName": "관심", "url": "/watchlist" }
+  ],
+  "appVersionName": "1.0.0",
+  "appVersionCode": 1,
+  "signingKey": { "path": "./android.keystore", "alias": "naechaget" }
+}
