@@ -2,7 +2,7 @@
  * 전략: 정적자산(캐시우선+백그라운드갱신), 페이지(네트워크우선→오프라인 폴백).
  * 라이브 데이터 앱이라 페이지는 항상 최신을 우선하고, 오프라인일 때만 안내 페이지.
  * 버전 올리면 이전 캐시 자동 정리. */
-const CACHE = 'naechaget-v4';
+const CACHE = 'naechaget-v5';
 const PRECACHE = ['/static/offline.html', '/static/icons/icon-192.png'];
 
 self.addEventListener('install', (e) => {
