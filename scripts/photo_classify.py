@@ -116,6 +116,34 @@ def cmd_apply(args) -> int:
     return 0
 
 
+def cmd_status(args) -> int:
+    """미분류 건수 확인(루틴 진입점). 'MICLASSIFIED=n' 도 출력해 파싱 편의 제공."""
+    conn = db.connect()
+    tot = conn.execute("SELECT COUNT(*) FROM vehicles WHERE COALESCE(photo_count,0)>0").fetchone()[0]
+    unc = conn.execute(
+        "SELECT COUNT(*) FROM vehicles WHERE COALESCE(photo_count,0)>0 "
+        "AND (photo_order IS NULL OR photo_order='')").fetchone()[0]
+    conn.close()
+    print(f"사진보유 {tot} · 분류완료 {tot - unc} · 미분류 {unc}")
+    print(f"UNCLASSIFIED={unc}")
+    return 0
+
+
+def cmd_ingest(args) -> int:
+    """워크플로 출력(JSON)에서 results 배열을 뽑아 results.json 저장.
+    래퍼 형태 {result:{results:[…]}} / {results:[…]} / [ … ] 모두 처리."""
+    obj = json.loads(Path(args.path).read_text(encoding="utf-8"))
+    if isinstance(obj, dict) and isinstance(obj.get("result"), dict):
+        obj = obj["result"]
+    results = obj["results"] if isinstance(obj, dict) and "results" in obj else obj
+    if not isinstance(results, list):
+        print("results 배열을 찾지 못했습니다.", file=sys.stderr)
+        return 1
+    RESULTS.write_text(json.dumps(results, ensure_ascii=False), encoding="utf-8")
+    print(f"results.json 저장: {len(results)}건")
+    return 0
+
+
 def cmd_export_patch(args) -> int:
     """이번 배치(manifest)에서 분류된 photo_order 를 VM 이관용 패치로 추출."""
     if not MANIFEST.exists():
@@ -140,8 +168,13 @@ def main() -> int:
     p.add_argument("--status", default=None, help="특정 status만 (예: 검토가능). 기본=전체 미분류")
     p.add_argument("--limit", type=int, default=None, help="최대 건수(부하 통제)")
     p.set_defaults(func=cmd_prep)
+    s = sub.add_parser("status", help="미분류 건수 확인(루틴 진입점)")
+    s.set_defaults(func=cmd_status)
     a = sub.add_parser("apply", help="results.json → DB photo_order 반영")
     a.set_defaults(func=cmd_apply)
+    ig = sub.add_parser("ingest", help="워크플로 출력 JSON → results.json 추출")
+    ig.add_argument("path", help="워크플로 출력 파일 경로(task .output)")
+    ig.set_defaults(func=cmd_ingest)
     e = sub.add_parser("export-patch", help="분류된 photo_order → VM 이관용 패치(json)")
     e.set_defaults(func=cmd_export_patch)
     ns = ap.parse_args()
