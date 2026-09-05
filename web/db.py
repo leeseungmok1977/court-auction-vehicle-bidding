@@ -274,6 +274,11 @@ def list_vehicles(judgment: Optional[str] = None, maker: Optional[str] = None,
         where.append("condition_level IN ('fair','poor')")
     if judgment:
         where.append("judgment=?"); params.append(judgment)
+        if judgment == "입찰 검토 가능":
+            # 실제 입찰 가능만: 매각기일이 지나지 않았고(미래·오늘) + 낙찰/종결 아님.
+            # (지난 기일 유찰='다음 기일 미정', 이미 낙찰된 물건이 '검토 가능'에 섞이는 신뢰 문제 방지)
+            where.append("sale_date >= date('now','localtime')")
+            where.append("(auction_result IS NULL OR auction_result NOT IN ('낙찰','종결'))")
     if maker == MAKER_UNKNOWN:
         where.append("(maker='' OR maker IS NULL)")
     elif maker:
@@ -337,8 +342,17 @@ def counts_by_judgment() -> dict:
     conn = connect()
     rows = conn.execute(
         "SELECT judgment, COUNT(*) c FROM vehicles GROUP BY judgment").fetchall()
+    d = {(r["judgment"] or "미분류"): r["c"] for r in rows}
+    # '입찰 검토 가능'은 실제 입찰 가능(미래 기일 + 미낙찰/미종결)만 카운트 —
+    # 지난 기일 유찰(다음 기일 미정)·이미 낙찰 물건이 검토가능 KPI에 잡히는 신뢰 문제 방지.
+    # (list_vehicles(judgment='입찰 검토 가능') 필터와 동일 기준 → KPI=목록 일치)
+    biddable = conn.execute(
+        "SELECT COUNT(*) c FROM vehicles WHERE judgment='입찰 검토 가능' "
+        "AND sale_date >= date('now','localtime') "
+        "AND (auction_result IS NULL OR auction_result NOT IN ('낙찰','종결'))").fetchone()["c"]
+    d["입찰 검토 가능"] = biddable
     conn.close()
-    return {(r["judgment"] or "미분류"): r["c"] for r in rows}
+    return d
 
 
 MAKER_UNKNOWN = "(제조사 미상)"   # 제조사 빈값/NULL 물건을 격리하는 드롭다운 센티넬
