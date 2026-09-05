@@ -60,6 +60,14 @@ ssh -i C:\Users\14ZB95N\Downloads\naechaget.pem ubuntu@43.202.126.180 "cd app &&
 ```
 `apply_photo_order_patch.py` 는 기본이 **미분류만 채움**(기존 순서 보존). 재분류로 덮어쓰려면 `--force`.
 
+## 주간 자동 점검 (설치됨 · 안전판)
+`run_photo_classify_check.ps1` = 매주 작업 스케줄러가 실행. **순수 파이썬만**(헤드리스 Claude·SSH·권한생략 없음) 사용해 안전:
+미분류 확인 → 있으면 `prep`(몽타주 준비) + 데스크톱 알림(msg) + 마커파일 `data\_photo_work\NEEDS_CLASSIFY.txt` 생성. 로그 `data\_photo_work\weekly_check.log`.
+- 알림이 뜨면 사용자가 Claude에서 **`/classify-photos`** 실행 → 위 3~6단계(분류→apply→export-patch→VM반영)를 세션에서 안전 처리. 몽타주가 이미 준비돼 있어 빠름.
+- **세션 시작 시 확인**: 이 프로젝트에서 대화가 시작되고 `data/_photo_work/NEEDS_CLASSIFY.txt` 가 존재하면, 사용자에게 "사진 미분류 N건 대기 — /classify-photos" 라고 먼저 알린다.
+- 등록: `schtasks /Create /TN "NaechaGet-PhotoClassify" /TR "powershell -NoProfile -ExecutionPolicy Bypass -File \"C:\Users\14ZB95N\법원경매조회 및 분석\run_photo_classify_check.ps1\"" /SC WEEKLY /D SUN /ST 08:17 /F`
+- 해제: `schtasks /Delete /TN "NaechaGet-PhotoClassify" /F`. PC 켜짐+로그인 상태에서 실행됨.
+
 ## 메모
 - 데이터 파일(`data/…`: DB·몽타주·패치·results.json)은 git 제외. **코드/스크립트만** 커밋 대상.
 - 이 분류는 비전 판독이 필요해 완전 자동화 불가 — 세션에서 이 루틴을 주기적으로(주 1회 등) 돌려 증분 처리한다.
