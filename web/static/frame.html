@@ -14,13 +14,10 @@
        display:flex;align-items:center;justify-content:center;padding:14px;
        font-family:-apple-system,BlinkMacSystemFont,'Malgun Gothic',sans-serif}
 
-  /* 스마트폰 목업 — 화면 높이에 꽉 차게, 내용은 전부 이 안에(iframe) */
-  .phone{position:relative;width:min(420px,94vw);height:min(min(920px,96vh), calc(94vw*2.16));
-         background:#fff;border:11px solid #0b0f19;border-radius:46px;overflow:hidden;
-         box-shadow:0 34px 90px rgba(0,0,0,.62), 0 0 0 2px rgba(255,255,255,.05), inset 0 0 0 2px rgba(255,255,255,.04)}
-  /* 상단 스피커/카메라 노치 필 — 목업 리얼리티(앱 헤더 위 여백 없이 얇게) */
-  .phone::before{content:"";position:absolute;top:9px;left:50%;transform:translateX(-50%);
-         width:96px;height:5px;border-radius:5px;background:rgba(255,255,255,.28);z-index:2;pointer-events:none}
+  /* 목업 — 화면 높이에 꽉 차게, 내용은 전부 이 안에(iframe). 어두운 베젤 없이 깔끔한 라운드 카드(InterSafety AI 방식) */
+  .phone{position:relative;width:min(420px,94vw);height:min(920px,96vh);
+         background:#fff;border-radius:32px;overflow:hidden;
+         box-shadow:0 30px 80px rgba(0,0,0,.5)}
   .phone iframe{width:100%;height:100%;border:0;display:block}
 
   /* 설치 안내 — 상/하단 별도 블록이 아니라 우측 하단 코너의 은은한 플로팅 칩(자동 사라짐) */
