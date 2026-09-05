@@ -2,10 +2,27 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
 <title>{% block title %}법원경매 차량 입찰가 산정{% endblock %}</title>
+<!-- PWA(설치형 모바일앱) -->
+<link rel="manifest" href="/static/manifest.webmanifest"/>
+<meta name="theme-color" content="#ffffff"/>
+<meta name="mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="default"/>
+<meta name="apple-mobile-web-app-title" content="내차GET"/>
+<link rel="apple-touch-icon" href="/static/icons/apple-touch-180.png"/>
+<link rel="icon" type="image/png" sizes="32x32" href="/static/icons/favicon-32.png"/>
+<link rel="icon" type="image/png" sizes="16x16" href="/static/icons/favicon-16.png"/>
 <!-- 정적 빌드 CSS + self-host 폰트 (CDN 의존 제거 — 오프라인 안전·FOUC 제거) -->
 <link rel="stylesheet" href="/static/app.css?v={{ css_v }}"/>
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(function () {});
+    });
+  }
+</script>
 </head>
 <body class="bg-background text-txt h-screen overflow-hidden flex" style="height:100dvh">
 {% set path = request.url.path %}
