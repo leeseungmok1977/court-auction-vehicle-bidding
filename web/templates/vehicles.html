@@ -144,12 +144,15 @@
             {% endif %}
           </td>
           {# 매각기일 #}
-          <td class="py-2.5 px-3 font-mono text-mut text-sm whitespace-nowrap">{{ v.sale_date or '—' }}</td>
+          {% set awaiting = v.sale_date and today and v.sale_date < today and v.auction_result not in ('낙찰','종결') and v.judgment != '종결' %}
+          <td class="py-2.5 px-3 font-mono text-mut text-sm whitespace-nowrap">
+            {% if awaiting %}<span class="text-amber-700/90 not-italic" title="지난 기일 {{ v.sale_date }} 유찰 — 다음 기일은 법원 재공고 후 자동 반영">다음 기일 미정</span>
+            {% else %}{{ v.sale_date or '—' }}{% endif %}</td>
           {# 결과 #}
           <td class="py-2.5 px-3 text-right whitespace-nowrap">
             {% if v.auction_result == '낙찰' %}<span class="text-sky-700 font-mono">낙찰 {{ v.winning_price|won }}</span>
+            {% elif awaiting %}<span class="text-amber-700/80 text-xs" title="지난 {{ v.sale_date }} 유찰 — 재매각 예정">유찰 · 재매각 예정</span>
             {% elif v.auction_result %}<span class="text-mut">{{ v.auction_result }}</span>
-            {% elif v.sale_date and today and v.sale_date < today %}<span class="text-amber-700/80 text-xs" title="매각기일 지남 — 낙찰결과 갱신 대기">기일 지남</span>
             {% else %}<span class="text-mut">—</span>{% endif %}
           </td>
         </tr>
@@ -213,11 +216,16 @@
       </div>
       {% if not closed %}{{ ui.minigauge(v.min_sale_price, v.expected_win, v.median_price) }}{% endif %}
       {% if v.upper_bid and not closed %}<div class="text-right text-[11px] text-mut mt-1" title="되팔이 손익분기가">재판매 상한가 <span class="font-mono text-txt">{{ v.upper_bid|won }}</span></div>{% endif %}
+      {% set awaiting = v.sale_date and today and v.sale_date < today and v.auction_result not in ('낙찰','종결') and v.judgment != '종결' %}
       <div class="flex items-center justify-between text-xs text-mut mt-2">
+        {% if awaiting %}
+        <span class="text-amber-700/90 font-medium">🔄 다음 기일 미정</span>
+        <span class="text-mut/60">지난 {{ v.sale_date }} 유찰</span>
+        {% else %}
         <span class="font-mono">{{ v.sale_date or '—' }}</span>
         {% if v.auction_result == '낙찰' %}<span class="text-sky-700 font-mono">낙찰 {{ v.winning_price|won }}</span>
-        {% elif v.auction_result %}<span>{{ v.auction_result }}</span>
-        {% elif v.sale_date and today and v.sale_date < today %}<span class="text-amber-700/80">기일 지남</span>{% endif %}
+        {% elif v.auction_result %}<span>{{ v.auction_result }}</span>{% endif %}
+        {% endif %}
       </div>
     </a>
     {% endfor %}

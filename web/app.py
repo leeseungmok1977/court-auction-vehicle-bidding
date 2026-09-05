@@ -351,9 +351,10 @@ def vehicle_detail(request: Request, vid: str, cc: str = "", an: str = ""):
     from src.parse.appraisal import condition_adjustment
     cond = condition_adjustment(appraisal, service.load_config()) if appraisal else None
     asum = cond.get("parsed") if cond else None
+    from datetime import date as _date
     return templates.TemplateResponse("detail.html", {
         "request": request, "v": v, "photos": photos, "appraisal": appraisal,
-        "asum": asum, "cond": cond,
+        "asum": asum, "cond": cond, "today": _date.today().isoformat(),
         "can_analyze": service.can_analyze(v), "running": service.is_running(),
         "wait": wait, "back_url": back_url, "expected": expected, "dist": dist,
         "verdict": service.plain_verdict(v, expected), "comps_won": comps[:6],
