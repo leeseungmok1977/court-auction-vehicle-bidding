@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ── Oracle Ubuntu 24.04 VM 초기 설치 (경매로 내차GET) ─────────────────
+# ── Ubuntu 24.04 VM 초기 설치 (경매로 내차GET) — AWS EC2 / Oracle 등 공용 ──
 #  사용법(VM에 SSH 접속 후):
 #     git clone https://github.com/leeseungmok1977/court-auction-vehicle-bidding.git app
 #     cd app && bash deploy/oracle_setup.sh [도메인(선택)]

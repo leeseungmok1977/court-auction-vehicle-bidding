@@ -2,7 +2,7 @@
 
 목표: 무료 상시 서버 + 고정 주소 확보 → 웹 상시 운영 + 안드로이드 앱(TWA)까지 연결.
 
-역할 분담: **당신 = 오라클 가입·VM 생성·접속·데이터 업로드** / **나 = 서버 설치 자동화 스크립트**(`deploy/oracle_setup.sh`) 제공.
+역할 분담: **당신 = 오라클 가입·VM 생성·접속·데이터 업로드** / **나 = 서버 설치 자동화 스크립트**(`deploy/vm_setup.sh`) 제공.
 
 ---
 
@@ -40,7 +40,7 @@ ssh -i <개인키경로> ubuntu@<VM_공인IP>
 # 저장소 받기 + 설치 스크립트 실행 (도메인 있으면 뒤에 붙임)
 git clone https://github.com/leeseungmok1977/court-auction-vehicle-bidding.git app
 cd app
-bash deploy/oracle_setup.sh naechaget.duckdns.org      # 도메인 없으면 인자 생략
+bash deploy/vm_setup.sh naechaget.duckdns.org      # 도메인 없으면 인자 생략
 ```
 스크립트가 파이썬·nginx·systemd·방화벽까지 자동 구성한다. 끝나면 `http://<VM_IP>/` 로 접속 확인.
 
