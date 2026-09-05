@@ -304,14 +304,26 @@ def vehicle_detail(request: Request, vid: str, cc: str = "", an: str = ""):
     back_url = request.cookies.get("last_list") or "/vehicles"
     bt = service.backtest_stats()
     disc = bt.get("discount_median")
-    # 예상낙찰가 범위 상단은 시세중앙값 미만으로 캡(낙찰가가 시세와 같아지는 건 비현실적)
+    _cd = service.comparable_discount(v, bt)     # 유사 낙찰(같은차종·유사연식·주행) 기반 보정
+    comps = service.comparable_sales(v, bt)
+    lo = service.expected_winning(v.get("median_price"), bt.get("discount_p25"))
     _hi = service.expected_winning(v.get("median_price"), bt.get("discount_p75"))
+    source = None
+    if _cd:                                       # 유사 낙찰 기반이면 밴드도 유사사례 분포로
+        import statistics as _st
+        rr = sorted(c["ratio"] for c in _cd[2] if c.get("ratio"))
+        if len(rr) >= 4:
+            q = _st.quantiles(rr, n=4)
+            lo = service.expected_winning(v.get("median_price"), round(q[0], 3))
+            _hi = service.expected_winning(v.get("median_price"), round(q[2], 3))
+        source = f"유사 낙찰 {_cd[1]}건 기반"
+    # 예상낙찰가 범위 상단은 시세중앙값 미만으로 캡(낙찰가가 시세와 같아지는 건 비현실적)
     if _hi and v.get("median_price"):
         _hi = min(_hi, int(v["median_price"] * 0.97))
-    expected = {"price": service.expected_for(v, bt),
-                "lo": service.expected_winning(v.get("median_price"), bt.get("discount_p25")),
+    expected = {"price": service.expected_for(v, bt), "lo": lo,
                 "hi": _hi, "discount": disc, "sample": bt.get("sample"),
-                "mae": bt.get("mae_pct")} if disc else None
+                "mae": bt.get("mae_pct"), "source": source,
+                "comp_n": _cd[1] if _cd else 0} if disc else None
     dist = service.price_distribution(
         v, expected["price"] if expected else None, bt.get("mae_pct"))
     # 감정 요항 구조화(색상·연료·검사유효기간·옵션·상태) + 상태 반영 비용
@@ -323,7 +335,7 @@ def vehicle_detail(request: Request, vid: str, cc: str = "", an: str = ""):
         "asum": asum, "cond": cond,
         "can_analyze": service.can_analyze(v), "running": service.is_running(),
         "wait": wait, "back_url": back_url, "expected": expected, "dist": dist,
-        "verdict": service.plain_verdict(v, expected),
+        "verdict": service.plain_verdict(v, expected), "comps_won": comps[:6],
         "kcar_enabled": kcar.ENABLED, "cc_msg": cc, "an_msg": an,
     })
 

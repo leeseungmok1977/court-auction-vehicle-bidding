@@ -871,6 +871,14 @@ def backtest_stats() -> dict:
                 bym[mk] = round(w * st.median(vs) + (1 - w) * dm, 3)
         out["discount_by_model"] = bym
         out["model_learned"] = len(bym)
+    # 유사 낙찰(comparable) 매칭용 풀 — 같은 차종·유사 연식·주행거리 낙찰 사례로
+    # 예상낙찰가를 개별 보정하기 위한 경량 스냅샷(모델키·연식·주행·할인율·낙찰가).
+    out["comp_pool"] = [
+        {"model_key": _model_key(r), "year": r.get("year"), "mileage_km": r.get("mileage_km"),
+         "ratio": r["winning_price"] / r["median_price"], "winning_price": r["winning_price"],
+         "median_price": r["median_price"], "sale_date": r.get("sale_date"),
+         "case_no": r.get("case_no")}
+        for r in med_rows]
     ub_rows = [r for r in live_won if r.get("upper_bid")]
     if ub_rows:
         out["upper_n"] = len(ub_rows)
@@ -913,8 +921,66 @@ def discount_for(bt: dict, fail_count=None, model_key: str = "") -> Optional[flo
     return by_fail.get(b) or bt.get("discount_median")
 
 
+COMP_MIN_N = 3   # 유사 낙찰이 이 이상이면 개별 보정에 사용
+
+
+def comparable_sales(v: dict, bt: dict, year_tol: Optional[int] = None,
+                     mileage_tol: Optional[float] = None, limit: int = 8) -> list:
+    """이 물건과 같은 차종·유사 연식·유사 주행거리의 과거 낙찰 사례를 유사도순으로 반환.
+
+    - 같은 model_key(정규화 제조사|모델)
+    - 연식 |Δ| ≤ year_tol (기본 config year_tol=1)
+    - 둘 다 주행거리가 있으면 |Δ|/대상 ≤ mileage_tol (기본 0.30). 없으면 주행 조건 생략.
+    유사도(연식차→주행차)순 정렬. 예상낙찰가 보정과 상세 '유사 낙찰 사례' 표시에 사용.
+    """
+    pool = (bt or {}).get("comp_pool") or []
+    mk = _model_key(v)
+    if not mk:
+        return []
+    cfg = load_config()
+    ytol = year_tol if year_tol is not None else int(cfg.get("year_tol", 1))
+    mtol = mileage_tol if mileage_tol is not None else float(cfg.get("mileage_tol", 0.30))
+    yr, ml = v.get("year"), v.get("mileage_km")
+    out = []
+    for r in pool:
+        if r.get("model_key") != mk:
+            continue
+        yd = 0
+        if yr and r.get("year") is not None:
+            yd = abs(r["year"] - yr)
+            if yd > ytol:
+                continue
+        md = None
+        if ml and r.get("mileage_km"):
+            md = abs(r["mileage_km"] - ml) / ml
+            if md > mtol:           # 둘 다 주행거리가 있고 차이가 크면 제외
+                continue
+        out.append({**r, "_yd": yd, "_md": md if md is not None else 1.0})
+    out.sort(key=lambda r: (r["_yd"], r["_md"]))
+    return out[:limit]
+
+
+def comparable_discount(v: dict, bt: dict) -> Optional[tuple]:
+    """유사 낙찰 사례(≥COMP_MIN_N)로 할인율을 산출. (할인율, 표본수, 사례목록) 또는 None.
+    표본이 적을 땐 모델/전역 할인율로 수축(shrinkage)해 과적합을 막는다."""
+    comps = comparable_sales(v, bt)
+    ratios = [r["ratio"] for r in comps if r.get("ratio")]
+    if len(ratios) < COMP_MIN_N:
+        return None
+    import statistics as st
+    med = st.median(ratios)
+    fb = discount_for(bt, v.get("fail_count"), _model_key(v)) or med
+    n = len(ratios)
+    w = n / (n + 3)                 # 표본 많을수록 유사사례값 신뢰
+    return round(w * med + (1 - w) * fb, 3), n, comps
+
+
 def expected_for(v: dict, bt: dict) -> Optional[int]:
-    """물건 dict + 백테스트 통계 → (모델별/유찰) 반영 예상 낙찰가(중심 추정치)."""
+    """물건 dict + 백테스트 통계 → 예상 낙찰가(중심 추정치).
+    ① 유사 낙찰(같은차종·유사연식·주행) → ② 모델별 → ③ 유찰버킷 → ④ 전역 순으로 자동 선택."""
+    cd = comparable_discount(v, bt)
+    if cd:
+        return expected_winning(v.get("median_price"), cd[0])
     return expected_winning(v.get("median_price"),
                             discount_for(bt, v.get("fail_count"), _model_key(v)))
 
