@@ -975,14 +975,34 @@ def comparable_discount(v: dict, bt: dict) -> Optional[tuple]:
     return round(w * med + (1 - w) * fb, 3), n, comps
 
 
+def effective_median(v: dict) -> Optional[int]:
+    """산정에 반영할 시세 = 엔카(기준) + 케이카(2차 소스) 표본가중 블렌드.
+
+    케이카 표본이 충분(≥2)하고 두 소스가 극단으로 벌어지지 않을 때만 블렌드한다.
+    가중치는 케이카 표본이 많을수록 커지되 상한 35%(엔카가 여전히 기준). 표본 부족·
+    극단 괴리(오매칭 의심)면 엔카만 사용 — 노이즈로 산정을 흔들지 않기 위함(신뢰 최우선).
+    """
+    enc = v.get("median_price")
+    if not enc:
+        return enc
+    kc, kn = v.get("kcar_median"), (v.get("kcar_sample") or 0)
+    if not kc or kn < 2:
+        return enc
+    if not (0.5 <= kc / enc <= 2.0):     # 2배 이상 벌어지면 오매칭 의심 → 엔카만
+        return enc
+    w = min(0.35, kn / (kn + 6))          # 케이카 표본 가중(상한 35%)
+    return int(round(((1 - w) * enc + w * kc) / 10000) * 10000)
+
+
 def expected_for(v: dict, bt: dict) -> Optional[int]:
     """물건 dict + 백테스트 통계 → 예상 낙찰가(중심 추정치).
-    ① 유사 낙찰(같은차종·유사연식·주행) → ② 모델별 → ③ 유찰버킷 → ④ 전역 순으로 자동 선택."""
+    시세는 엔카+케이카 블렌드(effective_median), 할인율은
+    ① 유사 낙찰(같은차종·유사연식·주행) → ② 모델별 → ③ 유찰버킷 → ④ 전역 순 자동 선택."""
+    med = effective_median(v)
     cd = comparable_discount(v, bt)
     if cd:
-        return expected_winning(v.get("median_price"), cd[0])
-    return expected_winning(v.get("median_price"),
-                            discount_for(bt, v.get("fail_count"), _model_key(v)))
+        return expected_winning(med, cd[0])
+    return expected_winning(med, discount_for(bt, v.get("fail_count"), _model_key(v)))
 
 
 def _sale_snapshot(v: dict, win: int) -> dict:
@@ -1356,7 +1376,11 @@ def recompute_all_market(run_id: Optional[int] = None, finalize: bool = True) ->
                 ks = None
             fields.update(_guarded_market_fields(stats))
             if stats.median_price is not None:
-                bi = BidInput(median_price=stats.median_price,
+                # 산정 시세 = 엔카 + 케이카(2차) 블렌드
+                eff = effective_median({"median_price": stats.median_price,
+                                        "kcar_median": fields.get("kcar_median"),
+                                        "kcar_sample": fields.get("kcar_sample")})
+                bi = BidInput(median_price=eff,
                               min_sale_price=v.get("min_sale_price") or 0,
                               sample_count=stats.sample_count, platform="encar",
                               accident_grade=v.get("accident_grade") or "none",
@@ -1531,12 +1555,14 @@ def kcar_crosscheck(vid: str, config: dict | None = None) -> dict:
     tol = config.get("cross_source_tol", 0.10)
     trim = encar.trim_hint(v.get("model"))
 
-    # 저장된 감정요항의 연료(신뢰 소스)
-    fuel = None
-    fp = os.path.join("data", v.get("folder_key") or v["id"], "appraisal.txt")
-    if os.path.exists(fp):
+    # 저장된 감정요항의 연료(신뢰 소스) + 상태 반영용 원문
+    from src.paths import DATA_DIR
+    fuel, atext = None, ""
+    fp = DATA_DIR / (v.get("folder_key") or v["id"]) / "appraisal.txt"
+    if fp.exists():
         try:
-            fuel = _fuel_from_text(open(fp, encoding="utf-8").read())
+            atext = fp.read_text(encoding="utf-8")
+            fuel = _fuel_from_text(atext)
         except Exception:  # noqa: BLE001
             pass
 
@@ -1620,10 +1646,16 @@ def kcar_crosscheck(vid: str, config: dict | None = None) -> dict:
               "cross_source_rel": stats.cross_source_rel}
     fields.update(_guarded_market_fields(stats))
     if stats.median_price is not None:
-        bi = BidInput(median_price=stats.median_price, min_sale_price=v.get("min_sale_price") or 0,
+        # 산정 시세 = 엔카 + 케이카(2차) 블렌드. 상한가·판정을 블렌드 시세로 재산정
+        # (상태·사진 감가 포함 — 요항 원문·photo_count 전달).
+        eff = effective_median({"median_price": stats.median_price,
+                                "kcar_median": stats.kcar_median,
+                                "kcar_sample": stats.kcar_sample})
+        bi = BidInput(median_price=eff, min_sale_price=v.get("min_sale_price") or 0,
                       sample_count=stats.sample_count, platform="encar",
                       accident_grade=v.get("accident_grade") or "none",
-                      repair_cost=v.get("repair_cost") or 500000)
+                      repair_cost=v.get("repair_cost") or 500000,
+                      appraisal_text=atext, photo_count=v.get("photo_count"))
         bid = calculate(bi, config)
         fields.update({"upper_bid": bid.upper_bid, "lower_bound": bid.lower_bound,
                        "judgment": _final_judgment(bid.judgment, stats.confidence_label),

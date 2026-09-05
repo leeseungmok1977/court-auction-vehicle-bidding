@@ -343,7 +343,10 @@
         <dt class="text-mut">동모델 전체</dt><dd class="font-mono">{{ v.encar_total|won }} 대</dd>
         <dt class="text-mut">동급 표본</dt><dd class="font-mono">{{ v.sample_count if v.sample_count is not none else '—' }} 건 <span class="text-mut text-xs">{% if v.match_label %}({{ v.match_label }}){% else %}(연식±1·주행±30%){% endif %}</span></dd>
         <dt class="text-mut">평균가</dt><dd class="font-mono">{{ v.mean_price|won }} 원</dd>
-        <dt class="text-mut">중앙값</dt><dd class="font-mono text-lg font-semibold text-txt tnum">{{ v.median_price|won }} 원</dd>
+        <dt class="text-mut">중앙값 <span class="text-mut/60 text-xs">엔카</span></dt><dd class="font-mono text-lg font-semibold text-txt tnum">{{ v.median_price|won }} 원</dd>
+        {% if eff_median and eff_median != v.median_price %}
+        <dt class="text-mut">산정 반영 시세</dt><dd class="font-mono text-sm text-primary font-semibold tnum">{{ eff_median|won }} 원 <span class="text-mut text-xs font-normal">(엔카·케이카 블렌드 — 예상낙찰가·상한가에 반영)</span></dd>
+        {% endif %}
         <dt class="text-mut">최저가</dt><dd class="font-mono">{{ v.min_price|won }} 원</dd>
         {% if v.market_cv is not none %}
         <dt class="text-mut">가격 편차</dt><dd class="font-mono text-sm">±{{ (v.market_cv*100)|round(0)|int }}%

@@ -336,6 +336,7 @@ def vehicle_detail(request: Request, vid: str, cc: str = "", an: str = ""):
         "can_analyze": service.can_analyze(v), "running": service.is_running(),
         "wait": wait, "back_url": back_url, "expected": expected, "dist": dist,
         "verdict": service.plain_verdict(v, expected), "comps_won": comps[:6],
+        "eff_median": service.effective_median(v),
         "kcar_enabled": kcar.ENABLED, "cc_msg": cc, "an_msg": an,
     })
 
