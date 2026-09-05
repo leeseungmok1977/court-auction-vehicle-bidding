@@ -30,6 +30,7 @@ WORK = DATA_DIR / "_photo_work"
 MANIFEST = WORK / "manifest.json"
 ARGS = WORK / "args.json"
 RESULTS = WORK / "results.json"
+PATCH = DATA_DIR / "photo_order_patch.json"   # data/ 최상위(VM scp 편의)
 
 
 def _unclassified(status: str | None, limit: int | None):
@@ -115,6 +116,23 @@ def cmd_apply(args) -> int:
     return 0
 
 
+def cmd_export_patch(args) -> int:
+    """이번 배치(manifest)에서 분류된 photo_order 를 VM 이관용 패치로 추출."""
+    if not MANIFEST.exists():
+        print(f"manifest 가 없습니다: {MANIFEST}", file=sys.stderr)
+        return 1
+    mlist = json.loads(MANIFEST.read_text(encoding="utf-8"))
+    patch = {}
+    for m in mlist:
+        v = db.get_vehicle(m["vid"])
+        if v and v.get("photo_order"):
+            patch[m["vid"]] = v["photo_order"]
+    PATCH.write_text(json.dumps(patch, ensure_ascii=False), encoding="utf-8")
+    print(f"패치 생성: {PATCH} ({len(patch)}건)")
+    print("→ 이 파일을 VM으로 복사 후, VM에서 python scripts/apply_photo_order_patch.py 실행")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="차량 사진 비전 분류 파이프라인")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -124,6 +142,8 @@ def main() -> int:
     p.set_defaults(func=cmd_prep)
     a = sub.add_parser("apply", help="results.json → DB photo_order 반영")
     a.set_defaults(func=cmd_apply)
+    e = sub.add_parser("export-patch", help="분류된 photo_order → VM 이관용 패치(json)")
+    e.set_defaults(func=cmd_export_patch)
     ns = ap.parse_args()
     return ns.func(ns)
 
