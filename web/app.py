@@ -58,6 +58,19 @@ from src.paths import DATA_DIR  # noqa: E402  (배포 시 DATA_DIR 환경변수�
 JUDGMENTS = ["입찰 검토 가능", "유찰 대기", "시세 신뢰도 낮음, 수동 검토", "입찰 보류", "종결"]
 
 
+def _display_judgment(v: dict, today: str):
+    """표시용 판정 보정(신뢰): 이미 낙찰이면 '종결', 지난 기일인데 '입찰 검토 가능'으로
+    남은 물건(다음 기일 미정)은 '유찰 대기'로 표기. 가짜 '검토 가능' 배지 방지.
+    DB 값은 그대로 두고 화면 배지·강조만 실제 상태로 맞춘다."""
+    j = v.get("judgment")
+    if v.get("auction_result") == "낙찰":
+        return "종결"
+    if (j == "입찰 검토 가능" and v.get("sale_date") and v.get("sale_date") < today
+            and v.get("auction_result") not in ("낙찰", "종결")):
+        return "유찰 대기"
+    return j
+
+
 def _won(v):
     return f"{int(v):,}" if isinstance(v, (int, float)) else "—"
 
@@ -278,6 +291,9 @@ def vehicles(request: Request, judgment: str = "", maker: str = "", q: str = "",
         "judgment": judgment, "maker": maker, "q": q, "sort": sort,
         "upcoming": up or "", "result": result, "status": status}.items() if v})
     from datetime import date as _date
+    _tdy = _date.today().isoformat()
+    for r in page_rows:      # 표시용 판정 보정(지난기일 검토가능→유찰대기, 낙찰→종결) — 신뢰
+        r["judgment"] = _display_judgment(r, _tdy)
     resp = templates.TemplateResponse("vehicles.html", {
         "request": request, "rows": page_rows, "judgment": judgment, "maker": maker,
         "q": q, "sort": sort, "upcoming": up, "result": result, "status": status,
@@ -352,6 +368,7 @@ def vehicle_detail(request: Request, vid: str, cc: str = "", an: str = ""):
     cond = condition_adjustment(appraisal, service.load_config()) if appraisal else None
     asum = cond.get("parsed") if cond else None
     from datetime import date as _date
+    v["judgment"] = _display_judgment(v, _date.today().isoformat())   # 표시용 판정 보정(신뢰)
     return templates.TemplateResponse("detail.html", {
         "request": request, "v": v, "photos": photos, "appraisal": appraisal,
         "asum": asum, "cond": cond, "today": _date.today().isoformat(),
