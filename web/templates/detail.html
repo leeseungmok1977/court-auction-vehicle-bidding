@@ -611,7 +611,7 @@
         <div class="text-xs text-mut mt-1 px-4 leading-relaxed">되팔이 목적이면 <b class="text-txt">이 값 이하</b>로 낙찰돼야 차익. 실제 입찰가는 위 <b class="text-primary">추천 입찰 전략</b> 기준. </div>
       </div>
       {% endif %}
-      {% if v.breakdown and v.median_price is not none %}
+      {% if v.breakdown and v.median_price is not none and v.upper_bid %}
       {% set bd = v.breakdown %}
       {% set base = bd['기준시세'] or 1 %}
       {% set steps = [('예상 수리비', bd.get('예상수리비', 0)),
