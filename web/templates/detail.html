@@ -49,6 +49,16 @@
   </div>
 </div>
 
+{# 대표사진 히어로(법차식) — 차량을 먼저 인식, 분석은 바로 아래 #}
+{% if photos %}
+<div class="relative rounded-lg overflow-hidden border border-line cursor-pointer group" onclick="openLB(0)" title="사진 크게 보기">
+  <img src="/photo/{{ v.folder_key or v.id }}/{{ photos[0] }}" loading="lazy" alt="{{ v.model|mdl }}"
+       class="w-full h-44 sm:h-56 object-cover group-hover:brightness-95 transition">
+  <span class="absolute bottom-2 right-2 inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-black/60 text-white">
+    <span class="material-symbols-outlined text-sm leading-none">photo_library</span>{{ photos|length }}</span>
+</div>
+{% endif %}
+
 {# 시세 미계산 시에만 안내(데이터가 있으면 모순 배너 표시하지 않음) #}
 {% if v.median_price is none %}
 <div class="bg-surface border border-line rounded-lg p-4 flex items-center justify-between gap-4 flex-wrap">
@@ -95,6 +105,7 @@
     <div>
       <div class="text-xs text-mut mb-0.5">현 최저매각가</div>
       <div class="font-mono text-xl font-semibold tnum text-txt">{{ v.min_sale_price|won }} 원</div>
+      {% if v.appraisal_value and v.min_sale_price %}<div class="text-[11px] text-mut/70 tnum mt-0.5">감정가 {{ (v.appraisal_value/10000)|round|int }}만 · <b class="text-mut">대비 {{ (100*v.min_sale_price/v.appraisal_value)|round|int }}%</b></div>{% endif %}
     </div>
     <div class="ml-auto text-right">
       <div class="text-xs text-mut mb-1">시세 신뢰도</div>
@@ -159,6 +170,21 @@
   {% endif %}
 </div>
 {% endif %}
+
+<!-- 낙찰 전 점검 포인트 (법차식 실용 체크리스트) -->
+<div class="bg-surface border border-line rounded-lg p-5">
+  <div class="flex items-center gap-2 mb-3">
+    <span class="material-symbols-outlined text-primary">checklist</span>
+    <h3 class="text-lg font-semibold">낙찰 전 점검 포인트 <span class="text-mut text-sm font-normal">— 현장·서류로 반드시 확인</span></h3>
+  </div>
+  <ul class="space-y-2 text-sm text-txt/90" style="text-wrap:pretty">
+    <li class="flex gap-2"><span class="text-primary font-bold shrink-0">①</span> 외관·골격·하부 부식과 판금/도장(사고·수리) 이력 확인</li>
+    <li class="flex gap-2"><span class="text-primary font-bold shrink-0">②</span> 시동·변속 충격·누유·주행시험으로 엔진·미션 상태 점검</li>
+    <li class="flex gap-2"><span class="text-primary font-bold shrink-0">③</span> 정비이력·사고/침수 조회, 키·에어백·전장품 정상 작동 확인</li>
+    <li class="flex gap-2"><span class="text-primary font-bold shrink-0">④</span> 타이어·브레이크·배터리 등 소모품 잔량 및 교체주기 확인</li>
+    <li class="flex gap-2"><span class="text-primary font-bold shrink-0">⑤</span> 낙찰가 외 <b class="text-txt">이전비·명도(인수)·수리비</b> 추가비용을 예산에 반영</li>
+  </ul>
+</div>
 
 <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
   <!-- 좌: 물건정보·사진·요항 -->
