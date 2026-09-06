@@ -26,6 +26,8 @@ app = FastAPI(title="법원경매 차량 입찰가 산정")
 
 BASE = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(BASE / "templates"))
+# None을 빈 문자열로 렌더(격리로 비운 필드가 'None' 텍스트로 새거나 미가드 참조가 깨지지 않게)
+templates.env.finalize = lambda x: "" if x is None else x
 app.mount("/static", StaticFiles(directory=str(BASE / "static")), name="static")
 
 # CSS 캐시 버스팅 — app.css 변경(재빌드) 시 쿼리버전이 바뀌어 브라우저가 새 CSS를 받는다.
@@ -269,15 +271,17 @@ def dashboard(request: Request):
             featured["dday"] = (_dd.fromisoformat(featured["sale_date"]) - _dd.today()).days if featured.get("sale_date") else None
         except (ValueError, TypeError):
             featured["dday"] = None
+    _adm = is_admin(request)
+    _pv = lambda rows: rows if _adm else [service.public_view(r, False) for r in rows]  # noqa: E731
     return templates.TemplateResponse("dashboard.html", {
         "request": request, "counts": counts, "run": run, "total": total,
-        "starred": starred, "candidates": candidates, "running": service.is_running(),
+        "starred": starred, "candidates": _pv(candidates), "running": service.is_running(),
         "judgments": JUDGMENTS, "settings": db.get_all_settings(),
         "upcoming": db.upcoming_count(30), "pending": db.pending_count(),
         "won": db.won_count(), "backtest": _bt, "review_summary": review_summary,
-        "alerts": service.alert_items(3),
+        "alerts": _pv(service.alert_items(3)),
         "top_makers": [dict(name=m, n=n, **brands.brand_asset(m)) for m, n in db.top_makers(8)],
-        "featured": featured,
+        "featured": service.public_view(featured, _adm),
     })
 
 
@@ -388,6 +392,8 @@ def vehicles(request: Request, judgment: str = "", maker: str = "", q: str = "",
             r["dday"] = None
         av, mn = r.get("appraisal_value"), r.get("min_sale_price")   # 감정가 대비 %
         r["appr_pct"] = round(100 * mn / av) if (av and mn) else None
+    if not is_admin(request):     # 엔카 원자료 격리(M01) — 목록 각 행에서 제거
+        page_rows = [service.public_view(r, False) for r in page_rows]
     resp = templates.TemplateResponse("vehicles.html", {
         "request": request, "rows": page_rows, "judgment": judgment, "maker": maker,
         "q": q, "sort": sort, "upcoming": up, "result": result, "status": status,
@@ -498,13 +504,19 @@ def vehicle_detail(request: Request, vid: str, cc: str = "", an: str = ""):
     asum = cond.get("parsed") if cond else None
     from datetime import date as _date
     v["judgment"] = _display_judgment(v, _date.today().isoformat())   # 표시용 판정 보정(신뢰)
+    # ── 엔카 원자료 격리(M01): 파생값은 원본 v로 먼저 계산, 컨텍스트엔 비관리자용 사본 ──
+    _adm = is_admin(request)
+    eff_med = service.effective_median(v)                 # 소매 시세(유지) — 원본으로 계산
+    verdict = service.plain_verdict(v, expected)
+    can_an = service.can_analyze(v)
     return templates.TemplateResponse("detail.html", {
-        "request": request, "v": v, "photos": photos, "appraisal": appraisal,
+        "request": request, "v": service.public_view(v, _adm), "photos": photos, "appraisal": appraisal,
         "asum": asum, "cond": cond, "today": _date.today().isoformat(),
-        "can_analyze": service.can_analyze(v), "running": service.is_running(),
-        "wait": wait, "back_url": back_url, "expected": expected, "dist": dist,
-        "verdict": service.plain_verdict(v, expected), "comps_won": comps[:6],
-        "eff_median": service.effective_median(v),
+        "can_analyze": can_an, "running": service.is_running(),
+        "wait": wait, "back_url": back_url, "expected": expected,
+        "dist": dist if _adm else None,                   # 동급 매물 분포(엔카 viz)는 관리자만
+        "verdict": verdict, "comps_won": comps[:6],
+        "eff_median": eff_med,
         "kcar_enabled": kcar.ENABLED, "cc_msg": cc, "an_msg": an,
     })
 
@@ -531,9 +543,11 @@ def vehicle_report(request: Request, vid: str):
         appraisal = afile.read_text(encoding="utf-8")
     dist = service.price_distribution(
         v, expected["price"] if expected else None, bt.get("mae_pct"))
+    _adm = is_admin(request)
+    _report = service.report_data(v, config, bt)          # 원본 v로 계산
     return templates.TemplateResponse("report.html", {
-        "request": request, "v": v, "expected": expected, "appraisal": appraisal,
-        "report": service.report_data(v, config, bt), "backtest": bt, "dist": dist,
+        "request": request, "v": service.public_view(v, _adm), "expected": expected, "appraisal": appraisal,
+        "report": _report, "backtest": bt, "dist": dist if _adm else None,
         "now": datetime.now().strftime("%Y-%m-%d %H:%M"),
     })
 
@@ -685,6 +699,8 @@ def watchlist(request: Request, sort: str = "sale_date"):
         "min_sale_price": lambda v: (v.get("min_sale_price") or 0),
     }
     rows.sort(key=keys.get(sort, keys["sale_date"]))
+    if not is_admin(request):     # 엔카 원자료 격리(M01)
+        rows = [service.public_view(r, False) for r in rows]
     resp = templates.TemplateResponse("watchlist.html", {
         "request": request, "rows": rows, "sort": sort, "today": today.isoformat(),
         "mae": bt.get("mae_pct")})

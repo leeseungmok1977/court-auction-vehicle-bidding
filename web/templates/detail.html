@@ -233,7 +233,7 @@
 </div>
 {% endif %}
 
-<!-- 소매 시장 대비 차익 분석 (엔카/케이카 시세 vs 예상 낙찰가) -->
+{# 소매 시장 대비 차익 분석 (소매 시세 vs 예상 낙찰가) #}
 {% if expected and expected.price and eff_median and eff_median > expected.price and not _closed %}
 <div class="bg-surface border border-line rounded-lg p-5">
   <div class="flex items-center gap-2 mb-3">
@@ -657,9 +657,9 @@
         </div>
       </div>
       <div class="text-xs text-mut mb-4 leading-relaxed border-t border-line pt-2">
-        사고등급 <b class="text-txt">{{ bd.get('사고등급')|acc }}</b>(감가 {{ (bd.get('사고감가율', 0) * 100)|round(1) }}%)
+        사고등급 <b class="text-txt">{{ bd.get('사고등급')|acc }}</b>(감가 {{ (bd.get('사고감가율', 0) * 100)|round(1) }}%){% if is_admin(request) %}
         · 플랫폼 {{ bd.get('플랫폼') }}(×{{ bd.get('플랫폼가중') }})
-        · 시세 표본 {{ bd.get('표본수') }}건
+        · 시세 표본 {{ bd.get('표본수') }}건{% endif %}
       </div>
       {% endif %}
       {% if is_admin(request) %}

@@ -141,7 +141,7 @@
 {% endif %}
 
 
-<!-- 실행 상태 (진행 중일 때만 강조) · 관리자 전용 -->
+{# 실행 상태 (진행 중일 때만 강조) · 관리자 전용 #}
 {% if is_admin(request) %}
 <div id="status" class="bg-surface border border-line rounded-lg px-5 py-3">
   {% if run and run.status == 'running' and running %}
@@ -326,7 +326,7 @@
   {% endif %}
 </div>
 
-<!-- 운영 도구 (수집·분석·갱신) — 접이식 · 관리자 전용 -->
+{# 운영 도구 (수집·분석·갱신) — 접이식 · 관리자 전용 #}
 {% if is_admin(request) %}
 <details class="bg-surface border border-line rounded-lg group">
   <summary class="flex items-center gap-2 p-5 cursor-pointer select-none list-none">

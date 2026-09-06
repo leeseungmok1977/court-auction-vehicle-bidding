@@ -128,7 +128,7 @@
           {% set lowconf = v.market_confidence_label=='낮음' %}
           {# 최저매각가 (+ 감정가 대비 %) #}
           <td class="py-2.5 px-3 text-right whitespace-nowrap {{ 'text-rose-600' if over_mkt else 'text-amber-700' if over_bid else 'text-mut' }}"
-              {% if over_mkt %}title="경매 최저가가 엔카 시세보다 높음 — 시세보다 비싼 입찰"{% elif over_bid %}title="최저가가 산정 상한가(재판매 기준)보다 높음"{% endif %}><span class="font-mono text-sm">{{ v.min_sale_price|won }}</span>{% if v.appr_pct %}<div class="text-[10px] text-mut/60 tnum" title="최저매각가 ÷ 감정가">감정가 {{ v.appr_pct }}%</div>{% endif %}</td>
+              {% if over_mkt %}title="경매 최저가가 소매 시세보다 높음 — 시세보다 비싼 입찰"{% elif over_bid %}title="최저가가 산정 상한가(재판매 기준)보다 높음"{% endif %}><span class="font-mono text-sm">{{ v.min_sale_price|won }}</span>{% if v.appr_pct %}<div class="text-[10px] text-mut/60 tnum" title="최저매각가 ÷ 감정가">감정가 {{ v.appr_pct }}%</div>{% endif %}</td>
           {# 상한가(재판매 손익분기) #}
           <td class="py-2.5 px-3 font-mono text-right text-sm text-mut whitespace-nowrap"
               title="재판매 손익분기가(마진·부대비 차감) — 이 값 이하 낙찰 시 차익">{{ v.upper_bid|won if (v.upper_bid and not closed) else '—' }}</td>
@@ -142,8 +142,8 @@
             {% set cl = v.market_confidence_label %}
             {% set dot = 'bg-emerald-500' if cl=='높음' else 'bg-amber-500' if cl=='보통' else 'bg-rose-500' %}
             <div class="inline-flex items-center gap-1 text-xs text-mut mt-0.5"
-                 title="표본 {{ v.sample_count }}건{% if v.market_cv is not none %} · 편차 ±{{ (v.market_cv*100)|round(0)|int }}%{% endif %}">
-              <span class="w-1.5 h-1.5 rounded-full {{ dot }}"></span>{{ cl }}<span class="text-mut/60">·{{ v.sample_count }}</span>
+                 title="시세 신뢰도 {{ cl }}{% if is_admin(request) %} · 표본 {{ v.sample_count }}건{% if v.market_cv is not none %} · 편차 ±{{ (v.market_cv*100)|round(0)|int }}%{% endif %}{% endif %}">
+              <span class="w-1.5 h-1.5 rounded-full {{ dot }}"></span>{{ cl }}{% if is_admin(request) %}<span class="text-mut/60">·{{ v.sample_count }}</span>{% endif %}
             </div>
             {% endif %}
           </td>

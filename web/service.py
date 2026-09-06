@@ -1056,6 +1056,39 @@ def comparable_discount(v: dict, bt: dict) -> Optional[tuple]:
     return round(w * med + (1 - w) * fb, 3), n, comps
 
 
+# ── 엔카/케이카 원자료 격리 (MONETIZATION_SPEC TASK-M01) ─────────────────────
+# 일반 사용자 응답에서 제거할 필드 — '화면 숨김'이 아니라 데이터 계층에서 삭제(뷰소스·
+# 향후 JSON API로도 안 샘). 소매 시세(median_price)·신뢰도·재판매 손익분기는 '반영된
+# 결과'라 유지, 개별 동급 매물(comps)·케이카·표본수·매칭메타 등 원자료만 제거.
+PRIVATE_FIELDS = frozenset({
+    "market_platform", "encar_total", "sample_count", "mean_price", "min_price",
+    "market_cv", "market_vs_appraisal", "comps", "match_label",
+    "kcar_median", "kcar_sample", "cross_source_status", "cross_source_rel", "kcar_checked_at",
+    "actual_price", "actual_price_at", "repair_cost",
+})
+# breakdown(재판매 손익분기 폭포, 사용자 노출)에 섞인 엔카 메타만 골라 제거
+_BREAKDOWN_PRIVATE = frozenset({"플랫폼", "플랫폼가중", "표본수"})
+
+
+def public_view(v: Optional[dict], is_admin: bool) -> Optional[dict]:
+    """물건 dict에서 비관리자에게 나가면 안 되는 엔카/케이카 원자료를 비운 사본 반환.
+    관리자면 원본 그대로. 파생 결과(예상낙찰가·신뢰도·소매 시세·재판매 손익분기)는 유지.
+
+    서버 렌더 안전을 위해 키를 '삭제'하지 않고 **None**으로 치환한다(미가드 템플릿 참조가
+    UndefinedError로 500 되는 것을 방지 — app.py의 finalize가 None→""로 렌더).
+    ※ 향후 별도 JSON API(M05+)에서는 이 키들을 응답에서 아예 '제외'할 것."""
+    if is_admin or not v:
+        return v
+    out = dict(v)
+    for k in PRIVATE_FIELDS:
+        if k in out:
+            out[k] = None
+    bd = out.get("breakdown")
+    if isinstance(bd, dict):
+        out["breakdown"] = {k: val for k, val in bd.items() if k not in _BREAKDOWN_PRIVATE}
+    return out
+
+
 def effective_median(v: dict) -> Optional[int]:
     """산정에 반영할 시세 = 엔카(기준) + 케이카(2차 소스) 표본가중 블렌드.
 

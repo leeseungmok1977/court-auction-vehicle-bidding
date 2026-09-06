@@ -193,7 +193,7 @@ pre.body{white-space:pre-wrap;font-family:var(--sans);font-size:12.5px;color:var
         <div class="cscore">
           <div class="n {{ 'mid' if conf<70 else '' }} num">{{ conf }}<small>/100</small></div>
           <div class="l">{{ v.market_confidence_label or '—' }}</div>
-          <div class="s">동급 표본 {{ v.sample_count or 0 }}건{% if v.market_cv is not none %} · 편차 ±{{ (v.market_cv*100)|round|int }}%{% endif %}<br>현장확인 시 신뢰도 상향</div>
+          <div class="s">{% if is_admin(request) %}동급 표본 {{ v.sample_count or 0 }}건{% if v.market_cv is not none %} · 편차 ±{{ (v.market_cv*100)|round|int }}%{% endif %}<br>{% endif %}현장확인 시 신뢰도 상향</div>
         </div>
         <div class="cbars">
           {% for c in report.cats %}
@@ -248,7 +248,7 @@ pre.body{white-space:pre-wrap;font-family:var(--sans);font-size:12.5px;color:var
   </section>
   {% endif %}
 
-  <!-- 05 시세 비교 — SK엔카 원자료(개별 매물)는 관리자 전용 -->
+  {# 05 시세 비교 — SK엔카 원자료(개별 매물)는 관리자 전용 #}
   {% if v.comps and is_admin(request) %}
   <section class="section">
     <div class="sec-head"><span class="sec-no">05</span><h2>시세 비교 — 동급 매물</h2><span class="sec-note">SK엔카 동급 표본{% if v.kcar_median %} · 케이카 참고{% endif %}</span></div>
@@ -377,7 +377,7 @@ pre.body{white-space:pre-wrap;font-family:var(--sans);font-size:12.5px;color:var
     <div class="sec-head"><span class="sec-no">10</span><h2>산출 로직</h2></div>
     <div class="card">
       <div class="v-label" style="margin-bottom:8px">예상낙찰가 (일반 매수)</div>
-      <div class="logic"><span class="ln">1</span><div class="ld">엔카 시세중앙값<small>동급 이상치 제거 후 중앙값</small></div><span class="lv num">{{ med|won }}</span></div>
+      <div class="logic"><span class="ln">1</span><div class="ld">소매 시세중앙값<small>동급 이상치 제거 후 중앙값</small></div><span class="lv num">{{ med|won }}</span></div>
       <div class="logic"><span class="ln">2</span><div class="ld">× 실측 낙찰률(유찰횟수 반영)<small>과거 낙찰가/시세 분포{% if v.fail_count %} · 유찰 {{ v.fail_count }}회 버킷{% endif %}</small></div><span class="lv num">×{{ ((report.discount or 0)*100)|round|int }}%</span></div>
       <div class="logic"><span class="ln">＝</span><div class="ld"><b>예상낙찰가</b><small>참고 정확도 ±{{ report.mae|round|int if report.mae else 30 }}% · 분위수 밴드 {{ report.lo|won if report.lo else '—' }}~{{ report.hi|won if report.hi else '—' }}</small></div><span class="lv num">{{ exp|won }}</span></div>
       {% if v.breakdown %}
@@ -407,7 +407,7 @@ pre.body{white-space:pre-wrap;font-family:var(--sans);font-size:12.5px;color:var
 
   <div class="disc">
     <b>이용 안내 및 면책</b><br>
-    본 리포트는 대법원 법원경매정보·감정평가서·보험이력·SK엔카(+케이카) 공개 매물 정보를 기반으로 발행 시점에 자동 생성된 참고자료입니다. 시세·낙찰 경쟁·차량 상태는 매각기일까지 변동될 수 있으며, 최종 입찰 판단과 결과의 책임은 입찰자 본인에게 있습니다. 예상낙찰가는 실측 통계 기반 중심 추정치로 오차(±{{ report.mae|round|int if report and report.mae else 30 }}%)가 있고 단일 경매를 정밀 예측하지 않습니다. 본 리포트는 투자 권유가 아니며, 차량 실물 확인·등기/공부 열람을 대체하지 않습니다. <b style="color:var(--red)">STOP RULE 해당 사전 발견 시 권장가는 무효입니다.</b>
+    본 리포트는 대법원 법원경매정보·감정평가서·보험이력과 소매 시세 참고 정보를 기반으로 발행 시점에 자동 생성된 참고자료입니다. 시세·낙찰 경쟁·차량 상태는 매각기일까지 변동될 수 있으며, 최종 입찰 판단과 결과의 책임은 입찰자 본인에게 있습니다. 예상낙찰가는 실측 통계 기반 중심 추정치로 오차(±{{ report.mae|round|int if report and report.mae else 30 }}%)가 있고 단일 경매를 정밀 예측하지 않습니다. 본 리포트는 투자 권유가 아니며, 차량 실물 확인·등기/공부 열람을 대체하지 않습니다. <b style="color:var(--red)">STOP RULE 해당 사전 발견 시 권장가는 무효입니다.</b>
   </div>
   <footer class="foot">
     <span>AUTOBID REPORT · {{ v.case_no }}</span>
