@@ -1335,12 +1335,13 @@ def report_data(v: dict, config: dict, bt: dict) -> Optional[dict]:
     fixed = transfer + delivery
     repair = v.get("repair_cost") or 500000
     reserve = 500000                          # 리스크 충당(현금) — 추정
-    exp = expected_for(v, bt) or 0
+    # 상세와 동일한 단일 소스(expected_band): 중심(exp)=균형, 밴드(lo/hi)가 항상 중심을 감싼다.
+    # (구: exp=최저가×프리미엄, lo/hi=시세×할인율 → 서로 다른 모델이라 밴드가 중심을 벗어나는 모순)
+    _band = expected_band(v, bt) or {}
+    exp = _band.get("price") or expected_for(v, bt) or 0
     upper = v.get("upper_bid") or 0
-    lo = expected_winning(med, bt.get("discount_p25"))
-    hi = expected_winning(med, bt.get("discount_p75"))
-    if hi:
-        hi = min(hi, int(med * 0.97))
+    lo = _band.get("lo")
+    hi = _band.get("hi")
     resale = med                              # 보수적 재판매가 = 시세중앙값
     target_margin = round(med * config.get("margin_rate", 0.15))
 

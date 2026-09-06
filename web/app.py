@@ -40,6 +40,60 @@ templates.env.globals["css_v"] = _css_version()  # 시작 시점 CSS 버전(재�
 templates.env.globals["alert_count"] = lambda: service.alert_count(3)
 
 
+# ── 관리자 모드 ─────────────────────────────────────────────────────────────
+# 일반 사용자에게는 SK엔카 원자료(개별 동급 매물·시세 소스)와 운영 도구(수집·분석·
+# 갱신)를 숨기고, '반영된 결과'만 노출한다. 운영자는 비밀키로 관리자 쿠키를 받아 전체를 본다.
+# 키는 환경변수 NAECHAGET_ADMIN_KEY로 주입(코드·설정에 하드코딩 금지). 미설정 시 관리자 모드 비활성.
+import hashlib as _hashlib  # noqa: E402
+import hmac as _hmac  # noqa: E402
+
+_ADMIN_KEY = os.environ.get("NAECHAGET_ADMIN_KEY", "")
+
+
+def _admin_token() -> str:
+    return _hashlib.sha256(("nq-admin|" + _ADMIN_KEY).encode()).hexdigest()[:40] if _ADMIN_KEY else ""
+
+
+def is_admin(request: Request) -> bool:
+    if not _ADMIN_KEY:
+        return False
+    tok = request.cookies.get("nq_admin") or ""
+    return bool(tok) and _hmac.compare_digest(tok, _admin_token())
+
+
+templates.env.globals["is_admin"] = is_admin
+
+
+def _require_admin(request: Request) -> None:
+    """운영 엔드포인트 보호 — 관리자 아니면 403(버튼 숨김만으론 부족, 직접 POST 차단)."""
+    from fastapi import HTTPException
+    if not is_admin(request):
+        raise HTTPException(status_code=403, detail="관리자 전용 기능입니다.")
+
+
+@app.get("/admin", include_in_schema=False)
+def admin_gate(request: Request, key: str = ""):
+    if key:
+        if _ADMIN_KEY and _hmac.compare_digest(key, _ADMIN_KEY):
+            resp = RedirectResponse("/", status_code=303)
+            resp.set_cookie("nq_admin", _admin_token(), max_age=60 * 60 * 24 * 90,
+                            httponly=True, samesite="lax", secure=True)
+            return resp
+        return HTMLResponse("<p style='font-family:sans-serif;padding:2rem'>인증 실패</p>", status_code=403)
+    on = is_admin(request)
+    body = ("관리자 모드 <b>ON</b> · <a href='/admin/logout'>로그아웃</a>" if on
+            else "일반 모드. 관리자는 <code>/admin?key=발급키</code> 로 접속하세요."
+            if _ADMIN_KEY else "관리자 키가 설정되지 않았습니다(NAECHAGET_ADMIN_KEY).")
+    return HTMLResponse(f"<p style='font-family:sans-serif;padding:2rem'>{body} · <a href='/'>홈</a></p>")
+
+
+@app.get("/admin/logout", include_in_schema=False)
+def admin_logout():
+    resp = RedirectResponse("/", status_code=303)
+    resp.delete_cookie("nq_admin")
+    return resp
+
+
 # PWA 서비스워커 — 루트 스코프(/)로 서빙해야 앱 전체를 제어(정적경로 서빙 시 스코프가 /static/로 제한됨)
 @app.get("/sw.js", include_in_schema=False)
 def service_worker():
@@ -244,9 +298,10 @@ def landing(request: Request):
 
 
 @app.post("/daily/settings")
-def daily_settings(enabled: str = Form(""), daily_time: str = Form("06:00"),
+def daily_settings(request: Request, enabled: str = Form(""), daily_time: str = Form("06:00"),
                    daily_within: int = Form(30), analyze: str = Form(""),
                    analyze_limit: int = Form(0)):
+    _require_admin(request)
     db.set_setting("daily_enabled", "1" if enabled else "0")
     db.set_setting("daily_time", daily_time or "06:00")
     db.set_setting("daily_within", str(daily_within or 30))
@@ -256,8 +311,9 @@ def daily_settings(enabled: str = Form(""), daily_time: str = Form("06:00"),
 
 
 @app.post("/daily/run-now")
-def daily_run_now(within: int = Form(30), analyze: str = Form("1"),
+def daily_run_now(request: Request, within: int = Form(30), analyze: str = Form("1"),
                   analyze_limit: int = Form(0)):
+    _require_admin(request)
     service.start_daily(within_days=within, analyze=bool(analyze),
                         analyze_limit=analyze_limit)
     return RedirectResponse("/", status_code=303)
@@ -533,7 +589,8 @@ def photo(vid: str, filename: str):
 
 
 @app.post("/vehicle/{vid}/analyze")
-def analyze_one(vid: str):
+def analyze_one(request: Request, vid: str):
+    _require_admin(request)
     r = service.analyze_single(vid)
     an = ""
     if r is None:
@@ -551,13 +608,15 @@ def analyze_one(vid: str):
 
 
 @app.post("/vehicle/{vid}/recompute")
-def recompute(vid: str, repair_cost: int = Form(0)):
+def recompute(request: Request, vid: str, repair_cost: int = Form(0)):
+    _require_admin(request)
     service.recompute(vid, repair_cost)
     return RedirectResponse(f"/vehicle/{vid}", status_code=303)
 
 
 @app.post("/vehicle/{vid}/crosscheck")
-def crosscheck(vid: str):
+def crosscheck(request: Request, vid: str):
+    _require_admin(request)
     """케이카 2차 소스로 시세 교차검증(온디맨드). 결과 메시지를 배너로 전달."""
     from urllib.parse import quote
     try:
@@ -575,8 +634,9 @@ def crosscheck(vid: str):
 
 
 @app.post("/vehicle/{vid}/actual")
-def actual_price(vid: str, actual_price: str = Form("")):
-    """사용자가 확인한 실측 시세 기록(캘리브레이션용)."""
+def actual_price(request: Request, vid: str, actual_price: str = Form("")):
+    """사용자가 확인한 실측 시세 기록(캘리브레이션용) — 운영자 전용."""
+    _require_admin(request)
     from datetime import datetime
     try:
         val = int(actual_price) if actual_price.strip() else None
@@ -638,11 +698,13 @@ def _manwon_to_won(v: str):
 
 
 @app.post("/run")
-def run(max_items: int = Form(5), scan_limit: int = Form(40), repair_cost: int = Form(500000),
+def run(request: Request, max_items: int = Form(5), scan_limit: int = Form(40),
+        repair_cost: int = Form(500000),
         car_nm: str = Form(""), maker: str = Form(""),
         year_min: str = Form(""), year_max: str = Form(""),
         price_min: str = Form(""), price_max: str = Form(""),
         fail_min: str = Form(""), car_type: str = Form("Y")):
+    _require_admin(request)
     search = None
     if car_nm.strip() or maker.strip():
         search = {
@@ -664,19 +726,22 @@ def run(max_items: int = Form(5), scan_limit: int = Form(40), repair_cost: int =
 
 
 @app.post("/reanalyze")
-def reanalyze(max_items: int = Form(20)):
+def reanalyze(request: Request, max_items: int = Form(20)):
+    _require_admin(request)
     service.start_reanalyze(max_items=max_items)
     return RedirectResponse("/", status_code=303)
 
 
 @app.post("/results/run-now")
-def results_run_now(max_items: int = Form(300)):
+def results_run_now(request: Request, max_items: int = Form(300)):
+    _require_admin(request)
     service.start_results(max_items=max_items)
     return RedirectResponse("/", status_code=303)
 
 
 @app.post("/recompute-all")
-def recompute_all():
+def recompute_all(request: Request):
+    _require_admin(request)
     service.start_recompute_all()
     return RedirectResponse("/", status_code=303)
 

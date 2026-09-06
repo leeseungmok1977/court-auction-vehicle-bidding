@@ -24,7 +24,7 @@
     <p class="text-sm text-mut mt-1">{{ v.court }} · 사건 {{ v.case_no }} · 물건 {{ v.item_no }}</p>
   </div>
   <div class="flex flex-wrap gap-2 sm:shrink-0">
-    {% if can_analyze and v.status == '완료' %}
+    {% if can_analyze and v.status == '완료' and is_admin(request) %}
     <form method="post" action="/vehicle/{{ v.id }}/analyze"
           onsubmit="var b=this.querySelector('button');b.innerHTML='<span class=&quot;material-symbols-outlined text-lg animate-spin&quot;>progress_activity</span> 분석 중…';b.disabled=true;">
       <button class="btn-ghost text-sm flex items-center gap-1.5" {% if running %}disabled{% endif %}>
@@ -83,7 +83,7 @@
     {% if v.auction_result == '낙찰' or v.judgment == '종결' %}<b class="text-txt">매각 종료</b>된 물건입니다 — 시세·입찰가는 계산하지 않습니다.
     {% else %}현재 <b class="text-txt">{{ (v.status or '미분석')|sstat }}</b> 상태입니다 — 시세·입찰가가 아직 계산되지 않았습니다.{% endif %}
   </div>
-  {% if can_analyze and not (v.auction_result == '낙찰' or v.judgment == '종결') %}
+  {% if can_analyze and is_admin(request) and not (v.auction_result == '낙찰' or v.judgment == '종결') %}
   <form method="post" action="/vehicle/{{ v.id }}/analyze" onsubmit="this.querySelector('button').innerHTML='<span class=&quot;material-symbols-outlined text-lg animate-spin&quot;>progress_activity</span> 분석 중…';this.querySelector('button').disabled=true;">
     <button class="btn-primary text-sm flex items-center gap-1.5" {% if running %}disabled{% endif %}>
       <span class="material-symbols-outlined text-lg">analytics</span> 이 물건 분석 (약 10초)</button>
@@ -162,9 +162,10 @@
   {% endif %}
 </div>
 
+{% if comps_won or (dist and is_admin(request)) %}
 <div class="bg-surface border border-line rounded-lg p-5">
-    {# 동급 매물 실제 시세 분포 — 표가 아닌 히스토그램으로 '어느 가격대에 베팅하는가' #}
-  {% if dist %}
+    {# 동급 매물 시세 분포(엔카 매물 viz)는 관리자 전용 — 사용자는 유사 낙찰 사례(법원 데이터)만 #}
+  {% if dist and is_admin(request) %}
   <div>
     <div class="text-xs text-mut mb-1">동급 매물 시세 분포 <span class="text-mut/60">— 예상낙찰가가 실매물 분포의 어디에 위치하는가</span></div>
     {{ ui.histogram(dist) }}
@@ -200,6 +201,7 @@
   </div>
   {% endif %}
 </div>
+{% endif %}{# /동급 분포·유사낙찰 카드 #}
 {% endif %}
 
 {% set _closed = v.auction_result == '낙찰' or v.judgment == '종결' %}
@@ -236,7 +238,7 @@
 <div class="bg-surface border border-line rounded-lg p-5">
   <div class="flex items-center gap-2 mb-3">
     <span class="material-symbols-outlined text-emerald-600">savings</span>
-    <h3 class="text-lg font-semibold whitespace-nowrap">소매 시장 대비 차익 <span class="text-mut text-sm font-normal hidden sm:inline">— 엔카/케이카 시세 vs 예상 낙찰가</span></h3>
+    <h3 class="text-lg font-semibold whitespace-nowrap">소매 시장 대비 차익 <span class="text-mut text-sm font-normal hidden sm:inline">— 소매 시세 vs 예상 낙찰가</span></h3>
   </div>
   <div class="flex items-center gap-3 flex-wrap tabular-nums">
     <div><div class="text-[11px] text-mut">소매 평균 시세</div><div class="font-mono text-base font-semibold text-txt">{{ eff_median|won }}</div></div>
@@ -409,7 +411,7 @@
       {% endif %}
       {% if cond and cond.add %}
       <div class="mt-4 text-xs bg-amber-50 border border-amber-200 text-amber-800 rounded-md px-3 py-2 leading-relaxed">
-        <b>상태·검사 반영</b> — 상한가에서 <b class="font-mono">−{{ cond.add|won }}원</b> 추가 차감{% if cond.flags %} ({{ cond.flags|join(', ') }}){% endif %}. <span class="text-amber-700/80">현장 확인 후 [다시 분석]하면 산정에 반영됩니다.</span>
+        <b>상태·검사 반영</b> — 상한가에서 <b class="font-mono">−{{ cond.add|won }}원</b> 추가 차감{% if cond.flags %} ({{ cond.flags|join(', ') }}){% endif %}.{% if is_admin(request) %} <span class="text-amber-700/80">현장 확인 후 [다시 분석]하면 산정에 반영됩니다.</span>{% endif %}
       </div>
       {% endif %}
       <details class="mt-4">
@@ -425,6 +427,8 @@
 
   <!-- 우: 시세·산정·메모 -->
   <div class="space-y-6">
+    {# SK엔카 원자료(시세 소스·개별 동급 매물·감사)는 관리자 전용 — 일반 사용자는 반영된 결과만 본다 #}
+    {% if is_admin(request) %}
     <div class="bg-surface border border-line rounded-lg p-5">
       <div class="flex items-center justify-between mb-3">
         <h3 class="text-lg font-semibold">시세 <span class="text-mut text-sm font-normal">(SK엔카)</span></h3>
@@ -542,6 +546,7 @@
       </details>
       {% endif %}
     </div>
+    {% endif %}{# /관리자 전용 시세 카드 #}
 
     <div class="bg-surface border border-line rounded-lg p-5">
       <h3 class="text-lg font-semibold mb-3">입찰가 산정 근거</h3>
@@ -657,11 +662,13 @@
         · 시세 표본 {{ bd.get('표본수') }}건
       </div>
       {% endif %}
+      {% if is_admin(request) %}
       <form method="post" action="/vehicle/{{ v.id }}/recompute" class="flex gap-3 items-end pt-3 border-t border-line">
         <div class="flex-1"><label class="lbl">예상 수리비(원) 변경 → 재산정</label>
           <input class="inp w-full" type="number" name="repair_cost" value="{{ v.repair_cost or 0 }}" step="100000"></div>
         <button class="btn-primary text-sm">재산정</button>
       </form>
+      {% endif %}
     </div>
 
     <div class="bg-surface border border-line rounded-lg p-5">

@@ -41,7 +41,7 @@ ssh -i C:\Users\14ZB95N\Downloads\naechaget.pem ubuntu@<탄력적IP>
 
 # VM 안에서:
 git clone https://github.com/leeseungmok1977/court-auction-vehicle-bidding.git app
-cd app && bash deploy/vm_setup.sh naechaget.duckdns.org      # 도메인 없으면 인자 생략
+cd app && bash deploy/vm_setup.sh naechaget.co.kr      # 도메인 없으면 인자 생략
 ```
 스크립트가 파이썬·nginx·상시실행(systemd)·방화벽까지 자동 구성. 끝나면 `http://<탄력적IP>/` 접속 확인.
 
@@ -54,13 +54,13 @@ scp -i <키.pem> data\auction.db ubuntu@<탄력적IP>:/home/ubuntu/app/data/
 업로드 후: `ssh -i <키.pem> ubuntu@<탄력적IP> "sudo systemctl restart naechaget"`
 
 ## STEP 8. 도메인 + HTTPS
-1. **DuckDNS**([duckdns.org](https://www.duckdns.org)) 서브도메인 → **탄력적 IP** 지정(예: `naechaget.duckdns.org`).
+1. **DuckDNS**([duckdns.org](https://www.duckdns.org)) 서브도메인 → **탄력적 IP** 지정(예: `naechaget.co.kr`).
 2. VM에서 HTTPS 발급:
 ```bash
 sudo apt install -y certbot python3-certbot-nginx
-sudo certbot --nginx -d naechaget.duckdns.org
+sudo certbot --nginx -d naechaget.co.kr
 ```
-→ `https://naechaget.duckdns.org` 완성 → [ANDROID.md](ANDROID.md)의 PWABuilder에 넣어 안드로이드 앱(.aab) 생성.
+→ `https://naechaget.co.kr` 완성 → [ANDROID.md](ANDROID.md)의 PWABuilder에 넣어 안드로이드 앱(.aab) 생성.
 
 ---
 

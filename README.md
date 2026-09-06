@@ -3,7 +3,7 @@
 대법원 법원경매정보 차량 물건을 수집하고, **SK엔카 + 케이카(2차 소스) 시세를 교차검증**하며,
 **최저매각가 × 유찰 프리미엄**으로 예상 낙찰가를 산정하는 앱. **"GET" 브랜드 시리즈**의 첫 앱.
 
-- 🌐 **라이브**: **https://naechaget.duckdns.org** (AWS EC2 상시배포 · PWA 설치형 · 안드로이드 TWA 경로)
+- 🌐 **라이브**: **https://naechaget.co.kr** (AWS EC2 상시배포 · PWA 설치형 · 안드로이드 TWA 경로)
 - 🎨 **디자인 시스템**: [.claude/skills/get-design-system/SKILL.md](.claude/skills/get-design-system/SKILL.md) — 딥네이비+오렌지 브랜드 컨셉(GET 시리즈 공통)
 - 📐 설계: [통합설계서 v1.0](법원경매_차량_입찰가산정_통합설계서_v1.0.md) · 규칙: [CLAUDE.md](CLAUDE.md)
 
@@ -106,7 +106,7 @@ python run_web.py                    # 웹서버 실행 (포트 변경: python r
 | 요항 | 감정요항 파싱·DB 저장 → 필터/정렬 | ✅ 완료 | 검사경과·외관손상 필터, 상태·검사 상한가 반영 |
 | 사진 | 사진 비전 분류(정면·측면·실내)+사진없음 감가 | ✅ 완료 | 전 물건 분류(비차량 front=0)·증분 파이프라인·다물건 '사진 혼재?' 배지 |
 | 유료화 | 랜딩·한줄판정·D-3 알림·건당 리포트 UI | ✅ 완료(무료 확보 우선) | 결제·회원은 준법 게이트로 비활성(MON-01/02 보류) |
-| 배포 | **AWS EC2 상시배포(HTTPS)** + PWA/TWA | ✅ 라이브 | **https://naechaget.duckdns.org** · systemd+nginx · 매일 06:30 자동갱신 · [docs/DEPLOY_AWS.md](docs/DEPLOY_AWS.md) |
+| 배포 | **AWS EC2 상시배포(HTTPS)** + PWA/TWA | ✅ 라이브 | **https://naechaget.co.kr** · systemd+nginx · 매일 06:30 자동갱신 · [docs/DEPLOY_AWS.md](docs/DEPLOY_AWS.md) |
 | 디자인2 | 브랜드(경매로 내차GET)·딥네이비 컨셉·신규화면 | ✅ 완료 | 달력·법원별·프리미엄 카드·브랜드 로고 · [디자인 스킬](.claude/skills/get-design-system/SKILL.md) |
 | 예측 | 최저가×유찰 프리미엄 (MAE 8.7%) | ✅ 완료 | LOO 정직 백테스트, 목표 ≤15% 달성 |
 | L4 | 감정평가서 PDF(전자문서) | ⏳ 진행예정 | 요항 텍스트로 핵심정보는 이미 확보 |
@@ -174,7 +174,7 @@ python -m src.bidcalc.calculator
 ## 최근 개선 이력 (2026-09) — 브랜딩·배포·디자인 대개편·예측 정확도
 
 **🚀 운영 배포 (라이브)**
-- **AWS EC2(서울, Ubuntu 24.04, t3.micro)** 상시배포 → **https://naechaget.duckdns.org** (Let's Encrypt HTTPS·HTTP→HTTPS·자동갱신). systemd(`naechaget`)+nginx 리버스프록시, DB·사진 업로드, **매일 자동 갱신 06:30**.
+- **AWS EC2(서울, Ubuntu 24.04, t3.micro)** 상시배포 → **https://naechaget.co.kr** (Let's Encrypt HTTPS·HTTP→HTTPS·자동갱신). systemd(`naechaget`)+nginx 리버스프록시, DB·사진 업로드, **매일 자동 갱신 06:30**.
 - **PWA**(설치형)+**안드로이드 TWA** 경로(PWABuilder). 반응형: 데스크톱 브라우저=폰 목업(모바일 미리보기), 설치앱=데스크톱 화면. ⚠️ 교훈: requirements 버전 **핀 필수**(미고정 시 Starlette 상위버전이 템플릿 렌더 깨뜨림).
 
 **🎯 예측 정확도 대폭 개선 (MAE 26.6% → 8.7%)**

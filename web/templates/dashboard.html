@@ -141,7 +141,8 @@
 {% endif %}
 
 
-<!-- 실행 상태 (진행 중일 때만 강조) -->
+<!-- 실행 상태 (진행 중일 때만 강조) · 관리자 전용 -->
+{% if is_admin(request) %}
 <div id="status" class="bg-surface border border-line rounded-lg px-5 py-3">
   {% if run and run.status == 'running' and running %}
   <div class="flex items-center justify-between mb-2">
@@ -184,6 +185,7 @@
   <div class="hidden"><div id="bar"></div></div>
   {% endif %}
 </div>
+{% endif %}{# /실행 상태 관리자 전용 #}
 
 <!-- 임박 매각기일 알림 (D-3) -->
 {% if alerts %}
@@ -274,7 +276,7 @@
     {% endfor %}
   </div>
   {% else %}
-  <p class="text-sm text-mut">아직 없습니다. 아래 <b class="text-txt">운영 도구 → 시세 분석</b>을 실행하면 검토 가능한 물건이 채워집니다.</p>
+  <p class="text-sm text-mut">아직 검토 가능한 물건이 없습니다.{% if is_admin(request) %} 아래 <b class="text-txt">운영 도구 → 시세 분석</b>을 실행하면 채워집니다.{% else %} 매일 갱신 시 자동으로 채워집니다.{% endif %}</p>
   {% endif %}
 </div>
 
@@ -320,11 +322,12 @@
   </div>
   {% endif %}
   {% else %}
-  <p class="text-sm text-mut">낙찰 물건에 시세가 산출되면 여기서 실측 정확도를 자동 백테스트합니다. (운영 도구 → 낙찰결과 갱신 + 시세 분석)</p>
+  <p class="text-sm text-mut">낙찰 물건에 시세가 산출되면 여기서 실측 정확도를 자동 백테스트합니다.{% if is_admin(request) %} (운영 도구 → 낙찰결과 갱신 + 시세 분석){% endif %}</p>
   {% endif %}
 </div>
 
-<!-- 운영 도구 (수집·분석·갱신) — 접이식 -->
+<!-- 운영 도구 (수집·분석·갱신) — 접이식 · 관리자 전용 -->
+{% if is_admin(request) %}
 <details class="bg-surface border border-line rounded-lg group">
   <summary class="flex items-center gap-2 p-5 cursor-pointer select-none list-none">
     <span class="material-symbols-outlined text-mut group-open:rotate-90 transition">chevron_right</span>
@@ -429,4 +432,5 @@
 
   </div>
 </details>
+{% endif %}{# /운영 도구 관리자 전용 #}
 {% endblock %}
