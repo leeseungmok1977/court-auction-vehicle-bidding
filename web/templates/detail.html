@@ -84,57 +84,63 @@
 {% set lowconf = v.market_confidence_label == '낮음' %}
 {% set cl = v.market_confidence_label %}
 {% set cbg = 'bg-emerald-50 text-emerald-700 border-emerald-200' if cl=='높음' else 'bg-amber-50 text-amber-700 border-amber-200' if cl=='보통' else 'bg-rose-50 text-rose-700 border-rose-200' %}
-<div class="bg-surface border border-line rounded-lg p-5">
+<div class="relative overflow-hidden rounded-2xl p-5 text-white" style="background:linear-gradient(150deg,#16305e 0%,#0f2247 55%,#0b1730 100%)">
+  <div class="absolute -right-8 -top-10 w-40 h-40 rounded-full bg-amber-400/10 blur-2xl pointer-events-none"></div>
+  <div class="relative inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/10 border border-white/15 text-xs font-semibold text-amber-300 mb-4">
+    <span class="material-symbols-outlined text-[15px]">psychology</span> AI 낙찰 예측 분석{% if expected.source %} <span class="text-white/50 font-normal">· {{ expected.source }}</span>{% endif %}
+  </div>
   {% if verdict %}
-  {% set vtone = {'ok':'bg-emerald-50 border-emerald-200 text-emerald-900','wait':'bg-amber-50 border-amber-200 text-amber-900','caution':'bg-sky-50 border-sky-200 text-sky-900','closed':'bg-slate-50 border-line text-mut'}[verdict.tone] %}
-  <div class="flex items-start gap-2.5 rounded-lg border px-4 py-3 mb-5 {{ vtone }}">
-    <span class="material-symbols-outlined text-lg shrink-0 mt-px">{{ 'thumb_up' if verdict.tone=='ok' else 'schedule' if verdict.tone=='wait' else 'info' if verdict.tone=='caution' else 'lock' }}</span>
-    <p class="text-sm font-medium leading-snug" style="text-wrap:pretty">{{ verdict.text }}</p>
+  <div class="relative flex items-start gap-2.5 rounded-xl bg-white/[0.08] border border-white/10 px-4 py-3 mb-5">
+    <span class="material-symbols-outlined text-lg shrink-0 mt-px {{ 'text-emerald-300' if verdict.tone=='ok' else 'text-amber-300' if verdict.tone=='wait' else 'text-sky-300' if verdict.tone=='caution' else 'text-white/50' }}">{{ 'thumb_up' if verdict.tone=='ok' else 'schedule' if verdict.tone=='wait' else 'info' if verdict.tone=='caution' else 'lock' }}</span>
+    <p class="text-sm font-medium leading-snug text-white/90" style="text-wrap:pretty">{{ verdict.text }}</p>
   </div>
   {% endif %}
-  <div class="flex flex-wrap items-end gap-x-8 gap-y-4">
+  <div class="relative flex flex-wrap items-end gap-x-8 gap-y-4">
     <div>
-      <div class="text-xs text-mut mb-1">판정</div>
+      <div class="text-xs text-white/55 mb-1">판정</div>
       <span class="inline-flex items-center px-2.5 py-1 rounded text-sm font-semibold {{ v.judgment|bcls }}">{{ v.judgment|jshort if v.judgment else '—' }}</span>
-      {% if closed %}<span class="text-xs text-mut ml-2">매각 종료(참고용)</span>{% endif %}
+      {% if closed %}<span class="text-xs text-white/50 ml-2">매각 종료(참고용)</span>{% endif %}
     </div>
     <div>
-      <div class="text-xs text-primary mb-0.5" style="word-break:keep-all"><span class="whitespace-nowrap">예상낙찰가</span> <span class="text-mut/70 font-normal">일반 매수 실입찰{% if expected.mae %} ±{{ expected.mae|round|int }}%{% endif %}{% if expected.source %} · <span class="text-primary/80 font-medium">{{ expected.source }}</span>{% elif v.fail_count %} · 유찰 {{ v.fail_count }}회 반영{% endif %}</span></div>
-      <div class="font-mono text-3xl font-bold tnum {{ 'text-mut' if lowconf else 'text-txt' }}">{{ expected.price|won }}<span class="text-base font-normal text-mut"> 원</span></div>
+      <div class="text-xs text-amber-300 mb-0.5" style="word-break:keep-all"><span class="whitespace-nowrap">AI 예상낙찰가</span> <span class="text-white/50 font-normal">실입찰{% if expected.mae %} ±{{ expected.mae|round|int }}%{% elif v.fail_count %} · 유찰 {{ v.fail_count }}회 반영{% endif %}</span></div>
+      <div class="font-mono text-3xl font-bold tnum text-white">{{ expected.price|won }}<span class="text-base font-normal text-white/60"> 원</span></div>
     </div>
     <div>
-      <div class="text-xs text-mut mb-0.5">현 최저매각가</div>
-      <div class="font-mono text-xl font-semibold tnum text-txt">{{ v.min_sale_price|won }} 원</div>
-      {% if v.appraisal_value and v.min_sale_price %}<div class="text-[11px] text-mut/70 tnum mt-0.5">감정가 {{ (v.appraisal_value/10000)|round|int }}만 · <b class="text-mut">대비 {{ (100*v.min_sale_price/v.appraisal_value)|round|int }}%</b></div>{% endif %}
+      <div class="text-xs text-white/55 mb-0.5">현 최저매각가</div>
+      <div class="font-mono text-xl font-semibold tnum text-white">{{ v.min_sale_price|won }} 원</div>
+      {% if v.appraisal_value and v.min_sale_price %}<div class="text-[11px] text-white/45 tnum mt-0.5">감정가 {{ (v.appraisal_value/10000)|round|int }}만 · 대비 {{ (100*v.min_sale_price/v.appraisal_value)|round|int }}%</div>{% endif %}
     </div>
     <div class="ml-auto text-right">
-      <div class="text-xs text-mut mb-1">시세 신뢰도</div>
-      <span class="text-xs font-semibold px-2.5 py-1 rounded-full border {{ cbg }}">{{ cl }}{% if v.market_confidence %} · {{ v.market_confidence }}점{% endif %}</span>
+      <div class="text-xs text-white/55 mb-1">시세 신뢰도</div>
+      {% set cbadge = 'bg-emerald-400 text-[#0b142b]' if cl=='높음' else 'bg-amber-400 text-[#0b142b]' if cl=='보통' else 'bg-rose-400 text-white' %}
+      <span class="text-xs font-bold px-2.5 py-1 rounded-full {{ cbadge }}">{{ cl }}{% if v.market_confidence %} · {{ v.market_confidence }}점{% endif %}</span>
     </div>
   </div>
-  {# 게이지: 최저매각가·예상낙찰가·시세중앙값 위치 + 기회/대기 밴드 #}
   {% if v.min_sale_price and v.median_price %}
   {% set gmax = [v.median_price, v.min_sale_price, expected.hi or expected.price]|max %}
   {% set p_min = (v.min_sale_price / gmax * 100)|round(1) %}
   {% set p_exp = (expected.price / gmax * 100)|round(1) %}
   {% set p_med = (v.median_price / gmax * 100)|round(1) %}
-  <div class="mt-4">
-    <div class="relative h-2 rounded-full bg-slate-100">
-      <div class="absolute top-0 left-0 h-2 rounded-full bg-slate-200" style="width:{{ p_med }}%"></div>
+  <div class="relative mt-4">
+    <div class="relative h-2 rounded-full bg-white/10">
+      <div class="absolute top-0 left-0 h-2 rounded-full bg-white/15" style="width:{{ p_med }}%"></div>
       <div class="absolute top-0 h-2 rounded-full {{ 'bg-emerald-400' if opp else 'bg-amber-400' }}" style="left:{{ [p_min,p_exp]|min }}%; width:{{ (p_exp-p_min)|abs|round(1) }}%"></div>
-      <div class="absolute -top-1 w-0.5 h-4 bg-txt" style="left:{{ p_min }}%"></div>
-      <div class="absolute -top-1 w-1 h-4 rounded bg-primary" style="left:calc({{ p_exp }}% - 2px)"></div>
+      <div class="absolute -top-1 w-0.5 h-4 bg-white" style="left:{{ p_min }}%"></div>
+      <div class="absolute -top-1 w-1 h-4 rounded bg-amber-300" style="left:calc({{ p_exp }}% - 2px)"></div>
     </div>
     <div class="flex justify-between items-baseline text-[11px] mt-2 gap-2" style="word-break:keep-all">
-      <span class="text-mut whitespace-nowrap">최저 {{ (v.min_sale_price/10000)|round|int }}만</span>
-      <span class="{{ 'text-emerald-700' if opp else 'text-amber-700' }} font-semibold text-center leading-tight">{{ '✓ 지금 입찰 검토 가능' if opp else '↑ 추가 유찰 대기' }}<span class="hidden sm:inline font-normal text-mut/70"> ({{ '최저가 ≤ 예상' if opp else '최저가 > 예상' }})</span></span>
-      <span class="text-mut whitespace-nowrap">시세 {{ (v.median_price/10000)|round|int }}만</span>
+      <span class="text-white/55 whitespace-nowrap">최저 {{ (v.min_sale_price/10000)|round|int }}만</span>
+      <span class="{{ 'text-emerald-300' if opp else 'text-amber-300' }} font-semibold text-center leading-tight">{{ '✓ 지금 입찰 검토 가능' if opp else '↑ 추가 유찰 대기' }}</span>
+      <span class="text-white/55 whitespace-nowrap">시세 {{ (v.median_price/10000)|round|int }}만</span>
     </div>
   </div>
   {% endif %}
-  {# 동급 매물 실제 시세 분포 — 표가 아닌 히스토그램으로 '어느 가격대에 베팅하는가' #}
+</div>
+
+<div class="bg-surface border border-line rounded-lg p-5">
+    {# 동급 매물 실제 시세 분포 — 표가 아닌 히스토그램으로 '어느 가격대에 베팅하는가' #}
   {% if dist %}
-  <div class="mt-4 pt-4 border-t border-line">
+  <div>
     <div class="text-xs text-mut mb-1">동급 매물 시세 분포 <span class="text-mut/60">— 예상낙찰가가 실매물 분포의 어디에 위치하는가</span></div>
     {{ ui.histogram(dist) }}
   </div>
