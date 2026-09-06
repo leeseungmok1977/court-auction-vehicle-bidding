@@ -49,13 +49,20 @@
   </div>
 </div>
 
-{# 대표사진 히어로(법차식) — 차량을 먼저 인식, 분석은 바로 아래 #}
+{# 대표사진 히어로(법차식) — 차량을 먼저 인식. 화살표로 클릭 없이 인라인 넘김, 클릭 시 큰 갤러리 #}
 {% if photos %}
-<div class="relative rounded-lg overflow-hidden border border-line cursor-pointer group" onclick="openLB(0)" title="사진 크게 보기">
-  <img src="/photo/{{ v.folder_key or v.id }}/{{ photos[0] }}" loading="lazy" alt="{{ v.model|mdl }}"
-       class="w-full h-44 sm:h-56 object-cover group-hover:brightness-95 transition">
+<div class="relative rounded-lg overflow-hidden border border-line">
+  <img id="heroImg" src="/photo/{{ v.folder_key or v.id }}/{{ photos[0] }}" loading="lazy" alt="{{ v.model|mdl }}"
+       onclick="openLB(heroIdx)" title="크게 보기"
+       class="w-full h-44 sm:h-56 object-cover cursor-pointer hover:brightness-95 transition">
+  {% if photos|length > 1 %}
+  <button type="button" onclick="heroNav(-1)" title="이전 사진 (←)"
+    class="absolute left-2 top-1/2 -translate-y-1/2 w-9 h-9 grid place-items-center rounded-full bg-black/45 hover:bg-black/70 text-white text-2xl leading-none select-none transition">&#8249;</button>
+  <button type="button" onclick="heroNav(1)" title="다음 사진 (→)"
+    class="absolute right-2 top-1/2 -translate-y-1/2 w-9 h-9 grid place-items-center rounded-full bg-black/45 hover:bg-black/70 text-white text-2xl leading-none select-none transition">&#8250;</button>
+  {% endif %}
   <span class="absolute bottom-2 right-2 inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-black/60 text-white">
-    <span class="material-symbols-outlined text-sm leading-none">photo_library</span>{{ photos|length }}</span>
+    <span class="material-symbols-outlined text-sm leading-none">photo_library</span><span id="heroCount">1</span>/{{ photos|length }}</span>
 </div>
 {% endif %}
 
@@ -261,10 +268,16 @@
         <dt class="text-mut">감정가</dt><dd class="font-mono">{{ v.appraisal_value|won }} 원</dd>
         <dt class="text-mut">최저매각가</dt><dd class="font-mono text-lg font-semibold text-txt tnum">{{ v.min_sale_price|won }} 원</dd>
         <dt class="text-mut">유찰횟수</dt><dd class="font-mono">{{ v.fail_count if v.fail_count is not none else '—' }} 회</dd>
-        <dt class="text-mut">매각기일</dt>
+        <dt class="text-mut">매각 일시</dt>
         {% set awaiting = v.sale_date and today and v.sale_date < today and v.auction_result not in ('낙찰','종결') and v.judgment != '종결' %}
-        <dd class="font-mono">{% if awaiting %}<span class="text-amber-700 not-italic font-sans">다음 기일 미정</span> <span class="text-mut/60 text-xs">· 지난 {{ v.sale_date }} 유찰, 법원 재공고 후 자동 반영</span>{% else %}{{ v.sale_date or '—' }}{% endif %}</dd>
-        <dt class="text-mut">소재지</dt><dd>{{ v.location or '—' }}</dd>
+        <dd class="font-mono">{% if awaiting %}<span class="text-amber-700 not-italic font-sans">다음 기일 미정</span> <span class="text-mut/60 text-xs">· 지난 {{ v.sale_date }} 유찰, 법원 재공고 후 자동 반영</span>{% else %}{{ v.sale_date or '—' }}{% if v.sale_time %} <span class="font-semibold text-txt">{{ v.sale_time }}</span> <span class="text-mut/70 text-xs not-italic font-sans">입찰</span>{% endif %}{% endif %}</dd>
+        {% if v.sale_place and not awaiting %}
+        <dt class="text-mut">매각 장소</dt><dd class="not-italic">{{ v.sale_place }}</dd>
+        {% endif %}
+        <dt class="text-mut">차량 보관장소</dt>
+        <dd>{% if v.storage_addr %}{{ v.storage_addr }}{% else %}<span class="text-mut/70">법원 미표시 <span class="text-mut/50 text-xs">— 감정평가서·현장 확인</span></span>{% endif %}</dd>
+        <dt class="text-mut">목록상 주소</dt>
+        <dd>{{ v.location or '—' }}{% if v.location %}<span class="block text-mut/60 text-xs mt-0.5">※ 법원 목록 표시주소(대개 <b>채무자 주소</b>) — 차량 실제 위치와 다를 수 있음</span>{% endif %}</dd>
         <dt class="text-mut">사고판정</dt>
         <dd><span class="inline-flex px-2 py-0.5 rounded text-xs font-medium {{
               'bg-emerald-50 text-emerald-700 border border-emerald-200' if v.accident_grade=='none'
@@ -672,13 +685,21 @@
 const LB_BASE = "/photo/" + {{ (v.folder_key or v.id) | tojson }} + "/";
 const LB_FILES = {{ photos | tojson }};
 let lbIdx = 0;
+// 인라인 히어로 캐러셀 — 클릭 없이 화살표로 넘김, 라이트박스와 인덱스 동기화
+let heroIdx = 0;
+function heroShow(){
+  const img = document.getElementById('heroImg'); if(!img) return;
+  img.src = LB_BASE + LB_FILES[heroIdx];
+  const c = document.getElementById('heroCount'); if(c) c.textContent = (heroIdx + 1);
+}
+function heroNav(d){ heroIdx = (heroIdx + d + LB_FILES.length) % LB_FILES.length; heroShow(); }
 const _lb = () => document.getElementById('lb');
 function showLB(){
   document.getElementById('lbImg').src = LB_BASE + LB_FILES[lbIdx];
   document.getElementById('lbCount').textContent = (lbIdx + 1) + ' / ' + LB_FILES.length;
 }
 function openLB(i){ lbIdx = i; showLB(); _lb().style.display = 'flex'; document.body.style.overflow = 'hidden'; }
-function closeLB(){ _lb().style.display = 'none'; document.body.style.overflow = ''; }
+function closeLB(){ _lb().style.display = 'none'; document.body.style.overflow = ''; heroIdx = lbIdx; heroShow(); }
 function navLB(d){ lbIdx = (lbIdx + d + LB_FILES.length) % LB_FILES.length; showLB(); }
 document.addEventListener('keydown', e => {
   if(!_lb() || _lb().style.display !== 'flex') return;

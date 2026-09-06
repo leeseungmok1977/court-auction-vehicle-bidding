@@ -103,12 +103,15 @@ def _analyze_item(cs, es, raw: dict, item, config: dict, repair_cost: int,
         base["analyzed_at"] = _now()
         return base
     save_item_folder(dresp, item.folder_key, config)
-    if getattr(detail, "storage_addr", "") and detail.storage_addr.strip():
-        base["location"] = detail.storage_addr
+    # 차량 보관장소(=실제 차량 위치)는 별도 필드로 보존. location(목록의 채무자 주소)을
+    # 덮어쓰지 않는다 — 두 주소의 의미가 달라 섞으면 신뢰 저하(차량위치 vs 채무자주소).
+    _storg = (getattr(detail, "storage_addr", "") or "").strip()
     base.update({
         "mileage_km": detail.mileage_km, "displacement_cc": detail.displacement_cc,
         "fuel_code": detail.fuel_code, "appraisal_value": detail.appraisal_value,
         "fail_count": detail.fail_count, "sale_date": detail.sale_date,
+        "sale_time": detail.sale_time, "sale_place": detail.sale_place,
+        "storage_addr": _storg or None,
         "accident_grade": detail.accident_grade, "accident_hits": detail.accident_hits,
         "insurance_history": detail.insurance_history,
         "appraisal_ecdoc_id": detail.appraisal_ecdoc_id, "spec_remark": detail.spec_remark,
@@ -413,6 +416,7 @@ def _listing_rec(item) -> dict:
         "maker": item.maker, "model": item.model, "year": item.year,
         "appraisal_value": item.appraisal_value, "min_sale_price": item.min_sale_price,
         "fail_count": item.fail_count, "sale_date": item.sale_date,
+        "sale_time": item.sale_time, "sale_place": item.sale_place,
         "doc_id": item.doc_id, "folder_key": item.folder_key, "collected_at": _now(),
     }
 

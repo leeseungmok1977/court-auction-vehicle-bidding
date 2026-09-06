@@ -36,6 +36,22 @@ def _fmt_date(v) -> Optional[str]:
     return None
 
 
+def _hhmm(v) -> Optional[str]:
+    """매각 시각 코드('1000'/'1030') → 'HH:MM'. 유효 시각만."""
+    s = str(v or "").strip()
+    if re.fullmatch(r"\d{4}", s) and int(s[0:2]) < 24 and int(s[2:4]) < 60:
+        return f"{s[0:2]}:{s[2:4]}"
+    return None
+
+
+def _sale_time(row: dict, fail_count: Optional[int]) -> Optional[str]:
+    """다음 매각기일 입찰 시각 — 회차별 시각(maeHh1~4) 중 현재 회차값(범위초과 시 마지막)."""
+    times = [t for t in (_hhmm(row.get(k)) for k in ("maeHh1", "maeHh2", "maeHh3", "maeHh4")) if t]
+    if not times:
+        return None
+    return times[min(fail_count or 0, len(times) - 1)]
+
+
 def _case_no(row: dict) -> str:
     """표시용 사건번호(예: '2025타경103470'). printCsNo 끝부분 우선, 없으면 saNo."""
     printed = str(row.get("printCsNo", "") or "")
@@ -76,8 +92,10 @@ class VehicleItem:
     min_sale_price: Optional[int]   # 최저매각가
     fail_count: Optional[int]       # 유찰횟수
     sale_date: Optional[str]        # 매각기일(YYYY-MM-DD)
+    sale_time: Optional[str]        # 입찰(매각) 시각 HH:MM
+    sale_place: str                 # 매각(입찰) 장소 — 경매법정
     usage_name: str            # 매각용도명
-    location: str              # 소재지
+    location: str              # 목록 표시주소(대개 채무자 주소) — 차량 위치 아님
     status_code: str           # 물건상태코드
     doc_id: str                # 상세조회 키(docid)
     mileage: Optional[int] = None   # 주행거리(상세에서 확정)
@@ -99,6 +117,7 @@ def parse_row(row: dict) -> VehicleItem:
     year = _to_int(row.get("carYrtype"))
     if year in (0, None):
         year = None
+    _fc = _to_int(row.get("yuchalCnt"))
     return VehicleItem(
         case_no=_case_no(row),
         item_no=str(row.get("mokmulSer", "") or row.get("maemulSer", "") or "").strip(),
@@ -112,8 +131,10 @@ def parse_row(row: dict) -> VehicleItem:
         transmission_code=str(row.get("bsgFormCd", "") or "").strip(),
         appraisal_value=_to_int(row.get("gamevalAmt")),
         min_sale_price=_to_int(row.get("minmaePrice")),
-        fail_count=_to_int(row.get("yuchalCnt")),
+        fail_count=_fc,
         sale_date=_fmt_date(row.get("maeGiil")),
+        sale_time=_sale_time(row, _fc),
+        sale_place=str(row.get("maePlace", "") or "").strip(),
         usage_name=str(row.get("dspslUsgNm", "") or "").strip(),
         location=_clean_addr(row.get("printSt")) or _clean_location(row.get("convAddr")),
         status_code=str(row.get("mulStatcd", "") or "").strip(),

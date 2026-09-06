@@ -22,7 +22,8 @@ CREATE TABLE IF NOT EXISTS vehicles (
     item_no       TEXT,
     court         TEXT,
     court_code    TEXT,
-    location      TEXT,
+    location      TEXT,          -- 목록 표시주소(채무자 주소) — 차량 위치 아님
+    storage_addr  TEXT,          -- 차량 보관장소(상세 storgPlcRdnmAddr) — 실제 차량 위치
     match_label   TEXT,
     maker         TEXT,
     model         TEXT,
@@ -34,6 +35,8 @@ CREATE TABLE IF NOT EXISTS vehicles (
     min_sale_price  INTEGER,
     fail_count    INTEGER,
     sale_date     TEXT,
+    sale_time     TEXT,          -- 입찰(매각) 시각 HH:MM
+    sale_place    TEXT,          -- 매각(입찰) 장소 — 경매법정
     accident_grade TEXT,
     accident_hits  TEXT,   -- json
     insurance_history TEXT, -- json
@@ -150,7 +153,8 @@ def init_db() -> None:
         # 마이그레이션: 기존 DB에 신규 열 추가
         cols = {r["name"] for r in conn.execute("PRAGMA table_info(vehicles)").fetchall()}
         for col in ("location", "match_label", "auction_result",
-                    "dxdy_history", "result_checked_at"):
+                    "dxdy_history", "result_checked_at",
+                    "storage_addr", "sale_time", "sale_place"):
             if col not in cols:
                 conn.execute(f"ALTER TABLE vehicles ADD COLUMN {col} TEXT")
         if "winning_price" not in cols:

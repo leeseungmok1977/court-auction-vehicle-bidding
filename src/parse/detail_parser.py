@@ -37,6 +37,28 @@ def _fmt_date(v) -> Optional[str]:
     return f"{s[0:4]}-{s[4:6]}-{s[6:8]}" if re.fullmatch(r"\d{8}", s) else None
 
 
+def _hhmm(v) -> Optional[str]:
+    """매각 시각 코드('1000'/'1030') → 'HH:MM'. 유효 시각(00~23시,00~59분)만."""
+    s = str(v or "").strip()
+    if re.fullmatch(r"\d{4}", s) and int(s[0:2]) < 24 and int(s[2:4]) < 60:
+        return f"{s[0:2]}:{s[2:4]}"
+    return None
+
+
+def _sale_time(dx: dict, fail_count: Optional[int]) -> Optional[str]:
+    """다음 매각기일의 입찰 시각 — 회차별 시각(fst/scnd/thrd/foth DspslHm) 중 현재 회차값.
+
+    유찰 횟수가 곧 진행한 매각기일 수이므로 그 인덱스(범위초과 시 마지막 유효값)를 쓴다.
+    법원 입찰 시각은 회차 간 대개 동일하나, 응답의 실제 값만 사용(추측 금지)."""
+    raw = [dx.get("fstDspslHm"), dx.get("scndDspslHm"),
+           dx.get("thrdDspslHm"), dx.get("fothDspslHm")]
+    times = [t for t in raw if _hhmm(t)]
+    if not times:
+        return None
+    idx = min(fail_count or 0, len(times) - 1)
+    return _hhmm(times[idx])
+
+
 def _clean(v) -> str:
     # &amp;quot; 같은 이중 이스케이프 정리
     return html.unescape(html.unescape(str(v or ""))).strip()
@@ -128,6 +150,8 @@ class DetailInfo:
     appraisal_value: Optional[int]
     fail_count: Optional[int]
     sale_date: Optional[str]
+    sale_time: Optional[str] = None   # 다음 매각기일 입찰 시각(HH:MM)
+    sale_place: str = ""              # 매각(입찰) 장소 — 경매법정
     round_prices: list[int] = field(default_factory=list)  # 회차별 최저매각가
     appraisal_ecdoc_id: str = ""     # 감정평가서/명세서 전자문서 ID
     spec_remark: str = ""            # 매각물건명세 요약(gdsSpcfcRmk: 연식·주행·연료·유효검사·보험사고이력)
@@ -247,6 +271,7 @@ def parse_detail(resp_json: dict, config: Optional[dict] = None) -> DetailInfo:
         if v is not None:
             rounds.append(v)
 
+    _fc = _to_int(dx.get("flbdNcnt"))
     return DetailInfo(
         case_no=str(dx.get("csNo") or obj.get("csNo") or "").strip(),
         court_code=str(dx.get("cortOfcCd") or obj.get("cortOfcCd") or "").strip(),
@@ -263,8 +288,10 @@ def parse_detail(resp_json: dict, config: Optional[dict] = None) -> DetailInfo:
         vin=str(obj.get("carVidCtt") or "").strip(),
         storage_addr=_clean(obj.get("storgPlcRdnmAddr") or obj.get("storgPlcAllLtnoAddr")),
         appraisal_value=_to_int(dx.get("aeeEvlAmt")),
-        fail_count=_to_int(dx.get("flbdNcnt")),
+        fail_count=_fc,
         sale_date=_fmt_date(dx.get("dspslDxdyYmd")),
+        sale_time=_sale_time(dx, _fc),
+        sale_place=_clean(dx.get("dspslPlcNm")),
         round_prices=rounds,
         appraisal_ecdoc_id=str(dx.get("dspslGdsSpcfcEcdocId") or "").strip(),
         spec_remark=_clean(dx.get("gdsSpcfcRmk")),
