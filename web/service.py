@@ -431,13 +431,17 @@ def collect_upcoming(within_days: int = 30, run_id: Optional[int] = None,
     stored = 0
     page = 1
     total = None
+    seen_ids: set[str] = set()   # 이번 스캔에서 관측한 모든 물건 id(목록이탈 감지용)
+    complete = False             # 리스트 끝까지 봤는지(부분 스캔이면 이탈 sweep 미실행)
     while page <= max_pages:
         resp = fetch_list_page(cs, page_no=page, page_size=40).json()
         rows = resp["data"]["dlt_srchResult"]
         total = resp["data"]["dma_pageInfo"].get("groupTotalCount") or 0
         if not rows:
+            complete = True
             break
         for item in parse_list_response(resp):
+            seen_ids.add(item.folder_key)      # 날짜 무관 — 목록에 '존재'하는 모든 물건
             if not item.sale_date:
                 continue
             try:
@@ -451,10 +455,15 @@ def collect_upcoming(within_days: int = 30, run_id: Optional[int] = None,
             db.update_run(run_id, scanned=page * 40, processed=stored,
                           message=f"목록 {page}페이지 순회 · 입찰예정 {stored}건")
         if page * 40 >= total:
+            complete = True
             break
         page += 1
     db.set_setting("last_upcoming_count", str(stored))
     db.set_setting("last_upcoming_at", _now())
+    # 목록이탈(변경·취하·연기) 정리 — 완전 스캔 + 전체의 80%↑ 관측 시에만(부분 스캔 오탐 방지)
+    if complete and total and len(seen_ids) >= int(total * 0.8):
+        sweep = db.mark_disappeared(seen_ids, today.isoformat(), end.isoformat())
+        db.set_setting("last_disappear_sweep", f"{_now()} {sweep}")
     if finalize and run_id:
         db.update_run(run_id, status="done", finished_at=_now(),
                       message=f"입찰예정 {stored}건 갱신 (≤{within_days}일)")

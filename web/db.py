@@ -373,6 +373,49 @@ def counts_by_judgment() -> dict:
     return d
 
 
+def mark_disappeared(seen_ids, start: str, end: str,
+                     max_flag_ratio: float = 0.2, min_guard: int = 20) -> dict:
+    """완전 스캔 후 '목록이탈'(변경·취하·연기) 물건 정리 — 신뢰 최우선.
+
+    seen_ids: 이번 전국 목록 스캔에서 관측된 모든 물건 id 집합.
+    입찰예정 창[start,end]의 '입찰 검토 가능·완료·미낙찰' 물건 중 이번 스캔에서
+    보이지 않은 것을 status='상세없음'(확인 필요)으로 표시 → 검토가능/KPI에서 제외.
+    반대로 '상세없음'인데 다시 보인 것은 status='미분석'으로 되돌려 재분석(복구).
+
+    오탐 방지: 사라진 수가 후보의 max_flag_ratio(또는 min_guard)를 넘으면 스캔
+    이상으로 보고 '표시'는 건너뛴다(복구는 항상 수행). 빈 스캔이면 전체 미실행.
+    """
+    seen = set(seen_ids or ())
+    out = {"candidates": 0, "missing": 0, "flagged": 0, "restored": 0, "skipped": False}
+    if not seen:                       # 빈/비정상 스캔 → 아무것도 하지 않음(오탐 방지)
+        out["skipped"] = True
+        return out
+    conn = connect()
+    cand = [r["id"] for r in conn.execute(
+        "SELECT id FROM vehicles WHERE judgment='입찰 검토 가능' "
+        "AND COALESCE(status,'')='완료' "
+        "AND (auction_result IS NULL OR auction_result NOT IN ('낙찰','종결')) "
+        "AND sale_date >= ? AND sale_date <= ?", (start, end)).fetchall()]
+    missing = [i for i in cand if i not in seen]
+    out["candidates"], out["missing"] = len(cand), len(missing)
+    guard = max(min_guard, int(len(cand) * max_flag_ratio))
+    with conn:
+        if len(missing) <= guard:
+            for i in missing:
+                conn.execute("UPDATE vehicles SET status='상세없음' WHERE id=?", (i,))
+            out["flagged"] = len(missing)
+        else:
+            out["skipped"] = True      # 과도한 이탈 = 스캔 이상 → 표시 보류
+        # 재등장 복구(항상): '상세없음'인데 이번 스캔에서 관측됨 → 미분석(재분석)
+        for r in conn.execute(
+                "SELECT id FROM vehicles WHERE COALESCE(status,'')='상세없음'").fetchall():
+            if r["id"] in seen:
+                conn.execute("UPDATE vehicles SET status='미분석' WHERE id=?", (r["id"],))
+                out["restored"] += 1
+    conn.close()
+    return out
+
+
 def court_counts() -> list:
     """법원별 미래 기일 물건 수 [(court, n)] 내림차순 — 법원별 탐색용."""
     conn = connect()
