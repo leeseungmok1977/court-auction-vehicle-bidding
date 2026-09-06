@@ -41,7 +41,7 @@
       <span class="material-symbols-outlined text-lg">gavel</span> 감정평가서</a>
     {% endif %}
     {% if v.median_price is not none %}
-    <a href="/vehicle/{{ v.id }}/report" target="auctionReport" class="btn-ghost text-sm flex items-center gap-1.5" title="분석 리포트(인쇄·PDF) — 새 탭에서 열림">
+    <a href="/vehicle/{{ v.id }}/report" class="btn-ghost text-sm flex items-center gap-1.5" title="분석 리포트(앱 내에서 열림 · 인쇄/PDF 가능)">
       <span class="material-symbols-outlined text-lg">description</span> 리포트</a>
     {% endif %}
     <a href="{{ back_url or '/vehicles' }}" class="btn-ghost text-sm flex items-center gap-1.5">
@@ -272,7 +272,7 @@
         {% set awaiting = v.sale_date and today and v.sale_date < today and v.auction_result not in ('낙찰','종결') and v.judgment != '종결' %}
         <dd class="font-mono">{% if awaiting %}<span class="text-amber-700 not-italic font-sans">다음 기일 미정</span> <span class="text-mut/60 text-xs">· 지난 {{ v.sale_date }} 유찰, 법원 재공고 후 자동 반영</span>{% else %}{{ v.sale_date or '—' }}{% if v.sale_time %} <span class="font-semibold text-txt">{{ v.sale_time }}</span> <span class="text-mut/70 text-xs not-italic font-sans">입찰</span>{% endif %}{% endif %}</dd>
         {% if v.sale_place and not awaiting %}
-        <dt class="text-mut">매각 장소</dt><dd class="not-italic">{{ v.sale_place }}</dd>
+        <dt class="text-mut">매각 장소</dt><dd class="not-italic">{% if v.court %}<b class="text-txt">{{ v.court }}</b> {% endif %}{{ v.sale_place }}</dd>
         {% endif %}
         <dt class="text-mut">차량 보관장소</dt>
         <dd>{% if v.storage_addr %}{{ v.storage_addr }}{% else %}<span class="text-mut/70">법원 미표시 <span class="text-mut/50 text-xs">— 감정평가서·현장 확인</span></span>{% endif %}</dd>
