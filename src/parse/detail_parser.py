@@ -94,6 +94,34 @@ def _mileage_from_text(text: str) -> Optional[int]:
     return _to_int(m.group(1)) if m else None
 
 
+_STORAGE_HINT = re.compile(r"(시|도|군|구|읍|면|동|리|로|길|번지|물류|창고|야적|주차장)")
+
+
+def _storage_from_text(*texts) -> str:
+    """감정평가 요항·매각물건명세에서 '차량 보관장소'를 추출한다(구조화 필드가 빈 경우 보조).
+
+    법원 자동차 감정서는 보관장소를 텍스트로만 기재하는 경우가 많다. 예:
+      '본건 자동차는 지정 보관장소(경기도 광주시 도척면 진우리 844-14, 강남물류)에 주차되어 있는…'
+      '보관장소 : 서울 강서구 …'
+    → 괄호 안 주소 → 콜론 뒤 주소 → '…에 주차/보관/소재' 앞 주소 순으로 시도. 주소 힌트가 있어야 채택.
+    """
+    text = "\n".join(_clean(t) for t in texts if t)
+    if not text:
+        return ""
+    pats = (
+        r"보관\s*장소[^\n(]{0,10}\(\s*([^)\n]{4,90}?)\s*\)",              # 지정 보관장소(주소)
+        r"보관\s*장소\s*(?:은|는|이|가)?\s*[:：]\s*([가-힣0-9][^\n.]{3,80})",  # 보관장소 : 주소
+        r"([가-힣]{2,}(?:특별자치시|특별자치도|특별시|광역시|도|시)[^\n]{4,70}?)\s*에\s*(?:주차|보관|소재)",  # …에 주차/보관/소재
+    )
+    for p in pats:
+        m = re.search(p, text)
+        if m:
+            cand = re.sub(r"\s+", " ", m.group(1)).strip(" .,·:")
+            if _STORAGE_HINT.search(cand) and 4 <= len(cand) <= 90:
+                return cand
+    return ""
+
+
 # 보험개발원 사고이력 리포트 정형 카운트 (요항에 포함됨). 값이 '0건'이어도
 # 단어('침수','전손','사고')가 나타나므로 단순 키워드 매칭은 오탐한다 → 카운트로 판정.
 _HIST_PATTERNS = {
@@ -286,7 +314,8 @@ def parse_detail(resp_json: dict, config: Optional[dict] = None) -> DetailInfo:
         transmission_code=str(obj.get("grbxTypCd") or "").strip(),
         reg_no=_clean(obj.get("objctRegNo")),
         vin=str(obj.get("carVidCtt") or "").strip(),
-        storage_addr=_clean(obj.get("storgPlcRdnmAddr") or obj.get("storgPlcAllLtnoAddr")),
+        storage_addr=(_clean(obj.get("storgPlcRdnmAddr") or obj.get("storgPlcAllLtnoAddr"))
+                      or _storage_from_text(appraisal_text, dx.get("gdsSpcfcRmk"))),
         appraisal_value=_to_int(dx.get("aeeEvlAmt")),
         fail_count=_fc,
         sale_date=_fmt_date(dx.get("dspslDxdyYmd")),

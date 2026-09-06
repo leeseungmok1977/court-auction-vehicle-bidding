@@ -108,6 +108,36 @@ def test_flood_true_positive():
     assert "침수이력" in info.flood_hits
 
 
+def test_storage_addr_from_appraisal_text():
+    """구조화 보관장소가 비면 감정 요항 텍스트의 '보관장소(...)'에서 추출."""
+    resp = {"data": {"dma_result": {
+        "gdsDspslObjctLst": [{"storgPlcRdnmAddr": " ", "storgPlcAllLtnoAddr": None,
+                              "carMdlNm": "E300"}],
+        "aeeWevlMnpntLst": [{"aeeWevlMnpntCtt":
+            "본건 자동차는 지정 보관장소(경기도 광주시 도척면 진우리 844-14, 강남물류)에 "
+            "주차되어 있는 자동차를 확인하였으며"}],
+    }}}
+    assert parse_detail(resp).storage_addr == "경기도 광주시 도척면 진우리 844-14, 강남물류"
+
+
+def test_storage_addr_structured_priority():
+    """구조화 보관장소가 있으면 그 값을 우선(텍스트 무시)."""
+    resp = {"data": {"dma_result": {
+        "gdsDspslObjctLst": [{"storgPlcRdnmAddr": "서울 강서구 공항대로 100"}],
+        "aeeWevlMnpntLst": [{"aeeWevlMnpntCtt": "보관장소(경기도 광주시 강남물류)"}],
+    }}}
+    assert parse_detail(resp).storage_addr == "서울 강서구 공항대로 100"
+
+
+def test_storage_addr_debtor_residence_not_matched():
+    """'채무자 …에 거주'는 보관장소로 오탐하지 않는다."""
+    resp = {"data": {"dma_result": {
+        "gdsDspslObjctLst": [{"storgPlcRdnmAddr": None}],
+        "aeeWevlMnpntLst": [{"aeeWevlMnpntCtt": "채무자는 서울 강남구 테헤란로 1에 거주함."}],
+    }}}
+    assert parse_detail(resp).storage_addr == ""
+
+
 def _dxdy_resp(rows):
     return {"data": {"dma_result": {"gdsDspslDxdyLst": rows}}}
 
