@@ -44,3 +44,6 @@ dashboard_ex/
 # Claude Code 로컬 설정(에이전트 정의 .claude/agents 는 커밋)
 .claude/settings.local.json
 .claude/settings.json
+
+# 스토어 자산(생성물·바이너리 — scripts/gen_store_assets.py로 재생성)
+store_assets/
