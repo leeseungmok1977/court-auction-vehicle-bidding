@@ -1082,6 +1082,54 @@ def expected_for(v: dict, bt: dict) -> Optional[int]:
     return expected_winning(med, discount_for(bt, v.get("fail_count"), _model_key(v)))
 
 
+def expected_band(v: dict, bt: dict) -> Optional[dict]:
+    """예상 낙찰가 중심값 + 밴드(보수/균형/공격)를 **하나의 기준**으로 산출.
+
+    상단 'AI 예상낙찰가'·추천 입찰 전략·한줄 코멘트가 모두 이 함수 하나를 공유해
+    계산식이 일치한다(별도 산정 금지). 중심값(=균형)은 `expected_for`(목록·대시보드와
+    동일 소스)이고, 밴드는 **같은 프리미엄 기준**에 전역 분위수의 상대폭(p25/median,
+    p75/median)을 곱해 만든다 → 캡/반올림 후에도 항상 보수 ≤ 균형 ≤ 공격.
+
+    반환: {price(균형), lo(보수), hi(공격), premium, basis} 또는 None.
+    basis.kind: 'min_premium'(최저매각가×유찰프리미엄) | 'median_discount'(시세×할인율 폴백).
+    """
+    center = expected_for(v, bt)          # 중심값 — 목록·대시보드와 동일한 단일 소스
+    if not center:
+        return None
+    bt = bt or {}
+    mn = v.get("min_sale_price")
+    prem = min_premium_for(bt, v.get("fail_count"))
+    med = effective_median(v)
+    cap = int(med * 1.10) if med else None
+
+    def _round(x):
+        return int(round(x / 100_000) * 100_000)
+
+    def _cap(x):
+        return min(x, cap) if cap else x
+
+    if mn and prem:
+        gpm = bt.get("min_premium_median") or prem
+        p25, p75 = bt.get("min_premium_p25"), bt.get("min_premium_p75")
+        rel_lo = (p25 / gpm) if (p25 and gpm) else 0.93     # 전역 분포의 상대 폭
+        rel_hi = (p75 / gpm) if (p75 and gpm) else 1.07
+        lo, hi = _round(_cap(center * rel_lo)), _round(_cap(center * rel_hi))
+        basis = {"kind": "min_premium", "min_sale_price": mn,
+                 "premium": round(prem, 3), "fail_count": v.get("fail_count") or 0}
+    else:                                 # 폴백: 시세×할인율 분위수
+        lo = expected_winning(med, bt.get("discount_p25"))
+        hi = expected_winning(med, bt.get("discount_p75"))
+        basis = {"kind": "median_discount", "median": med,
+                 "discount": bt.get("discount_median")}
+    # 캡·반올림으로 인한 역전 방지 — 균형(center)은 항상 밴드 안에
+    if lo and lo > center:
+        lo = center
+    if hi and hi < center:
+        hi = center
+    return {"price": center, "lo": lo, "hi": hi,
+            "premium": round(prem, 3) if prem else None, "basis": basis}
+
+
 def _sale_snapshot(v: dict, win: int) -> dict:
     """확정 낙찰 → 히스토리 스냅샷(학습 데이터). 시세·유찰·인기프록시를 낙찰 시점 값으로 고정."""
     med = v.get("median_price")
@@ -1109,11 +1157,19 @@ def backfill_sale_results() -> int:
 
 
 def plain_verdict(v: dict, expected: Optional[dict]) -> Optional[dict]:
-    """비전문가용 한줄 판정 — 30초 안에 '얼마·지금 가능?' 이해(PS-03)."""
-    med = v.get("median_price")
-    if not med or not expected or not expected.get("price"):
+    """비전문가용 한줄 판정 — 30초 안에 '얼마·지금 가능?' 이해(PS-03).
+
+    코멘트는 화면의 수치와 **모순되지 않아야** 한다(신뢰 최우선):
+    - 시세 비교는 상세 '소매 차익'과 **동일한 값**(effective_median)을 써서 할인율(%)이 일치.
+    - 되팔이(재판매) 가능 여부는 재판매 손익분기(수리·이전·명도·마진 반영 상한가 upper_bid)로 판단.
+      → '시세에 가깝게'처럼 데이터와 어긋나는 표현을 쓰지 않는다.
+    """
+    if not expected or not expected.get("price"):
         return None
     exp = expected["price"]
+    med = effective_median(v) or v.get("median_price")
+    if not med:
+        return None
     floor = v.get("min_sale_price") or 0
     upper = v.get("upper_bid") or 0
 
@@ -1124,15 +1180,26 @@ def plain_verdict(v: dict, expected: Optional[dict]) -> Optional[dict]:
         return {"tone": "closed", "text": "이미 매각이 끝난 물건입니다 (참고용)."}
     if v.get("market_confidence_label") == "낮음":
         return {"tone": "caution",
-                "text": f"시세 신뢰도가 낮아 참고용입니다. 예상 낙찰가 {won(exp)}는 현장 확인 후 판단하세요."}
+                "text": f"시세 신뢰도가 낮아 참고용입니다. 예상 낙찰가 {won(exp)}은 현장 확인 후 판단하세요."}
     if not (floor and floor <= exp):
         return {"tone": "wait",
-                "text": f"지금 최저가 {won(floor)}는 예상 낙찰가 {won(exp)}보다 높습니다. 아직 비싸니 추가 유찰을 기다리는 게 좋습니다."}
-    if upper and exp > upper:
+                "text": f"지금 최저가 {won(floor)}은 예상 낙찰가 {won(exp)}보다 높습니다. 아직 비싸니 추가 유찰을 기다리는 게 좋습니다."}
+    # 여기부터 floor ≤ exp — '지금 입찰 검토 가능' 구간
+    gap = round((med - exp) / med * 100) if med > exp else 0   # 소매 시세 대비 예상낙찰가 할인율(=소매 차익 %와 동일)
+    gap_txt = f"소매 시세보다 약 {gap}% 낮지만" if gap >= 3 else "소매 시세와 큰 차이가 없어"
+    head = f"지금 {won(floor)}에 입찰할 수 있고 예상 낙찰가는 {won(exp)}입니다."
+    if upper and exp <= upper:            # 재판매 손익분기 이내 → 되팔이 차익 여지
         return {"tone": "ok",
-                "text": f"지금 {won(floor)}에 나와 있고 예상 낙찰가는 {won(exp)}입니다. 시세에 가깝게 팔릴 물건이라 되팔이 차익은 어렵지만, 직접 타실 거면 검토할 만합니다."}
+                "text": f"{head} 재판매 손익분기({won(upper)}) 이내라 되팔이 차익도 노려볼 만합니다."}
+    if upper and exp > upper:             # 손익분기 초과 → 되팔이 어렵고 실사용 목적
+        return {"tone": "ok",
+                "text": f"{head} {gap_txt}, 이전·수리·명도비를 빼면 재판매 손익분기({won(upper)})를 초과해 되팔이 차익은 어렵습니다. 직접 타실 목적이면 검토할 만합니다."}
+    # upper_bid 미산정(시세 신뢰 보통 등) — 소매 차익만으로 안내
+    if gap >= 25:
+        return {"tone": "ok",
+                "text": f"{head} {gap_txt} 이전·수리·명도비를 감안해 되팔이 실익을 따져보세요. 직접 타실 목적이면 검토할 만합니다."}
     return {"tone": "ok",
-            "text": f"지금 최저가 {won(floor)}, 예상 낙찰가 {won(exp)}입니다. 시세보다 싸게 살 여지가 있어 지금 입찰을 검토할 만합니다. 재판매라면 {won(upper)} 이하 낙찰이 기준입니다."}
+            "text": f"{head} {gap_txt} 되팔이 차익은 크지 않고, 직접 타실 목적이면 검토할 만합니다."}
 
 
 def alert_items(days: int = 3) -> list:

@@ -422,25 +422,16 @@ def vehicle_detail(request: Request, vid: str, cc: str = "", an: str = ""):
     disc = bt.get("discount_median")
     _cd = service.comparable_discount(v, bt)     # 유사 낙찰(같은차종·유사연식·주행) 기반 보정
     comps = service.comparable_sales(v, bt)
-    # 예상 범위(lo/hi) — price와 동일하게 '최저매각가 × 프리미엄 분위수' 기반(낙찰확률 25~75% 대응)
-    _mn = v.get("min_sale_price")
-    _pm = service.min_premium_for(bt, v.get("fail_count"))
-    _med = v.get("median_price")
-    _p25, _p75 = bt.get("min_premium_p25"), bt.get("min_premium_p75")
-    if _mn and _pm and _p25 and _p75:
-        _capv = int(_med * 1.10) if _med else None
-        def _rr(x):
-            x = min(x, _capv) if _capv else x
-            return int(round(x / 100_000) * 100_000)
-        lo, _hi = _rr(_mn * _p25), _rr(_mn * _p75)
-    else:                                          # 폴백: 시세×할인율 분위수
-        lo = service.expected_winning(_med, bt.get("discount_p25"))
-        _hi = service.expected_winning(_med, bt.get("discount_p75"))
+    # 예상낙찰가 + 밴드(보수/균형/공격)를 **단일 소스**로 산출 → 상단 카드·추천 전략·코멘트 계산식 일치
+    _band = service.expected_band(v, bt)
     source = f"유사 낙찰 {_cd[1]}건 참고" if _cd else None
-    expected = {"price": service.expected_for(v, bt), "lo": lo,
-                "hi": _hi, "discount": disc, "sample": bt.get("sample"),
-                "mae": bt.get("mae_pct"), "source": source,
-                "comp_n": _cd[1] if _cd else 0} if disc else None
+    expected = None
+    if _band:
+        expected = {"price": _band["price"], "lo": _band["lo"], "hi": _band["hi"],
+                    "premium": _band.get("premium"), "basis": _band.get("basis") or {},
+                    "discount": disc, "sample": bt.get("sample"),
+                    "mae": bt.get("mae_pct"), "source": source,
+                    "comp_n": _cd[1] if _cd else 0}
     dist = service.price_distribution(
         v, expected["price"] if expected else None, bt.get("mae_pct"))
     # 감정 요항 구조화(색상·연료·검사유효기간·옵션·상태) + 상태 반영 비용
@@ -470,13 +461,12 @@ def vehicle_report(request: Request, vid: str):
     config = service.load_config()
     bt = service.backtest_stats()
     disc = bt.get("discount_median")
-    _hi = service.expected_winning(v.get("median_price"), bt.get("discount_p75"))
-    if _hi and v.get("median_price"):
-        _hi = min(_hi, int(v["median_price"] * 0.97))
-    expected = {"price": service.expected_for(v, bt),
-                "lo": service.expected_winning(v.get("median_price"), bt.get("discount_p25")),
-                "hi": _hi, "discount": disc, "sample": bt.get("sample"),
-                "mae": bt.get("mae_pct")} if disc else None
+    _band = service.expected_band(v, bt)   # 상세와 동일한 단일 소스(중심=균형, 밴드 일치)
+    expected = None
+    if _band:
+        expected = {"price": _band["price"], "lo": _band["lo"], "hi": _band["hi"],
+                    "premium": _band.get("premium"), "basis": _band.get("basis") or {},
+                    "discount": disc, "sample": bt.get("sample"), "mae": bt.get("mae_pct")}
     appraisal = ""
     afile = DATA_DIR / (v.get("folder_key") or vid) / "appraisal.txt"
     if afile.exists():
