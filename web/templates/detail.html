@@ -171,6 +171,56 @@
 </div>
 {% endif %}
 
+{% set _closed = v.auction_result == '낙찰' or v.judgment == '종결' %}
+<!-- 추천 입찰 전략 밴드 (유사 낙찰 분포 기반 — 실증 확률) -->
+{% if expected and expected.lo and expected.hi and expected.price and not _closed %}
+<div class="bg-surface border border-line rounded-lg p-5">
+  <div class="flex items-center gap-2 mb-1">
+    <span class="material-symbols-outlined text-primary">strategy</span>
+    <h3 class="text-lg font-semibold">추천 입찰 전략 <span class="text-mut text-sm font-normal">— 유사 낙찰 분포 기반</span></h3>
+  </div>
+  <p class="text-sm text-mut mb-4">낙찰 확률 = 동급·유사 낙찰가 분포에서 <b>해당 입찰가 이하로 낙찰된 비율</b>(실측). 높게 쓸수록 낙찰 가능성↑·차익↓.</p>
+  <div class="grid grid-cols-3 gap-2 tabular-nums">
+    <div class="rounded-xl border border-line p-3 text-center">
+      <div class="text-[11px] text-emerald-700 font-semibold mb-1">보수적 · 수익형</div>
+      <div class="font-mono text-sm sm:text-base font-bold text-txt">{{ expected.lo|won }}</div>
+      <div class="text-[11px] text-mut mt-1">낙찰 확률 <b class="text-txt">~25%</b></div>
+    </div>
+    <div class="rounded-xl border-2 border-primary bg-primary/5 p-3 text-center">
+      <div class="text-[11px] text-primary font-semibold mb-1">균형 · 예상</div>
+      <div class="font-mono text-sm sm:text-base font-bold text-primary">{{ expected.price|won }}</div>
+      <div class="text-[11px] text-mut mt-1">낙찰 확률 <b class="text-primary">~50%</b></div>
+    </div>
+    <div class="rounded-xl border border-line p-3 text-center">
+      <div class="text-[11px] text-amber-700 font-semibold mb-1">공격적 · 낙찰형</div>
+      <div class="font-mono text-sm sm:text-base font-bold text-txt">{{ expected.hi|won }}</div>
+      <div class="text-[11px] text-mut mt-1">낙찰 확률 <b class="text-txt">~75%</b></div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- 소매 시장 대비 차익 분석 (엔카/케이카 시세 vs 예상 낙찰가) -->
+{% if expected and expected.price and eff_median and eff_median > expected.price and not _closed %}
+<div class="bg-surface border border-line rounded-lg p-5">
+  <div class="flex items-center gap-2 mb-3">
+    <span class="material-symbols-outlined text-emerald-600">savings</span>
+    <h3 class="text-lg font-semibold">소매 시장 대비 차익 <span class="text-mut text-sm font-normal">— 엔카/케이카 시세 vs 예상 낙찰가</span></h3>
+  </div>
+  <div class="flex items-center gap-3 flex-wrap tabular-nums">
+    <div><div class="text-[11px] text-mut">소매 평균 시세</div><div class="font-mono text-base font-semibold text-txt">{{ eff_median|won }}</div></div>
+    <span class="material-symbols-outlined text-mut/50">arrow_forward</span>
+    <div><div class="text-[11px] text-primary">AI 예상 낙찰가</div><div class="font-mono text-base font-bold text-primary">{{ expected.price|won }}</div></div>
+    <div class="ml-auto text-right">
+      <div class="text-[11px] text-mut">예상 절감</div>
+      <div class="font-mono text-xl font-extrabold text-emerald-600">{{ (eff_median - expected.price)|won }}<span class="text-xs font-normal text-mut"> 원</span></div>
+      <span class="text-[11px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-bold">−{{ ((eff_median - expected.price)/eff_median*100)|round|int }}%</span>
+    </div>
+  </div>
+  <p class="text-[11px] text-mut/70 mt-3">※ 낙찰 시 이전비·수리비·명도비 등 추가비용을 반영해 실질 차익을 판단하세요.</p>
+</div>
+{% endif %}
+
 <!-- 낙찰 전 점검 포인트 (법차식 실용 체크리스트) -->
 <div class="bg-surface border border-line rounded-lg p-5">
   <div class="flex items-center gap-2 mb-3">
