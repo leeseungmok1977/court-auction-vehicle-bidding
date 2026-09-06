@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block pagetitle %}법원별 경매{% endblock %}
+{% block content %}
+<div class="bg-surface border border-line rounded-lg p-4 sm:p-6">
+  <div class="flex items-center gap-2 mb-1">
+    <span class="material-symbols-outlined text-primary">gavel</span>
+    <h3 class="text-lg font-semibold">법원별 경매 <span class="text-mut text-sm font-normal">— 예정 물건 많은 순</span></h3>
+  </div>
+  <p class="text-sm text-mut mb-4">전국 <b class="text-txt">{{ courts|length }}</b>개 법원 · 예정 <b class="text-primary">{{ total }}</b>건. 법원을 누르면 그 법원 물건이 열립니다.</p>
+  {% if courts %}
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+    {% for court, n in courts %}
+    <a href="/vehicles?court={{ court|urlencode }}&upcoming=30&sort=sale_date"
+       class="flex items-center gap-3 border border-line rounded-lg px-4 py-3 hover:border-primary hover:bg-slate-50 transition-colors">
+      <span class="w-7 h-7 shrink-0 rounded-full text-xs font-bold flex items-center justify-center
+                   {{ 'bg-primary text-white' if loop.index <= 3 else 'bg-slate-100 text-mut' }}">{{ loop.index }}</span>
+      <span class="flex-1 min-w-0 font-medium text-txt truncate" style="word-break:keep-all">{{ court|replace('지방법원','지법') }}</span>
+      <span class="shrink-0 text-primary font-bold tnum">{{ n }}건</span>
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="text-sm text-mut py-8 text-center">예정 물건이 없습니다.</p>
+  {% endif %}
+</div>
+{% endblock %}

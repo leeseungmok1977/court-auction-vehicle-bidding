@@ -241,7 +241,7 @@ VEHICLES_PAGE_SIZE = 12
 @app.get("/vehicles", response_class=HTMLResponse)
 def vehicles(request: Request, judgment: str = "", maker: str = "", q: str = "",
              sort: str = "sale_date", upcoming: str = "", result: str = "", status: str = "",
-             cond: str = "", page: int = 1, date: str = ""):
+             cond: str = "", page: int = 1, date: str = "", court: str = ""):
     # upcoming은 str로 받아 빈값/오염값에 견고하게 파싱(폼 hidden 빈값·손편집 URL 대비)
     up = int(upcoming) if upcoming.strip().lstrip("-").isdigit() else 0
     if up < 0:
@@ -250,7 +250,7 @@ def vehicles(request: Request, judgment: str = "", maker: str = "", q: str = "",
                             q=q or None, sort=sort, result=result or None,
                             status=status or None, cond=cond or None,
                             upcoming_days=up or None, hide_incomplete=True,
-                            date=date or None)
+                            date=date or None, court=court or None)
     _bt = service.backtest_stats()
     disc = _bt.get("discount_median")
     mae = _bt.get("mae_pct")
@@ -285,7 +285,7 @@ def vehicles(request: Request, judgment: str = "", maker: str = "", q: str = "",
     qs = urlencode({k: v for k, v in {
         "judgment": judgment, "maker": maker, "q": q, "sort": sort,
         "upcoming": up or "", "result": result, "status": status, "cond": cond,
-        "date": date}.items() if v})
+        "date": date, "court": court}.items() if v})
     qs_no_upcoming = urlencode({k: v for k, v in {   # 30일 해제 링크용(upcoming만 제거, 나머지 유지)
         "judgment": judgment, "maker": maker, "q": q, "sort": sort,
         "result": result, "status": status, "cond": cond}.items() if v})
@@ -307,7 +307,7 @@ def vehicles(request: Request, judgment: str = "", maker: str = "", q: str = "",
     resp = templates.TemplateResponse("vehicles.html", {
         "request": request, "rows": page_rows, "judgment": judgment, "maker": maker,
         "q": q, "sort": sort, "upcoming": up, "result": result, "status": status,
-        "cond": cond, "date": date,
+        "cond": cond, "date": date, "court": court,
         "judgments": JUDGMENTS, "makers": db.distinct_makers(),
         "today": _date.today().isoformat(), "mae": mae,
         "total": total, "page": page, "total_pages": total_pages,
@@ -350,6 +350,16 @@ def calendar_view(request: Request, ym: str = ""):
         "prev_ym": (first - _td(days=1)).strftime("%Y-%m"),
         "next_ym": (last + _td(days=1)).strftime("%Y-%m"),
         "today_iso": today.isoformat(),
+    })
+
+
+@app.get("/courts", response_class=HTMLResponse)
+def courts_view(request: Request):
+    """법원별 물건 수 — 지역(법원) 선택 탐색(법차 '근처 법원' 벤치마킹)."""
+    rows = db.court_counts()   # [(court, n)] 내림차순
+    total = sum(n for _, n in rows)
+    return templates.TemplateResponse("courts.html", {
+        "request": request, "courts": rows, "total": total,
     })
 
 

@@ -266,10 +266,12 @@ def list_vehicles(judgment: Optional[str] = None, maker: Optional[str] = None,
                   sort: str = "sale_date", upcoming_days: Optional[int] = None,
                   status: Optional[str] = None, result: Optional[str] = None,
                   cond: Optional[str] = None, hide_incomplete: bool = False,
-                  date: Optional[str] = None) -> list[dict]:
+                  date: Optional[str] = None, court: Optional[str] = None) -> list[dict]:
     where, params = [], []
     if date:                         # 특정 매각기일(달력에서 날짜 클릭)
         where.append("sale_date = ?"); params.append(date)
+    if court:                        # 법원 필터(법원별 탐색)
+        where.append("court = ?"); params.append(court)
     if cond == "insp_expired":       # 자동차검사 유효기간 경과
         where.append("inspection_to IS NOT NULL AND inspection_to <> '' "
                      "AND inspection_to < date('now','localtime')")
@@ -357,6 +359,18 @@ def counts_by_judgment() -> dict:
     d["입찰 검토 가능"] = biddable
     conn.close()
     return d
+
+
+def court_counts() -> list:
+    """법원별 미래 기일 물건 수 [(court, n)] 내림차순 — 법원별 탐색용."""
+    conn = connect()
+    rows = conn.execute(
+        "SELECT court, COUNT(*) c FROM vehicles "
+        "WHERE court IS NOT NULL AND court <> '' "
+        "AND sale_date >= date('now','localtime') "
+        "GROUP BY court ORDER BY c DESC").fetchall()
+    conn.close()
+    return [(r["court"], r["c"]) for r in rows]
 
 
 def top_makers(limit: int = 8) -> list:
