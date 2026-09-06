@@ -173,7 +173,11 @@ CREATE TABLE IF NOT EXISTS usage_daily ( -- 무료 등급 일일 열람 제한(M
 - **완료 기준**: 새 테스트가 M01 적용 상태에서 통과하고, M01을 되돌리면(임시로) 실패함을 확인.
 - **주의**: `NAECHAGET_ADMIN_KEY`를 테스트 env로 세팅 후 `_admin_token()`으로 관리자 쿠키 생성(`web/app.py` 참고).
 
-#### TASK-M03 — 관리자 서브도메인 분리 + 서버단 보호
+#### TASK-M03 — 관리자 접근 분리 + 서버단 보호  ✅ 완료(2026-09-06, 커밋 05662c3)
+> 결정: **SSH 터널 전용**(서브도메인 미개설). `is_admin = XFF 없음 + Host loopback`(uvicorn
+> 127.0.0.1:8000 전용 + 8000 외부차단이 근거). 공개 도메인의 /admin?key= 제거, 운영 라우트
+> 비관리자 404, 관리자는 폰 프레임 생략. 접속: `ssh -L 9000:127.0.0.1:8000 …` → http://127.0.0.1:9000.
+> 아래 원안(서브도메인)은 참고용으로 남김.
 - **목표**: 관리자 화면·운영 라우트를 `admin.naechaget.co.kr`로 옮기고 사용자 도메인에서는 진입 자체를 차단. 앱/사용자 도메인엔 관리자 흔적 0.
 - **대상**: nginx 설정(VM), `web/app.py`(호스트 기반 가드), 가비아 DNS.
 - **구현 지침**:
@@ -184,7 +188,9 @@ CREATE TABLE IF NOT EXISTS usage_daily ( -- 무료 등급 일일 열람 제한(M
 - **완료 기준**: `curl https://naechaget.co.kr/run`(POST) → 404; `admin.` 호스트 + 허용 IP → 정상. 사용자 도메인 어디에도 `/admin` 링크·엔카 없음.
 - **주의**: 지금은 `is_admin` 쿠키가 메인 도메인에 걸려 있다 — M03에서 관리자 판정을 **호스트 + 보호**로 이관하고 메인 도메인 쿠키 경로는 제거/무효화.
 
-#### TASK-M04 — 사용자·등급 스캐폴딩(기능 배분 없이 뼈대만)
+#### TASK-M04 — 사용자·등급 스캐폴딩(기능 배분 없이 뼈대만)  ✅ 완료(2026-09-06, 커밋 05662c3)
+> `users`/`purchases`/`usage_daily` 테이블 + `db.get_user/upsert_user/set_user_tier` +
+> `web/auth.py`(current_user/user_tier/require_tier). 전원 tier=1, 게이팅 미적용(M11+). Phase A 완료.
 - **목표**: `users`/`purchases`/`usage_daily` 테이블 + `current_user(request)` + `require_tier(n)` 헬퍼. **이 단계에선 전원 무료(tier=1)** — 게이팅 로직만 심고 실제 제한은 M11+에서.
 - **대상**: `web/db.py`(스키마·마이그레이션), `web/auth.py`(신규, 우선 스텁), `web/app.py`.
 - **구현 지침**: §4 테이블 추가. `current_user`는 M05 전까지 익명(tier=1) 반환하는 스텁. `require_tier(n)`는 등급 부족 시 402/업그레이드 안내를 반환하되 지금은 어디에도 적용 안 함(정의만).
