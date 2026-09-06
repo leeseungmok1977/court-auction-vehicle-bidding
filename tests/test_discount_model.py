@@ -34,6 +34,18 @@ def test_expected_for_uses_model_then_fail():
     assert service.expected_for(v_fail, bt) == 27_000_000           # 0.90 (유찰버킷)
 
 
+def test_rebuild_item_covers_all_fields():
+    # VehicleItem에 필드가 늘어나도 _rebuild_item(재분석 경로)이 깨지지 않아야 함
+    # (sale_time·sale_place 등 신규 필수필드 누락 → '다시 분석' TypeError 회귀 방지)
+    it = service._rebuild_item({
+        "case_no": "2026타경1", "item_no": "1", "court": "포항지원",
+        "court_code": "B000317", "maker": "르노코리아", "model": "QM6",
+        "sale_date": "2026-09-07", "sale_time": "10:00", "sale_place": "2층210호경매법정",
+        "doc_id": "x"})
+    assert it.case_no == "2026타경1" and it.court == "포항지원"
+    assert it.sale_time == "10:00" and it.sale_place == "2층210호경매법정"
+
+
 def test_sale_snapshot_shape():
     v = {"id": "C|2026타경1|1", "court_code": "C", "case_no": "2026타경1", "item_no": "1",
          "maker": "기아", "model": "쏘렌토", "year": 2021, "median_price": 30_000_000,

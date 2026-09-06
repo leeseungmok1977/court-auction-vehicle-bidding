@@ -334,6 +334,7 @@ def _rebuild_item(v: dict):
         fuel_code="", fuel_name=None, transmission_code="",
         appraisal_value=v.get("appraisal_value"), min_sale_price=v.get("min_sale_price"),
         fail_count=v.get("fail_count"), sale_date=v.get("sale_date"),
+        sale_time=v.get("sale_time"), sale_place=v.get("sale_place") or "",
         usage_name="", location=v.get("location") or "", status_code="",
         doc_id=v.get("doc_id") or "")
 
