@@ -185,15 +185,21 @@
   </div>
   <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
     {% for v in alerts[:6] %}
-    <a href="/vehicle/{{ v.id }}" class="block border border-line rounded-lg p-3 hover:border-amber-300 hover:bg-amber-50/30 transition tabular-nums">
-      <div class="flex items-center justify-between gap-2">
-        <span class="font-semibold text-primary truncate" style="word-break:keep-all">{{ v.model|mdl }} <span data-fav-star data-vid="{{ v.id }}" class="text-amber-500" hidden>★</span></span>
-        <span class="text-xs font-bold shrink-0 px-2 py-0.5 rounded-full {{ 'bg-rose-100 text-rose-700' if v.dday<=1 else 'bg-amber-100 text-amber-700' }}">{{ 'D-DAY' if v.dday==0 else 'D-' ~ v.dday }}</span>
+    <a href="/vehicle/{{ v.id }}" class="flex gap-3 border border-line rounded-lg p-3 hover:border-amber-300 hover:bg-amber-50/30 transition tabular-nums">
+      <div class="w-20 h-16 shrink-0 rounded-md overflow-hidden bg-slate-100 flex items-center justify-center">
+        {% if v.photo_url %}<img src="{{ v.photo_url }}" alt="" loading="lazy" class="w-full h-full object-cover">
+        {% else %}<span class="material-symbols-outlined text-mut/40 text-3xl">directions_car</span>{% endif %}
       </div>
-      <div class="text-xs text-mut/70 font-mono mt-0.5">{{ v.sale_date }} · {{ (v.court or '')|replace('지방법원','지법') }}</div>
-      <div class="flex items-end justify-between mt-2">
-        <span class="text-[11px] text-mut">예상낙찰가</span>
-        <span class="font-mono font-bold text-sm text-txt">{{ v.expected_win|won if v.expected_win else '—' }}</span>
+      <div class="min-w-0 flex-1">
+        <div class="flex items-center justify-between gap-2">
+          <span class="font-semibold text-primary truncate" style="word-break:keep-all">{{ v.model|mdl }} <span data-fav-star data-vid="{{ v.id }}" class="text-amber-500" hidden>★</span></span>
+          <span class="text-xs font-bold shrink-0 px-2 py-0.5 rounded-full {{ 'bg-rose-100 text-rose-700' if v.dday<=1 else 'bg-amber-100 text-amber-700' }}">{{ 'D-DAY' if v.dday==0 else 'D-' ~ v.dday }}</span>
+        </div>
+        <div class="text-xs text-mut/70 font-mono mt-0.5 truncate">{{ v.sale_date }} · {{ (v.court or '')|replace('지방법원','지법') }}</div>
+        <div class="flex items-end justify-between mt-1.5">
+          <span class="text-[11px] text-mut">예상낙찰가</span>
+          <span class="font-mono font-bold text-sm text-txt">{{ v.expected_win|won if v.expected_win else '—' }}</span>
+        </div>
       </div>
     </a>
     {% endfor %}

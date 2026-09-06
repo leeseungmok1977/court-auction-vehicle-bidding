@@ -1275,7 +1275,8 @@ def alert_items(days: int = 3) -> list:
             continue
         if dd < 0:
             continue
-        out.append({**v, "dday": dd, "expected_win": expected_for(v, bt)})
+        out.append({**v, "dday": dd, "expected_win": expected_for(v, bt),
+                    "photo_url": _pick_photo_url(v)})   # 대시보드 알림 카드 좌측 대표 썸네일
     out.sort(key=lambda x: (x["dday"], -(x.get("expected_win") or 0)))
     return out
 
