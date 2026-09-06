@@ -288,6 +288,15 @@ def landing(request: Request):
     return templates.TemplateResponse("landing.html", ctx)
 
 
+@app.get("/privacy", response_class=HTMLResponse)
+def privacy(request: Request):
+    """개인정보처리방침(공개 독립 페이지) — Play·AdMob 심사 필수. 문의 이메일은 설정으로 교체 가능."""
+    return templates.TemplateResponse("privacy.html", {
+        "request": request, "updated": "2026-09-06", "site": "naechaget.co.kr",
+        "contact": db.get_setting("privacy_contact", "poscointl2026@gmail.com"),
+    })
+
+
 @app.post("/daily/settings")
 def daily_settings(request: Request, enabled: str = Form(""), daily_time: str = Form("06:00"),
                    daily_within: int = Form(30), analyze: str = Form(""),

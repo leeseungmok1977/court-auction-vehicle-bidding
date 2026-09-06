@@ -107,7 +107,8 @@
     {{ navitem('/watchlist', 'star', '관심 목록', path.startswith('/watchlist')) }}
   </nav>
   <div class="px-5 mt-auto border-t border-line pt-4 text-xs text-mut leading-relaxed">
-    <a href="/landing" class="inline-flex items-center gap-1 text-primary hover:underline mb-2"><span class="material-symbols-outlined text-sm">campaign</span> 서비스 소개</a><br>
+    <a href="/landing" class="inline-flex items-center gap-1 text-primary hover:underline mb-2"><span class="material-symbols-outlined text-sm">campaign</span> 서비스 소개</a>
+    · <a href="/privacy" class="text-primary hover:underline">개인정보처리방침</a><br>
     대법원 법원경매정보 기반 분석 · 소매 시세 참고<br>참고용 분석 도구(투자 권유 아님)
     {% if is_admin(request) %}<br><span class="text-mut/60">데이터: 대법원 · SK엔카 · config.yaml · 검증용 소량·저속 수집</span>{% endif %}
   </div>
