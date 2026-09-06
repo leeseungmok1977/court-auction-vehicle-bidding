@@ -6,6 +6,7 @@
     "watch:css": "tailwindcss -c tailwind.config.js -i web/static/tailwind_input.css -o web/static/app.css --watch"
   },
   "devDependencies": {
+    "simple-icons": "^16.30.0",
     "tailwindcss": "^3.4.17"
   }
 }

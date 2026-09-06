@@ -19,7 +19,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, File
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 from fastapi.templating import Jinja2Templates  # noqa: E402
 
-from web import db, service  # noqa: E402
+from web import db, service, brands  # noqa: E402
 from src.collect import kcar  # noqa: E402
 
 app = FastAPI(title="법원경매 차량 입찰가 산정")
@@ -219,7 +219,8 @@ def dashboard(request: Request):
         "judgments": JUDGMENTS, "settings": db.get_all_settings(),
         "upcoming": db.upcoming_count(30), "pending": db.pending_count(),
         "won": db.won_count(), "backtest": _bt, "review_summary": review_summary,
-        "alerts": service.alert_items(3), "top_makers": db.top_makers(8),
+        "alerts": service.alert_items(3),
+        "top_makers": [dict(name=m, n=n, **brands.brand_asset(m)) for m, n in db.top_makers(8)],
         "featured": featured,
     })
 

@@ -72,12 +72,13 @@
   <h3 class="text-sm font-semibold text-txt mb-3 flex items-center gap-1.5"><span class="material-symbols-outlined text-primary text-lg">explore</span> 빠른 탐색</h3>
   {% if top_makers %}
   <div class="flex gap-2 overflow-x-auto custom-scrollbar pb-1 -mx-1 px-1">
-    {% for mk, n in top_makers %}
-    <a href="/vehicles?maker={{ mk|urlencode }}&upcoming=30&sort=sale_date" class="shrink-0 flex flex-col items-center gap-1 w-16 group" title="{{ mk }} {{ n }}건">
-      <span class="w-12 h-12 rounded-full bg-slate-100 border border-line group-hover:border-primary group-hover:bg-primary/5 flex items-center justify-center text-mut group-hover:text-primary transition-colors">
-        <span class="material-symbols-outlined">directions_car</span></span>
-      <span class="text-[11px] text-txt leading-tight truncate w-full text-center" style="word-break:keep-all">{{ mk }}</span>
-      <span class="text-[9px] text-mut/60 -mt-1 tnum">{{ n }}</span>
+    {% for mk in top_makers %}
+    <a href="/vehicles?maker={{ mk.name|urlencode }}&upcoming=30&sort=sale_date" class="shrink-0 flex flex-col items-center gap-1 w-16 group" title="{{ mk.name }} {{ mk.n }}건">
+      <span class="w-12 h-12 rounded-full bg-white border border-line group-hover:border-primary shadow-sm flex items-center justify-center overflow-hidden transition-colors">
+        {% if mk.logo %}<img src="{{ mk.logo }}" class="w-7 h-7 object-contain" alt="{{ mk.name }}" loading="lazy">
+        {% else %}<span class="text-xs font-extrabold" style="color:{{ mk.color }}">{{ mk.initial }}</span>{% endif %}</span>
+      <span class="text-[11px] text-txt leading-tight truncate w-full text-center" style="word-break:keep-all">{{ mk.name }}</span>
+      <span class="text-[9px] text-mut/60 -mt-1 tnum">{{ mk.n }}</span>
     </a>
     {% endfor %}
   </div>
