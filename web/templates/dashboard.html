@@ -217,7 +217,7 @@
   <div class="flex items-center justify-between mb-3">
     <div class="flex items-center gap-2">
       <span class="material-symbols-outlined text-emerald-600">check_circle</span>
-      <h3 class="text-lg font-semibold">유망 물건 <span class="text-mut text-sm font-normal">— 신뢰도 → 예상낙찰가 여유 큰 순</span></h3>
+      <h3 class="text-lg font-semibold whitespace-nowrap">유망 물건 <span class="text-mut text-sm font-normal hidden sm:inline">— 신뢰도 → 예상낙찰가 여유 큰 순</span></h3>
     </div>
     <a href="/vehicles?judgment=입찰 검토 가능&sort=expected" class="text-sm text-primary hover:underline whitespace-nowrap shrink-0">전체 보기 →</a>
   </div>
@@ -282,7 +282,7 @@
 <div class="bg-surface border border-line rounded-lg p-5">
   <div class="flex items-center gap-2 mb-1">
     <span class="material-symbols-outlined text-emerald-600">verified</span>
-    <h3 class="text-lg font-semibold">실측 검증 <span class="text-mut text-sm font-normal">— 실제 낙찰가로 시세·산정 정확도 백테스트</span></h3>
+    <h3 class="text-lg font-semibold whitespace-nowrap">실측 검증 <span class="text-mut text-sm font-normal hidden sm:inline">— 실제 낙찰가로 시세·산정 정확도 백테스트</span></h3>
   </div>
   {% if backtest.sample %}
   <p class="text-sm text-mut mb-4">이미 매각된 <b class="text-txt">{{ backtest.won_total }}건</b> 중 시세가 산출된 <b class="text-txt">{{ backtest.sample }}건</b>을 실제 낙찰가와 대조했습니다.</p>
@@ -329,7 +329,7 @@
   <summary class="flex items-center gap-2 p-5 cursor-pointer select-none list-none">
     <span class="material-symbols-outlined text-mut group-open:rotate-90 transition">chevron_right</span>
     <span class="material-symbols-outlined text-primary">tune</span>
-    <h3 class="text-lg font-semibold">운영 도구 <span class="text-mut text-sm font-normal">— 수집 · 시세 분석 · 낙찰결과 갱신</span></h3>
+    <h3 class="text-lg font-semibold whitespace-nowrap">운영 도구 <span class="text-mut text-sm font-normal hidden sm:inline">— 수집 · 시세 분석 · 낙찰결과 갱신</span></h3>
     <span class="ml-auto text-xs text-mut">
       {% if settings.get('daily_enabled')=='1' %}<span class="text-primary">● 자동 갱신 ON · 매일 {{ settings.get('daily_time','06:00') }}</span>{% else %}○ 자동 갱신 OFF{% endif %}
     </span>
