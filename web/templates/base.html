@@ -40,6 +40,59 @@
 <link rel="icon" type="image/png" sizes="16x16" href="/static/icons/favicon-16.png"/>
 <!-- 정적 빌드 CSS + self-host 폰트 (CDN 의존 제거 — 오프라인 안전·FOUC 제거) -->
 <link rel="stylesheet" href="/static/app.css?v={{ css_v }}"/>
+<!-- 앱 셸 높이를 '실제 보이는 뷰포트'(visualViewport)에 바인딩 — 모바일 주소창 표시/숨김에도
+     하단 탭이 항상 화면 안 바닥에 고정(100dvh가 툴바 애니메이션을 쫓다 깜빡이는 문제 방지).
+     JS 전/미지원 시 CSS 폴백(var 미설정 → 100dvh → h-screen 100vh). -->
+<script>
+  (function(){
+    var de = document.documentElement, vv = window.visualViewport;
+    function setH(){ de.style.setProperty('--app-h', ((vv && vv.height) || window.innerHeight) + 'px'); }
+    setH();
+    if (vv) vv.addEventListener('resize', setH);
+    window.addEventListener('resize', setH);
+    window.addEventListener('pageshow', setH);
+    window.addEventListener('orientationchange', function(){ setTimeout(setH, 250); });
+  })();
+</script>
+<!-- 즐겨찾기: 기기 로컬 저장(localStorage) — 로그인 전 사용자별·기기별 관리(다중 사용자 안전).
+     서버는 즐겨찾기 상태를 저장하지 않음. 로그인(M05) 시 서버 favorites 테이블로 병합 예정.
+     ⚠ <head>에서 정의 — content 블록의 인라인 스크립트(예: /watchlist 하이드레이트)가 window.Fav를
+     파싱 시점에 안전하게 참조하도록 반드시 문서 앞쪽에 둔다. -->
+<script>
+(function(){
+  var KEY='naechaget:favs';
+  function read(){ try{ var a=JSON.parse(localStorage.getItem(KEY)||'[]'); return Array.isArray(a)?a.map(String):[]; }catch(e){ return []; } }
+  function write(a){ try{ localStorage.setItem(KEY, JSON.stringify(a)); }catch(e){} }
+  var Fav={
+    all: read,
+    has: function(id){ return read().indexOf(String(id))>=0; },
+    count: function(){ return read().length; },
+    csv: function(){ return read().join(','); },
+    toggle: function(id){ id=String(id); var a=read(), i=a.indexOf(id); if(i>=0) a.splice(i,1); else a.push(id); write(a); Fav.paint(); return i<0; },
+    paint: function(){
+      var on=read();
+      document.querySelectorAll('[data-fav-star]').forEach(function(el){   // 목록·대시보드 ★ 마커
+        el.hidden = on.indexOf(String(el.getAttribute('data-vid')))<0; });
+      document.querySelectorAll('[data-fav-btn]').forEach(function(b){      // 상세 즐겨찾기 버튼
+        var f = on.indexOf(String(b.getAttribute('data-vid')))>=0;
+        var ic=b.querySelector('[data-fav-icon]'); if(ic) ic.style.fontVariationSettings="'FILL' "+(f?1:0);
+        var lb=b.querySelector('[data-fav-label]'); if(lb) lb.textContent = f?'즐겨찾기 해제':'즐겨찾기';
+        b.setAttribute('aria-pressed', f?'true':'false');
+      });
+      var n=on.length;                                                      // 내비 개수 배지
+      document.querySelectorAll('[data-fav-count]').forEach(function(el){ el.textContent=n; el.hidden = n===0; });
+    }
+  };
+  window.Fav=Fav;
+  document.addEventListener('DOMContentLoaded', Fav.paint);
+  window.addEventListener('pageshow', Fav.paint);                          // bfcache 복귀 시 재도색
+  window.addEventListener('storage', function(e){ if(e.key===KEY) Fav.paint(); });  // 다른 탭과 동기화
+  document.addEventListener('click', function(e){                          // 즐겨찾기 버튼(위임) — id 보간 없이 안전
+    var b = e.target.closest && e.target.closest('[data-fav-btn]');
+    if(b){ e.preventDefault(); Fav.toggle(b.getAttribute('data-vid')); }
+  });
+})();
+</script>
 <!-- 브랜드 스플래시(초기화면) — 세션당 1회, 이후 페이지 이동엔 즉시 숨김 -->
 <style>
   #splash{position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;
@@ -54,6 +107,9 @@
   @keyframes sload{0%{transform:translateX(-120%)}100%{transform:translateX(320%)}}
   .splash-done #splash{display:none}
   @media (prefers-reduced-motion: reduce){ #splash .s-bar span{animation:none} }
+  /* 모바일 하단 탭 안정화: 오버스크롤이 브라우저 주소창(툴바)을 토글해 탭이 깜빡이는 것 방지 */
+  html,body{overscroll-behavior:none}
+  .custom-scrollbar{overscroll-behavior:contain}
 </style>
 <script>try{ if(sessionStorage.getItem("nc_splash")) document.documentElement.className += " splash-done"; }catch(e){}</script>
 <script>
@@ -64,7 +120,7 @@
   }
 </script>
 </head>
-<body class="bg-background text-txt h-screen overflow-hidden flex" style="height:100dvh">
+<body class="bg-background text-txt h-screen overflow-hidden flex" style="height:var(--app-h,100dvh)">
 <!-- 브랜드 스플래시(초기화면) -->
 <div id="splash" aria-hidden="true">
   <img class="s-logo" src="/static/icons/icon-192.png" alt=""/>
@@ -99,17 +155,18 @@
     </div>
   </div>
   <nav class="flex-1 px-3 space-y-1">
-    {% macro navitem(href, icon, label, active) %}
+    {% macro navitem(href, icon, label, active, fav=false) %}
     <a href="{{ href }}" class="flex items-center gap-3 px-4 py-2.5 rounded-md transition-colors
        {{ 'bg-primary/10 text-primary border-l-4 border-primary' if active else 'text-mut hover:text-txt hover:bg-line/40 border-l-4 border-transparent' }}">
       <span class="material-symbols-outlined">{{ icon }}</span>
       <span class="text-sm font-semibold">{{ label }}</span>
+      {% if fav %}<span data-fav-count hidden class="ml-auto min-w-5 h-5 px-1.5 rounded-full bg-amber-400 text-[#0b142b] text-[11px] font-bold flex items-center justify-center tnum"></span>{% endif %}
     </a>
     {% endmacro %}
     {{ navitem('/', 'dashboard', '대시보드', path=='/') }}
     {{ navitem('/vehicles', 'directions_car', '차량 목록', path.startswith('/vehicle')) }}
     {{ navitem('/calendar', 'calendar_month', '경매 달력', path.startswith('/calendar')) }}
-    {{ navitem('/watchlist', 'star', '즐겨찾기', path.startswith('/watchlist')) }}
+    {{ navitem('/watchlist', 'star', '즐겨찾기', path.startswith('/watchlist'), fav=true) }}
   </nav>
   <div class="px-5 mt-auto border-t border-line pt-4 text-xs text-mut leading-relaxed">
     <a href="/landing" class="inline-flex items-center gap-1 text-primary hover:underline mb-2"><span class="material-symbols-outlined text-sm">campaign</span> 서비스 소개</a>
@@ -120,7 +177,7 @@
 </aside>
 
 <!-- Main -->
-<main class="lg:ml-72 flex-1 flex flex-col h-screen overflow-hidden w-full" style="height:100dvh">
+<main class="lg:ml-72 flex-1 flex flex-col h-screen overflow-hidden w-full" style="height:var(--app-h,100dvh)">
   <header class="h-16 flex items-center gap-2 sm:gap-3 px-4 lg:px-8 bg-background border-b border-line shrink-0 sticky top-0 z-10">
     <!-- 모바일: 앱 브랜드 (하단 탭이 내비 담당 → 좌측 슬라이드 제거, 타이틀 대신 브랜드) -->
     <a href="/" class="flex lg:hidden items-center gap-2 shrink-0" title="경매로 내차GET">
@@ -155,10 +212,11 @@
   </div>
   <!-- 하단 탭 바 (모바일 전용, flex 자식) — 고정 오버레이 대신 실제 하단 배치라 스크롤 영역이 탭 위에서 끝남
        → dvh/브라우저 동적 툴바와 겹쳐 페이지네이션이 잘리던 문제 방지. 데스크톱(lg)은 좌측 사이드바. -->
-  {% macro tab(href, icon, label, active, badge=0) %}
+  {% macro tab(href, icon, label, active, badge=0, fav=false) %}
   <a href="{{ href }}" class="flex-1 flex flex-col items-center justify-center gap-0.5 py-1.5 relative transition-colors {{ 'text-primary' if active else 'text-mut hover:text-txt' }}">
     <span class="material-symbols-outlined text-[22px] leading-none" style="font-variation-settings:'FILL' {{ 1 if active else 0 }}">{{ icon }}</span>
     <span class="text-[10px] font-semibold tracking-tight">{{ label }}</span>
+    {% if fav %}<span data-fav-count hidden class="absolute top-1 left-1/2 translate-x-1.5 min-w-4 h-4 px-1 rounded-full bg-amber-400 text-[#0b142b] text-[9px] font-bold flex items-center justify-center tnum"></span>{% endif %}
     {% if badge %}<span class="absolute top-1 left-1/2 translate-x-1.5 min-w-4 h-4 px-1 rounded-full bg-rose-500 text-white text-[9px] font-bold flex items-center justify-center">{{ badge if badge < 100 else '99+' }}</span>{% endif %}
   </a>
   {% endmacro %}
@@ -167,7 +225,7 @@
     {{ tab('/', 'home', '홈', path=='/') }}
     {{ tab('/vehicles', 'directions_car', '차량목록', path.startswith('/vehicle')) }}
     {{ tab('/calendar', 'calendar_month', '경매달력', path.startswith('/calendar')) }}
-    {{ tab('/watchlist', 'star', '즐겨찾기', path.startswith('/watchlist')) }}
+    {{ tab('/watchlist', 'star', '즐겨찾기', path.startswith('/watchlist'), fav=true) }}
   </nav>
 </main>
 
@@ -209,6 +267,7 @@
   poll();
 })();
 </script>
+
 {% block script %}{% endblock %}
 </body>
 </html>

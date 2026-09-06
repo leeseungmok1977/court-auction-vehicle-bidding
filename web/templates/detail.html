@@ -31,11 +31,10 @@
         <span class="material-symbols-outlined text-lg">autorenew</span> 다시 분석</button>
     </form>
     {% endif %}
-    <form method="post" action="/vehicle/{{ v.id }}/star">
-      <button class="border border-amber-200 text-amber-700 text-sm px-4 py-2 rounded-full hover:bg-amber-50 transition flex items-center gap-1.5">
-        <span class="material-symbols-outlined text-lg" style="font-variation-settings:'FILL' {{ 1 if v.starred else 0 }}">star</span>
-        {{ '즐겨찾기 해제' if v.starred else '즐겨찾기' }}</button>
-    </form>
+    <button type="button" data-fav-btn data-vid="{{ v.id }}" aria-pressed="false"
+            class="border border-amber-200 text-amber-700 text-sm px-4 py-2 rounded-full hover:bg-amber-50 transition flex items-center gap-1.5">
+      <span data-fav-icon class="material-symbols-outlined text-lg" style="font-variation-settings:'FILL' 0">star</span>
+      <span data-fav-label>즐겨찾기</span></button>
     {% if v.appraisal_ecdoc_id %}
     <a href="/vehicle/{{ v.id }}/appraisal" target="auctionAppraisal" class="btn-ghost text-sm flex items-center gap-1.5" title="법원 감정평가서 원본(KAPA) — 새 탭에서 열림">
       <span class="material-symbols-outlined text-lg">gavel</span> 감정평가서</a>

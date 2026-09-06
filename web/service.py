@@ -1255,13 +1255,14 @@ def plain_verdict(v: dict, expected: Optional[dict]) -> Optional[dict]:
 
 
 def alert_items(days: int = 3) -> list:
-    """임박 매각기일(오늘~D+days) 알림 대상 — 관심 물건 또는 검토가능. dday·예상낙찰가 포함(PS-05)."""
+    """임박 매각기일(오늘~D+days) 알림 대상 — 검토가능 물건. dday·예상낙찰가 포함(PS-05).
+
+    (즐겨찾기는 기기 로컬 저장이라 서버가 알 수 없음 → 목록의 ★ 마커는 클라이언트가 도색.)"""
     import datetime
     today = datetime.date.today()
     bt = backtest_stats()
     seen, out = set(), []
-    rows = (db.list_vehicles(starred=True, upcoming_days=days)
-            + db.list_vehicles(judgment="입찰 검토 가능", upcoming_days=days))
+    rows = db.list_vehicles(judgment="입찰 검토 가능", upcoming_days=days)
     for v in rows:
         if v["id"] in seen:
             continue
@@ -1433,12 +1434,11 @@ def multi_lot_ids(refresh: bool = False) -> set:
 
 
 def alert_count(days: int = 3) -> int:
-    """헤더 벨 배지용 경량 카운트(백테스트 미호출)."""
+    """헤더 벨 배지용 경량 카운트(백테스트 미호출) — 검토가능 임박 물건."""
     import datetime
     today = datetime.date.today()
     seen = set()
-    for v in (db.list_vehicles(starred=True, upcoming_days=days)
-              + db.list_vehicles(judgment="입찰 검토 가능", upcoming_days=days)):
+    for v in db.list_vehicles(judgment="입찰 검토 가능", upcoming_days=days):
         try:
             if (datetime.date.fromisoformat(v.get("sale_date")) - today).days >= 0:
                 seen.add(v["id"])

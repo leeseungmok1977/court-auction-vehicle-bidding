@@ -10,6 +10,7 @@
   </div>
   {% if rows %}
   <form method="get" action="/watchlist" class="ml-auto flex items-center gap-2">
+    <input type="hidden" name="ids" value="{{ ids_csv }}">
     <label class="text-xs text-mut">정렬</label>
     <select name="sort" onchange="this.form.submit()" class="inp py-1.5 text-sm">
       <option value="sale_date" {% if sort=='sale_date' %}selected{% endif %}>매각기일순</option>
@@ -22,7 +23,21 @@
   {% endif %}
 </div>
 
-{% if rows %}
+{% if hydrate %}
+{# 즐겨찾기는 기기 로컬(localStorage)에 저장 → 클라이언트가 ID를 읽어 서버로 재요청해 렌더 #}
+<div class="bg-surface border border-line rounded-lg p-10 text-center">
+  <span class="material-symbols-outlined text-mut text-4xl animate-pulse">star</span>
+  <p class="text-mut mt-2">즐겨찾기 불러오는 중…</p>
+  <noscript><p class="text-mut mt-2 text-sm">즐겨찾기는 브라우저(JavaScript)가 필요합니다.</p></noscript>
+</div>
+<script>
+(function(){
+  var ids = (window.Fav ? Fav.csv() : '');
+  var sort = {{ sort|tojson }};
+  location.replace('/watchlist?ids=' + encodeURIComponent(ids) + '&sort=' + encodeURIComponent(sort));
+})();
+</script>
+{% elif rows %}
 <div class="bg-surface border border-line rounded-lg overflow-hidden">
   <div class="hidden lg:block overflow-x-auto custom-scrollbar">
     <table class="w-full text-left min-w-[1080px]">
@@ -88,5 +103,27 @@
   <span class="material-symbols-outlined text-mut text-5xl">star</span>
   <p class="text-mut mt-2">아직 즐겨찾기한 물건이 없습니다. 물건 상세에서 ☆ 즐겨찾기를 눌러 담으세요.</p>
 </div>
+{% endif %}
+{% endblock %}
+
+{% block script %}
+{% if not hydrate %}
+<script>
+(function(){
+  // 즐겨찾기 해제/추가 후(예: 상세에서 변경 뒤 뒤로가기·bfcache 복귀) URL ids와 로컬 즐겨찾기가
+  // 어긋나면 조용히 재동기화. 비교 대상은 '서버가 렌더한 행'이 아니라 'URL ids'(=요청 시점 로컬)라서
+  // DB에서 사라진(만료·상세없음) 즐겨찾기가 섞여 있어도 재요청 후 일치 → 무한 리다이렉트 없음.
+  function reconcile(){
+    if (!window.Fav) return;
+    var urlIds = new URLSearchParams(location.search).get('ids');
+    if (urlIds === null) return;                               // 하이드레이트 진입(ids 없음)엔 개입 안 함
+    var have  = Fav.all().slice().sort().join(',');
+    var shown = (urlIds ? urlIds.split(',').map(String) : []).sort().join(',');
+    if (have !== shown) location.replace('/watchlist?ids=' + encodeURIComponent(Fav.csv()) + '&sort=' + {{ sort|tojson }});
+  }
+  window.addEventListener('pageshow', reconcile);             // bfcache로 돌아왔을 때 인라인 스크립트는 재실행 안 되므로 필수
+  reconcile();
+})();
+</script>
 {% endif %}
 {% endblock %}

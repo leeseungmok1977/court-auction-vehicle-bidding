@@ -93,7 +93,7 @@
                      else 'border-rose-500' if v.judgment=='입찰 보류'
                      else 'border-transparent' %}
         <tr class="even:bg-slate-50/60 hover:bg-slate-50 transition-colors border-l-2 {{ acc }}">
-          <td class="py-2.5 px-3 text-amber-500 align-top">{% if v.starred %}★{% endif %}</td>
+          <td class="py-2.5 px-3 text-amber-500 align-top"><span data-fav-star data-vid="{{ v.id }}" hidden>★</span></td>
           <td class="py-2.5 px-3">
             <div class="flex items-stretch justify-between gap-3">
               <div class="min-w-0 self-center">
@@ -197,7 +197,7 @@
         </div>
       </div>
       <div class="px-4 py-3">
-        <div class="font-semibold text-primary leading-tight" style="word-break:keep-all">{{ v.model|mdl }}{% if v.starred %} <span class="text-amber-500">★</span>{% endif %}</div>
+        <div class="font-semibold text-primary leading-tight" style="word-break:keep-all">{{ v.model|mdl }} <span data-fav-star data-vid="{{ v.id }}" class="text-amber-500" hidden>★</span></div>
         <div class="text-xs text-mut/70 font-mono mt-0.5" style="word-break:keep-all">{{ v.case_no }} · {{ (v.court or '—')|replace('지방법원','지법') }}{% if v.inspection_to and v.inspection_to < today %} · <span class="text-rose-600">검사경과</span>{% endif %}</div>
         <div class="flex items-end justify-between gap-2 mt-2.5">
           <div>

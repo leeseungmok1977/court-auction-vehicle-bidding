@@ -68,7 +68,7 @@ appraisal_value, min_sale_price, fail_count, sale_date, sale_time, sale_place,
 inspection_to, condition_level, condition_flags, photo_order, photo_count, folder_key, spec_remark,
 accident_grade, accident_hits, insurance_history,
 judgment, status, auction_result, winning_price, dxdy_history, result_source,
-starred, memo, final_bid,
+memo, final_bid,   # ※ starred(즐겨찾기)는 서버 미저장 — 기기 로컬(localStorage) 보관으로 이관됨(다중 사용자 안전). memo/final_bid는 아직 전역 컬럼(동종 위험 잔존, 후속 과제).
 # 파생(계산):
 expected_win(예상낙찰가=자체 모델), expected_band(보수/균형/공격), dday
 ```

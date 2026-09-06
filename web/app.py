@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
+from typing import Optional
 
 # 프로젝트 루트를 import 경로에 추가 (src.* 사용)
 ROOT = Path(__file__).resolve().parents[1]
@@ -202,7 +203,6 @@ def dashboard(request: Request):
     counts = db.counts_by_judgment()
     run = db.latest_run()
     total = db.total_vehicles()
-    starred = len(db.list_vehicles(starred=True))
     # 유망 물건: '높음' 신뢰도 + 오매칭 아님만(median/min 과대 배제) → 예상낙찰가 여유 순.
     # (신뢰 낮은/오매칭 의심 물건이 큰 여유로 상단을 독점하지 않도록 — 실측 신뢰 최우선)
     _bt = service.backtest_stats()
@@ -230,7 +230,7 @@ def dashboard(request: Request):
     _pv = lambda rows: rows if _adm else [service.public_view(r, False) for r in rows]  # noqa: E731
     return templates.TemplateResponse("dashboard.html", {
         "request": request, "counts": counts, "run": run, "total": total,
-        "starred": starred, "candidates": _pv(candidates), "running": service.is_running(),
+        "candidates": _pv(candidates), "running": service.is_running(),
         "judgments": JUDGMENTS, "settings": db.get_all_settings(),
         "upcoming": db.upcoming_count(30), "pending": db.pending_count(),
         "won": db.won_count(), "backtest": _bt, "review_summary": review_summary,
@@ -638,14 +638,6 @@ def actual_price(request: Request, vid: str, actual_price: str = Form("")):
     return RedirectResponse(f"/vehicle/{vid}", status_code=303)
 
 
-@app.post("/vehicle/{vid}/star")
-def star(vid: str):
-    v = db.get_vehicle(vid)
-    if v:
-        db.update_fields(vid, starred=0 if v.get("starred") else 1)
-    return RedirectResponse(f"/vehicle/{vid}", status_code=303)
-
-
 @app.post("/vehicle/{vid}/memo")
 def memo(vid: str, memo: str = Form(""), final_bid: str = Form("")):
     fb = int(final_bid) if str(final_bid).strip().isdigit() else None
@@ -654,10 +646,26 @@ def memo(vid: str, memo: str = Form(""), final_bid: str = Form("")):
 
 
 @app.get("/watchlist", response_class=HTMLResponse)
-def watchlist(request: Request, sort: str = "sale_date"):
-    """관심 물건 비교·정렬(PS-06) — 예상낙찰가·여유(예상−최저)·D-day로 후보 비교."""
+def watchlist(request: Request, sort: str = "sale_date", ids: Optional[str] = None):
+    """즐겨찾기 비교·정렬(PS-06) — 예상낙찰가·여유(예상−최저)·D-day로 후보 비교.
+
+    즐겨찾기는 기기 로컬(localStorage)에 저장되므로 클라이언트가 물건 ID 목록(ids,
+    콤마구분)을 넘겨준다. ids 파라미터가 아예 없으면(첫 진입) 하이드레이트 모드로
+    응답해 클라이언트가 로컬 ID를 읽어 재요청하게 한다. ids=""(빈값)은 즐겨찾기 없음."""
     from datetime import date as _date
-    rows = db.list_vehicles(starred=True, sort="sale_date")
+    if ids is None:                       # 아직 클라이언트가 ID 미전달 → 하이드레이트
+        resp = templates.TemplateResponse("watchlist.html", {
+            "request": request, "hydrate": True, "sort": sort, "rows": [], "ids_csv": ""})
+        resp.set_cookie("last_list", _cur_url(request), max_age=86400)
+        return resp
+    id_list, _seen = [], set()             # 순서 보존 + 중복 제거 + 남용 방지 상한
+    for s in ids.split(","):
+        s = s.strip()
+        if s and s not in _seen:
+            _seen.add(s); id_list.append(s)
+        if len(id_list) >= 200:
+            break
+    rows = [v for v in (db.get_vehicle(i) for i in id_list) if v]
     bt = service.backtest_stats()
     today = _date.today()
     for v in rows:                       # 비교 지표 파생
@@ -672,7 +680,8 @@ def watchlist(request: Request, sort: str = "sale_date"):
         "sale_date": lambda v: (v.get("sale_date") or "9999"),
         "dday": lambda v: (v["dday"] if v.get("dday") is not None and v["dday"] >= 0 else 9999),
         "expected": lambda v: -(v.get("expected_win") or 0),
-        "margin": lambda v: -(v.get("margin_room") or -1e12),
+        # 여유 큰 순(내림차순). margin_room=0(여유 없음)은 실제 값으로, None(데이터 없음)만 최하단.
+        "margin": lambda v: -(v["margin_room"]) if v.get("margin_room") is not None else 1e12,
         "min_sale_price": lambda v: (v.get("min_sale_price") or 0),
     }
     rows.sort(key=keys.get(sort, keys["sale_date"]))
@@ -680,7 +689,7 @@ def watchlist(request: Request, sort: str = "sale_date"):
         rows = [service.public_view(r, False) for r in rows]
     resp = templates.TemplateResponse("watchlist.html", {
         "request": request, "rows": rows, "sort": sort, "today": today.isoformat(),
-        "mae": bt.get("mae_pct")})
+        "mae": bt.get("mae_pct"), "hydrate": False, "ids_csv": ",".join(id_list)})
     resp.set_cookie("last_list", _cur_url(request), max_age=86400)
     return resp
 
