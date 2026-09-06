@@ -223,43 +223,9 @@ def dashboard(request: Request):
     candidates = sorted(_cand, key=_exp_margin, reverse=True)[:8]
     for v in candidates:      # 유찰횟수 반영 예상낙찰가(대시보드 표시용)
         v["expected_win"] = service.expected_for(v, _bt)
-    # 상단 대표 밴드(정보 위계) — 검토 가능 물건의 예상낙찰가 범위·평균 신뢰도 한눈 요약
-    _exps = [e for e in (service.expected_for(v, _bt) for v in _cand) if e]
-    _confs = [v.get("market_confidence") for v in _cand if v.get("market_confidence")]
-    review_summary = None
-    if _exps:
-        import statistics
-        if len(_exps) >= 4:
-            _q = statistics.quantiles(_exps, n=4)   # [p25, p50, p75] — IQR 밴드
-            _p25, _p75 = int(_q[0]), int(_q[2])
-        else:
-            _p25, _p75 = min(_exps), max(_exps)
-        review_summary = {
-            "count": len(_cand),
-            "exp_lo": min(_exps), "exp_hi": max(_exps),
-            "exp_p25": _p25, "exp_p75": _p75,
-            "exp_med": int(statistics.median(_exps)),
-            "conf_avg": round(sum(_confs) / len(_confs)) if _confs else None,
-            "mae": _bt.get("mae_pct"),
-            "disc_pct": round((1 - _disc) * 100) if _disc else None,   # 시세 대비 할인율(=1-낙찰가율)
-        }
-    # 오늘의 추천 물건 — 최상위 후보 + 대표사진 + D-day
-    from datetime import date as _dd
-    featured = None
-    if candidates:
-        featured = dict(candidates[0])
-        _fk = featured.get("folder_key") or featured["id"]
-        _pdir = DATA_DIR / _fk / "photos"
-        if _pdir.exists():
-            _av = {p.name for p in _pdir.iterdir() if p.is_file()}
-            _ord = [n for n in (featured.get("photo_order") or []) if n in _av]
-            _nm = _ord or sorted(_av)
-            if _nm:
-                featured["photo_url"] = f"/photo/{_fk}/{_nm[0]}"
-        try:
-            featured["dday"] = (_dd.fromisoformat(featured["sale_date"]) - _dd.today()).days if featured.get("sale_date") else None
-        except (ValueError, TypeError):
-            featured["dday"] = None
+    # 상단 대표 밴드(달력 하단으로 이동) + 오늘의 추천 캐러셀(첫화면 상단, 매일 아침 갱신)
+    review_summary = service.review_summary(_bt)
+    daily_picks = service.get_daily_picks(5)
     _adm = is_admin(request)
     _pv = lambda rows: rows if _adm else [service.public_view(r, False) for r in rows]  # noqa: E731
     return templates.TemplateResponse("dashboard.html", {
@@ -270,7 +236,7 @@ def dashboard(request: Request):
         "won": db.won_count(), "backtest": _bt, "review_summary": review_summary,
         "alerts": _pv(service.alert_items(3)),
         "top_makers": [dict(name=m, n=n, **brands.brand_asset(m)) for m, n in db.top_makers(8)],
-        "featured": service.public_view(featured, _adm),
+        "daily_picks": daily_picks,
     })
 
 
@@ -449,6 +415,7 @@ def calendar_view(request: Request, ym: str = ""):
         "prev_ym": (first - _td(days=1)).strftime("%Y-%m"),
         "next_ym": (last + _td(days=1)).strftime("%Y-%m"),
         "today_iso": today.isoformat(),
+        "review_summary": service.review_summary(),   # 집계 지표 카드(달력 하단)
     })
 
 

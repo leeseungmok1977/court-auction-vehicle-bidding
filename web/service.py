@@ -535,6 +535,11 @@ def daily_update(within_days: int = 30, analyze: bool = True,
                 db.update_run(run_id, processed=analyzed)
     # ③ 낙찰결과 반영 (매각기일 지난 물건)
     results = update_results(run_id=run_id, finalize=False)
+    # ④ 오늘의 추천 물건 갱신(대시보드 캐러셀) — 매일 아침 리스트업
+    try:
+        refresh_daily_picks(5)
+    except Exception:  # noqa: BLE001 — 추천 갱신 실패가 갱신 전체를 막지 않도록
+        pass
     if run_id:
         db.update_run(run_id, status="done", finished_at=_now(),
                       message=f"입찰예정 {stored} · 분석 {analyzed} · 낙찰결과 {results}건")
@@ -1269,6 +1274,138 @@ def alert_items(days: int = 3) -> list:
             continue
         out.append({**v, "dday": dd, "expected_win": expected_for(v, bt)})
     out.sort(key=lambda x: (x["dday"], -(x.get("expected_win") or 0)))
+    return out
+
+
+def _promising(v: dict) -> bool:
+    """대표 후보 자격 — 시세 신뢰도 높음 + 오매칭(시세≫최저가) 의심 제외."""
+    if v.get("market_confidence_label") != "높음":
+        return False
+    m, mn = v.get("median_price"), v.get("min_sale_price")
+    if m and mn and mn > 0 and m / mn > 3.5:
+        return False
+    return True
+
+
+def review_summary(bt: Optional[dict] = None) -> Optional[dict]:
+    """검토 가능 물건의 예상낙찰가 집계(중심값·IQR·평균 신뢰도·MAE·시세대비 할인율).
+    대시보드/달력 공용. bt를 넘기면 재계산 생략."""
+    import statistics
+    bt = bt or backtest_stats()
+    disc = bt.get("discount_median")
+    cand = [v for v in db.list_vehicles(judgment="입찰 검토 가능") if _promising(v)]
+    exps = [e for e in (expected_for(v, bt) for v in cand) if e]
+    if not exps:
+        return None
+    confs = [v.get("market_confidence") for v in cand if v.get("market_confidence")]
+    if len(exps) >= 4:
+        q = statistics.quantiles(exps, n=4)
+        p25, p75 = int(q[0]), int(q[2])
+    else:
+        p25, p75 = min(exps), max(exps)
+    return {
+        "count": len(cand),
+        "exp_lo": min(exps), "exp_hi": max(exps), "exp_p25": p25, "exp_p75": p75,
+        "exp_med": int(statistics.median(exps)),
+        "conf_avg": round(sum(confs) / len(confs)) if confs else None,
+        "mae": bt.get("mae_pct"),
+        "disc_pct": round((1 - disc) * 100) if disc else None,
+    }
+
+
+def _pick_photo_url(v: dict) -> Optional[str]:
+    from src.paths import DATA_DIR
+    fk = v.get("folder_key") or v.get("id")
+    pdir = DATA_DIR / fk / "photos"
+    if not pdir.exists():
+        return None
+    avail = {p.name for p in pdir.iterdir() if p.is_file()}
+    order = [n for n in (v.get("photo_order") or []) if n in avail]
+    names = order + sorted(n for n in avail if n not in order)
+    return f"/photo/{fk}/{names[0]}" if names else None
+
+
+def _pick_dict(v: dict, bt: dict) -> dict:
+    """추천 캐러셀 표시용 dict — 엔카 원자료 제거 + 사진·D-day·예상낙찰가·시세대비 할인."""
+    import datetime
+    exp = expected_for(v, bt)
+    med = effective_median(v)
+    d = public_view(dict(v), False)
+    d["expected_win"] = exp
+    d["disc_pct"] = int(round((med - exp) / med * 100)) if (med and exp and med > exp) else None
+    d["photo_url"] = _pick_photo_url(v)
+    try:
+        d["dday"] = (datetime.date.fromisoformat(v["sale_date"]) - datetime.date.today()).days
+    except (TypeError, ValueError, KeyError):
+        d["dday"] = None
+    return d
+
+
+def compute_daily_picks(n: int = 5) -> list:
+    """오늘의 추천 물건 id 선정(매일 아침 갱신용) — 검토가능·사진·예측 있는 물건 중
+    시세 대비 차익(할인) 큰 순, 제조사 다양성 확보해 상위 n건 id."""
+    bt = backtest_stats()
+    cand = []
+    for v in db.list_vehicles(judgment="입찰 검토 가능"):
+        if not (v.get("photo_count") and v.get("median_price") and v.get("min_sale_price")):
+            continue
+        if not _promising(v):
+            continue
+        exp, med = expected_for(v, bt), effective_median(v)
+        if not exp or not med:
+            continue
+        cand.append((med - exp, v))       # 시세 대비 차익(할인액) 큰 순
+    cand.sort(key=lambda x: -x[0])
+    ids, makers = [], set()
+    for _, v in cand:                     # 제조사 다양성 우선
+        mk = v.get("maker") or ""
+        if mk in makers:
+            continue
+        makers.add(mk); ids.append(v["id"])
+        if len(ids) >= n:
+            break
+    if len(ids) < n:                      # 부족하면 다양성 무시하고 채움
+        for _, v in cand:
+            if v["id"] not in ids:
+                ids.append(v["id"])
+            if len(ids) >= n:
+                break
+    return ids
+
+
+def refresh_daily_picks(n: int = 5) -> list:
+    """추천 id를 계산·저장(날짜 스탬프). 매일 갱신 작업에서 호출."""
+    import datetime, json
+    ids = compute_daily_picks(n)
+    db.set_setting("daily_picks_ids", json.dumps(ids))
+    db.set_setting("daily_picks_date", datetime.date.today().isoformat())
+    return ids
+
+
+def get_daily_picks(n: int = 5) -> list:
+    """오늘의 추천 물건(표시용 dict). 하루 고정(날짜 캐시), 없으면 계산·저장.
+    저장된 id를 매 로드 시 현재 상태로 재구성하되, 여전히 유효(검토가능·미래기일)한 것만."""
+    import datetime, json
+    today = datetime.date.today().isoformat()
+    ids = None
+    if db.get_setting("daily_picks_date") == today:
+        try:
+            ids = json.loads(db.get_setting("daily_picks_ids") or "[]")
+        except Exception:  # noqa: BLE001
+            ids = None
+    if not ids:
+        ids = refresh_daily_picks(n)
+    bt = backtest_stats()
+    out = []
+    for vid in ids:
+        v = db.get_vehicle(vid)
+        if not v or v.get("judgment") != "입찰 검토 가능" or v.get("status") == "상세없음":
+            continue
+        if v.get("auction_result") in ("낙찰", "종결"):
+            continue
+        if not v.get("sale_date") or v["sale_date"] < today:
+            continue
+        out.append(_pick_dict(v, bt))
     return out
 
 

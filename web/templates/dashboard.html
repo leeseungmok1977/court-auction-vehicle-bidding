@@ -19,53 +19,56 @@
   </div>
 </a>
 {% endmacro %}
-<!-- 결론 히어로(딥네이비 · 브랜드 컨셉): AI 예상 낙찰가 중심값 + 시세대비 + IQR + 신뢰도/MAE -->
-{% if review_summary %}
-{% set rs = review_summary %}
-<a href="/vehicles?judgment=입찰 검토 가능&sort=expected"
-   class="block relative overflow-hidden rounded-2xl px-5 py-5 sm:px-6 tabular-nums text-white transition hover:shadow-xl"
-   style="background:linear-gradient(150deg,#16305e 0%,#0f2247 55%,#0b1730 100%)">
-  <div class="absolute -right-8 -top-10 w-40 h-40 rounded-full bg-amber-400/10 blur-2xl pointer-events-none"></div>
-  <div class="relative flex items-center justify-between gap-2 mb-3">
-    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/10 border border-white/15 text-xs font-semibold text-amber-300">
-      <span class="material-symbols-outlined text-[15px]">psychology</span> AI 예상 낙찰가 중심값</span>
-    <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-400 text-[#0b142b] text-[11px] font-bold whitespace-nowrap">
-      <span class="material-symbols-outlined text-[13px]">local_fire_department</span> 검토 추천 {{ rs.count }}건</span>
+<!-- 오늘의 추천 물건 (매일 아침 갱신 · 3초 캐러셀) — 첫화면 호감 포인트 -->
+{% if daily_picks %}
+<section>
+  <div class="flex items-center justify-between mb-2 px-0.5">
+    <h3 class="text-sm font-bold text-txt flex items-center gap-1.5">
+      <span class="material-symbols-outlined text-amber-500 text-lg">local_fire_department</span>
+      오늘의 추천 물건 <span class="text-[11px] font-normal text-mut hidden sm:inline">· 매일 아침 갱신</span></h3>
+    <a href="/vehicles?judgment=입찰 검토 가능&sort=expected" class="text-xs text-primary hover:underline shrink-0">더보기 →</a>
   </div>
-  <div class="relative flex items-baseline gap-2">
-    <span class="font-mono text-4xl sm:text-[2.75rem] font-extrabold leading-none">{{ (rs.exp_med/10000)|round|int }}</span>
-    <span class="text-lg text-white/70 font-semibold">만원</span>
-    {% if rs.disc_pct and rs.disc_pct > 0 %}<span class="ml-auto text-xs font-bold px-2.5 py-1 rounded-full bg-amber-400 text-[#0b142b] whitespace-nowrap">시세 대비 −{{ rs.disc_pct }}%</span>{% endif %}
+  <div id="pickTrack" class="flex gap-3 overflow-x-auto snap-x snap-mandatory custom-scrollbar -mx-1 px-1 pb-1" style="scroll-behavior:smooth">
+    {% for v in daily_picks %}
+    <a href="/vehicle/{{ v.id }}" class="snap-start shrink-0 w-full block rounded-2xl overflow-hidden border border-line bg-surface shadow-card group">
+      <div class="relative h-44">
+        {% if v.photo_url %}<img src="{{ v.photo_url }}" loading="lazy" alt="{{ v.model|mdl }}" class="w-full h-full object-cover group-hover:brightness-95 transition">
+        {% else %}<div class="w-full h-full grid place-items-center bg-slate-100 text-mut"><span class="material-symbols-outlined text-5xl">directions_car</span></div>{% endif %}
+        {% if v.dday is not none and v.dday >= 0 %}<span class="absolute top-2.5 left-2.5 text-[11px] font-bold px-2 py-0.5 rounded-full text-white {{ 'bg-rose-500' if v.dday <= 1 else 'bg-black/60' }}">{{ 'D-DAY' if v.dday == 0 else 'D-' ~ v.dday }}</span>{% endif %}
+        {% if v.disc_pct and v.disc_pct > 0 %}<span class="absolute top-2.5 right-2.5 text-[11px] font-extrabold px-2 py-0.5 rounded-full bg-amber-400 text-[#0b142b]">시세보다 −{{ v.disc_pct }}%</span>{% endif %}
+        <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-3 pt-10 text-white" style="word-break:keep-all">
+          <div class="font-bold text-base leading-tight truncate">{{ v.model|mdl }}{% if v.year %} <span class="font-normal text-white/70 text-sm">{{ v.year }}년</span>{% endif %}</div>
+          <div class="text-[11px] text-white/60 mt-0.5">{{ (v.court or '')|replace('지방법원','지법') }}{% if v.mileage_km %} · {{ (v.mileage_km/10000)|round(1) }}만km{% endif %}</div>
+        </div>
+      </div>
+      <div class="p-3 flex items-end justify-between gap-2 tabular-nums">
+        <div><div class="text-[10px] text-mut">최저 입찰가</div><div class="font-mono text-sm font-semibold text-txt">{{ v.min_sale_price|won }}</div></div>
+        <div class="text-right"><div class="text-[10px] text-primary">AI 예상 낙찰가{% if v.market_confidence %} · 신뢰도 {{ v.market_confidence }}{% endif %}</div><div class="font-mono text-lg font-extrabold text-primary leading-tight">{{ v.expected_win|won if v.expected_win else '—' }}<span class="text-xs font-normal text-mut"> 원</span></div></div>
+      </div>
+    </a>
+    {% endfor %}
   </div>
-  {% set span = (rs.exp_hi - rs.exp_lo) or 1 %}
-  {% set b_lo = ((rs.exp_p25 - rs.exp_lo)/span*100)|round(1) %}
-  {% set b_hi = ((rs.exp_p75 - rs.exp_lo)/span*100)|round(1) %}
-  {% set b_med = ((rs.exp_med - rs.exp_lo)/span*100)|round(1) %}
-  <div class="relative mt-4">
-    <div class="flex justify-between text-[11px] mb-1.5">
-      <span class="text-white/55">최저 {{ (rs.exp_lo/10000)|round|int }}만</span>
-      <span class="text-amber-300 font-semibold">예상 범위 (IQR 50%)</span>
-      <span class="text-white/55">최고 {{ (rs.exp_hi/10000)|round|int }}만</span>
-    </div>
-    <div class="relative h-2.5 rounded-full bg-white/10">
-      <div class="absolute top-0 bottom-0 rounded-full bg-amber-400" style="left:{{ b_lo }}%;right:{{ (100-b_hi)|round(1) }}%"></div>
-      <div class="absolute -top-0.5 w-1 h-3.5 rounded bg-white" style="left:calc({{ b_med }}% - 2px)"></div>
-    </div>
+  {% if daily_picks|length > 1 %}
+  <div id="pickDots" class="flex justify-center gap-1.5 mt-2">
+    {% for v in daily_picks %}<span class="pick-dot h-1.5 w-1.5 rounded-full bg-line transition-all"></span>{% endfor %}
   </div>
-  <div class="relative grid grid-cols-2 gap-3 mt-4 pt-4 border-t border-white/10">
-    <div>
-      <div class="text-[11px] text-white/60 mb-0.5">평균 신뢰도{% if rs.conf_avg and rs.conf_avg>=80 %} <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-400 text-[#0b142b] font-bold">안정권</span>{% elif rs.conf_avg and rs.conf_avg>=60 %} <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-400 text-[#0b142b] font-bold">주의</span>{% endif %}</div>
-      <div class="font-mono font-bold text-xl">{{ rs.conf_avg or '—' }}<span class="text-sm text-white/50 font-normal"> /100</span></div>
-    </div>
-    {% if rs.mae %}
-    <div>
-      <div class="text-[11px] text-white/60 mb-0.5">예측 오차 <span class="text-white/40">MAE</span></div>
-      <div class="font-mono font-bold text-xl {{ 'text-emerald-300' if rs.mae<=15 else 'text-amber-300' }}">±{{ rs.mae|round|int }}%</div>
-      <div class="text-[10px] text-white/40">최근 90일 실측 대조</div>
-    </div>
-    {% endif %}
-  </div>
-</a>
+  <script>
+  (function(){
+    var t=document.getElementById('pickTrack'); if(!t) return;
+    var dots=[].slice.call(document.querySelectorAll('#pickDots .pick-dot'));
+    var n=t.children.length, paused=false;
+    function w(){ return t.firstElementChild ? t.firstElementChild.getBoundingClientRect().width + 12 : t.clientWidth; }
+    function cur(){ return Math.round(t.scrollLeft / w()); }
+    function marks(){ var i=cur(); dots.forEach(function(d,k){ d.className='pick-dot h-1.5 rounded-full transition-all '+(k===i?'w-4 bg-primary':'w-1.5 bg-line'); }); }
+    function go(){ if(paused) return; var i=(cur()+1)%n; t.scrollTo({left:i*w(), behavior:'smooth'}); }
+    t.addEventListener('scroll', marks, {passive:true});
+    ['pointerdown','touchstart','mouseenter'].forEach(function(e){ t.addEventListener(e, function(){paused=true;}, {passive:true}); });
+    ['pointerup','touchend','mouseleave'].forEach(function(e){ t.addEventListener(e, function(){paused=false;}, {passive:true}); });
+    marks(); setInterval(go, 3000);
+  })();
+  </script>
+  {% endif %}
+</section>
 {% endif %}
 
 <!-- 빠른 탐색 (브랜드 바로가기 + 테마 퀵링크) — 법차식 탐색 허브 -->
@@ -109,37 +112,6 @@
   {{ kpi('관심 물건', starred, 'star', 'text-amber-600', '/watchlist', 'kpi-star', pill='스크랩', pillcls='bg-slate-100 text-mut') }}
   {{ kpi('분석 대기', pending, 'pending', 'text-txt', '/vehicles?status=pending', 'kpi-pending', pill='분석 대기', pillcls='bg-slate-100 text-mut') }}
 </div>
-
-<!-- 오늘의 추천 물건 (최상위 후보 · 사진·예상낙찰가·D-day) -->
-{% if featured %}
-<div class="bg-surface border border-line rounded-2xl p-4">
-  <div class="flex items-center justify-between mb-3">
-    <h3 class="text-sm font-semibold flex items-center gap-1.5"><span class="material-symbols-outlined text-primary text-lg">trending_up</span> 오늘의 추천 물건</h3>
-    <a href="/vehicles?judgment=입찰 검토 가능&sort=expected" class="text-xs text-primary hover:underline">전체 {{ review_summary.count if review_summary else '' }}건 →</a>
-  </div>
-  <a href="/vehicle/{{ featured.id }}" class="flex gap-3 group">
-    {% if featured.photo_url %}
-    <div class="relative w-28 h-24 shrink-0 rounded-xl overflow-hidden border border-line bg-slate-100">
-      <img src="{{ featured.photo_url }}" loading="lazy" class="w-full h-full object-cover group-hover:brightness-95 transition" alt="">
-      {% if featured.dday is not none and featured.dday >= 0 %}<span class="absolute top-1.5 left-1.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full text-white {{ 'bg-rose-500' if featured.dday <= 1 else 'bg-black/65' }}">{{ 'D-DAY' if featured.dday == 0 else 'D-' ~ featured.dday }}</span>{% endif %}
-    </div>
-    {% endif %}
-    <div class="min-w-0 flex-1">
-      <div class="flex items-center gap-1.5 flex-wrap">
-        {% if featured.market_confidence %}<span class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 font-medium">신뢰도 {{ featured.market_confidence }}%</span>{% endif %}
-        {% if featured.year %}<span class="text-[11px] text-mut">{{ featured.year }}년{% if featured.mileage_km %} · {{ featured.mileage_km|won }}km{% endif %}</span>{% endif %}
-      </div>
-      <div class="font-semibold text-primary mt-0.5 truncate" style="word-break:keep-all">{{ featured.model|mdl }}</div>
-      <div class="text-[11px] text-mut/70 font-mono">{{ featured.case_no }} · {{ (featured.court or '')|replace('지방법원','지법') }}</div>
-      <div class="flex items-end justify-between mt-1.5 gap-2">
-        <div><div class="text-[10px] text-mut">최저 입찰가</div><div class="font-mono text-sm font-semibold text-txt tnum">{{ featured.min_sale_price|won }}</div></div>
-        <div class="text-right"><div class="text-[10px] text-primary">AI 예상 낙찰가</div><div class="font-mono text-base font-bold text-primary tnum">{{ featured.expected_win|won if featured.expected_win else '—' }}</div></div>
-      </div>
-    </div>
-  </a>
-</div>
-{% endif %}
-
 
 {# 실행 상태 (진행 중일 때만 강조) · 관리자 전용 #}
 {% if is_admin(request) %}
