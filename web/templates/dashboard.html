@@ -4,45 +4,65 @@
 {% block content %}
 
 <!-- KPI: 히어로(행동 지표) + 보조(상태 카운트) 2계층 -->
-{% macro kpi(label, value, icon, color, href, vid, emph=False) %}
+{% macro kpi(label, value, icon, color, href, vid, emph=False, pill=None, pillcls='', sub=None) %}
 <a {% if href %}href="{{ href }}"{% endif %}
-   class="bg-surface border rounded-lg p-4 block transition tabular-nums {{ 'border-emerald-200 ring-1 ring-emerald-200 hover:ring-emerald-300' if emph else 'border-line hover:border-primary' }}">
-  <div class="flex justify-between items-start mb-2">
-    <span class="text-xs {{ 'text-emerald-700' if emph else 'text-mut' }}">{{ label }}</span>
-    <span class="material-symbols-outlined {{ color or 'text-mut' }} opacity-60 text-lg">{{ icon }}</span>
+   class="bg-surface border rounded-2xl p-4 block transition tabular-nums group {{ 'border-emerald-200 ring-1 ring-emerald-100' if emph else 'border-line hover:border-primary/50 hover:shadow-sm' }}">
+  <div class="flex items-center justify-between mb-2.5">
+    <span class="w-9 h-9 rounded-full flex items-center justify-center {{ (color or 'text-mut') }} {{ 'bg-emerald-50' if emph else 'bg-slate-100' }}">
+      <span class="material-symbols-outlined text-lg">{{ icon }}</span></span>
+    {% if pill %}<span class="text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap {{ pillcls or 'bg-slate-100 text-mut' }}">{{ pill }}</span>{% endif %}
   </div>
-  <div class="{{ 'text-4xl' if emph else 'text-3xl' }} font-bold {{ color }}" id="{{ vid }}">{{ value }}</div>
+  <div class="text-xs text-mut mb-0.5">{{ label }}</div>
+  <div class="flex items-end justify-between gap-1">
+    <span class="{{ 'text-3xl' if emph else 'text-2xl' }} font-extrabold {{ color }}" id="{{ vid }}">{{ value }}</span>
+    {% if sub %}<span class="text-[11px] text-primary font-medium pb-1 shrink-0 group-hover:underline whitespace-nowrap">{{ sub }}</span>{% endif %}
+  </div>
 </a>
 {% endmacro %}
-<!-- 결론 히어로: "얼마 쓸지"를 최상단 첫 시선에 (정보 위계) -->
+<!-- 결론 히어로(리치): AI 예상 낙찰가 중심값 + 시세대비 + IQR 범위 + 신뢰도/MAE -->
 {% if review_summary %}
+{% set rs = review_summary %}
 <a href="/vehicles?judgment=입찰 검토 가능&sort=expected"
-   class="block bg-gradient-to-r from-emerald-50 to-emerald-50/20 border border-emerald-200 rounded-xl px-6 py-5 hover:border-emerald-300 hover:shadow-sm transition tabular-nums">
-  <div class="flex flex-wrap items-center gap-x-9 gap-y-3">
-    <div class="flex items-center gap-3 shrink-0">
-      <span class="material-symbols-outlined text-emerald-600 text-[2.75rem]">savings</span>
-      <div>
-        <div class="text-[13px] text-mut">검토할 만한 물건 <b class="text-emerald-700">{{ review_summary.count }}</b>건 · 예상 낙찰가 <span class="text-mut/60">중심값</span></div>
-        <div class="font-mono text-[2.6rem] font-bold text-txt leading-none mt-1">{{ (review_summary.exp_med/10000)|round|int }}<span class="text-xl text-mut font-normal"> 만원</span></div>
-      </div>
+   class="block relative overflow-hidden rounded-2xl border border-emerald-200/70 px-5 py-5 sm:px-6 tabular-nums transition hover:shadow-md"
+   style="background:linear-gradient(180deg,#f0fdf4 0%,#ffffff 72%)">
+  <div class="flex items-center justify-between gap-2 mb-3">
+    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/70 border border-emerald-100 text-xs font-semibold text-emerald-800">
+      <span class="material-symbols-outlined text-[15px] text-emerald-600">psychology</span> AI 예상 낙찰가 중심값</span>
+    <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-600 text-white text-[11px] font-bold whitespace-nowrap">
+      <span class="material-symbols-outlined text-[13px]">local_fire_department</span> 검토 추천 {{ rs.count }}건</span>
+  </div>
+  <div class="flex items-baseline gap-2">
+    <span class="font-mono text-4xl sm:text-[2.75rem] font-extrabold text-txt leading-none">{{ (rs.exp_med/10000)|round|int }}</span>
+    <span class="text-lg text-mut font-semibold">만원</span>
+    {% if rs.disc_pct and rs.disc_pct > 0 %}<span class="ml-auto text-xs font-bold px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 whitespace-nowrap">시세 대비 −{{ rs.disc_pct }}%</span>{% endif %}
+  </div>
+  {% set span = (rs.exp_hi - rs.exp_lo) or 1 %}
+  {% set b_lo = ((rs.exp_p25 - rs.exp_lo)/span*100)|round(1) %}
+  {% set b_hi = ((rs.exp_p75 - rs.exp_lo)/span*100)|round(1) %}
+  {% set b_med = ((rs.exp_med - rs.exp_lo)/span*100)|round(1) %}
+  <div class="mt-4">
+    <div class="flex justify-between text-[11px] mb-1.5">
+      <span class="text-mut">최저 {{ (rs.exp_lo/10000)|round|int }}만</span>
+      <span class="text-emerald-700 font-semibold">예상 범위 (IQR 50%)</span>
+      <span class="text-mut">최고 {{ (rs.exp_hi/10000)|round|int }}만</span>
     </div>
-    <div>
-      <div class="text-[11px] text-mut">예상 범위</div>
-      <div class="font-mono text-txt font-semibold">{{ (review_summary.exp_lo/10000)|round|int }}~{{ (review_summary.exp_hi/10000)|round|int }}<span class="text-mut font-normal">만</span></div>
+    <div class="relative h-2.5 rounded-full bg-emerald-100/60">
+      <div class="absolute top-0 bottom-0 rounded-full bg-emerald-400/70" style="left:{{ b_lo }}%;right:{{ (100-b_hi)|round(1) }}%"></div>
+      <div class="absolute -top-0.5 w-1 h-3.5 rounded bg-emerald-700" style="left:calc({{ b_med }}% - 2px)"></div>
     </div>
-    {% if review_summary.mae %}
+  </div>
+  <div class="grid grid-cols-2 gap-3 mt-4 pt-4 border-t border-emerald-100">
     <div>
-      <div class="text-[11px] text-mut">예측 오차 <span class="text-mut/60">MAE</span></div>
-      <div class="font-mono font-semibold {{ 'text-emerald-700' if review_summary.mae<=15 else 'text-amber-700' }}">±{{ review_summary.mae|round|int }}%</div>
+      <div class="text-[11px] text-mut mb-0.5">평균 신뢰도{% if rs.conf_avg and rs.conf_avg>=80 %} <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-bold">안정권</span>{% elif rs.conf_avg and rs.conf_avg>=60 %} <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-bold">주의</span>{% endif %}</div>
+      <div class="font-mono font-bold text-xl {{ 'text-emerald-700' if rs.conf_avg and rs.conf_avg>=80 else 'text-amber-700' if rs.conf_avg and rs.conf_avg>=60 else 'text-txt' }}">{{ rs.conf_avg or '—' }}<span class="text-sm text-mut/60 font-normal"> /100</span></div>
+    </div>
+    {% if rs.mae %}
+    <div>
+      <div class="text-[11px] text-mut mb-0.5">예측 오차 <span class="text-mut/60">MAE</span></div>
+      <div class="font-mono font-bold text-xl {{ 'text-emerald-700' if rs.mae<=15 else 'text-amber-700' }}">±{{ rs.mae|round|int }}%</div>
+      <div class="text-[10px] text-mut/60">최근 90일 실측 대조</div>
     </div>
     {% endif %}
-    {% if review_summary.conf_avg %}
-    <div>
-      <div class="text-[11px] text-mut">평균 신뢰도</div>
-      <div class="font-mono font-semibold {{ 'text-emerald-700' if review_summary.conf_avg>=80 else 'text-amber-700' if review_summary.conf_avg>=60 else 'text-rose-600' }}">{{ review_summary.conf_avg }}<span class="text-mut/60 font-normal">/100</span></div>
-    </div>
-    {% endif %}
-    <span class="ml-auto text-sm text-primary hover:underline shrink-0 hidden sm:inline whitespace-nowrap">검토 가능 전체 →</span>
   </div>
 </a>
 {% endif %}
@@ -74,17 +94,49 @@
   </div>
 </div>
 
-<!-- Stripe 시그니처: 히어로 상단 그라데이션 워시 — 흰 KPI 카드가 그 위에 은은히 뜸 -->
-<div class="mesh rounded-xl p-3 sm:p-4">
-  <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
-    {{ kpi('입찰 검토 가능', counts.get('입찰 검토 가능', 0), 'check_circle', 'text-emerald-700', '/vehicles?judgment=입찰 검토 가능', 'kpi-ok', emph=True) }}
-    {{ kpi('입찰예정 (30일)', upcoming, 'event_upcoming', 'text-txt', '/vehicles?upcoming=30&sort=sale_date', 'kpi-upcoming') }}
-    {{ kpi('유찰 대기', counts.get('유찰 대기', 0), 'hourglass_empty', 'text-amber-700', '/vehicles?judgment=유찰 대기', 'kpi-wait') }}
-    {{ kpi('낙찰 (매각)', won, 'gavel', 'text-txt', '/vehicles?result=낙찰&sort=sale_date', 'kpi-won') }}
-    {{ kpi('관심 물건', starred, 'star', 'text-txt', '/watchlist', 'kpi-star') }}
-    {{ kpi('분석 대기', pending, 'pending', 'text-txt', '/vehicles?status=pending', 'kpi-pending') }}
-  </div>
+<!-- 경매 라이프사이클 KPI (아이콘·상태칩·서브메트릭) -->
+<div class="flex items-center justify-between px-0.5">
+  <h3 class="text-sm font-semibold text-txt flex items-center gap-1.5"><span class="material-symbols-outlined text-primary text-lg">donut_small</span> 경매 라이프사이클 현황</h3>
+  <span class="text-xs text-mut">총 <b class="text-txt tnum">{{ total }}</b>대 모니터링</span>
 </div>
+<div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+  {{ kpi('입찰 검토 가능', counts.get('입찰 검토 가능', 0), 'check_circle', 'text-emerald-700', '/vehicles?judgment=입찰 검토 가능', 'kpi-ok', emph=True, pill='입찰 준비', pillcls='bg-emerald-100 text-emerald-700') }}
+  {{ kpi('입찰예정 (30일)', upcoming, 'event_upcoming', 'text-txt', '/vehicles?upcoming=30&sort=sale_date', 'kpi-upcoming', pill='D-30 이내', pillcls='bg-sky-50 text-sky-700', sub='기일순 →') }}
+  {{ kpi('유찰 대기', counts.get('유찰 대기', 0), 'hourglass_empty', 'text-amber-700', '/vehicles?judgment=유찰 대기', 'kpi-wait', pill='재경매', pillcls='bg-amber-50 text-amber-700') }}
+  {{ kpi('낙찰 (매각)', won, 'gavel', 'text-txt', '/vehicles?result=낙찰&sort=sale_date', 'kpi-won', pill='완료 통계', pillcls='bg-indigo-50 text-indigo-600', sub=('낙찰가율 ' ~ (backtest.discount_median*100)|round|int ~ '%') if backtest.discount_median else None) }}
+  {{ kpi('관심 물건', starred, 'star', 'text-amber-600', '/watchlist', 'kpi-star', pill='스크랩', pillcls='bg-slate-100 text-mut') }}
+  {{ kpi('분석 대기', pending, 'pending', 'text-txt', '/vehicles?status=pending', 'kpi-pending', pill='분석 대기', pillcls='bg-slate-100 text-mut') }}
+</div>
+
+<!-- 오늘의 추천 물건 (최상위 후보 · 사진·예상낙찰가·D-day) -->
+{% if featured %}
+<div class="bg-surface border border-line rounded-2xl p-4">
+  <div class="flex items-center justify-between mb-3">
+    <h3 class="text-sm font-semibold flex items-center gap-1.5"><span class="material-symbols-outlined text-primary text-lg">trending_up</span> 오늘의 추천 물건</h3>
+    <a href="/vehicles?judgment=입찰 검토 가능&sort=expected" class="text-xs text-primary hover:underline">전체 {{ review_summary.count if review_summary else '' }}건 →</a>
+  </div>
+  <a href="/vehicle/{{ featured.id }}" class="flex gap-3 group">
+    {% if featured.photo_url %}
+    <div class="relative w-28 h-24 shrink-0 rounded-xl overflow-hidden border border-line bg-slate-100">
+      <img src="{{ featured.photo_url }}" loading="lazy" class="w-full h-full object-cover group-hover:brightness-95 transition" alt="">
+      {% if featured.dday is not none and featured.dday >= 0 %}<span class="absolute top-1.5 left-1.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full text-white {{ 'bg-rose-500' if featured.dday <= 1 else 'bg-black/65' }}">{{ 'D-DAY' if featured.dday == 0 else 'D-' ~ featured.dday }}</span>{% endif %}
+    </div>
+    {% endif %}
+    <div class="min-w-0 flex-1">
+      <div class="flex items-center gap-1.5 flex-wrap">
+        {% if featured.market_confidence %}<span class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 font-medium">신뢰도 {{ featured.market_confidence }}%</span>{% endif %}
+        {% if featured.year %}<span class="text-[11px] text-mut">{{ featured.year }}년{% if featured.mileage_km %} · {{ featured.mileage_km|won }}km{% endif %}</span>{% endif %}
+      </div>
+      <div class="font-semibold text-primary mt-0.5 truncate" style="word-break:keep-all">{{ featured.model|mdl }}</div>
+      <div class="text-[11px] text-mut/70 font-mono">{{ featured.case_no }} · {{ (featured.court or '')|replace('지방법원','지법') }}</div>
+      <div class="flex items-end justify-between mt-1.5 gap-2">
+        <div><div class="text-[10px] text-mut">최저 입찰가</div><div class="font-mono text-sm font-semibold text-txt tnum">{{ featured.min_sale_price|won }}</div></div>
+        <div class="text-right"><div class="text-[10px] text-primary">AI 예상 낙찰가</div><div class="font-mono text-base font-bold text-primary tnum">{{ featured.expected_win|won if featured.expected_win else '—' }}</div></div>
+      </div>
+    </div>
+  </a>
+</div>
+{% endif %}
 
 
 <!-- 실행 상태 (진행 중일 때만 강조) -->

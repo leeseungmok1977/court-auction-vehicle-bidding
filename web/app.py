@@ -182,13 +182,37 @@ def dashboard(request: Request):
     review_summary = None
     if _exps:
         import statistics
+        if len(_exps) >= 4:
+            _q = statistics.quantiles(_exps, n=4)   # [p25, p50, p75] — IQR 밴드
+            _p25, _p75 = int(_q[0]), int(_q[2])
+        else:
+            _p25, _p75 = min(_exps), max(_exps)
         review_summary = {
             "count": len(_cand),
             "exp_lo": min(_exps), "exp_hi": max(_exps),
+            "exp_p25": _p25, "exp_p75": _p75,
             "exp_med": int(statistics.median(_exps)),
             "conf_avg": round(sum(_confs) / len(_confs)) if _confs else None,
             "mae": _bt.get("mae_pct"),
+            "disc_pct": round((1 - _disc) * 100) if _disc else None,   # 시세 대비 할인율(=1-낙찰가율)
         }
+    # 오늘의 추천 물건 — 최상위 후보 + 대표사진 + D-day
+    from datetime import date as _dd
+    featured = None
+    if candidates:
+        featured = dict(candidates[0])
+        _fk = featured.get("folder_key") or featured["id"]
+        _pdir = DATA_DIR / _fk / "photos"
+        if _pdir.exists():
+            _av = {p.name for p in _pdir.iterdir() if p.is_file()}
+            _ord = [n for n in (featured.get("photo_order") or []) if n in _av]
+            _nm = _ord or sorted(_av)
+            if _nm:
+                featured["photo_url"] = f"/photo/{_fk}/{_nm[0]}"
+        try:
+            featured["dday"] = (_dd.fromisoformat(featured["sale_date"]) - _dd.today()).days if featured.get("sale_date") else None
+        except (ValueError, TypeError):
+            featured["dday"] = None
     return templates.TemplateResponse("dashboard.html", {
         "request": request, "counts": counts, "run": run, "total": total,
         "starred": starred, "candidates": candidates, "running": service.is_running(),
@@ -196,6 +220,7 @@ def dashboard(request: Request):
         "upcoming": db.upcoming_count(30), "pending": db.pending_count(),
         "won": db.won_count(), "backtest": _bt, "review_summary": review_summary,
         "alerts": service.alert_items(3), "top_makers": db.top_makers(8),
+        "featured": featured,
     })
 
 
