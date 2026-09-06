@@ -304,7 +304,7 @@ VEHICLES_PAGE_SIZE = 12
 @app.get("/vehicles", response_class=HTMLResponse)
 def vehicles(request: Request, judgment: str = "", maker: str = "", q: str = "",
              sort: str = "sale_date", upcoming: str = "", result: str = "", status: str = "",
-             cond: str = "", page: int = 1, date: str = "", court: str = ""):
+             cond: str = "", page: int = 1, date: str = "", court: str = "", promising: str = ""):
     # upcoming은 str로 받아 빈값/오염값에 견고하게 파싱(폼 hidden 빈값·손편집 URL 대비)
     up = int(upcoming) if upcoming.strip().lstrip("-").isdigit() else 0
     if up < 0:
@@ -313,7 +313,8 @@ def vehicles(request: Request, judgment: str = "", maker: str = "", q: str = "",
                             q=q or None, sort=sort, result=result or None,
                             status=status or None, cond=cond or None,
                             upcoming_days=up or None, hide_incomplete=True,
-                            date=date or None, court=court or None)
+                            date=date or None, court=court or None,
+                            promising=bool(promising))
     _bt = service.backtest_stats()
     disc = _bt.get("discount_median")
     mae = _bt.get("mae_pct")
@@ -348,7 +349,7 @@ def vehicles(request: Request, judgment: str = "", maker: str = "", q: str = "",
     qs = urlencode({k: v for k, v in {
         "judgment": judgment, "maker": maker, "q": q, "sort": sort,
         "upcoming": up or "", "result": result, "status": status, "cond": cond,
-        "date": date, "court": court}.items() if v})
+        "date": date, "court": court, "promising": promising}.items() if v})
     qs_no_upcoming = urlencode({k: v for k, v in {   # 30일 해제 링크용(upcoming만 제거, 나머지 유지)
         "judgment": judgment, "maker": maker, "q": q, "sort": sort,
         "result": result, "status": status, "cond": cond}.items() if v})
@@ -372,7 +373,7 @@ def vehicles(request: Request, judgment: str = "", maker: str = "", q: str = "",
     resp = templates.TemplateResponse("vehicles.html", {
         "request": request, "rows": page_rows, "judgment": judgment, "maker": maker,
         "q": q, "sort": sort, "upcoming": up, "result": result, "status": status,
-        "cond": cond, "date": date, "court": court,
+        "cond": cond, "date": date, "court": court, "promising": promising,
         "judgments": JUDGMENTS, "makers": db.distinct_makers(),
         "today": _date.today().isoformat(), "mae": mae,
         "total": total, "page": page, "total_pages": total_pages,

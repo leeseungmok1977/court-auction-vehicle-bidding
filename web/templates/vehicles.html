@@ -52,6 +52,9 @@
     {% else %}
     <a href="/vehicles?{% if qs_no_cond %}{{ qs_no_cond }}&{% endif %}cond=damaged" class="text-xs border border-line text-mut rounded-full px-3 py-1 hover:text-txt hover:bg-slate-50">외관 손상</a>
     {% endif %}
+    {% if promising %}{# 집계 카드 '검토 추천'에서 진입 — 신뢰도 높음+오매칭 제외 큐레이션. 클릭 시 전체 보기 #}
+    <a href="/vehicles?judgment=입찰 검토 가능&sort=expected" class="text-xs bg-amber-50 text-amber-700 border border-amber-200 rounded-full px-3 py-1 flex items-center gap-1" title="신뢰도 높음 + 오매칭 제외한 검토 추천만. 클릭하면 전체 검토가능을 봅니다.">🎯 검토 추천 ✕</a>
+    {% endif %}
     <span class="text-sm text-mut ml-auto">총 <b class="text-txt">{{ total }}</b>건</span>
   </form>
 </div>

@@ -302,8 +302,13 @@ def list_vehicles(judgment: Optional[str] = None, maker: Optional[str] = None,
                   sort: str = "sale_date", upcoming_days: Optional[int] = None,
                   status: Optional[str] = None, result: Optional[str] = None,
                   cond: Optional[str] = None, hide_incomplete: bool = False,
-                  date: Optional[str] = None, court: Optional[str] = None) -> list[dict]:
+                  date: Optional[str] = None, court: Optional[str] = None,
+                  promising: bool = False) -> list[dict]:
     where, params = [], []
+    if promising:                    # 검토 추천 = 신뢰도 높음 + 오매칭(시세≫최저가) 아님 (집계 카드와 동일 기준)
+        where.append("market_confidence_label='높음'")
+        where.append("NOT (median_price IS NOT NULL AND min_sale_price IS NOT NULL "
+                     "AND min_sale_price>0 AND (median_price*1.0/min_sale_price) > 3.5)")
     if date:                         # 특정 매각기일(달력에서 날짜 클릭)
         where.append("sale_date = ?"); params.append(date)
     if court:                        # 법원 필터(단일 또는 콤마 다중선택)
