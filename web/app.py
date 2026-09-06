@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from fastapi import FastAPI, Form, Request  # noqa: E402
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, FileResponse  # noqa: E402
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, FileResponse, PlainTextResponse  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 from fastapi.templating import Jinja2Templates  # noqa: E402
 
@@ -64,6 +64,8 @@ templates.env.globals["is_admin"] = is_admin
 # 사용자·등급(M04 뼈대) — 지금은 전원 tier=1. M11+에서 require_tier로 게이팅.
 templates.env.globals["current_user"] = auth.current_user
 templates.env.globals["user_tier"] = auth.user_tier
+# 광고(AdSense) — pub-ID를 설정에 넣기 전까진 완전 비활성. TWA엔 AdMob 불가 → 웹 AdSense.
+templates.env.globals["adsense_client"] = lambda: db.get_setting("adsense_client", "")
 
 
 def _require_admin(request: Request) -> None:
@@ -286,6 +288,17 @@ def landing(request: Request):
         "discount": round(bt.get("discount_median") * 100) if bt.get("discount_median") else None,
     }
     return templates.TemplateResponse("landing.html", ctx)
+
+
+@app.get("/ads.txt", response_class=PlainTextResponse, include_in_schema=False)
+def ads_txt():
+    """AdSense 승인용 ads.txt — pub-ID(설정 adsense_client) 넣으면 자동 게시, 없으면 404.
+    TWA는 웹이라 app-ads.txt(AdMob용)가 아니라 ads.txt를 쓴다."""
+    ac = db.get_setting("adsense_client", "")
+    pub = ac.replace("ca-", "").strip() if ac else ""
+    if not pub.startswith("pub-"):
+        return PlainTextResponse("", status_code=404)
+    return PlainTextResponse(f"google.com, {pub}, DIRECT, f08c47fec0942fa0\n")
 
 
 @app.get("/privacy", response_class=HTMLResponse)

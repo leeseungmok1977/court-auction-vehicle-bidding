@@ -21,10 +21,15 @@
   })();
 </script>
 {% endif %}
+{# 광고: AdSense(웹) — 설정 adsense_client(ca-pub-…) 있고, 관리자 아님, 무료 등급일 때만 로드. TWA엔 AdMob 불가. #}
+{% set _ac = adsense_client() %}
+{% if _ac and not is_admin(request) and user_tier(request) < 2 %}
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client={{ _ac }}" crossorigin="anonymous"></script>
+{% endif %}
 <title>{% block title %}법원경매 차량 입찰가 산정{% endblock %}</title>
 <!-- PWA(설치형 모바일앱) -->
 <link rel="manifest" href="/static/manifest.webmanifest"/>
-<meta name="theme-color" content="#ffffff"/>
+<meta name="theme-color" content="#0b142b"/>
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="default"/>
