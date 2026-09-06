@@ -110,10 +110,17 @@
 
 <!-- Main -->
 <main class="lg:ml-72 flex-1 flex flex-col h-screen overflow-hidden w-full" style="height:100dvh">
-  <header class="h-16 flex items-center gap-3 px-4 lg:px-8 bg-background border-b border-line shrink-0 sticky top-0 z-10">
-    <label for="navToggle" class="lg:hidden cursor-pointer text-mut hover:text-txt shrink-0" title="메뉴">
-      <span class="material-symbols-outlined">menu</span></label>
-    <h2 class="text-2xl font-light tracking-tight text-txt shrink-0">{% block pagetitle %}{% endblock %}</h2>
+  <header class="h-16 flex items-center gap-2 sm:gap-3 px-4 lg:px-8 bg-background border-b border-line shrink-0 sticky top-0 z-10">
+    <!-- 모바일: 앱 브랜드 (하단 탭이 내비 담당 → 좌측 슬라이드 제거, 타이틀 대신 브랜드) -->
+    <a href="/" class="flex lg:hidden items-center gap-2 shrink-0" title="경매로 내차GET">
+      <img src="/static/icons/icon-192.png" alt="" class="w-9 h-9 rounded-lg shrink-0"/>
+      <span class="leading-tight">
+        <span class="block text-sm font-extrabold text-txt tracking-tight whitespace-nowrap">경매로 내차<span class="text-primary">GET</span></span>
+        <span class="block text-[9px] text-mut/70 whitespace-nowrap tracking-[0.12em] uppercase">AI Court Auction</span>
+      </span>
+    </a>
+    <!-- 데스크톱: 페이지 타이틀 (사이드바에 브랜드) -->
+    <h2 class="hidden lg:block text-2xl font-light tracking-tight text-txt shrink-0">{% block pagetitle %}{% endblock %}</h2>
     <div class="flex-1"></div>
     <a href="/" id="runBadge" class="items-center gap-2 text-sm bg-primary/10 border border-primary/30 rounded-full px-3 py-1.5 shrink-0" style="display:none">
       <span class="material-symbols-outlined text-primary text-base animate-spin">progress_activity</span>
@@ -124,7 +131,10 @@
       <span class="material-symbols-outlined" style="font-variation-settings:'FILL' {{ 1 if _ac else 0 }}">notifications</span>
       {% if _ac %}<span class="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center">{{ _ac if _ac < 100 else '99+' }}</span>{% endif %}
     </a>
-    <form action="/vehicles" method="get" class="relative w-40 sm:w-56 lg:w-72 shrink-0">
+    <!-- 모바일: 검색 아이콘(목록의 검색으로) / 데스크톱: 전체 검색창 -->
+    <a href="/vehicles" class="lg:hidden shrink-0 text-mut hover:text-txt p-1.5 rounded-md hover:bg-line/40 transition-colors" title="검색">
+      <span class="material-symbols-outlined">search</span></a>
+    <form action="/vehicles" method="get" class="relative hidden lg:block w-72 shrink-0">
       <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-mut text-lg pointer-events-none">search</span>
       <input name="q" class="w-full bg-surface border border-line text-txt text-sm rounded-md py-2 pl-11 pr-4 focus:outline-none focus:border-primary placeholder:text-mut/60" placeholder="차명·제조사·사건번호·법원 검색…"/>
     </form>
