@@ -322,6 +322,7 @@ def list_vehicles(judgment: Optional[str] = None, maker: Optional[str] = None,
     sort_cols = {"sale_date": "sale_date", "min_sale_price": "min_sale_price",
                  "upper_bid": "upper_bid DESC", "median_price": "median_price DESC",
                  "fail_count": "fail_count DESC",
+                 "mileage": "mileage_km IS NULL, mileage_km",   # 짧은 주행거리순(NULL 뒤로)
                  "inspection": "inspection_to IS NULL, inspection_to"}
     sql += f" ORDER BY {sort_cols.get(sort, 'sale_date')}"
     conn = connect()
@@ -356,6 +357,22 @@ def counts_by_judgment() -> dict:
     d["입찰 검토 가능"] = biddable
     conn.close()
     return d
+
+
+def top_makers(limit: int = 8) -> list:
+    """물건 수 상위 제조사(정규화 표기, 미래 기일 기준) — 브랜드 바로가기용 [(maker, n)]."""
+    conn = connect()
+    rows = conn.execute(
+        "SELECT maker, COUNT(*) c FROM vehicles "
+        "WHERE maker IS NOT NULL AND maker <> '' "
+        "AND sale_date >= date('now','localtime') GROUP BY maker").fetchall()
+    conn.close()
+    from collections import Counter
+    agg: Counter = Counter()
+    for r in rows:
+        agg[_canon_maker(r["maker"])] += r["c"]
+    agg.pop("", None)
+    return agg.most_common(limit)
 
 
 def sale_date_counts(start_iso: str, end_iso: str) -> dict:

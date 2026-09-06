@@ -47,6 +47,32 @@
 </a>
 {% endif %}
 
+<!-- 빠른 탐색 (브랜드 바로가기 + 테마 퀵링크) — 법차식 탐색 허브 -->
+<div class="bg-surface border border-line rounded-xl p-4 sm:p-5">
+  <h3 class="text-sm font-semibold text-txt mb-3 flex items-center gap-1.5"><span class="material-symbols-outlined text-primary text-lg">explore</span> 빠른 탐색</h3>
+  {% if top_makers %}
+  <div class="flex gap-2 overflow-x-auto custom-scrollbar pb-1 -mx-1 px-1">
+    {% for mk, n in top_makers %}
+    <a href="/vehicles?maker={{ mk|urlencode }}&upcoming=30&sort=sale_date" class="shrink-0 flex flex-col items-center gap-1 w-16 group" title="{{ mk }} {{ n }}건">
+      <span class="w-12 h-12 rounded-full bg-slate-100 border border-line group-hover:border-primary group-hover:bg-primary/5 flex items-center justify-center text-mut group-hover:text-primary transition-colors">
+        <span class="material-symbols-outlined">directions_car</span></span>
+      <span class="text-[11px] text-txt leading-tight truncate w-full text-center" style="word-break:keep-all">{{ mk }}</span>
+      <span class="text-[9px] text-mut/60 -mt-1 tnum">{{ n }}</span>
+    </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% set chip = "text-xs border border-line text-txt rounded-full px-3 py-1.5 hover:border-primary hover:text-primary hover:bg-primary/5 transition-colors whitespace-nowrap" %}
+  <div class="flex flex-wrap gap-2 mt-3 pt-3 border-t border-line">
+    <a href="/vehicles?judgment=입찰 검토 가능&sort=expected" class="{{ chip }}">✅ 검토 가능</a>
+    <a href="/vehicles?upcoming=7&sort=sale_date" class="{{ chip }}">⏰ 임박 7일</a>
+    <a href="/vehicles?sort=min_sale_price&upcoming=30" class="{{ chip }}">💸 저가순</a>
+    <a href="/vehicles?sort=mileage&upcoming=30" class="{{ chip }}">🛣️ 짧은 주행</a>
+    <a href="/vehicles?sort=fail_count&upcoming=30" class="{{ chip }}">🔁 유찰 많은</a>
+    <a href="/calendar" class="{{ chip }}">📅 경매 달력</a>
+  </div>
+</div>
+
 <!-- Stripe 시그니처: 히어로 상단 그라데이션 워시 — 흰 KPI 카드가 그 위에 은은히 뜸 -->
 <div class="mesh rounded-xl p-3 sm:p-4">
   <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">

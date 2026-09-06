@@ -195,7 +195,7 @@ def dashboard(request: Request):
         "judgments": JUDGMENTS, "settings": db.get_all_settings(),
         "upcoming": db.upcoming_count(30), "pending": db.pending_count(),
         "won": db.won_count(), "backtest": _bt, "review_summary": review_summary,
-        "alerts": service.alert_items(3),
+        "alerts": service.alert_items(3), "top_makers": db.top_makers(8),
     })
 
 
