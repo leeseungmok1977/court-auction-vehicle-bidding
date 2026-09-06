@@ -19,48 +19,49 @@
   </div>
 </a>
 {% endmacro %}
-<!-- 결론 히어로(리치): AI 예상 낙찰가 중심값 + 시세대비 + IQR 범위 + 신뢰도/MAE -->
+<!-- 결론 히어로(딥네이비 · 브랜드 컨셉): AI 예상 낙찰가 중심값 + 시세대비 + IQR + 신뢰도/MAE -->
 {% if review_summary %}
 {% set rs = review_summary %}
 <a href="/vehicles?judgment=입찰 검토 가능&sort=expected"
-   class="block relative overflow-hidden rounded-2xl border border-emerald-200/70 px-5 py-5 sm:px-6 tabular-nums transition hover:shadow-md"
-   style="background:linear-gradient(180deg,#f0fdf4 0%,#ffffff 72%)">
-  <div class="flex items-center justify-between gap-2 mb-3">
-    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/70 border border-emerald-100 text-xs font-semibold text-emerald-800">
-      <span class="material-symbols-outlined text-[15px] text-emerald-600">psychology</span> AI 예상 낙찰가 중심값</span>
-    <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-600 text-white text-[11px] font-bold whitespace-nowrap">
+   class="block relative overflow-hidden rounded-2xl px-5 py-5 sm:px-6 tabular-nums text-white transition hover:shadow-xl"
+   style="background:linear-gradient(150deg,#16305e 0%,#0f2247 55%,#0b1730 100%)">
+  <div class="absolute -right-8 -top-10 w-40 h-40 rounded-full bg-amber-400/10 blur-2xl pointer-events-none"></div>
+  <div class="relative flex items-center justify-between gap-2 mb-3">
+    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/10 border border-white/15 text-xs font-semibold text-amber-300">
+      <span class="material-symbols-outlined text-[15px]">psychology</span> AI 예상 낙찰가 중심값</span>
+    <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-400 text-[#0b142b] text-[11px] font-bold whitespace-nowrap">
       <span class="material-symbols-outlined text-[13px]">local_fire_department</span> 검토 추천 {{ rs.count }}건</span>
   </div>
-  <div class="flex items-baseline gap-2">
-    <span class="font-mono text-4xl sm:text-[2.75rem] font-extrabold text-txt leading-none">{{ (rs.exp_med/10000)|round|int }}</span>
-    <span class="text-lg text-mut font-semibold">만원</span>
-    {% if rs.disc_pct and rs.disc_pct > 0 %}<span class="ml-auto text-xs font-bold px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 whitespace-nowrap">시세 대비 −{{ rs.disc_pct }}%</span>{% endif %}
+  <div class="relative flex items-baseline gap-2">
+    <span class="font-mono text-4xl sm:text-[2.75rem] font-extrabold leading-none">{{ (rs.exp_med/10000)|round|int }}</span>
+    <span class="text-lg text-white/70 font-semibold">만원</span>
+    {% if rs.disc_pct and rs.disc_pct > 0 %}<span class="ml-auto text-xs font-bold px-2.5 py-1 rounded-full bg-amber-400 text-[#0b142b] whitespace-nowrap">시세 대비 −{{ rs.disc_pct }}%</span>{% endif %}
   </div>
   {% set span = (rs.exp_hi - rs.exp_lo) or 1 %}
   {% set b_lo = ((rs.exp_p25 - rs.exp_lo)/span*100)|round(1) %}
   {% set b_hi = ((rs.exp_p75 - rs.exp_lo)/span*100)|round(1) %}
   {% set b_med = ((rs.exp_med - rs.exp_lo)/span*100)|round(1) %}
-  <div class="mt-4">
+  <div class="relative mt-4">
     <div class="flex justify-between text-[11px] mb-1.5">
-      <span class="text-mut">최저 {{ (rs.exp_lo/10000)|round|int }}만</span>
-      <span class="text-emerald-700 font-semibold">예상 범위 (IQR 50%)</span>
-      <span class="text-mut">최고 {{ (rs.exp_hi/10000)|round|int }}만</span>
+      <span class="text-white/55">최저 {{ (rs.exp_lo/10000)|round|int }}만</span>
+      <span class="text-amber-300 font-semibold">예상 범위 (IQR 50%)</span>
+      <span class="text-white/55">최고 {{ (rs.exp_hi/10000)|round|int }}만</span>
     </div>
-    <div class="relative h-2.5 rounded-full bg-emerald-100/60">
-      <div class="absolute top-0 bottom-0 rounded-full bg-emerald-400/70" style="left:{{ b_lo }}%;right:{{ (100-b_hi)|round(1) }}%"></div>
-      <div class="absolute -top-0.5 w-1 h-3.5 rounded bg-emerald-700" style="left:calc({{ b_med }}% - 2px)"></div>
+    <div class="relative h-2.5 rounded-full bg-white/10">
+      <div class="absolute top-0 bottom-0 rounded-full bg-amber-400" style="left:{{ b_lo }}%;right:{{ (100-b_hi)|round(1) }}%"></div>
+      <div class="absolute -top-0.5 w-1 h-3.5 rounded bg-white" style="left:calc({{ b_med }}% - 2px)"></div>
     </div>
   </div>
-  <div class="grid grid-cols-2 gap-3 mt-4 pt-4 border-t border-emerald-100">
+  <div class="relative grid grid-cols-2 gap-3 mt-4 pt-4 border-t border-white/10">
     <div>
-      <div class="text-[11px] text-mut mb-0.5">평균 신뢰도{% if rs.conf_avg and rs.conf_avg>=80 %} <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-bold">안정권</span>{% elif rs.conf_avg and rs.conf_avg>=60 %} <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-bold">주의</span>{% endif %}</div>
-      <div class="font-mono font-bold text-xl {{ 'text-emerald-700' if rs.conf_avg and rs.conf_avg>=80 else 'text-amber-700' if rs.conf_avg and rs.conf_avg>=60 else 'text-txt' }}">{{ rs.conf_avg or '—' }}<span class="text-sm text-mut/60 font-normal"> /100</span></div>
+      <div class="text-[11px] text-white/60 mb-0.5">평균 신뢰도{% if rs.conf_avg and rs.conf_avg>=80 %} <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-400 text-[#0b142b] font-bold">안정권</span>{% elif rs.conf_avg and rs.conf_avg>=60 %} <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-400 text-[#0b142b] font-bold">주의</span>{% endif %}</div>
+      <div class="font-mono font-bold text-xl">{{ rs.conf_avg or '—' }}<span class="text-sm text-white/50 font-normal"> /100</span></div>
     </div>
     {% if rs.mae %}
     <div>
-      <div class="text-[11px] text-mut mb-0.5">예측 오차 <span class="text-mut/60">MAE</span></div>
-      <div class="font-mono font-bold text-xl {{ 'text-emerald-700' if rs.mae<=15 else 'text-amber-700' }}">±{{ rs.mae|round|int }}%</div>
-      <div class="text-[10px] text-mut/60">최근 90일 실측 대조</div>
+      <div class="text-[11px] text-white/60 mb-0.5">예측 오차 <span class="text-white/40">MAE</span></div>
+      <div class="font-mono font-bold text-xl {{ 'text-emerald-300' if rs.mae<=15 else 'text-amber-300' }}">±{{ rs.mae|round|int }}%</div>
+      <div class="text-[10px] text-white/40">최근 90일 실측 대조</div>
     </div>
     {% endif %}
   </div>
