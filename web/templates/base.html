@@ -128,26 +128,26 @@
       <input name="q" class="w-full bg-surface border border-line text-txt text-sm rounded-md py-2 pl-11 pr-4 focus:outline-none focus:border-primary placeholder:text-mut/60" placeholder="차명·제조사·사건번호·법원 검색…"/>
     </form>
   </header>
-  <div class="flex-1 overflow-y-auto custom-scrollbar p-4 pb-28 lg:p-8 lg:pb-8 space-y-6">
+  <div class="flex-1 overflow-y-auto custom-scrollbar p-4 pb-6 lg:p-8 space-y-6">
     {% block content %}{% endblock %}
   </div>
+  <!-- 하단 탭 바 (모바일 전용, flex 자식) — 고정 오버레이 대신 실제 하단 배치라 스크롤 영역이 탭 위에서 끝남
+       → dvh/브라우저 동적 툴바와 겹쳐 페이지네이션이 잘리던 문제 방지. 데스크톱(lg)은 좌측 사이드바. -->
+  {% macro tab(href, icon, label, active, badge=0) %}
+  <a href="{{ href }}" class="flex-1 flex flex-col items-center justify-center gap-0.5 py-1.5 relative transition-colors {{ 'text-primary' if active else 'text-mut hover:text-txt' }}">
+    <span class="material-symbols-outlined text-[22px] leading-none" style="font-variation-settings:'FILL' {{ 1 if active else 0 }}">{{ icon }}</span>
+    <span class="text-[10px] font-semibold tracking-tight">{{ label }}</span>
+    {% if badge %}<span class="absolute top-1 left-1/2 translate-x-1.5 min-w-4 h-4 px-1 rounded-full bg-rose-500 text-white text-[9px] font-bold flex items-center justify-center">{{ badge if badge < 100 else '99+' }}</span>{% endif %}
+  </a>
+  {% endmacro %}
+  <nav class="lg:hidden shrink-0 flex items-stretch bg-surface border-t border-line shadow-[0_-4px_20px_rgba(15,23,42,0.06)]"
+       style="padding-bottom:env(safe-area-inset-bottom)">
+    {{ tab('/', 'home', '홈', path=='/') }}
+    {{ tab('/vehicles', 'directions_car', '목록', path.startswith('/vehicle')) }}
+    {{ tab('/watchlist', 'star', '관심', path.startswith('/watchlist')) }}
+    {{ tab('/#alerts', 'notifications_active', '임박', false, _ac) }}
+  </nav>
 </main>
-
-<!-- 하단 탭 바 (모바일 전용) — 설치형/데스크톱(lg)은 좌측 사이드바 사용 -->
-{% macro tab(href, icon, label, active, badge=0) %}
-<a href="{{ href }}" class="flex-1 flex flex-col items-center justify-center gap-0.5 py-1.5 relative transition-colors {{ 'text-primary' if active else 'text-mut hover:text-txt' }}">
-  <span class="material-symbols-outlined text-[22px] leading-none" style="font-variation-settings:'FILL' {{ 1 if active else 0 }}">{{ icon }}</span>
-  <span class="text-[10px] font-semibold tracking-tight">{{ label }}</span>
-  {% if badge %}<span class="absolute top-1 left-1/2 translate-x-1.5 min-w-4 h-4 px-1 rounded-full bg-rose-500 text-white text-[9px] font-bold flex items-center justify-center">{{ badge if badge < 100 else '99+' }}</span>{% endif %}
-</a>
-{% endmacro %}
-<nav class="lg:hidden fixed bottom-0 inset-x-0 z-30 flex items-stretch bg-surface/95 backdrop-blur border-t border-line shadow-[0_-4px_20px_rgba(15,23,42,0.06)]"
-     style="padding-bottom:env(safe-area-inset-bottom)">
-  {{ tab('/', 'home', '홈', path=='/') }}
-  {{ tab('/vehicles', 'directions_car', '목록', path.startswith('/vehicle')) }}
-  {{ tab('/watchlist', 'star', '관심', path.startswith('/watchlist')) }}
-  {{ tab('/#alerts', 'notifications_active', '임박', false, _ac) }}
-</nav>
 
 <!-- 전역 실시간 진행 표시 (모든 화면) -->
 <script>
