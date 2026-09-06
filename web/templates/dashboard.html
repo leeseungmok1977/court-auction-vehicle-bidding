@@ -79,8 +79,8 @@
     {% for mk in top_makers %}
     <a href="/vehicles?maker={{ mk.name|urlencode }}&upcoming=30&sort=sale_date" class="shrink-0 flex flex-col items-center gap-1 w-16 group" title="{{ mk.name }} {{ mk.n }}건">
       <span class="w-12 h-12 rounded-full bg-white border border-line group-hover:border-primary shadow-sm flex items-center justify-center overflow-hidden transition-colors">
-        {% if mk.logo %}<img src="{{ mk.logo }}" class="w-7 h-7 object-contain" alt="{{ mk.name }}" loading="lazy">
-        {% else %}<span class="text-xs font-extrabold" style="color:{{ mk.color }}">{{ mk.initial }}</span>{% endif %}</span>
+        {% if mk.logo %}<img src="{{ mk.logo }}" class="w-10 h-10 object-contain" alt="{{ mk.name }}" loading="lazy">
+        {% else %}<span class="text-sm font-extrabold" style="color:{{ mk.color }}">{{ mk.initial }}</span>{% endif %}</span>
       <span class="text-[11px] text-txt leading-tight truncate w-full text-center" style="word-break:keep-all">{{ mk.name }}</span>
       <span class="text-[9px] text-mut/60 -mt-1 tnum">{{ mk.n }}</span>
     </a>
@@ -109,8 +109,10 @@
   {{ kpi('입찰예정 (30일)', upcoming, 'event_upcoming', 'text-txt', '/vehicles?upcoming=30&sort=sale_date', 'kpi-upcoming', pill='D-30 이내', pillcls='bg-sky-50 text-sky-700', sub='기일순 →') }}
   {{ kpi('유찰 대기', counts.get('유찰 대기', 0), 'hourglass_empty', 'text-amber-700', '/vehicles?judgment=유찰 대기', 'kpi-wait', pill='재경매', pillcls='bg-amber-50 text-amber-700') }}
   {{ kpi('낙찰 (매각)', won, 'gavel', 'text-txt', '/vehicles?result=낙찰&sort=sale_date', 'kpi-won', pill='완료 통계', pillcls='bg-indigo-50 text-indigo-600', sub=('낙찰가율 ' ~ (backtest.discount_median*100)|round|int ~ '%') if backtest.discount_median else None) }}
-  {{ kpi('관심 물건', starred, 'star', 'text-amber-600', '/watchlist', 'kpi-star', pill='스크랩', pillcls='bg-slate-100 text-mut') }}
+  {# 관심 물건은 하단 탭에 있어 제거 · 분석 대기(운영 지표)는 관리자만 #}
+  {% if is_admin(request) %}
   {{ kpi('분석 대기', pending, 'pending', 'text-txt', '/vehicles?status=pending', 'kpi-pending', pill='분석 대기', pillcls='bg-slate-100 text-mut') }}
+  {% endif %}
 </div>
 
 {# 실행 상태 (진행 중일 때만 강조) · 관리자 전용 #}
