@@ -212,20 +212,20 @@
     <h3 class="text-lg font-semibold whitespace-nowrap">추천 입찰 전략 <span class="text-mut text-sm font-normal hidden sm:inline">— 예상낙찰가와 동일 기준</span></h3>
   </div>
   <p class="text-sm text-mut mb-4">세 값 모두 <b>위 예상낙찰가와 같은 기준</b>(최저매각가 × 유찰 프리미엄)이며, <b class="text-primary">균형 = 상단 예상낙찰가</b>입니다. 낙찰 확률은 동급 낙찰가 분포상 <b>해당 입찰가 이하로 낙찰된 비율</b>(실측 근사). 높게 쓸수록 낙찰 가능성↑·차익↓.</p>
-  <div class="grid grid-cols-3 gap-2 tabular-nums">
-    <div class="rounded-xl border border-line p-3 text-center">
+  <div class="grid grid-cols-3 gap-1.5 sm:gap-2 tabular-nums">
+    <div class="rounded-xl border border-line px-1.5 py-2 sm:p-3 text-center">
       <div class="text-[11px] text-emerald-700 font-semibold mb-1">보수적 · 수익형</div>
-      <div class="font-mono text-sm sm:text-base font-bold text-txt">{{ expected.lo|won }}</div>
+      <div class="font-mono text-[clamp(10px,3.3vw,16px)] font-bold text-txt whitespace-nowrap">{{ expected.lo|won }}</div>
       <div class="text-[11px] text-mut mt-1">낙찰 확률 <b class="text-txt">~25%</b></div>
     </div>
-    <div class="rounded-xl border-2 border-primary bg-primary/5 p-3 text-center">
+    <div class="rounded-xl border-2 border-primary bg-primary/5 px-1.5 py-2 sm:p-3 text-center">
       <div class="text-[11px] text-primary font-semibold mb-1">균형 · 예상</div>
-      <div class="font-mono text-sm sm:text-base font-bold text-primary">{{ expected.price|won }}</div>
+      <div class="font-mono text-[clamp(10px,3.3vw,16px)] font-bold text-primary whitespace-nowrap">{{ expected.price|won }}</div>
       <div class="text-[11px] text-mut mt-1">낙찰 확률 <b class="text-primary">~50%</b></div>
     </div>
-    <div class="rounded-xl border border-line p-3 text-center">
+    <div class="rounded-xl border border-line px-1.5 py-2 sm:p-3 text-center">
       <div class="text-[11px] text-amber-700 font-semibold mb-1">공격적 · 낙찰형</div>
-      <div class="font-mono text-sm sm:text-base font-bold text-txt">{{ expected.hi|won }}</div>
+      <div class="font-mono text-[clamp(10px,3.3vw,16px)] font-bold text-txt whitespace-nowrap">{{ expected.hi|won }}</div>
       <div class="text-[11px] text-mut mt-1">낙찰 확률 <b class="text-txt">~75%</b></div>
     </div>
   </div>
