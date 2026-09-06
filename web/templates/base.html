@@ -107,9 +107,9 @@
     </a>
     {% endmacro %}
     {{ navitem('/', 'dashboard', '대시보드', path=='/') }}
-    {{ navitem('/vehicles', 'directions_car', '물건 목록', path.startswith('/vehicle')) }}
+    {{ navitem('/vehicles', 'directions_car', '차량 목록', path.startswith('/vehicle')) }}
     {{ navitem('/calendar', 'calendar_month', '경매 달력', path.startswith('/calendar')) }}
-    {{ navitem('/watchlist', 'star', '관심 목록', path.startswith('/watchlist')) }}
+    {{ navitem('/watchlist', 'star', '즐겨찾기', path.startswith('/watchlist')) }}
   </nav>
   <div class="px-5 mt-auto border-t border-line pt-4 text-xs text-mut leading-relaxed">
     <a href="/landing" class="inline-flex items-center gap-1 text-primary hover:underline mb-2"><span class="material-symbols-outlined text-sm">campaign</span> 서비스 소개</a>
@@ -165,9 +165,9 @@
   <nav class="lg:hidden shrink-0 flex items-stretch bg-surface border-t border-line shadow-[0_-4px_20px_rgba(15,23,42,0.06)]"
        style="padding-bottom:env(safe-area-inset-bottom)">
     {{ tab('/', 'home', '홈', path=='/') }}
-    {{ tab('/vehicles', 'directions_car', '목록', path.startswith('/vehicle')) }}
-    {{ tab('/calendar', 'calendar_month', '달력', path.startswith('/calendar')) }}
-    {{ tab('/watchlist', 'star', '관심', path.startswith('/watchlist')) }}
+    {{ tab('/vehicles', 'directions_car', '차량목록', path.startswith('/vehicle')) }}
+    {{ tab('/calendar', 'calendar_month', '경매달력', path.startswith('/calendar')) }}
+    {{ tab('/watchlist', 'star', '즐겨찾기', path.startswith('/watchlist')) }}
   </nav>
 </main>
 

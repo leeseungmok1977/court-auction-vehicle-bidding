@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 {% import "_macros.html" as ui %}
-{% block pagetitle %}관심 목록{% endblock %}
+{% block pagetitle %}즐겨찾기{% endblock %}
 {% block content %}
 {% macro dday_badge(dd) %}{% if dd is not none and dd >= 0 %}<span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full whitespace-nowrap {{ 'bg-rose-100 text-rose-700' if dd<=1 else 'bg-amber-100 text-amber-700' if dd<=3 else 'bg-slate-100 text-mut' }}">{{ 'D-DAY' if dd==0 else 'D-' ~ dd }}</span>{% endif %}{% endmacro %}
 <div class="flex flex-wrap items-center gap-3">
   <div class="flex items-center gap-2">
     <span class="material-symbols-outlined text-amber-500" style="font-variation-settings:'FILL' 1">star</span>
-    <h1 class="text-xl font-semibold">관심 목록 <span class="text-mut text-sm font-normal">— 후보 비교</span></h1>
+    <h1 class="text-xl font-semibold">즐겨찾기 <span class="text-mut text-sm font-normal">— 후보 비교</span></h1>
   </div>
   {% if rows %}
   <form method="get" action="/watchlist" class="ml-auto flex items-center gap-2">
@@ -86,7 +86,7 @@
 {% else %}
 <div class="bg-surface border border-line rounded-lg p-10 text-center">
   <span class="material-symbols-outlined text-mut text-5xl">star</span>
-  <p class="text-mut mt-2">아직 관심 물건이 없습니다. 물건 상세에서 ☆ 관심 추가를 눌러 담으세요.</p>
+  <p class="text-mut mt-2">아직 즐겨찾기한 물건이 없습니다. 물건 상세에서 ☆ 즐겨찾기를 눌러 담으세요.</p>
 </div>
 {% endif %}
 {% endblock %}
