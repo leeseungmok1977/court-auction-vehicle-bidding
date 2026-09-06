@@ -33,6 +33,7 @@
     <button class="btn-ghost text-sm flex items-center gap-1">
       <span class="material-symbols-outlined text-base">filter_list</span> 적용</button>
     {% if result %}<a href="/vehicles" class="text-xs bg-sky-50 text-sky-700 border border-sky-200 rounded-full px-3 py-1">결과={{ result }} ✕</a>{% endif %}
+    {% if date %}<a href="/vehicles" class="text-xs bg-primary/10 text-primary border border-primary/20 rounded-full px-3 py-1 inline-flex items-center gap-1" title="날짜 필터 해제"><span class="material-symbols-outlined text-[13px] leading-none">event</span>{{ date }} 매각 ✕</a>{% endif %}
     {% if upcoming %}
     <a href="/vehicles?{{ qs_no_upcoming }}" class="text-xs bg-primary/10 text-primary border border-primary/20 rounded-full px-3 py-1 flex items-center gap-1">입찰예정 {{ upcoming }}일 ✕</a>
     {% else %}

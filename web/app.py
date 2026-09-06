@@ -241,7 +241,7 @@ VEHICLES_PAGE_SIZE = 12
 @app.get("/vehicles", response_class=HTMLResponse)
 def vehicles(request: Request, judgment: str = "", maker: str = "", q: str = "",
              sort: str = "sale_date", upcoming: str = "", result: str = "", status: str = "",
-             cond: str = "", page: int = 1):
+             cond: str = "", page: int = 1, date: str = ""):
     # upcoming은 str로 받아 빈값/오염값에 견고하게 파싱(폼 hidden 빈값·손편집 URL 대비)
     up = int(upcoming) if upcoming.strip().lstrip("-").isdigit() else 0
     if up < 0:
@@ -249,7 +249,8 @@ def vehicles(request: Request, judgment: str = "", maker: str = "", q: str = "",
     rows = db.list_vehicles(judgment=judgment or None, maker=maker or None,
                             q=q or None, sort=sort, result=result or None,
                             status=status or None, cond=cond or None,
-                            upcoming_days=up or None, hide_incomplete=True)
+                            upcoming_days=up or None, hide_incomplete=True,
+                            date=date or None)
     _bt = service.backtest_stats()
     disc = _bt.get("discount_median")
     mae = _bt.get("mae_pct")
@@ -283,7 +284,8 @@ def vehicles(request: Request, judgment: str = "", maker: str = "", q: str = "",
     from urllib.parse import urlencode
     qs = urlencode({k: v for k, v in {
         "judgment": judgment, "maker": maker, "q": q, "sort": sort,
-        "upcoming": up or "", "result": result, "status": status, "cond": cond}.items() if v})
+        "upcoming": up or "", "result": result, "status": status, "cond": cond,
+        "date": date}.items() if v})
     qs_no_upcoming = urlencode({k: v for k, v in {   # 30일 해제 링크용(upcoming만 제거, 나머지 유지)
         "judgment": judgment, "maker": maker, "q": q, "sort": sort,
         "result": result, "status": status, "cond": cond}.items() if v})
@@ -305,7 +307,7 @@ def vehicles(request: Request, judgment: str = "", maker: str = "", q: str = "",
     resp = templates.TemplateResponse("vehicles.html", {
         "request": request, "rows": page_rows, "judgment": judgment, "maker": maker,
         "q": q, "sort": sort, "upcoming": up, "result": result, "status": status,
-        "cond": cond,
+        "cond": cond, "date": date,
         "judgments": JUDGMENTS, "makers": db.distinct_makers(),
         "today": _date.today().isoformat(), "mae": mae,
         "total": total, "page": page, "total_pages": total_pages,
@@ -316,6 +318,39 @@ def vehicles(request: Request, judgment: str = "", maker: str = "", q: str = "",
     })
     resp.set_cookie("last_list", _cur_url(request), max_age=86400)
     return resp
+
+
+@app.get("/calendar", response_class=HTMLResponse)
+def calendar_view(request: Request, ym: str = ""):
+    """경매 달력 — 월별 그리드에 날짜별 매각기일 물건 수 표시(법차 벤치마킹)."""
+    import calendar as _cal
+    from datetime import date as _date, timedelta as _td
+    today = _date.today()
+    try:
+        if ym and len(ym) == 7:
+            y, m = int(ym[:4]), int(ym[5:7])
+            _date(y, m, 1)   # 유효성
+        else:
+            y, m = today.year, today.month
+    except (ValueError, TypeError):
+        y, m = today.year, today.month
+    first = _date(y, m, 1)
+    last = _date(y, m, _cal.monthrange(y, m)[1])
+    counts = db.sale_date_counts(first.isoformat(), last.isoformat())
+    cal = _cal.Calendar(firstweekday=6)   # 일요일 시작
+    grid = [[{
+        "iso": d.isoformat(), "day": d.day, "in_month": d.month == m,
+        "count": counts.get(d.isoformat(), 0),
+        "is_today": d == today, "is_past": d < today,
+    } for d in wk] for wk in cal.monthdatescalendar(y, m)]
+    return templates.TemplateResponse("calendar.html", {
+        "request": request, "y": y, "m": m, "grid": grid,
+        "total": sum(counts.values()),
+        "upcoming_total": sum(c for iso, c in counts.items() if iso >= today.isoformat()),
+        "prev_ym": (first - _td(days=1)).strftime("%Y-%m"),
+        "next_ym": (last + _td(days=1)).strftime("%Y-%m"),
+        "today_iso": today.isoformat(),
+    })
 
 
 @app.get("/vehicle/{vid}", response_class=HTMLResponse)

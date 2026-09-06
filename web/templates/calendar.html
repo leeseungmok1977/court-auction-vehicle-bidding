@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block pagetitle %}경매 달력{% endblock %}
+{% block content %}
+<div class="bg-surface border border-line rounded-lg p-4 sm:p-6">
+  <!-- 월 네비게이션 -->
+  <div class="flex items-center justify-between mb-4">
+    <a href="/calendar?ym={{ prev_ym }}" class="p-2 rounded-md hover:bg-slate-50 text-mut hover:text-txt transition-colors" title="이전 달">
+      <span class="material-symbols-outlined">chevron_left</span></a>
+    <div class="text-center">
+      <div class="text-lg font-bold text-txt tracking-tight">{{ y }}년 {{ m }}월</div>
+      <div class="text-xs text-mut mt-0.5">이 달 매각기일 <b class="text-txt">{{ total }}</b>건{% if upcoming_total %} · 예정 <b class="text-primary">{{ upcoming_total }}</b>건{% endif %}</div>
+    </div>
+    <a href="/calendar?ym={{ next_ym }}" class="p-2 rounded-md hover:bg-slate-50 text-mut hover:text-txt transition-colors" title="다음 달">
+      <span class="material-symbols-outlined">chevron_right</span></a>
+  </div>
+
+  <!-- 요일 헤더 -->
+  <div class="grid grid-cols-7 text-center text-xs font-semibold mb-1.5">
+    <div class="text-rose-500">일</div><div class="text-mut">월</div><div class="text-mut">화</div>
+    <div class="text-mut">수</div><div class="text-mut">목</div><div class="text-mut">금</div><div class="text-sky-600">토</div>
+  </div>
+
+  <!-- 날짜 그리드 -->
+  <div class="grid grid-cols-7 gap-1 sm:gap-1.5">
+    {% for wk in grid %}{% for c in wk %}
+    {% if c.count and c.in_month %}
+    <a href="/vehicles?date={{ c.iso }}&sort=sale_date"
+       class="aspect-square rounded-lg border flex flex-col items-center justify-center gap-1 transition-colors
+              {{ 'border-primary bg-primary/5' if c.is_today else 'border-line hover:border-primary hover:bg-slate-50' }}">
+      <span class="text-sm tnum {{ 'font-bold text-primary' if c.is_today else 'text-mut/50' if c.is_past else 'text-txt' }}">{{ c.day }}</span>
+      <span class="text-[10px] leading-none px-1.5 py-0.5 rounded-full font-bold tnum {{ 'bg-slate-200 text-slate-500' if c.is_past else 'bg-primary text-white' }}">{{ c.count }}</span>
+    </a>
+    {% else %}
+    <div class="aspect-square rounded-lg flex items-start justify-center pt-1.5 {{ 'border border-primary bg-primary/5' if c.is_today }}">
+      <span class="text-sm tnum {{ 'font-bold text-primary' if c.is_today else 'text-mut/30' if not c.in_month else 'text-mut/40' if c.is_past else 'text-txt' }}">{{ c.day }}</span>
+    </div>
+    {% endif %}
+    {% endfor %}{% endfor %}
+  </div>
+
+  <!-- 범례 -->
+  <div class="mt-4 pt-3 border-t border-line text-xs text-mut flex flex-wrap items-center gap-x-4 gap-y-1">
+    <span class="inline-flex items-center gap-1.5"><span class="w-5 h-4 rounded-full bg-primary text-white text-[9px] flex items-center justify-center font-bold">N</span> 예정 경매 수</span>
+    <span class="inline-flex items-center gap-1.5"><span class="w-5 h-4 rounded-full bg-slate-200 text-slate-500 text-[9px] flex items-center justify-center font-bold">N</span> 지난 기일</span>
+    <span class="text-mut/70">날짜를 누르면 그날 경매 물건이 열립니다.</span>
+  </div>
+</div>
+{% endblock %}

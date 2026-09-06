@@ -99,6 +99,7 @@
     {% endmacro %}
     {{ navitem('/', 'dashboard', '대시보드', path=='/') }}
     {{ navitem('/vehicles', 'directions_car', '물건 목록', path.startswith('/vehicle')) }}
+    {{ navitem('/calendar', 'calendar_month', '경매 달력', path.startswith('/calendar')) }}
     {{ navitem('/watchlist', 'star', '관심 목록', path.startswith('/watchlist')) }}
   </nav>
   <div class="px-5 mt-auto border-t border-line pt-4 text-xs text-mut leading-relaxed">
@@ -144,8 +145,8 @@
        style="padding-bottom:env(safe-area-inset-bottom)">
     {{ tab('/', 'home', '홈', path=='/') }}
     {{ tab('/vehicles', 'directions_car', '목록', path.startswith('/vehicle')) }}
+    {{ tab('/calendar', 'calendar_month', '달력', path.startswith('/calendar')) }}
     {{ tab('/watchlist', 'star', '관심', path.startswith('/watchlist')) }}
-    {{ tab('/#alerts', 'notifications_active', '임박', false, _ac) }}
   </nav>
 </main>
 

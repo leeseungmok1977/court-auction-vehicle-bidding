@@ -265,8 +265,11 @@ def list_vehicles(judgment: Optional[str] = None, maker: Optional[str] = None,
                   q: Optional[str] = None, starred: Optional[bool] = None,
                   sort: str = "sale_date", upcoming_days: Optional[int] = None,
                   status: Optional[str] = None, result: Optional[str] = None,
-                  cond: Optional[str] = None, hide_incomplete: bool = False) -> list[dict]:
+                  cond: Optional[str] = None, hide_incomplete: bool = False,
+                  date: Optional[str] = None) -> list[dict]:
     where, params = [], []
+    if date:                         # 특정 매각기일(달력에서 날짜 클릭)
+        where.append("sale_date = ?"); params.append(date)
     if cond == "insp_expired":       # 자동차검사 유효기간 경과
         where.append("inspection_to IS NOT NULL AND inspection_to <> '' "
                      "AND inspection_to < date('now','localtime')")
@@ -353,6 +356,17 @@ def counts_by_judgment() -> dict:
     d["입찰 검토 가능"] = biddable
     conn.close()
     return d
+
+
+def sale_date_counts(start_iso: str, end_iso: str) -> dict:
+    """[start,end] 구간의 매각기일별 물건 수 {YYYY-MM-DD: n} — 경매 달력용."""
+    conn = connect()
+    rows = conn.execute(
+        "SELECT sale_date, COUNT(*) c FROM vehicles "
+        "WHERE sale_date >= ? AND sale_date <= ? AND sale_date IS NOT NULL "
+        "GROUP BY sale_date", (start_iso, end_iso)).fetchall()
+    conn.close()
+    return {r["sale_date"]: r["c"] for r in rows}
 
 
 MAKER_UNKNOWN = "(제조사 미상)"   # 제조사 빈값/NULL 물건을 격리하는 드롭다운 센티넬
