@@ -4,14 +4,16 @@
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
 <script>
-  /* 설치 안 한 데스크톱 브라우저 → 폰 프레임(모바일 화면)으로. 설치앱(standalone)·실제 폰·프레임 내부는 그대로.
-     viewport meta 뒤에 둬야 모바일에서 innerWidth가 실제 기기폭으로 읽힘(기본폭 980 오판 방지). */
+  /* 설치 안 한 '진짜 데스크톱 브라우저'에서만 폰 프레임(모바일 화면). 실제 폰·설치앱·프레임 내부는 그대로.
+     window.innerWidth는 파싱 시점에 뷰포트 메타 적용 전 ~980으로 오독될 수 있어 프레임 오발동 → 미디어쿼리로 신뢰성 확보.
+     폰은 (min-width) / (pointer:fine) / (hover:hover) / screen.width 어느 하나라도 실패하므로 절대 프레임 안 뜸. */
   (function () {
     try {
       var standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
       var framed = window.self !== window.top;
-      var coarse = matchMedia("(pointer: coarse)").matches;   // 터치기기(폰/태블릿) 추가 방어
-      if (!standalone && !framed && !coarse && window.innerWidth >= 900) {
+      var isDesktop = matchMedia("(min-width: 900px) and (pointer: fine) and (hover: hover)").matches;
+      var bigScreen = !window.screen || (window.screen.width || 0) >= 900;   // 기기 화면폭(데스크톱모드에도 불변)
+      if (!standalone && !framed && isDesktop && bigScreen) {
         location.replace("/static/frame.html#" + location.pathname + location.search);
       }
     } catch (e) {}
