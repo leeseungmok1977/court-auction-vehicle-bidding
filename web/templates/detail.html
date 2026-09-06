@@ -66,6 +66,16 @@
 </div>
 {% endif %}
 
+{% if v.status == '상세없음' %}
+<div class="bg-amber-50 border border-amber-200 rounded-lg p-4 flex items-start gap-2.5">
+  <span class="material-symbols-outlined text-amber-600 shrink-0">error</span>
+  <div class="text-sm text-txt">
+    <b>현재 법원 경매 목록·상세에서 확인되지 않는 물건입니다</b> — 매각기일 변경·취하·연기로 내려간 것으로 보입니다.
+    <span class="block text-mut text-xs mt-1">아래 정보는 마지막 수집 시점 기준 <b>참고용</b>이며, 입찰 전 대법원 법원경매 사이트에서 직접 확인하세요.</span>
+  </div>
+</div>
+{% endif %}
+
 {# 시세 미계산 시에만 안내(데이터가 있으면 모순 배너 표시하지 않음) #}
 {% if v.median_price is none %}
 <div class="bg-surface border border-line rounded-lg p-4 flex items-center justify-between gap-4 flex-wrap">

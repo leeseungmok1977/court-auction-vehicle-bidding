@@ -290,8 +290,11 @@ def list_vehicles(judgment: Optional[str] = None, maker: Optional[str] = None,
         if judgment == "입찰 검토 가능":
             # 실제 입찰 가능만: 매각기일이 지나지 않았고(미래·오늘) + 낙찰/종결 아님.
             # (지난 기일 유찰='다음 기일 미정', 이미 낙찰된 물건이 '검토 가능'에 섞이는 신뢰 문제 방지)
+            # '상세없음'(법원 상세 응답이 비어 물건이 목록·상세에서 사라진 상태 — 변경/취하/연기
+            #  추정)은 일정을 확인할 수 없으므로 검토가능에서 제외(신뢰 최우선).
             where.append("sale_date >= date('now','localtime')")
             where.append("(auction_result IS NULL OR auction_result NOT IN ('낙찰','종결'))")
+            where.append("COALESCE(status,'') <> '상세없음'")
     if maker == MAKER_UNKNOWN:
         where.append("(maker='' OR maker IS NULL)")
     elif maker:
@@ -363,7 +366,8 @@ def counts_by_judgment() -> dict:
     biddable = conn.execute(
         "SELECT COUNT(*) c FROM vehicles WHERE judgment='입찰 검토 가능' "
         "AND sale_date >= date('now','localtime') "
-        "AND (auction_result IS NULL OR auction_result NOT IN ('낙찰','종결'))").fetchone()["c"]
+        "AND (auction_result IS NULL OR auction_result NOT IN ('낙찰','종결')) "
+        "AND COALESCE(status,'') <> '상세없음'").fetchone()["c"]
     d["입찰 검토 가능"] = biddable
     conn.close()
     return d

@@ -65,6 +65,8 @@ def _display_judgment(v: dict, today: str):
     j = v.get("judgment")
     if v.get("auction_result") == "낙찰":
         return "종결"
+    if v.get("status") == "상세없음":     # 법원 목록·상세에서 사라짐(변경·취하·연기) → 검토가능 아님
+        return "확인 필요"
     if (j == "입찰 검토 가능" and v.get("sale_date") and v.get("sale_date") < today
             and v.get("auction_result") not in ("낙찰", "종결")):
         return "유찰 대기"
