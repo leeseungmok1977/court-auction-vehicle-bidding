@@ -71,8 +71,8 @@
           <td class="py-2.5 px-4 font-mono text-right font-semibold text-txt bg-primary/5 whitespace-nowrap">{{ v.expected_win|won if v.expected_win else '—' }}</td>
           <td class="py-2.5 px-4 font-mono text-right text-mut whitespace-nowrap">{{ v.median_price|won if v.median_price is not none else '—' }}</td>
           <td class="py-2.5 px-4 font-mono text-right whitespace-nowrap {{ 'text-emerald-700' if v.margin_room and v.margin_room>0 else 'text-rose-600' if v.margin_room is not none and v.margin_room<0 else 'text-mut' }}">{% if v.margin_room is not none %}{{ '+' if v.margin_room>=0 else '' }}{{ v.margin_room|won }}{% else %}—{% endif %}</td>
-          <td class="py-2.5 px-4 font-mono text-right text-txt">{{ v.final_bid|won }}</td>
-          <td class="py-2.5 px-4 text-mut max-w-[160px] truncate" title="{{ v.memo or '' }}">{{ v.memo or '' }}</td>
+          <td class="py-2.5 px-4 font-mono text-right text-txt" data-note-bid data-vid="{{ v.id }}">—</td>
+          <td class="py-2.5 px-4 text-mut max-w-[160px] truncate" data-note-memo data-vid="{{ v.id }}"></td>
         </tr>
         {% endfor %}
       </tbody>
@@ -93,7 +93,10 @@
         <div class="rounded-md bg-primary/5 px-1.5 py-0.5"><div class="text-[10px] text-primary">예상낙찰가</div><div class="font-mono text-sm font-bold text-txt">{{ v.expected_win|won if v.expected_win else '—' }}</div></div>
         <div><div class="text-[10px] text-mut">여유</div><div class="font-mono text-sm {{ 'text-emerald-700' if v.margin_room and v.margin_room>0 else 'text-mut' }}">{% if v.margin_room is not none %}{{ '+' if v.margin_room>=0 else '' }}{{ v.margin_room|won }}{% else %}—{% endif %}</div></div>
       </div>
-      {% if v.final_bid or v.memo %}<div class="flex items-center gap-3 text-xs text-mut mt-2 border-t border-line pt-2">{% if v.final_bid %}<span>최종입찰 <b class="text-txt font-mono">{{ v.final_bid|won }}</b></span>{% endif %}{% if v.memo %}<span class="truncate">{{ v.memo }}</span>{% endif %}</div>{% endif %}
+      <div data-note-row data-vid="{{ v.id }}" hidden class="flex items-center gap-3 text-xs text-mut mt-2 border-t border-line pt-2">
+        <span data-note-bidline data-vid="{{ v.id }}" hidden>최종입찰 <b class="text-txt font-mono" data-note-bid data-vid="{{ v.id }}"></b></span>
+        <span class="truncate" data-note-memo data-vid="{{ v.id }}"></span>
+      </div>
     </a>
     {% endfor %}
   </div>

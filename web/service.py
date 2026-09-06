@@ -1070,6 +1070,8 @@ PRIVATE_FIELDS = frozenset({
     "market_cv", "market_vs_appraisal", "comps", "match_label",
     "kcar_median", "kcar_sample", "cross_source_status", "cross_source_rel", "kcar_checked_at",
     "actual_price", "actual_price_at", "repair_cost",
+    # 사용자 입력(기기 로컬 localStorage로 이관, 서버 미노출) — DB 레거시 값이 향후 JSON API로도 안 새게 데이터 계층에서 제거
+    "starred", "memo", "final_bid",
 })
 # breakdown(재판매 손익분기 폭포, 사용자 노출)에 섞인 엔카 메타만 골라 제거
 _BREAKDOWN_PRIVATE = frozenset({"플랫폼", "플랫폼가중", "표본수"})

@@ -638,11 +638,7 @@ def actual_price(request: Request, vid: str, actual_price: str = Form("")):
     return RedirectResponse(f"/vehicle/{vid}", status_code=303)
 
 
-@app.post("/vehicle/{vid}/memo")
-def memo(vid: str, memo: str = Form(""), final_bid: str = Form("")):
-    fb = int(final_bid) if str(final_bid).strip().isdigit() else None
-    db.update_fields(vid, memo=memo, final_bid=fb)
-    return RedirectResponse(f"/vehicle/{vid}", status_code=303)
+# 메모·최종입찰가는 기기 로컬(localStorage) 저장으로 이관 — 서버 저장 라우트 없음(다중 사용자 안전).
 
 
 @app.get("/watchlist", response_class=HTMLResponse)

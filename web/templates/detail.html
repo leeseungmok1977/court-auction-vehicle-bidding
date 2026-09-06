@@ -671,13 +671,14 @@
     </div>
 
     <div class="bg-surface border border-line rounded-lg p-5">
-      <h3 class="text-lg font-semibold mb-3">입찰 메모</h3>
-      <form method="post" action="/vehicle/{{ v.id }}/memo" class="space-y-3">
+      <h3 class="text-lg font-semibold mb-3">입찰 메모 <span class="text-xs text-mut font-normal align-middle">— 이 기기에만 저장</span></h3>
+      <form data-note-form data-vid="{{ v.id }}" class="space-y-3" onsubmit="return false">
         <div><label class="lbl">최종 입찰가(원)</label>
-          <input class="inp w-48" type="number" name="final_bid" value="{{ v.final_bid or '' }}" step="10000"></div>
+          <input class="inp w-48" type="number" step="10000" inputmode="numeric" data-note-input-bid></div>
         <div><label class="lbl">메모</label>
-          <input class="inp w-full" name="memo" value="{{ v.memo or '' }}" placeholder="현장 점검 결과, 특이사항 등"></div>
-        <button class="btn-primary text-sm">저장</button>
+          <input class="inp w-full" placeholder="현장 점검 결과, 특이사항 등" data-note-input-memo></div>
+        <button type="button" data-note-save class="btn-primary text-sm">저장</button>
+        <span data-note-saved class="text-xs text-emerald-600 ml-2" hidden>저장됨 ✓</span>
       </form>
     </div>
   </div>

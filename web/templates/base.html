@@ -93,6 +93,61 @@
   });
 })();
 </script>
+<!-- 메모·최종입찰가: 즐겨찾기와 동일하게 기기 로컬(localStorage) 저장 — 사용자별·기기별(다중 사용자 안전).
+     서버는 저장하지 않음. 저장 형태 {vid: {m:메모, b:최종입찰가(원)}}. -->
+<script>
+(function(){
+  var KEY='naechaget:notes';
+  function read(){ try{ var o=JSON.parse(localStorage.getItem(KEY)||'{}'); return (o && typeof o==='object' && !Array.isArray(o))?o:{}; }catch(e){ return {}; } }
+  function write(o){ try{ localStorage.setItem(KEY, JSON.stringify(o)); }catch(e){} }
+  function fmt(n){ return (typeof n==='number' && isFinite(n)) ? n.toLocaleString('en-US') : ''; }  // 서버 won 필터(콤마)와 동일
+  var Notes={
+    get: function(id){ return read()[String(id)] || {}; },
+    set: function(id, memo, bid){
+      id=String(id); var o=read();
+      var m=(memo==null?'':String(memo)).trim();
+      var b=(bid==null||String(bid).trim()==='')?null:Number(bid); b=Number.isFinite(b)?Math.round(b):null;  // '5e6'·소수도 정수 원단위로 안전 파싱
+      if(!m && b==null) delete o[id]; else o[id]={m:m, b:b};
+      write(o); Notes.paint();
+    },
+    paint: function(){
+      var o=read();
+      document.querySelectorAll('[data-note-memo]').forEach(function(el){ var n=o[String(el.getAttribute('data-vid'))]||{}; el.textContent=n.m||''; el.title=n.m||''; });
+      document.querySelectorAll('[data-note-bid]').forEach(function(el){ var n=o[String(el.getAttribute('data-vid'))]||{}; el.textContent=(n.b!=null)?fmt(n.b):'—'; });
+      document.querySelectorAll('[data-note-bidline]').forEach(function(el){ var n=o[String(el.getAttribute('data-vid'))]||{}; el.hidden=(n.b==null); });
+      document.querySelectorAll('[data-note-row]').forEach(function(el){ var n=o[String(el.getAttribute('data-vid'))]||{}; el.hidden=!(n.m || n.b!=null); });
+      document.querySelectorAll('[data-note-form]').forEach(function(f){   // 상세 폼 입력 채우기(입력 중인 칸은 건드리지 않음)
+        var n=o[String(f.getAttribute('data-vid'))]||{};
+        var mi=f.querySelector('[data-note-input-memo]'); if(mi && mi!==document.activeElement) mi.value=n.m||'';
+        var bi=f.querySelector('[data-note-input-bid]'); if(bi && bi!==document.activeElement) bi.value=(n.b!=null)?n.b:'';
+      });
+    }
+  };
+  function saveForm(f, flash){
+    var mi=f.querySelector('[data-note-input-memo]'), bi=f.querySelector('[data-note-input-bid]');
+    Notes.set(f.getAttribute('data-vid'), mi?mi.value:'', bi?bi.value:'');
+    if(flash){ var s=f.querySelector('[data-note-saved]'); if(s){ s.hidden=false; setTimeout(function(){ s.hidden=true; }, 1500); } }
+  }
+  window.Notes=Notes;
+  document.addEventListener('DOMContentLoaded', Notes.paint);
+  window.addEventListener('pageshow', Notes.paint);
+  window.addEventListener('storage', function(e){ if(e.key===KEY) Notes.paint(); });
+  document.addEventListener('change', function(e){                 // 입력 변경 시 자동 저장(저장 안 눌러도 보존)
+    var inp=e.target.closest && e.target.closest('[data-note-input-memo],[data-note-input-bid]');
+    if(inp){ var f=inp.closest('[data-note-form]'); if(f) saveForm(f, false); }
+  });
+  document.addEventListener('click', function(e){                  // 저장 버튼(명시적 확인 표시)
+    var btn=e.target.closest && e.target.closest('[data-note-save]');
+    if(btn){ var f=btn.closest('[data-note-form]'); if(f) saveForm(f, true); }
+  });
+  function flushActive(){   // 입력칸에 포커스를 둔 채 앱 전환·이탈(blur 미발생) 시 저장 누락 방지 — 활성 폼만(미입력 폼 오삭제 방지)
+    var el=document.activeElement, f=el && el.closest && el.closest('[data-note-form]');
+    if(f) saveForm(f, false);
+  }
+  window.addEventListener('pagehide', flushActive);
+  document.addEventListener('visibilitychange', function(){ if(document.visibilityState==='hidden') flushActive(); });
+})();
+</script>
 <!-- 브랜드 스플래시(초기화면) — 세션당 1회, 이후 페이지 이동엔 즉시 숨김 -->
 <style>
   #splash{position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;
