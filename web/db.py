@@ -270,8 +270,12 @@ def list_vehicles(judgment: Optional[str] = None, maker: Optional[str] = None,
     where, params = [], []
     if date:                         # 특정 매각기일(달력에서 날짜 클릭)
         where.append("sale_date = ?"); params.append(date)
-    if court:                        # 법원 필터(법원별 탐색)
-        where.append("court = ?"); params.append(court)
+    if court:                        # 법원 필터(단일 또는 콤마 다중선택)
+        _cs = [c for c in court.split(",") if c]
+        if len(_cs) == 1:
+            where.append("court = ?"); params.append(_cs[0])
+        elif _cs:
+            where.append("court IN (%s)" % ",".join("?" * len(_cs))); params += _cs
     if cond == "insp_expired":       # 자동차검사 유효기간 경과
         where.append("inspection_to IS NOT NULL AND inspection_to <> '' "
                      "AND inspection_to < date('now','localtime')")

@@ -4,23 +4,58 @@
 <div class="bg-surface border border-line rounded-lg p-4 sm:p-6">
   <div class="flex items-center gap-2 mb-1">
     <span class="material-symbols-outlined text-primary">gavel</span>
-    <h3 class="text-lg font-semibold">법원별 경매 <span class="text-mut text-sm font-normal">— 예정 물건 많은 순</span></h3>
+    <h3 class="text-lg font-semibold">관할 법원 선택</h3>
   </div>
-  <p class="text-sm text-mut mb-4">전국 <b class="text-txt">{{ courts|length }}</b>개 법원 · 예정 <b class="text-primary">{{ total }}</b>건. 법원을 누르면 그 법원 물건이 열립니다.</p>
+  <p class="text-sm text-mut mb-4">현장 실차 점검이 용이한 법원을 <b>여러 개 선택</b>하세요. 전국 <b class="text-txt">{{ courts|length }}</b>개 법원 · 예정 <b class="text-primary">{{ total }}</b>건 (물건 많은 순).</p>
   {% if courts %}
-  <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-2" id="courtgrid">
     {% for court, n in courts %}
-    <a href="/vehicles?court={{ court|urlencode }}&upcoming=30&sort=sale_date"
-       class="flex items-center gap-3 border border-line rounded-lg px-4 py-3 hover:border-primary hover:bg-slate-50 transition-colors">
+    <button type="button" data-court="{{ court }}" data-n="{{ n }}" onclick="toggleCourt(this)"
+       class="court-chip flex items-center gap-3 border border-line rounded-lg px-4 py-3 text-left transition-colors hover:border-primary">
       <span class="w-7 h-7 shrink-0 rounded-full text-xs font-bold flex items-center justify-center
                    {{ 'bg-primary text-white' if loop.index <= 3 else 'bg-slate-100 text-mut' }}">{{ loop.index }}</span>
       <span class="flex-1 min-w-0 font-medium text-txt truncate" style="word-break:keep-all">{{ court|replace('지방법원','지법') }}</span>
+      <span class="chk material-symbols-outlined text-primary text-lg" style="display:none">check_circle</span>
       <span class="shrink-0 text-primary font-bold tnum">{{ n }}건</span>
-    </a>
+    </button>
     {% endfor %}
   </div>
   {% else %}
   <p class="text-sm text-mut py-8 text-center">예정 물건이 없습니다.</p>
   {% endif %}
 </div>
+
+<!-- 선택 적용 바 (선택 시 표시) -->
+<div id="applybar" class="fixed left-4 right-4 bottom-20 lg:bottom-6 z-30" style="display:none">
+  <a id="applybtn" href="#" class="flex items-center justify-between max-w-3xl mx-auto bg-primary text-white rounded-xl px-5 py-3.5 shadow-lg hover:brightness-110 transition">
+    <span class="font-semibold"><span id="applyn">0</span>개 법원 · <span id="applycnt">0</span>건 매물 보기</span>
+    <span class="material-symbols-outlined">arrow_forward</span>
+  </a>
+</div>
+
+<script>
+(function(){
+  var sel = new Set();
+  window.toggleCourt = function(el){
+    var c = el.getAttribute('data-court');
+    var on = !sel.has(c);
+    if (on) { sel.add(c); el.classList.add('border-primary','bg-primary/5'); }
+    else { sel.delete(c); el.classList.remove('border-primary','bg-primary/5'); }
+    el.querySelector('.chk').style.display = on ? '' : 'none';
+    update();
+  };
+  function update(){
+    var bar = document.getElementById('applybar');
+    if (sel.size === 0) { bar.style.display = 'none'; return; }
+    var cnt = 0;
+    document.querySelectorAll('.court-chip').forEach(function(b){
+      if (sel.has(b.getAttribute('data-court'))) cnt += parseInt(b.getAttribute('data-n') || '0', 10);
+    });
+    document.getElementById('applyn').textContent = sel.size;
+    document.getElementById('applycnt').textContent = cnt.toLocaleString('ko-KR');
+    document.getElementById('applybtn').href = '/vehicles?court=' + encodeURIComponent(Array.from(sel).join(',')) + '&upcoming=30&sort=sale_date';
+    bar.style.display = 'block';
+  }
+})();
+</script>
 {% endblock %}
