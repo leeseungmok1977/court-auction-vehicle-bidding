@@ -37,6 +37,9 @@ node_modules/
 
 # 디자인 리뷰 스크린샷(개발 산출물·재생성 가능·용량)
 screenshots/
+# 외부 참고 이미지(경쟁사 법차 캡처·Stitch 디자인 시안 — 3rd-party·용량, 저장소 제외)
+image_ex/
+dashboard_ex/
 
 # Claude Code 로컬 설정(에이전트 정의 .claude/agents 는 커밋)
 .claude/settings.local.json

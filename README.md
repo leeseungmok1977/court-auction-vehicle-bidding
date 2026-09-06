@@ -1,7 +1,11 @@
-# 법원경매 차량 입찰가 산정 시스템
+# 경매로 내차GET — 법원·공공 경매 분석 <sub>(AI COURT AUCTION)</sub>
 
-대법원 법원경매정보 차량 물건을 수집하고, **SK엔카 + 케이카(2차 소스) 시세를 교차검증**해 입찰가를 산정하는 시스템.
-설계: [법원경매_차량_입찰가산정_통합설계서_v1.0.md](법원경매_차량_입찰가산정_통합설계서_v1.0.md) · 규칙: [CLAUDE.md](CLAUDE.md) · 디자인 시스템: [DESIGN.md](DESIGN.md)(Stripe 기반)
+대법원 법원경매정보 차량 물건을 수집하고, **SK엔카 + 케이카(2차 소스) 시세를 교차검증**하며,
+**최저매각가 × 유찰 프리미엄**으로 예상 낙찰가를 산정하는 앱. **"GET" 브랜드 시리즈**의 첫 앱.
+
+- 🌐 **라이브**: **https://naechaget.duckdns.org** (AWS EC2 상시배포 · PWA 설치형 · 안드로이드 TWA 경로)
+- 🎨 **디자인 시스템**: [.claude/skills/get-design-system/SKILL.md](.claude/skills/get-design-system/SKILL.md) — 딥네이비+오렌지 브랜드 컨셉(GET 시리즈 공통)
+- 📐 설계: [통합설계서 v1.0](법원경매_차량_입찰가산정_통합설계서_v1.0.md) · 규칙: [CLAUDE.md](CLAUDE.md)
 
 ## 🖥️ 운영 웹도구 (권장 사용법)
 
@@ -13,7 +17,7 @@ python run_web.py                    # 웹서버 실행 (포트 변경: python r
 ```
 → 브라우저에서 **http://127.0.0.1:8000** 접속
 
-> 화면은 **Stripe 기반 라이트 디자인**(화이트 캔버스·인디고 포인트·딥네이비 잉크·타뷸러 숫자·pill 버튼)으로 구성됨. 상세는 [DESIGN.md](DESIGN.md).
+> 화면은 **경매로 내차GET 브랜드 디자인**(딥네이비 히어로+오렌지 GET 강조·라이트 캔버스·인디고 액션·타뷸러 숫자·프리미엄 사진 카드)으로 구성됨. 규격은 [.claude/skills/get-design-system/SKILL.md](.claude/skills/get-design-system/SKILL.md)(GET 시리즈 공통), 초기 라이트 명세는 [DESIGN.md](DESIGN.md).
 
 | 화면 | 기능 |
 |---|---|
@@ -70,7 +74,8 @@ python run_web.py                    # 웹서버 실행 (포트 변경: python r
 
 ### 🎨 디자인 · CSS 빌드
 
-- 디자인 시스템은 [DESIGN.md](DESIGN.md)(getdesign.md의 Stripe 명세) 기준. Tailwind **정적 빌드**(CDN 미사용, 오프라인 안전).
+- 디자인 시스템은 [.claude/skills/get-design-system/SKILL.md](.claude/skills/get-design-system/SKILL.md)(GET 브랜드 규격, 새 앱 공통) 기준 — 초기 라이트 명세 [DESIGN.md](DESIGN.md). Tailwind **정적 빌드**(CDN 미사용, 오프라인 안전).
+  > ⚠️ arbitrary 클래스(`w-10`·`text-[9px]`·`bg-white/[0.08]`·`tracking-[0.12em]`)는 **재빌드 후에만** 적용되고, `css_v` 캐시버스트는 **서버 재시작** 시 반영된다.
 - **화면/클래스(HTML·app.py의 색상맵)를 수정하면** CSS 재빌드 필요:
   ```bash
   npm install          # 최초 1회
@@ -101,7 +106,9 @@ python run_web.py                    # 웹서버 실행 (포트 변경: python r
 | 요항 | 감정요항 파싱·DB 저장 → 필터/정렬 | ✅ 완료 | 검사경과·외관손상 필터, 상태·검사 상한가 반영 |
 | 사진 | 사진 비전 분류(정면·측면·실내)+사진없음 감가 | ✅ 완료 | 전 물건 분류(비차량 front=0)·증분 파이프라인·다물건 '사진 혼재?' 배지 |
 | 유료화 | 랜딩·한줄판정·D-3 알림·건당 리포트 UI | ✅ 완료(무료 확보 우선) | 결제·회원은 준법 게이트로 비활성(MON-01/02 보류) |
-| 배포 | GitHub(비공개)+Railway/Render 준비+무료 터널 | 🔄 진행 | `DATA_DIR`·Procfile·render.yaml·[docs/DEPLOY.md](docs/DEPLOY.md), Cloudflare 무료 터널 |
+| 배포 | **AWS EC2 상시배포(HTTPS)** + PWA/TWA | ✅ 라이브 | **https://naechaget.duckdns.org** · systemd+nginx · 매일 06:30 자동갱신 · [docs/DEPLOY_AWS.md](docs/DEPLOY_AWS.md) |
+| 디자인2 | 브랜드(경매로 내차GET)·딥네이비 컨셉·신규화면 | ✅ 완료 | 달력·법원별·프리미엄 카드·브랜드 로고 · [디자인 스킬](.claude/skills/get-design-system/SKILL.md) |
+| 예측 | 최저가×유찰 프리미엄 (MAE 8.7%) | ✅ 완료 | LOO 정직 백테스트, 목표 ≤15% 달성 |
 | L4 | 감정평가서 PDF(전자문서) | ⏳ 진행예정 | 요항 텍스트로 핵심정보는 이미 확보 |
 | TASK-06 | Power Automate 패키지 | ⏸ 보류 | 파이썬 파이프라인으로 대체(설계 변경) |
 | TASK-08 | 마무리 문서화 | 🔄 진행 | 본 README·[docs/changelog.md](docs/changelog.md)·[docs/backlog.md](docs/backlog.md) 갱신 |
@@ -163,6 +170,29 @@ python -m src.bidcalc.calculator
   - **무료(내 PC + 터널)**: `python run_web.py` + `run_tunnel.bat`(Cloudflare 무료 quick tunnel) → 외부 접속 URL. 단 **내 PC가 켜져 있어야** 하고 주소는 매번 바뀜.
   - **무료·상시(PC 무관)**: Oracle Cloud Always Free VM(세팅 수고 있음).
 - ⚠️ **준법**: 공개 URL 배포는 엔카/케이카 시세를 상시 노출(공개 상용 보류 사안) → **비공개 접근(로그인·URL 비공개)** 으로 제한 권장. 결제·회원 기능은 비활성 유지.
+
+## 최근 개선 이력 (2026-09) — 브랜딩·배포·디자인 대개편·예측 정확도
+
+**🚀 운영 배포 (라이브)**
+- **AWS EC2(서울, Ubuntu 24.04, t3.micro)** 상시배포 → **https://naechaget.duckdns.org** (Let's Encrypt HTTPS·HTTP→HTTPS·자동갱신). systemd(`naechaget`)+nginx 리버스프록시, DB·사진 업로드, **매일 자동 갱신 06:30**.
+- **PWA**(설치형)+**안드로이드 TWA** 경로(PWABuilder). 반응형: 데스크톱 브라우저=폰 목업(모바일 미리보기), 설치앱=데스크톱 화면. ⚠️ 교훈: requirements 버전 **핀 필수**(미고정 시 Starlette 상위버전이 템플릿 렌더 깨뜨림).
+
+**🎯 예측 정확도 대폭 개선 (MAE 26.6% → 8.7%)**
+- **핵심**: `예상낙찰가 = 최저매각가 × 유찰버킷 프리미엄`. 낙찰가/시세는 CV 25.9%(불안정)지만 **낙찰가/최저가는 CV 12.7%**(median 1.158) — 유찰로 내려간 최저가가 시장 할인을 이미 반영.
+- 프리미엄: 신건 1.0 / 1회 1.13 / 2회 1.17 / 3회+ 1.20(전역 수축) + 시세×1.10 소프트캡. **MAE는 LOO(자기 제외) 정직 측정** — 기존 지표는 '전역 단일 할인율×시세' baseline만 재던 것을 실제 예측 방식으로 교체.
+- 상세 **입찰 전략 밴드**(보수적/균형/공격적 · 낙찰확률 25/50/75%)·**소매 차익 분석**도 최저가 기반으로 일치.
+
+**🎨 디자인 대개편 (법차 벤치마킹 + Stitch 디자인에이전트 시안 반영)**
+- **브랜드 아이덴티티**: 앱명 **경매로 내차GET**(GET=오렌지) + 아이콘(네이비/오렌지). 히어로·예상낙찰가 카드를 **딥네이비+오렌지**로 통일. Pretendard.
+- **대시보드**: 리치 히어로(AI 중심값·시세대비%·IQR 범위바·신뢰도·MAE) + 아이콘칩 KPI(상태배지·서브메트릭) + 오늘의 추천 물건 + **빠른 탐색**(브랜드 로고 바로가기·테마 칩).
+- **목록**: 풀폭 사진 프리미엄 카드(D-day·유찰회수·감정가대비%·AI예상낙찰가·신뢰도 바).
+- **신규 화면**: **경매 달력**(`/calendar` 날짜별 건수)·**법원별 경매**(`/courts` 다중선택 필터)·상세 개편(사진 히어로·점검 포인트).
+- **모바일 IA**: 하단 탭(홈/목록/달력/관심) + **헤더=앱 브랜드**(햄버거 제거, 타이틀 대신 브랜드). 데스크톱=사이드바+페이지 타이틀. 폰 프레임 오발동 수정(미디어쿼리+screen.width).
+- **브랜드 로고**: 빠른탐색에 실제 CI(simple-icons 로컬 SVG·벤츠 삼각별 직접제작·미보유는 이니셜 폴백, 오프라인 안전).
+
+**🖼️ 사진 분류 루틴화 + 신뢰성**
+- `/classify-photos` **스킬**로 미분류 확인→분류(멀티에이전트)→VM 반영 일관화. 주간 자동 점검(`run_photo_classify_check.ps1`, 작업 스케줄러).
+- **신뢰성 수정**: '입찰 검토 가능'은 미래기일·미낙찰만 집계(지난기일 유찰·낙찰 제외), 지난기일 유찰은 '다음 기일 미정' 표기, 목록 페이지네이션 잘림·모서리 흰색 등 다수.
 
 ## 최근 개선 이력 (2026-08)
 - **사진 비전 분류(정면·측면·실내) + 사진없음 감가** — 전 물건 사진을 비전으로 정렬, 증분 파이프라인, 다물건 '사진 혼재?' 배지, 비차량 정직 처리(front=0)
