@@ -148,7 +148,8 @@ CREATE TABLE IF NOT EXISTS usage_daily ( -- 무료 등급 일일 열람 제한(M
 
 ### ── Phase A · 서버 격리·기반 (앱 없이 지금 적용) ──
 
-#### TASK-M01 — 엔카 원자료 데이터 계층 격리(화이트리스트)
+#### TASK-M01 — 엔카 원자료 데이터 계층 격리(화이트리스트)  ✅ 완료(2026-09-06, 커밋 0fe3b56)
+> 결정: median(소매 시세) **유지**('소매 시세' 라벨). 구현: `service.public_view()` + Jinja finalize(None→''). 함정으로 **HTML 주석(`<!-- 엔카 -->`)이 뷰소스로 새던 것** 발견·수정 → '화면 숨김이 아니라 데이터에서' 원칙의 실증.
 - **목표**: 비관리자에게 나가는 물건 데이터에서 PRIVATE 필드를 **템플릿이 아니라 데이터 계층**에서 제거. 뷰소스·향후 JSON API 어디로도 안 샘.
 - **대상**: `web/service.py`(또는 신규 `web/exposure.py`), `web/app.py`(상세·목록·리포트 라우트), 필요 시 템플릿의 median 참조.
 - **선행**: 없음(가장 먼저).
@@ -164,7 +165,8 @@ CREATE TABLE IF NOT EXISTS usage_daily ( -- 무료 등급 일일 열람 제한(M
 - **프롬프트 예시**: `docs/MONETIZATION_SPEC.md 의 TASK-M01만 구현해. 먼저 PRAGMA table_info(vehicles)로 실제 컬럼을 확인해 PRIVATE_FIELDS를 확정하고, public_view()를 만들어 비관리자 응답에서 엔카 원자료를 데이터 계층에서 제거해. 완료 기준의 grep 검증까지 보여줘.`
 - **주의**: median_price를 완전 제거하면 '소매 차익' 섹션·재판매 손익분기가 깨진다 → §5 결정 먼저. 우선은 median 유지 + 나머지 PRIVATE만 제거로 시작.
 
-#### TASK-M02 — 유출 테스트(회귀 방어)
+#### TASK-M02 — 유출 테스트(회귀 방어)  ✅ 완료(2026-09-06, 커밋 0fe3b56)
+> `tests/test_exposure.py`: public_view 단위 + 비관리자/관리자 렌더 유출 회귀(총 105 테스트 통과).
 - **목표**: M01 이후 "비관리자 응답에 엔카 원자료가 절대 안 나온다"를 **자동 테스트**로 고정. 이후 어떤 라우트를 추가해도 이 테스트가 지킨다.
 - **대상**: `tests/test_exposure.py`(신규). `conftest.py`의 임시 DB 패턴(`monkeypatch.setattr(db,'DB_PATH',tmp)`) 활용 — `tests/test_disappear.py` 참고.
 - **구현 지침**: 임시 DB에 엔카 필드가 채워진 샘플 물건 삽입 → TestClient로 `/vehicle/{id}`, `/vehicles`, `/vehicle/{id}/report`를 **비관리자/관리자** 각각 호출 → 비관리자 응답 텍스트에 PRIVATE 값(예: 특정 comps 가격, kcar_median 숫자)이 **없음**을, 관리자엔 **있음**을 assert.
