@@ -93,8 +93,9 @@
               <div class="min-w-0 self-center">
                 <a href="/vehicle/{{ v.id }}" class="text-primary font-semibold hover:underline block leading-tight" style="word-break:keep-all">{{ v.model|mdl }}</a>
                 <div class="text-xs text-mut/70 mt-0.5 font-mono" style="word-break:keep-all">{{ v.case_no }} · {{ (v.court or '—')|replace('지방법원','지법') }}{% if v.year %} · {{ v.year }}년{% endif %}{% if v.mileage_km %} · {{ v.mileage_km|won }}km{% endif %}</div>
-                {% if (v.inspection_to and v.inspection_to < today) or v.condition_level in ('fair','poor') or v.photo_lot_mixed %}
+                {% if (v.fail_count and v.fail_count > 0) or (v.inspection_to and v.inspection_to < today) or v.condition_level in ('fair','poor') or v.photo_lot_mixed %}
                 <div class="flex flex-wrap gap-1 mt-1">
+                  {% if v.fail_count and v.fail_count > 0 %}<span class="text-[10px] px-1.5 py-0.5 rounded bg-orange-50 text-orange-700 border border-orange-200 font-medium whitespace-nowrap" title="유찰 횟수 — 많을수록 저가">유찰 {{ v.fail_count }}회</span>{% endif %}
                   {% if v.inspection_to and v.inspection_to < today %}<span class="text-[10px] px-1.5 py-0.5 rounded bg-rose-50 text-rose-600 border border-rose-200 whitespace-nowrap">검사경과</span>{% endif %}
                   {% if v.condition_level in ('fair','poor') %}<span class="text-[10px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 whitespace-nowrap">외관손상</span>{% endif %}
                   {% if v.photo_lot_mixed %}<span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 border border-slate-200 whitespace-nowrap" title="동일 사건에 물건이 여러 개라 사진 폴더에 다른 물건의 차량이 섞여 있을 수 있습니다. 썸네일이 다른 차량일 수 있으니 상세에서 확인하세요.">사진 혼재?</span>{% endif %}
@@ -122,9 +123,9 @@
           {% set closed = v.auction_result == '낙찰' or v.judgment == '종결' %}
           {% set exp_far = v.expected_win and v.min_sale_price and v.min_sale_price > v.expected_win %}
           {% set lowconf = v.market_confidence_label=='낮음' %}
-          {# 최저매각가 #}
-          <td class="py-2.5 px-3 font-mono text-right text-sm whitespace-nowrap {{ 'text-rose-600' if over_mkt else 'text-amber-700' if over_bid else 'text-mut' }}"
-              {% if over_mkt %}title="경매 최저가가 엔카 시세보다 높음 — 시세보다 비싼 입찰"{% elif over_bid %}title="최저가가 산정 상한가(재판매 기준)보다 높음"{% endif %}>{{ v.min_sale_price|won }}</td>
+          {# 최저매각가 (+ 감정가 대비 %) #}
+          <td class="py-2.5 px-3 text-right whitespace-nowrap {{ 'text-rose-600' if over_mkt else 'text-amber-700' if over_bid else 'text-mut' }}"
+              {% if over_mkt %}title="경매 최저가가 엔카 시세보다 높음 — 시세보다 비싼 입찰"{% elif over_bid %}title="최저가가 산정 상한가(재판매 기준)보다 높음"{% endif %}><span class="font-mono text-sm">{{ v.min_sale_price|won }}</span>{% if v.appr_pct %}<div class="text-[10px] text-mut/60 tnum" title="최저매각가 ÷ 감정가">감정가 {{ v.appr_pct }}%</div>{% endif %}</td>
           {# 상한가(재판매 손익분기) #}
           <td class="py-2.5 px-3 font-mono text-right text-sm text-mut whitespace-nowrap"
               title="재판매 손익분기가(마진·부대비 차감) — 이 값 이하 낙찰 시 차익">{{ v.upper_bid|won if (v.upper_bid and not closed) else '—' }}</td>
@@ -172,13 +173,16 @@
     {% set exp_far = v.expected_win and v.min_sale_price and v.min_sale_price > v.expected_win %}
     {% set lowconf = v.market_confidence_label=='낮음' %}
     <a href="/vehicle/{{ v.id }}" class="block px-4 py-3 hover:bg-slate-50 transition-colors border-l-2 {{ acc }}">
+      {% set show_dday = v.dday is not none and v.dday >= 0 and not closed %}
       <div class="flex items-start gap-3">
         {% if v.photo_urls %}
         <div class="relative w-[4.5rem] h-[4.5rem] shrink-0 rounded-lg border border-line bg-slate-100 bg-center bg-cover bg-no-repeat" style="background-image:url('{{ v.photo_urls[0] }}')">
+          {% if show_dday %}<span class="absolute top-1 left-1 text-[9px] leading-none px-1.5 py-0.5 rounded-full font-bold {{ 'bg-rose-500 text-white' if v.dday <= 1 else 'bg-black/65 text-white' }}">{{ 'D-DAY' if v.dday == 0 else 'D-' ~ v.dday }}</span>{% endif %}
           {% if v.photo_count and v.photo_count > 1 %}<span class="absolute bottom-1 right-1 flex items-center gap-0.5 text-[9px] leading-none px-1.5 py-0.5 rounded-full bg-black/55 text-white font-mono"><span class="material-symbols-outlined text-[11px] leading-none">photo_camera</span>{{ v.photo_count }}</span>{% endif %}
         </div>
         {% else %}
-        <div class="w-[4.5rem] h-[4.5rem] shrink-0 rounded-lg border border-line bg-slate-50 flex items-center justify-center text-mut/40">
+        <div class="relative w-[4.5rem] h-[4.5rem] shrink-0 rounded-lg border border-line bg-slate-50 flex items-center justify-center text-mut/40">
+          {% if show_dday %}<span class="absolute top-1 left-1 text-[9px] leading-none px-1.5 py-0.5 rounded-full font-bold {{ 'bg-rose-500 text-white' if v.dday <= 1 else 'bg-black/65 text-white' }}">{{ 'D-DAY' if v.dday == 0 else 'D-' ~ v.dday }}</span>{% endif %}
           <span class="material-symbols-outlined">directions_car</span>
         </div>
         {% endif %}
@@ -187,8 +191,9 @@
             <div class="min-w-0">
               <div class="font-semibold text-primary leading-tight" style="word-break:keep-all">{{ v.model|mdl }}{% if v.starred %} <span class="text-amber-500">★</span>{% endif %}</div>
               <div class="text-xs text-mut/70 font-mono mt-0.5" style="word-break:keep-all">{{ v.case_no }} · {{ (v.court or '—')|replace('지방법원','지법') }}{% if v.year %} · {{ v.year }}년{% endif %}{% if v.mileage_km %} · {{ v.mileage_km|won }}km{% endif %}</div>
-              {% if (v.inspection_to and v.inspection_to < today) or v.condition_level in ('fair','poor') or v.photo_lot_mixed %}
+              {% if (v.fail_count and v.fail_count > 0) or (v.inspection_to and v.inspection_to < today) or v.condition_level in ('fair','poor') or v.photo_lot_mixed %}
               <div class="flex flex-wrap gap-1 mt-1">
+                {% if v.fail_count and v.fail_count > 0 %}<span class="text-[10px] px-1.5 py-0.5 rounded bg-orange-50 text-orange-700 border border-orange-200 font-medium" title="유찰(응찰자 없음) 횟수 — 많을수록 저가·재고">유찰 {{ v.fail_count }}회</span>{% endif %}
                 {% if v.inspection_to and v.inspection_to < today %}<span class="text-[10px] px-1.5 py-0.5 rounded bg-rose-50 text-rose-600 border border-rose-200">검사경과</span>{% endif %}
                 {% if v.condition_level in ('fair','poor') %}<span class="text-[10px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">외관손상</span>{% endif %}
                 {% if v.photo_lot_mixed %}<span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 border border-slate-200" title="동일 사건 다물건 — 썸네일이 다른 차량일 수 있음">사진 혼재?</span>{% endif %}
@@ -200,7 +205,7 @@
         </div>
       </div>
       <div class="grid grid-cols-3 gap-2 mt-3 text-right">
-        <div><div class="text-[10px] text-mut">최저매각가</div><div class="font-mono text-sm text-mut tnum">{{ v.min_sale_price|won }}</div></div>
+        <div><div class="text-[10px] text-mut">최저매각가</div><div class="font-mono text-sm text-mut tnum">{{ v.min_sale_price|won }}</div>{% if v.appr_pct %}<div class="text-[9px] text-mut/60 tnum" title="최저매각가 ÷ 감정가">감정가 {{ v.appr_pct }}%</div>{% endif %}</div>
         <div class="rounded-md bg-primary/5 px-1.5 py-0.5">
           <div class="text-[10px] text-primary">예상낙찰가</div>
           <div class="font-mono text-sm font-bold tnum {{ 'text-mut/50' if closed else 'text-mut' if (lowconf or exp_far) else 'text-txt' }}">{{ v.expected_win|won if v.expected_win else '—' }}{% if v.expected_win and not closed and lowconf %}<span class="text-rose-600/70 text-[10px] align-top">*</span>{% elif v.expected_win and not closed and exp_far %}<span class="text-mut/60 text-[10px] align-top">↑</span>{% endif %}</div>

@@ -292,8 +292,16 @@ def vehicles(request: Request, judgment: str = "", maker: str = "", q: str = "",
         "upcoming": up or "", "result": result, "status": status}.items() if v})
     from datetime import date as _date
     _tdy = _date.today().isoformat()
+    _tdy_d = _date.today()
     for r in page_rows:      # 표시용 판정 보정(지난기일 검토가능→유찰대기, 낙찰→종결) — 신뢰
         r["judgment"] = _display_judgment(r, _tdy)
+        sd = r.get("sale_date")           # D-day(남은 일수) — 법차식 카운트다운 배지
+        try:
+            r["dday"] = (_date.fromisoformat(sd) - _tdy_d).days if sd else None
+        except (ValueError, TypeError):
+            r["dday"] = None
+        av, mn = r.get("appraisal_value"), r.get("min_sale_price")   # 감정가 대비 %
+        r["appr_pct"] = round(100 * mn / av) if (av and mn) else None
     resp = templates.TemplateResponse("vehicles.html", {
         "request": request, "rows": page_rows, "judgment": judgment, "maker": maker,
         "q": q, "sort": sort, "upcoming": up, "result": result, "status": status,
