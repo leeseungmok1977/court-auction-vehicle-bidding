@@ -169,9 +169,9 @@ def dashboard(request: Request):
             return False
         return True
 
-    def _exp_margin(v):
+    def _exp_margin(v):                       # 유망도 = 시세 대비 예상낙찰가 절감액(클수록 저가 매수)
         exp = service.expected_for(v, _bt)
-        return (exp or v.get("upper_bid") or 0) - (v.get("min_sale_price") or 0)
+        return (v.get("median_price") or 0) - (exp or v.get("upper_bid") or 0)
     _cand = [v for v in db.list_vehicles(judgment="입찰 검토 가능") if _promising(v)]
     candidates = sorted(_cand, key=_exp_margin, reverse=True)[:8]
     for v in candidates:      # 유찰횟수 반영 예상낙찰가(대시보드 표시용)
@@ -422,20 +422,21 @@ def vehicle_detail(request: Request, vid: str, cc: str = "", an: str = ""):
     disc = bt.get("discount_median")
     _cd = service.comparable_discount(v, bt)     # 유사 낙찰(같은차종·유사연식·주행) 기반 보정
     comps = service.comparable_sales(v, bt)
-    lo = service.expected_winning(v.get("median_price"), bt.get("discount_p25"))
-    _hi = service.expected_winning(v.get("median_price"), bt.get("discount_p75"))
-    source = None
-    if _cd:                                       # 유사 낙찰 기반이면 밴드도 유사사례 분포로
-        import statistics as _st
-        rr = sorted(c["ratio"] for c in _cd[2] if c.get("ratio"))
-        if len(rr) >= 4:
-            q = _st.quantiles(rr, n=4)
-            lo = service.expected_winning(v.get("median_price"), round(q[0], 3))
-            _hi = service.expected_winning(v.get("median_price"), round(q[2], 3))
-        source = f"유사 낙찰 {_cd[1]}건 기반"
-    # 예상낙찰가 범위 상단은 시세중앙값 미만으로 캡(낙찰가가 시세와 같아지는 건 비현실적)
-    if _hi and v.get("median_price"):
-        _hi = min(_hi, int(v["median_price"] * 0.97))
+    # 예상 범위(lo/hi) — price와 동일하게 '최저매각가 × 프리미엄 분위수' 기반(낙찰확률 25~75% 대응)
+    _mn = v.get("min_sale_price")
+    _pm = service.min_premium_for(bt, v.get("fail_count"))
+    _med = v.get("median_price")
+    _p25, _p75 = bt.get("min_premium_p25"), bt.get("min_premium_p75")
+    if _mn and _pm and _p25 and _p75:
+        _capv = int(_med * 1.10) if _med else None
+        def _rr(x):
+            x = min(x, _capv) if _capv else x
+            return int(round(x / 100_000) * 100_000)
+        lo, _hi = _rr(_mn * _p25), _rr(_mn * _p75)
+    else:                                          # 폴백: 시세×할인율 분위수
+        lo = service.expected_winning(_med, bt.get("discount_p25"))
+        _hi = service.expected_winning(_med, bt.get("discount_p75"))
+    source = f"유사 낙찰 {_cd[1]}건 참고" if _cd else None
     expected = {"price": service.expected_for(v, bt), "lo": lo,
                 "hi": _hi, "discount": disc, "sample": bt.get("sample"),
                 "mae": bt.get("mae_pct"), "source": source,

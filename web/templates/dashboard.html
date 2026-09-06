@@ -229,7 +229,7 @@
         <th class="text-left py-2 font-medium hidden md:table-cell">법원</th>
         <th class="text-right py-2 font-medium">최저매각가</th>
         <th class="text-right py-2 font-medium" title="재판매 마진 차감 후 손익분기가 — 예상낙찰가보다 낮은 것이 정상">상한가 <span class="text-mut/60">재판매</span></th>
-        <th class="text-right py-2 font-medium" title="과거 낙찰률 기반 예상 낙찰가 — 일반 매수 실입찰 기준">예상낙찰가 <span class="text-mut/60">실입찰</span></th>
+        <th class="text-right py-2 font-medium" title="최저매각가 × 유찰 프리미엄 기반 예상 낙찰가 — 일반 매수 실입찰 기준">예상낙찰가 <span class="text-mut/60">실입찰</span></th>
         <th class="text-right py-2 font-medium">시세중앙값</th>
         <th class="text-center py-2 font-medium">신뢰도</th></tr></thead>
       <tbody class="divide-y divide-line">
@@ -316,7 +316,7 @@
   {% if backtest.upper_hit_rate is not none and backtest.upper_hit_rate < 0.5 %}
   <div class="mt-3 text-xs bg-amber-50 border border-amber-200 text-amber-700 rounded-md px-3 py-2 leading-relaxed">
     ⚠ 실제 낙찰가가 산정 상한가를 넘는 경우가 많습니다({{ (100-backtest.upper_hit_rate*100)|round|int }}%). 현재 산정은 <b>리셀러 마진 기준(보수적)</b>이라 일반 매수 목적이면 상한가가 낮게 잡힙니다 —
-    <b class="text-txt">예상 낙찰가(시세의 {{ (backtest.discount_median*100)|round|int }}%)</b>를 실입찰 기준으로 참고하세요.
+    <b class="text-txt">예상 낙찰가(최저가 기반 · 실측 오차 ±{{ backtest.mae_pct|round|int }}%)</b>를 실입찰 기준으로 참고하세요.
   </div>
   {% endif %}
   {% else %}
