@@ -50,26 +50,36 @@ def app_client(tmp_path, monkeypatch):
         "cross_source_status": "agree", "cross_source_rel": 0.03,
     })
     import web.app as A
-    monkeypatch.setattr(A, "_ADMIN_KEY", "testkey")
-    return A, TestClient(A.app)
+    return TestClient(A.app)
 
 
 def _paths():
     return ["/vehicle/T1_1", "/vehicles", "/vehicle/T1_1/report"]
 
 
+# 공개 사용자 = nginx 경유(X-Forwarded-For 존재). 관리자 = SSH 터널(loopback Host, XFF 없음).
+_PUBLIC = {"x-forwarded-for": "203.0.113.7"}
+_TUNNEL = {"host": "127.0.0.1"}
+
+
 def test_user_responses_have_no_encar_raw(app_client):
-    _, c = app_client
+    c = app_client
     for p in _paths():
-        r = c.get(p)
+        r = c.get(p, headers=_PUBLIC)
         assert r.status_code == 200, p
         assert "ZZLEAKZZ" not in r.text, f"엔카 개별매물 누출(user): {p}"
         assert "동급 매물" not in r.text, f"동급 매물 섹션 누출(user): {p}"
 
 
 def test_admin_responses_show_encar_raw(app_client):
-    A, c = app_client
-    ck = {"nq_admin": A._admin_token()}
-    r = c.get("/vehicle/T1_1", cookies=ck)
+    c = app_client
+    r = c.get("/vehicle/T1_1", headers=_TUNNEL)
     assert r.status_code == 200
-    assert "ZZLEAKZZ" in r.text, "관리자에게 개별 동급 매물이 보여야 함"
+    assert "ZZLEAKZZ" in r.text, "관리자(터널)에게 개별 동급 매물이 보여야 함"
+
+
+def test_xff_beats_loopback_host(app_client):
+    """공개 사용자가 Host를 127.0.0.1로 위조해도 nginx가 붙인 XFF가 있으면 관리자 아님(보안)."""
+    c = app_client
+    r = c.get("/vehicle/T1_1", headers={"host": "127.0.0.1", "x-forwarded-for": "203.0.113.7"})
+    assert "ZZLEAKZZ" not in r.text

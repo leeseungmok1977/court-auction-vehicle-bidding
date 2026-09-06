@@ -19,7 +19,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, File
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 from fastapi.templating import Jinja2Templates  # noqa: E402
 
-from web import db, service, brands  # noqa: E402
+from web import db, service, brands, auth  # noqa: E402
 from src.collect import kcar  # noqa: E402
 
 app = FastAPI(title="법원경매 차량 입찰가 산정")
@@ -42,58 +42,45 @@ templates.env.globals["css_v"] = _css_version()  # 시작 시점 CSS 버전(재�
 templates.env.globals["alert_count"] = lambda: service.alert_count(3)
 
 
-# ── 관리자 모드 ─────────────────────────────────────────────────────────────
-# 일반 사용자에게는 SK엔카 원자료(개별 동급 매물·시세 소스)와 운영 도구(수집·분석·
-# 갱신)를 숨기고, '반영된 결과'만 노출한다. 운영자는 비밀키로 관리자 쿠키를 받아 전체를 본다.
-# 키는 환경변수 NAECHAGET_ADMIN_KEY로 주입(코드·설정에 하드코딩 금지). 미설정 시 관리자 모드 비활성.
-import hashlib as _hashlib  # noqa: E402
-import hmac as _hmac  # noqa: E402
-
-_ADMIN_KEY = os.environ.get("NAECHAGET_ADMIN_KEY", "")
-
-
-def _admin_token() -> str:
-    return _hashlib.sha256(("nq-admin|" + _ADMIN_KEY).encode()).hexdigest()[:40] if _ADMIN_KEY else ""
+# ── 관리자 모드 (MONETIZATION_SPEC TASK-M03 — SSH 터널 전용) ──────────────────
+# 관리자 화면·운영 도구·엔카 원자료는 '앱/공개 도메인'에 두지 않는다(APK 디컴파일·심사
+# 리스크·데이터 노출 방지). 운영자는 SSH 로컬 터널로만 접근한다:
+#   ssh -i naechaget.pem -L 9000:127.0.0.1:8000 ubuntu@43.202.126.180
+#   → 브라우저 http://127.0.0.1:9000  (엔카 원자료 + 운영 도구 표시)
+# 판정 근거(보안): uvicorn은 127.0.0.1:8000(loopback) 전용 바인딩 + 8000 외부 차단.
+#   도달 경로는 (a) nginx 프록시(공개 도메인 — X-Forwarded-For 부가) 또는 (b) SSH 터널
+#   (직결 — XFF 없음)뿐. 따라서 'XFF 없음 + Host가 loopback' = 터널 = 운영자 = 관리자.
+#   공개 사용자는 반드시 nginx를 거치므로(XFF 존재) 절대 관리자가 될 수 없다.
+_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
 
 
 def is_admin(request: Request) -> bool:
-    if not _ADMIN_KEY:
+    if request.headers.get("x-forwarded-for"):     # nginx 경유(공개) → 관리자 아님
         return False
-    tok = request.cookies.get("nq_admin") or ""
-    return bool(tok) and _hmac.compare_digest(tok, _admin_token())
+    return (request.url.hostname or "").lower() in _LOOPBACK_HOSTS   # 터널 직결(loopback)
 
 
 templates.env.globals["is_admin"] = is_admin
+# 사용자·등급(M04 뼈대) — 지금은 전원 tier=1. M11+에서 require_tier로 게이팅.
+templates.env.globals["current_user"] = auth.current_user
+templates.env.globals["user_tier"] = auth.user_tier
 
 
 def _require_admin(request: Request) -> None:
-    """운영 엔드포인트 보호 — 관리자 아니면 403(버튼 숨김만으론 부족, 직접 POST 차단)."""
+    """운영 엔드포인트 보호 — 공개 도메인엔 존재 자체를 숨긴다(404). 터널에서만 동작."""
     from fastapi import HTTPException
     if not is_admin(request):
-        raise HTTPException(status_code=403, detail="관리자 전용 기능입니다.")
+        raise HTTPException(status_code=404)
 
 
 @app.get("/admin", include_in_schema=False)
-def admin_gate(request: Request, key: str = ""):
-    if key:
-        if _ADMIN_KEY and _hmac.compare_digest(key, _ADMIN_KEY):
-            resp = RedirectResponse("/", status_code=303)
-            resp.set_cookie("nq_admin", _admin_token(), max_age=60 * 60 * 24 * 90,
-                            httponly=True, samesite="lax", secure=True)
-            return resp
-        return HTMLResponse("<p style='font-family:sans-serif;padding:2rem'>인증 실패</p>", status_code=403)
-    on = is_admin(request)
-    body = ("관리자 모드 <b>ON</b> · <a href='/admin/logout'>로그아웃</a>" if on
-            else "일반 모드. 관리자는 <code>/admin?key=발급키</code> 로 접속하세요."
-            if _ADMIN_KEY else "관리자 키가 설정되지 않았습니다(NAECHAGET_ADMIN_KEY).")
+def admin_status(request: Request):
+    if is_admin(request):
+        body = "관리자 모드 <b>ON</b> (SSH 터널)"
+    else:
+        body = ("관리자 화면은 SSH 터널로만 접근합니다: "
+                "<code>ssh -L 9000:127.0.0.1:8000 …</code> 후 <code>http://127.0.0.1:9000</code>")
     return HTMLResponse(f"<p style='font-family:sans-serif;padding:2rem'>{body} · <a href='/'>홈</a></p>")
-
-
-@app.get("/admin/logout", include_in_schema=False)
-def admin_logout():
-    resp = RedirectResponse("/", status_code=303)
-    resp.delete_cookie("nq_admin")
-    return resp
 
 
 # PWA 서비스워커 — 루트 스코프(/)로 서빙해야 앱 전체를 제어(정적경로 서빙 시 스코프가 /static/로 제한됨)

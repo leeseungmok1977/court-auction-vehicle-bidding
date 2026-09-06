@@ -15,6 +15,11 @@ from src.paths import DATA_DIR
 
 DB_PATH = DATA_DIR / "auction.db"
 
+
+def _now() -> str:
+    from datetime import datetime
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS vehicles (
     id            TEXT PRIMARY KEY,   -- folder_key: 사건번호_물건번호
@@ -128,6 +133,33 @@ CREATE TABLE IF NOT EXISTS sale_results (
     ratio         REAL,               -- winning_price / median_price (할인율)
     sale_date     TEXT,
     recorded_at   TEXT
+);
+
+-- ── 유료화 기반 (MONETIZATION_SPEC TASK-M04) — 지금은 뼈대만, 전원 tier=1(무료) ──
+CREATE TABLE IF NOT EXISTS users (
+    id            TEXT PRIMARY KEY,   -- Firebase uid(google sub) — M05에서 채움
+    email         TEXT,
+    tier          INTEGER DEFAULT 1,  -- 1 무료 / 2 / 3 (서버 권위)
+    tier_source   TEXT,               -- free / play_sub / grant
+    sub_product   TEXT,
+    sub_expiry    TEXT,               -- 구독 만료(UTC ISO) — 지나면 자동 강등(M10)
+    sub_state     TEXT,               -- active / grace / on_hold / canceled / expired
+    play_purchase_token TEXT,
+    created_at    TEXT,
+    updated_at    TEXT
+);
+CREATE TABLE IF NOT EXISTS purchases (   -- 결제 감사 로그(멱등 재검증)
+    purchase_token  TEXT PRIMARY KEY,
+    user_id         TEXT,
+    product_id      TEXT,
+    state           TEXT,             -- verified / acknowledged / refunded / canceled
+    raw             TEXT,             -- Play API 원응답(json)
+    verified_at     TEXT,
+    acknowledged_at TEXT
+);
+CREATE TABLE IF NOT EXISTS usage_daily (  -- 무료 등급 일일 열람 제한(M11)
+    user_id TEXT, ymd TEXT, kind TEXT, n INTEGER DEFAULT 0,
+    PRIMARY KEY (user_id, ymd, kind)
 );
 """
 
@@ -692,6 +724,47 @@ def get_all_settings() -> dict:
     rows = conn.execute("SELECT key, value FROM settings").fetchall()
     conn.close()
     return {r["key"]: r["value"] for r in rows}
+
+
+# --- 사용자·등급 (MONETIZATION_SPEC TASK-M04 뼈대) ---
+def get_user(uid: str) -> Optional[dict]:
+    if not uid:
+        return None
+    conn = connect()
+    row = conn.execute("SELECT * FROM users WHERE id=?", (uid,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def upsert_user(uid: str, email: Optional[str] = None) -> dict:
+    """로그인 시 사용자 생성/갱신(M05). 신규는 tier=1(무료). 기존 tier·구독은 보존."""
+    now = _now()
+    conn = connect()
+    with conn:
+        conn.execute(
+            "INSERT INTO users (id, email, tier, tier_source, created_at, updated_at) "
+            "VALUES (?, ?, 1, 'free', ?, ?) "
+            "ON CONFLICT(id) DO UPDATE SET email=COALESCE(excluded.email, users.email), "
+            "updated_at=excluded.updated_at",
+            (uid, email, now, now))
+    conn.close()
+    return get_user(uid)
+
+
+def set_user_tier(uid: str, tier: int, **fields) -> None:
+    """등급·구독 상태 갱신(M08/M10) — 서버 권위. fields: tier_source·sub_product·sub_expiry·
+    sub_state·play_purchase_token 등 users 컬럼만 반영."""
+    allowed = {"tier_source", "sub_product", "sub_expiry", "sub_state", "play_purchase_token"}
+    sets = ["tier=?", "updated_at=?"]
+    params = [int(tier), _now()]
+    for k, v in fields.items():
+        if k in allowed:
+            sets.append(f"{k}=?"); params.append(v)
+    params.append(uid)
+    conn = connect()
+    with conn:
+        conn.execute(f"UPDATE users SET {','.join(sets)} WHERE id=?", params)
+    conn.close()
 
 
 # --- 낙찰 결과 히스토리 (append-only 누적) ---

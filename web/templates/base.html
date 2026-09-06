@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+{% if not is_admin(request) %}{# 관리자(SSH 터널)는 전체 폭으로 작업 — 폰 프레임 생략 #}
 <script>
   /* 설치 안 한 '진짜 데스크톱 브라우저'에서만 폰 프레임(모바일 화면). 실제 폰·설치앱·프레임 내부는 그대로.
      window.innerWidth는 파싱 시점에 뷰포트 메타 적용 전 ~980으로 오독될 수 있어 프레임 오발동 → 미디어쿼리로 신뢰성 확보.
@@ -19,6 +20,7 @@
     } catch (e) {}
   })();
 </script>
+{% endif %}
 <title>{% block title %}법원경매 차량 입찰가 산정{% endblock %}</title>
 <!-- PWA(설치형 모바일앱) -->
 <link rel="manifest" href="/static/manifest.webmanifest"/>
