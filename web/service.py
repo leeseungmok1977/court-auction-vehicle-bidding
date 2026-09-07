@@ -834,6 +834,17 @@ def can_analyze(v: dict) -> bool:
     return bool(_sa_no_from_docid(v.get("doc_id") or ""))
 
 
+# 백테스트 결과 캐시 — 매 페이지 렌더마다 전체 차량(수천 행)+낙찰이력 로드 + LOO(O(n²)) 재계산은
+# 비싸다(대시보드 지연 주범). 낙찰 표본은 자주 안 바뀌므로 (a)낙찰표본수 키 + (b)TTL로 캐시하고,
+# 데이터가 바뀌는 작업(수집·분석·낙찰기록) 후엔 invalidate_backtest_cache()로 강제 무효화한다.
+_bt_cache: dict = {"t": 0.0, "data": None, "key": None}
+_BT_TTL = 180.0  # seconds
+
+
+def invalidate_backtest_cache() -> None:
+    _bt_cache["data"] = None
+
+
 def backtest_stats() -> dict:
     """이미 낙찰된 물건으로 시스템 시세·상한가의 실측 정확도를 백테스트(무네트워크).
 
@@ -841,7 +852,14 @@ def backtest_stats() -> dict:
     - 낙찰가 ≤ 산정 상한가 비율 = 상한가가 실제 낙찰가를 안전히 상회했는지
     - 시세 기반 예상 낙찰가(=시세×할인중앙값)의 실측 대비 오차(MAE%)
     사용자 최우선 가치 '실측 신뢰'를 데이터로 검증하고, 산정 보정 근거를 제공한다.
+
+    결과는 낙찰표본수 키 + TTL로 캐시(페이지 렌더 반복 호출 비용 제거). 표본수가 바뀌면 자동 재계산.
     """
+    import time
+    _key = db.count_sale_results()
+    _c = _bt_cache
+    if _c["data"] is not None and _c["key"] == _key and (time.monotonic() - _c["t"]) < _BT_TTL:
+        return _c["data"]
     import statistics as st
     rows = db.list_vehicles()
     # 학습 데이터셋: 영구 히스토리(sale_results) ∪ 라이브 낙찰 (id 중복 제거, 히스토리 우선).
@@ -963,6 +981,7 @@ def backtest_stats() -> dict:
         out["actual_sample"] = len(act)
         aerrs = [abs(r["median_price"] - r["actual_price"]) / r["actual_price"] for r in act]
         out["actual_mae_pct"] = round(st.mean(aerrs) * 100, 1)
+    _c["data"], _c["t"], _c["key"] = out, time.monotonic(), _key
     return out
 
 

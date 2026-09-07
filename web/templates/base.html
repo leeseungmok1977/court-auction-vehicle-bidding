@@ -268,7 +268,7 @@
   <!-- 하단 탭 바 (모바일 전용, flex 자식) — 고정 오버레이 대신 실제 하단 배치라 스크롤 영역이 탭 위에서 끝남
        → dvh/브라우저 동적 툴바와 겹쳐 페이지네이션이 잘리던 문제 방지. 데스크톱(lg)은 좌측 사이드바. -->
   {% macro tab(href, icon, label, active, badge=0, fav=false) %}
-  <a href="{{ href }}" class="flex-1 flex flex-col items-center justify-center gap-0.5 py-1.5 relative transition-colors {{ 'text-primary' if active else 'text-mut hover:text-txt' }}">
+  <a href="{{ href }}" class="flex-1 flex flex-col items-center justify-center gap-0.5 py-1.5 relative select-none transition-colors duration-75 [-webkit-tap-highlight-color:transparent] active:bg-primary/10 {{ 'text-primary' if active else 'text-mut hover:text-txt active:text-primary' }}">
     <span class="material-symbols-outlined text-[22px] leading-none" style="font-variation-settings:'FILL' {{ 1 if active else 0 }}">{{ icon }}</span>
     <span class="text-[10px] font-semibold tracking-tight">{{ label }}</span>
     {% if fav %}<span data-fav-count hidden class="absolute top-1 left-1/2 translate-x-1.5 min-w-4 h-4 px-1 rounded-full bg-amber-400 text-[#0b142b] text-[9px] font-bold flex items-center justify-center tnum"></span>{% endif %}
