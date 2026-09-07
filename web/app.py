@@ -525,8 +525,10 @@ def vehicle_report(request: Request, vid: str):
         avail = {p.name for p in pdir.iterdir() if p.is_file()}
         order = [n for n in (v.get("photo_order") or []) if n in avail]
         photos = order + sorted(n for n in avail if n not in order)
-    # 유사 낙찰 실적(같은 차종 과거 법원 실낙찰 — 엔카 원자료 아님, 공개 가능)
-    comps_won = service.comparable_sales(v, bt)
+    # 유사 낙찰 실적(같은 차종 과거 법원 실낙찰 — 엔카 원자료 아님, 공개 가능).
+    # 표시용은 같은 차종을 넓게(연식±3·주행±50%) 유사도순으로 — 실낙찰 근거를 풍부히 보이기 위함.
+    # (예상낙찰가 개별 보정에 쓰는 comparable_discount의 엄격 매칭[연식±1·주행±30%]은 그대로 유지)
+    comps_won = service.comparable_sales(v, bt, year_tol=3, mileage_tol=0.5, limit=8)
     import statistics as _st
     _cr = [c["ratio"] for c in comps_won if c.get("ratio")]
     comp_ratio_med = round(_st.median(_cr), 3) if _cr else None
