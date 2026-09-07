@@ -82,8 +82,10 @@
     {% endif %}
     <dt class="text-mut">차량 보관장소</dt>
     <dd>{% if v.storage_addr %}{{ v.storage_addr }}{% else %}<span class="text-mut/70">법원 미표시 <span class="text-mut/50 text-xs">— 감정평가서·현장 확인</span></span>{% endif %}</dd>
+    {% if is_admin(request) %}{# 목록상 주소는 대개 채무자 주소(개인정보) → 관리자만 표시 #}
     <dt class="text-mut">목록상 주소</dt>
     <dd>{{ v.location or '—' }}{% if v.location %}<span class="block text-mut/60 text-xs mt-0.5">※ 법원 목록 표시주소(대개 <b>채무자 주소</b>) — 차량 실제 위치와 다를 수 있음</span>{% endif %}</dd>
+    {% endif %}
     <dt class="text-mut">사고판정</dt>
     <dd><span class="inline-flex px-2 py-0.5 rounded text-xs font-medium {{
           'bg-emerald-50 text-emerald-700 border border-emerald-200' if v.accident_grade=='none'

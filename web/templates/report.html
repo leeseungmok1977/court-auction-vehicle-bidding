@@ -265,7 +265,7 @@ details.raw summary{cursor:pointer;font-size:12px;color:var(--cobalt);font-weigh
         <div class="kv"><dt>사고판정</dt><dd>{{ v.accident_grade|acc }}{% if v.accident_hits %} <span class="chip warn">{{ v.accident_hits|join(', ') }}</span>{% endif %}</dd></div>
         {% if v.sale_place %}<div class="kv"><dt>매각장소</dt><dd style="font-size:12px">{% if v.court %}{{ v.court }} {% endif %}{{ v.sale_place }}{% if v.sale_time %} · {{ v.sale_time }} 입찰{% endif %}</dd></div>{% endif %}
         <div class="kv"><dt>차량 보관장소</dt><dd style="font-size:12px">{% if v.storage_addr %}{{ v.storage_addr }}{% else %}법원 미표시{% endif %}</dd></div>
-        <div class="kv"><dt>목록상 주소</dt><dd style="font-size:12px">{{ v.location or '—' }}{% if v.location %} <span style="color:#94a3b8">(대개 채무자 주소 — 차량 위치 아닐 수 있음)</span>{% endif %}</dd></div>
+        {% if is_admin(request) %}<div class="kv"><dt>목록상 주소</dt><dd style="font-size:12px">{{ v.location or '—' }}{% if v.location %} <span style="color:#94a3b8">(대개 채무자 주소 — 차량 위치 아닐 수 있음)</span>{% endif %}</dd></div>{% endif %}
         <div class="kv"><dt>결과</dt><dd>{% if v.auction_result=='낙찰' %}낙찰 {{ v.winning_price|won }}원{% else %}{{ v.auction_result or '진행 예정' }}{% endif %}</dd></div>
       </dl>
     </div>
