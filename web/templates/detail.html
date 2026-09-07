@@ -98,6 +98,23 @@
   </dl>
 </div>
 
+{# 낙찰결과 — 낙찰완료 물건은 물건 정보와 AI 예측 사이에 표시 #}
+{% if v.auction_result == '낙찰' and v.winning_price %}
+<div class="bg-surface border border-line rounded-lg p-5">
+  <h3 class="text-lg font-semibold mb-3">낙찰결과</h3>
+  <div class="bg-sky-50 border border-sky-200 rounded-lg p-3 text-center">
+    <span class="text-sky-700 font-semibold">🔨 낙찰</span>
+    <span class="text-xl font-semibold font-mono text-txt tnum ml-2">{{ v.winning_price|won }} 원</span>
+    <span class="text-xs ml-2 px-2 py-0.5 rounded-full {{ 'bg-emerald-50 text-emerald-700' if v.result_source=='result_search' else 'bg-amber-50 text-amber-700' }}">{{ '확정' if v.result_source=='result_search' else '잠정(재확인 예정)' }}</span>
+    <div class="text-xs text-mut mt-1">
+      {% if v.appraisal_value %}감정가 대비 <b class="text-txt">{{ (100*v.winning_price/v.appraisal_value)|round|int }}%</b>{% endif %}
+      {% if v.upper_bid %} · 우리 산정 상한가 {{ v.upper_bid|won }}원
+        {% if v.winning_price <= v.upper_bid %}<span class="text-emerald-700">이내(적정)</span>{% else %}<span class="text-amber-700">초과</span>{% endif %}{% endif %}
+    </div>
+  </div>
+</div>
+{% endif %}
+
 {% if v.status == '상세없음' %}
 <div class="bg-amber-50 border border-amber-200 rounded-lg p-4 flex items-start gap-2.5">
   <span class="material-symbols-outlined text-amber-600 shrink-0">error</span>
@@ -304,23 +321,10 @@
 <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
   <!-- 좌: 기일내역·요항 (물건 정보는 사진 아래로 이동) -->
   <div class="space-y-6">
-    {% if v.auction_result or v.dxdy_history %}
+    {% if v.dxdy_history or (v.auction_result and v.auction_result != '낙찰') %}
     <div class="bg-surface border border-line rounded-lg p-5">
-      <h3 class="text-lg font-semibold mb-3">기일내역 · 낙찰결과</h3>
-      {% if v.auction_result == '낙찰' %}
-      <div class="bg-sky-50 border border-sky-200 rounded-lg p-3 mb-3 text-center">
-        <span class="text-sky-700 font-semibold">🔨 낙찰</span>
-        <span class="text-xl font-semibold font-mono text-txt tnum ml-2">{{ v.winning_price|won }} 원</span>
-        <span class="text-xs ml-2 px-2 py-0.5 rounded-full {{ 'bg-emerald-50 text-emerald-700' if v.result_source=='result_search' else 'bg-amber-50 text-amber-700' }}">{{ '확정' if v.result_source=='result_search' else '잠정(재확인 예정)' }}</span>
-        {% if v.winning_price %}
-        <div class="text-xs text-mut mt-1">
-          {% if v.appraisal_value %}감정가 대비 <b class="text-txt">{{ (100*v.winning_price/v.appraisal_value)|round|int }}%</b>{% endif %}
-          {% if v.upper_bid %} · 우리 산정 상한가 {{ v.upper_bid|won }}원
-            {% if v.winning_price <= v.upper_bid %}<span class="text-emerald-700">이내(적정)</span>{% else %}<span class="text-amber-700">초과</span>{% endif %}{% endif %}
-        </div>
-        {% endif %}
-      </div>
-      {% elif v.auction_result %}
+      <h3 class="text-lg font-semibold mb-3">기일내역</h3>
+      {% if v.auction_result and v.auction_result != '낙찰' %}
       <div class="text-sm text-mut mb-3">현재 결과: <b class="text-txt">{{ v.auction_result }}</b>
         {% if v.result_checked_at %}<span class="text-xs">({{ v.result_checked_at }} 확인)</span>{% endif %}</div>
       {% endif %}
