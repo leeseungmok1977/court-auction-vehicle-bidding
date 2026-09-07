@@ -829,6 +829,51 @@ def backfill_appraisal_signals() -> int:
     return updated
 
 
+def backfill_accident_grades() -> int:
+    """저장된 감정요항(appraisal.txt) + 매각물건명세(spec_remark)로 사고판정을 재도출(무네트워크).
+
+    기존엔 매각물건명세에만 있던 사고이력('내차 피해 6회…')을 놓쳐 '무사고'로 오판한 물건이 있었다.
+    사고이력이 1건이라도 있으면 무사고로 두지 않는다(신뢰 최우선). 등급이 바뀌면 사고감가가
+    반영되도록 저장 시세로 상한가·판정·근거를 로컬 재산정한다(엔카 재조회 없음)."""
+    from src.parse.detail_parser import grade_accident
+    from src.paths import DATA_DIR
+    config = load_config()
+    updated = 0
+    for v in db.list_vehicles():
+        fk = v.get("folder_key") or v.get("id")
+        atxt = ""
+        af = DATA_DIR / fk / "appraisal.txt"
+        if af.exists():
+            try:
+                atxt = af.read_text(encoding="utf-8")
+            except Exception:  # noqa: BLE001
+                atxt = ""
+        spec = v.get("spec_remark") or ""
+        if not atxt and not spec:
+            continue
+        grade, acc_hits, _fld, hist = grade_accident(atxt, spec, config)
+        if grade == (v.get("accident_grade") or "none") and hist == (v.get("insurance_history") or {}):
+            continue                                  # 변화 없음 → 건너뜀
+        fields = {"accident_grade": grade, "accident_hits": acc_hits, "insurance_history": hist}
+        # 사고감가 정합성: 저장 시세가 있으면 로컬 재산정(외부요청 없음 — 상한가·판정·근거 동기화)
+        if v.get("median_price") is not None:
+            bi = BidInput(median_price=v.get("median_price") or 0,
+                          min_sale_price=v.get("min_sale_price") or 0,
+                          sample_count=v.get("sample_count") or 0,
+                          platform=v.get("market_platform") or "encar",
+                          accident_grade=grade, repair_cost=v.get("repair_cost") or 500000,
+                          appraisal_text=atxt, photo_count=v.get("photo_count"))
+            bid = calculate(bi, config)
+            fields.update(upper_bid=bid.upper_bid, lower_bound=bid.lower_bound,
+                          judgment=_final_judgment(bid.judgment, v.get("market_confidence_label")),
+                          breakdown=bid.breakdown)
+        db.update_fields(v["id"], **fields)
+        updated += 1
+    if updated:
+        invalidate_backtest_cache()
+    return updated
+
+
 def can_analyze(v: dict) -> bool:
     """상세를 수집할 수 있는지 (docid로 saNo 복원 가능). 수입·상용 포함 모든 물건 대상."""
     return bool(_sa_no_from_docid(v.get("doc_id") or ""))

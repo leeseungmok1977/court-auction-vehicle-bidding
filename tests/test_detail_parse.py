@@ -175,3 +175,37 @@ def test_dxdy_sale_then_reauction_resets_winning():
          "tsLwsDspslPrc": "20000000", "dspslAmt": "0"},          # 이후 유찰 → 무효
     ]))
     assert info.winning_price is None
+
+
+# ── 사고 판정: 감정요항 + 매각물건명세 모두 근거, 형식(콜론/단위) 무관 ──────────────
+from src.parse.detail_parser import grade_accident  # noqa: E402
+
+
+def test_accident_from_spec_remark_no_colon():
+    """매각물건명세에만 있는 '내차 피해 6회(금액)'(콜론 없음)도 사고로 판정 — 무사고 오판 금지."""
+    spec = ("2015년식 디젤 차량(제작연월일:2014.12.04). 중고차 사고이력정보보고서상 "
+            "내차 피해 6회(19,150,135원), 상대차 피해 3회(1,039,410원) 사고이력 있음.")
+    grade, hits, flood, hist = grade_accident("", spec, {})
+    assert grade == "accident", (grade, hits)
+    assert hist.get("own_damage") == 6 and hist.get("opp_damage") == 3
+    assert any("내차피해" in h for h in hits)
+
+
+def test_clean_spec_remark_not_flagged():
+    """매각물건명세의 '사고이력 없음/0회' 정형구는 무사고로 유지(정상차 오탐 금지)."""
+    spec = ("중고차 사고이력정보보고서상 내차 피해 0회, 상대차 피해 0회, "
+            "전손 보험사고 : 0건, 침수 보험사고 : 0건. 사고이력 없음.")
+    grade, hits, flood, hist = grade_accident("", spec, {})
+    assert grade == "none", (grade, hits)
+
+
+def test_flood_from_count_still_works():
+    """침수 보험사고 카운트>0이면 flood(콜론 유무 무관)."""
+    grade, hits, flood, hist = grade_accident("", "침수 보험사고 1건", {})
+    assert grade == "flood"
+
+
+def test_explicit_history_statement_safety_net():
+    """카운트 파싱이 안 되는 형식이어도 '사고이력 있음' 명시문구면 사고로."""
+    grade, hits, flood, hist = grade_accident("", "본 차량 사고이력 있음(상세 별도).", {})
+    assert grade == "accident"

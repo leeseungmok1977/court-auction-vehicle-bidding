@@ -124,15 +124,18 @@ def _storage_from_text(*texts) -> str:
 
 # 보험개발원 사고이력 리포트 정형 카운트 (요항에 포함됨). 값이 '0건'이어도
 # 단어('침수','전손','사고')가 나타나므로 단순 키워드 매칭은 오탐한다 → 카운트로 판정.
+# 콜론(:) 유무·단위(건/회) 모두 허용 — 법원/감정인마다 표기가 다르다.
+# 예: '내차 피해 : 6건'(정형) / '내차 피해 6회(19,150,135원)'(매각물건명세 서술형).
+# 값은 카운트(>0)로만 사고 판정하므로 '0회/0건'은 안전하게 무사고 처리된다.
 _HIST_PATTERNS = {
-    "total_loss": r"전손\s*보험사고\s*:\s*(\d+)\s*건",   # 전손
-    "theft": r"도난\s*보험사고\s*:\s*(\d+)\s*건",         # 도난
-    "flood": r"침수\s*보험사고\s*:\s*(\d+)\s*건",         # 침수
-    "special_use": r"특수용도이력\s*:\s*(\d+)\s*건",
-    "owner_changes": r"소유자\s*변경\s*:\s*(\d+)\s*회",
-    "plate_changes": r"차량번호\s*변경\s*:\s*(\d+)\s*회",
-    "own_damage": r"내차\s*피해\s*:\s*(\d+)\s*회",
-    "opp_damage": r"상대차\s*피해\s*:\s*(\d+)\s*회",
+    "total_loss": r"전손\s*보험사고\s*:?\s*(\d+)\s*[건회]",   # 전손
+    "theft": r"도난\s*보험사고\s*:?\s*(\d+)\s*[건회]",         # 도난
+    "flood": r"침수\s*보험사고\s*:?\s*(\d+)\s*[건회]",         # 침수
+    "special_use": r"특수용도이력\s*:?\s*(\d+)\s*[건회]",
+    "owner_changes": r"소유자\s*변경\s*:?\s*(\d+)\s*[건회]",
+    "plate_changes": r"차량번호\s*변경\s*:?\s*(\d+)\s*[건회]",
+    "own_damage": r"내차\s*피해\s*:?\s*(\d+)\s*[건회]",
+    "opp_damage": r"상대차\s*피해\s*:?\s*(\d+)\s*[건회]",
 }
 
 # 관리상태 등 자유 서술에서만 찾는 손상 표현(리포트 정형구에는 없음)
@@ -150,11 +153,53 @@ def parse_insurance_history(text: str) -> dict:
 
 
 def _strip_report(text: str) -> str:
-    """보험사고이력 정형 카운트 구간을 제거해 키워드 오탐을 막는다."""
-    t = re.sub(r"(전손|도난|침수)\s*보험사고\s*:\s*\d+\s*건", " ", text)
+    """보험사고이력 정형 카운트 구간을 제거해 키워드 오탐을 막는다(콜론 유무 무관)."""
+    t = re.sub(r"(전손|도난|침수)\s*보험사고\s*:?\s*\d+\s*[건회]", " ", text)
     t = re.sub(r"(특수용도이력|소유자\s*변경|차량번호\s*변경|내차\s*피해|상대차\s*피해)"
-               r"\s*:\s*\d+\s*[건회][^-\n]*", " ", t)
+               r"\s*:?\s*\d+\s*[건회][^-\n]*", " ", t)
     return t.replace("사고이력정보", " ").replace("보험사고", " ")
+
+
+def grade_accident(appraisal_text: str, spec_remark: str = "",
+                   config: Optional[dict] = None):
+    """사고/침수 판정 — 감정평가서(요항) + 매각물건명세(비고) **모두**를 근거로.
+
+    - 사고이력 카운트(내차피해·상대차피해·전손·침수 등)는 두 소스에서 추출(콜론 유무 무관).
+      '중고차 사고이력정보보고서상 내차 피해 6회…'처럼 매각물건명세에만 있는 이력도 놓치지 않는다.
+    - 자유서술 손상 키워드(판금·교환·부식·사고 등)는 **감정 요항 본문에서만** 스캔한다
+      (매각물건명세의 '사고이력 없음' 정형구를 '사고' 키워드로 오탐하지 않도록 — 정상차 오판 방지).
+    - 명시적 '사고이력 있음' 문구는 안전망으로 추가 반영('없음'은 매칭 안 함).
+    반환: (grade, accident_hits, flood_hits, insurance_history). grade: none|accident|flood.
+    """
+    at = appraisal_text or ""
+    sr = spec_remark or ""
+    both = f"{at}\n{sr}"
+    hist = parse_insurance_history(both)             # 카운트: 두 소스 모두
+    report_present = bool(hist)
+    cleaned = _strip_report(at)                       # 손상 키워드: 감정 요항 본문만(명세 정형구 오탐 방지)
+    acc_kw = (config or {}).get("accident_keywords", _DEFAULT_ACCIDENT)
+    fld_kw = (config or {}).get("flood_keywords", _DEFAULT_FLOOD)
+    flood_hits: list[str] = []
+    accident_hits: list[str] = []
+    if hist.get("flood", 0) > 0:
+        flood_hits.append("침수이력")
+    if hist.get("total_loss", 0) > 0:
+        flood_hits.append("전손이력")
+    if not report_present:                            # 리포트 카운트 없을 때만 자유서술로 침수 보조판정
+        flood_hits += [k for k in fld_kw if k in cleaned]
+    if hist.get("own_damage", 0) > 0:
+        accident_hits.append(f"내차피해{hist['own_damage']}회")
+    if hist.get("opp_damage", 0) > 0:
+        accident_hits.append(f"상대차피해{hist['opp_damage']}회")
+    if hist.get("special_use", 0) > 0:
+        accident_hits.append("특수용도이력")
+    accident_hits += [k for k in acc_kw if k in cleaned]
+    if re.search(r"사고\s*이력\s*[가이은는]?\s*있", both):   # 명시 '사고이력 있음' 안전망('없음' 제외)
+        accident_hits.append("사고이력있음")
+    flood_hits = sorted(set(flood_hits))
+    accident_hits = sorted(set(accident_hits))
+    grade = "flood" if flood_hits else "accident" if accident_hits else "none"
+    return grade, accident_hits, flood_hits, hist
 
 
 @dataclass
@@ -246,11 +291,6 @@ def parse_detail(resp_json: dict, config: Optional[dict] = None) -> DetailInfo:
     texts = [_clean(r.get("aeeWevlMnpntCtt")) for r in (result.get("aeeWevlMnpntLst") or [])]
     appraisal_text = "\n".join(t for t in texts if t)
 
-    # 사고 판정: ① 보험사고이력 카운트(구조적) ② 관리상태 자유서술 손상표현
-    hist = parse_insurance_history(appraisal_text)
-    report_present = bool(hist)
-    cleaned = _strip_report(appraisal_text)
-
     # 주행거리: 구조화 필드 우선, 없으면 요항 텍스트에서 보조 추출
     mileage = _to_int(obj.get("drvnDistIndctCtt"))
     if mileage is None:
@@ -258,38 +298,10 @@ def parse_detail(resp_json: dict, config: Optional[dict] = None) -> DetailInfo:
 
     dxdy_history, winning_price = _parse_dxdy(result)
 
-    acc_kw = (config or {}).get("accident_keywords", _DEFAULT_ACCIDENT)
-    fld_kw = (config or {}).get("flood_keywords", _DEFAULT_FLOOD)
-
-    flood_hits: list[str] = []
-    accident_hits: list[str] = []
-
-    # 침수/전손: 리포트가 있으면 카운트로만 판정(‘0건’ 오탐 방지)
-    if hist.get("flood", 0) > 0:
-        flood_hits.append("침수이력")
-    if hist.get("total_loss", 0) > 0:
-        flood_hits.append("전손이력")
-    if not report_present:  # 리포트 없으면 자유서술 키워드로 보조 판정
-        flood_hits += [k for k in fld_kw if k in cleaned]
-
-    # 사고: 이력 카운트 + 정형구 제거한 텍스트의 손상 키워드
-    if hist.get("own_damage", 0) > 0:
-        accident_hits.append(f"내차피해{hist['own_damage']}회")
-    if hist.get("opp_damage", 0) > 0:
-        accident_hits.append(f"상대차피해{hist['opp_damage']}회")
-    if hist.get("special_use", 0) > 0:
-        accident_hits.append("특수용도이력")
-    accident_hits += [k for k in acc_kw if k in cleaned]
-
-    flood_hits = sorted(set(flood_hits))
-    accident_hits = sorted(set(accident_hits))
-
-    if flood_hits:
-        grade = "flood"
-    elif accident_hits:
-        grade = "accident"
-    else:
-        grade = "none"
+    # 사고 판정: 감정 요항 + 매각물건명세(비고) 모두를 근거로(카운트·손상키워드·명시문구).
+    # 사고이력이 매각물건명세에만 기재된 경우(예: '내차 피해 6회…')도 무사고로 오판하지 않는다.
+    grade, accident_hits, flood_hits, hist = grade_accident(
+        appraisal_text, dx.get("gdsSpcfcRmk"), config)
 
     # 회차별 최저매각가
     rounds = []
