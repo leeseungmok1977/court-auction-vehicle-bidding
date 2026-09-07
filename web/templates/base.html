@@ -278,7 +278,7 @@
       <input name="q" class="w-full bg-surface border border-line text-txt text-sm rounded-md py-2 pl-11 pr-4 focus:outline-none focus:border-primary placeholder:text-mut/60" placeholder="차명·제조사·사건번호·법원 검색…"/>
     </form>
   </header>
-  <div class="flex-1 overflow-y-auto custom-scrollbar p-4 pb-6 lg:p-8 space-y-6">
+  <div id="appscroll" class="flex-1 overflow-y-auto custom-scrollbar p-4 pb-6 lg:p-8 space-y-6">
     {% block content %}{% endblock %}
   </div>
   <!-- 하단 탭 바 (모바일 전용, flex 자식) — 고정 오버레이 대신 실제 하단 배치라 스크롤 영역이 탭 위에서 끝남
@@ -336,6 +336,38 @@
     }
   }
   poll();
+})();
+</script>
+
+<!-- 스크롤 위치 복원 — 목록에서 상세로 갔다가 '이전 목록'/뒤로가기로 돌아오면 보던 위치로 복귀.
+     이 앱은 body가 아니라 #appscroll(내부 컨테이너)이 스크롤돼 브라우저 기본 복원이 안 되므로 직접 저장/복원.
+     URL(경로+쿼리)별로 세션 동안 기억 → 필터·페이지·정렬이 달라지면 각각 별도 위치. -->
+<script>
+(function(){
+  var el = document.getElementById('appscroll'); if(!el) return;
+  var KEY = 'nc:scroll';
+  var url = location.pathname + location.search;
+  function load(){ try { return JSON.parse(sessionStorage.getItem(KEY) || '{}'); } catch(e){ return {}; } }
+  function save(){
+    try {
+      var m = load(); m[url] = el.scrollTop;
+      var keys = Object.keys(m);
+      if (keys.length > 30) delete m[keys[0]];      // 세션 저장 폭주 방지
+      sessionStorage.setItem(KEY, JSON.stringify(m));
+    } catch(e){}
+  }
+  function restore(){
+    var y = load()[url];
+    if (typeof y === 'number' && y > 0) {
+      el.scrollTop = y;
+      requestAnimationFrame(function(){ el.scrollTop = y; });   // 레이아웃 확정 후 한 번 더(이미지 등)
+    }
+  }
+  el.addEventListener('click', function(e){ if (e.target.closest && e.target.closest('a')) save(); });
+  window.addEventListener('pagehide', save);
+  document.addEventListener('visibilitychange', function(){ if (document.visibilityState === 'hidden') save(); });
+  window.addEventListener('pageshow', restore);
+  restore();
 })();
 </script>
 
