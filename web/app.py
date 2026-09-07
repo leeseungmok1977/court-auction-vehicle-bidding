@@ -518,6 +518,23 @@ def vehicle_report(request: Request, vid: str):
     afile = DATA_DIR / (v.get("folder_key") or vid) / "appraisal.txt"
     if afile.exists():
         appraisal = afile.read_text(encoding="utf-8")
+    # 사진(비전 분류 순서 우선) — 로컬 /photo 서빙(렌더 시 외부호출 없음)
+    photos = []
+    pdir = DATA_DIR / (v.get("folder_key") or vid) / "photos"
+    if pdir.exists():
+        avail = {p.name for p in pdir.iterdir() if p.is_file()}
+        order = [n for n in (v.get("photo_order") or []) if n in avail]
+        photos = order + sorted(n for n in avail if n not in order)
+    # 유사 낙찰 실적(같은 차종 과거 법원 실낙찰 — 엔카 원자료 아님, 공개 가능)
+    comps_won = service.comparable_sales(v, bt)
+    import statistics as _st
+    _cr = [c["ratio"] for c in comps_won if c.get("ratio")]
+    comp_ratio_med = round(_st.median(_cr), 3) if _cr else None
+    # 감정 요항 구조화(검사유효기간·상태등급·연료·색상) — 상세와 동일
+    from src.parse.appraisal import condition_adjustment
+    cond = condition_adjustment(appraisal, config) if appraisal else None
+    asum = cond.get("parsed") if cond else None
+    verdict = service.plain_verdict(v, expected)          # 원본 v로 계산(화면값과 일치)
     dist = service.price_distribution(
         v, expected["price"] if expected else None, bt.get("mae_pct"))
     _adm = is_admin(request)
@@ -525,6 +542,8 @@ def vehicle_report(request: Request, vid: str):
     return templates.TemplateResponse("report.html", {
         "request": request, "v": service.public_view(v, _adm), "expected": expected, "appraisal": appraisal,
         "report": _report, "backtest": bt, "dist": dist if _adm else None,
+        "photos": photos, "comps_won": comps_won, "asum": asum, "verdict": verdict,
+        "comp_min_n": service.COMP_MIN_N, "comp_ratio_med": comp_ratio_med,
         "now": datetime.now().strftime("%Y-%m-%d %H:%M"),
     })
 

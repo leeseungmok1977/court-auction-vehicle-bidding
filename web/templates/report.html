@@ -107,6 +107,19 @@ pre.body{white-space:pre-wrap;font-family:var(--sans);font-size:12.5px;color:var
 .disc{margin-top:44px;padding:20px 24px;background:#EEF1F5;border-radius:12px;font-size:11.5px;color:var(--ink-soft);line-height:1.7}
 .disc b{color:var(--ink)}
 .foot{margin-top:22px;display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;font-family:var(--mono);font-size:10.5px;color:var(--ink-faint)}
+.vsum{margin-bottom:18px;padding:13px 16px;border-radius:10px;background:var(--cobalt-tint);border:1px solid #CBD9F6;font-size:13.5px;color:var(--ink);line-height:1.55}.vsum b{color:var(--cobalt-deep)}
+.vstats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;margin-top:18px;padding-top:16px;border-top:1px dashed var(--line)}
+.vstat{text-align:center;padding:12px 8px;background:#FAFBFD;border:1px solid var(--line);border-radius:10px}
+.vstat .n{font-family:var(--mono);font-size:22px;font-weight:700;color:var(--cobalt);line-height:1.1}
+.vstat .l{font-size:10.5px;font-weight:600;color:var(--ink-soft);margin-top:5px}.vstat .s{font-size:9.5px;color:var(--ink-faint);margin-top:2px}
+.rphoto{width:100%;border-radius:10px;border:1px solid var(--line);object-fit:cover;background:#EEF1F5;display:block}
+.thumbs{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:8px}
+.thumbs img{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:8px;border:1px solid var(--line);background:#EEF1F5}
+.abadges{display:flex;flex-wrap:wrap;gap:7px;margin:8px 0 12px}
+.abadge{font-size:11px;font-weight:600;padding:4px 10px;border-radius:99px;border:1px solid var(--line);background:#FAFBFD;color:var(--ink-soft)}
+.abadge.warn{background:var(--amber-tint);border-color:#F0D9AE;color:var(--amber)}.abadge.risk{background:var(--red-tint);border-color:#F2C8C8;color:var(--red)}
+details.raw summary{cursor:pointer;font-size:12px;color:var(--cobalt);font-weight:600;margin:4px 0 8px;list-style:revert}
+@media print{details.raw{display:none}}
 @media (max-width:660px){.vgrid,.confw{grid-template-columns:1fr}.vpts{border-left:none;border-top:1px solid var(--line);padding-left:0;padding-top:16px}.sp-pin .pl{display:none}.card{padding:18px 16px}}
 @media print{body{background:#fff}.page{padding:0;max-width:none}.no-print{display:none}.card,.masthead{border-radius:0;break-inside:avoid}.section{break-inside:avoid}@page{size:A4;margin:12mm}}
 </style>
@@ -147,6 +160,7 @@ pre.body{white-space:pre-wrap;font-family:var(--sans);font-size:12.5px;color:var
   <section class="section">
     <div class="sec-head"><span class="sec-no">01</span><h2>핵심 결론</h2><span class="sec-note">결론 먼저, 근거는 이하 참조</span></div>
     <div class="card verdict">
+      {% if verdict and verdict.text %}<div class="vsum"><b>한줄 판정</b> · {{ verdict.text }}</div>{% endif %}
       <div class="vgrid">
         <div>
           <div class="v-label">예상 낙찰가 (일반 매수 실입찰{% if report.mae %} ±{{ report.mae|round|int }}%{% endif %})</div>
@@ -211,18 +225,32 @@ pre.body{white-space:pre-wrap;font-family:var(--sans);font-size:12.5px;color:var
         <span><span class="tag estimated">추정</span> 시나리오·보정치(현장확인 전)</span>
       </div>
       <p class="note">데이터가 부족한 항목은 낙관적으로 추정하지 않고 신뢰도를 낮추며, 미확인분은 취득원가의 리스크 충당금(현금)으로 보수 반영합니다.</p>
+      {% if backtest and (backtest.mae_pct or backtest.history_n) %}
+      <div class="v-label" style="margin-top:20px">모델 검증 실적 <span style="font-weight:400;color:var(--ink-faint)">— 예측이 실제 낙찰을 얼마나 맞혔는가</span></div>
+      <div class="vstats">
+        {% if backtest.mae_pct %}<div class="vstat"><div class="n">±{{ backtest.mae_pct|round|int }}%</div><div class="l">예측 오차 (LOO MAE)</div><div class="s">자기 제외 실측 검증</div></div>{% endif %}
+        {% if backtest.upper_hit_rate is not none %}<div class="vstat"><div class="n">{{ (backtest.upper_hit_rate*100)|round|int }}%</div><div class="l">상한가 적중률</div><div class="s">n={{ backtest.upper_n }}</div></div>{% endif %}
+        {% if backtest.history_n %}<div class="vstat"><div class="n num">{{ backtest.history_n }}</div><div class="l">학습 낙찰표본</div><div class="s">누적 실측</div></div>{% endif %}
+        {% if backtest.actual_sample %}<div class="vstat"><div class="n">±{{ backtest.actual_mae_pct|round|int }}%</div><div class="l">시세 실측 대조</div><div class="s">n={{ backtest.actual_sample }}</div></div>{% endif %}
+      </div>
+      <p class="note">과거 실제 낙찰을 <b>자기 제외(Leave-One-Out)</b>로 예측했을 때의 정확도입니다. 개별 경매를 정밀 예측하지 않으며, 낙찰 표본이 쌓일수록 모델이 자동 정교화됩니다.</p>
+      {% endif %}
     </div>
   </section>
 
   <!-- 03 차량·경매 개요 -->
   <section class="section">
-    <div class="sec-head"><span class="sec-no">03</span><h2>차량 · 경매 개요</h2></div>
+    <div class="sec-head"><span class="sec-no">03</span><h2>차량 · 경매 개요</h2>{% if photos %}<span class="sec-note">경매 등록 사진 {{ photos|length }}장</span>{% endif %}</div>
     <div class="card">
+      {% if photos %}
+      <img class="rphoto" src="/photo/{{ v.id }}/{{ photos[0] }}" alt="{{ v.model|mdl }}" loading="lazy" style="max-height:300px;margin-bottom:14px">
+      {% if photos|length > 1 %}<div class="thumbs" style="margin-bottom:18px">{% for p in photos[1:7] %}<img src="/photo/{{ v.id }}/{{ p }}" loading="lazy" alt="">{% endfor %}</div>{% endif %}
+      {% endif %}
       <dl class="kv-grid">
         <div class="kv"><dt>차량명</dt><dd>{{ v.maker }} {{ v.model|mdl }}</dd></div>
         <div class="kv"><dt>연식</dt><dd class="num">{{ v.year or '—' }}</dd></div>
         <div class="kv"><dt>주행거리</dt><dd class="num">{{ v.mileage_km|won }} km {% if v.mileage_km %}<span class="tag confirmed">확정</span>{% endif %}</dd></div>
-        <div class="kv"><dt>배기량 / 연료</dt><dd class="num">{{ v.displacement_cc or '—' }}cc {{ (v.fuel_code and '') or '' }}</dd></div>
+        <div class="kv"><dt>배기량 / 연료</dt><dd class="num">{{ v.displacement_cc or '—' }}cc{% if asum and asum.fuel %} · {{ asum.fuel }}{% endif %}</dd></div>
         <div class="kv"><dt>감정가</dt><dd class="num">{{ v.appraisal_value|won }}원 {% if v.appraisal_value %}<span class="tag confirmed">확정</span>{% endif %}</dd></div>
         <div class="kv"><dt>최저매각가</dt><dd class="num">{{ v.min_sale_price|won }}원{% if v.appraisal_value and v.min_sale_price %} ({{ (100*v.min_sale_price/v.appraisal_value)|round|int }}%){% endif %}</dd></div>
         <div class="kv"><dt>유찰횟수</dt><dd class="num">{{ v.fail_count if v.fail_count is not none else '—' }}회</dd></div>
@@ -243,17 +271,58 @@ pre.body{white-space:pre-wrap;font-family:var(--sans);font-size:12.5px;color:var
       {% if v.spec_remark %}<div class="v-label">매각물건명세 요약</div><pre class="body" style="margin-bottom:16px">{{ v.spec_remark }}</pre>{% endif %}
       {% if v.insurance_history %}<div class="v-label">보험 이력</div>
       <p class="note" style="margin-top:4px;color:var(--ink-soft)">전손 {{ v.insurance_history.get('total_loss','?') }} · 침수 {{ v.insurance_history.get('flood','?') }} · 내차피해 {{ v.insurance_history.get('own_damage','?') }} · 소유자변경 {{ v.insurance_history.get('owner_changes','?') }} <span class="tag verified">검증</span></p>{% endif %}
-      {% if appraisal %}<div class="v-label" style="margin-top:16px">감정평가 요항 <span class="tag confirmed">확정</span></div><pre class="body">{{ appraisal }}</pre>{% endif %}
+      {% if asum %}
+      <div class="v-label" style="margin-top:16px">감정 요항 <span class="tag confirmed">확정</span></div>
+      <div class="abadges">
+        {% if asum.fuel %}<span class="abadge">연료 {{ asum.fuel }}</span>{% endif %}
+        {% if asum.color %}<span class="abadge">색상 {{ asum.color }}</span>{% endif %}
+        {% if asum.mileage %}<span class="abadge">주행(요항) {{ asum.mileage|won }} km</span>{% endif %}
+        {% if asum.inspection %}<span class="abadge {{ 'risk' if asum.inspection.expired else '' }}">검사 {{ asum.inspection.valid_to }}{% if asum.inspection.expired %} · 경과{% elif asum.inspection.days_left is not none %} · D{{ asum.inspection.days_left }}{% endif %}</span>{% endif %}
+        {% set c = asum.condition %}
+        {% if c.major or c.poor %}<span class="abadge risk">외관·상태 손상 언급</span>{% elif c.minor %}<span class="abadge warn">외관 손상 언급</span>{% endif %}
+        {% if c.runnable == false %}<span class="abadge risk">시동·운행 불가 언급</span>{% endif %}
+      </div>
+      {% if asum.note_lines %}<ul style="margin:0 0 10px;padding-left:16px;font-size:12.5px;color:var(--ink-soft);line-height:1.65">{% for ln in asum.note_lines[:6] %}<li>{{ ln }}</li>{% endfor %}</ul>{% endif %}
+      {% if asum.options %}<div style="margin-bottom:10px">{% for o in asum.options[:12] %}<span class="abadge" style="margin:0 5px 5px 0;display:inline-block">{{ o }}</span>{% endfor %}</div>{% endif %}
+      {% endif %}
+      {% if appraisal %}<details class="raw"><summary>감정 요항 원문 펼치기</summary><pre class="body">{{ appraisal }}</pre></details>{% endif %}
     </div>
   </section>
   {% endif %}
 
-  {# 05 시세 비교 — SK엔카 원자료(개별 매물)는 관리자 전용 #}
-  {% if v.comps and is_admin(request) %}
+  {# 05 유사 낙찰 실적(공개, 법원 실낙찰) + 동급 시세매물(엔카 원자료는 관리자 전용) #}
+  {% if comps_won or (v.comps and is_admin(request)) %}
   <section class="section">
-    <div class="sec-head"><span class="sec-no">05</span><h2>시세 비교 — 동급 매물</h2><span class="sec-note">SK엔카 동급 표본{% if v.kcar_median %} · 케이카 참고{% endif %}</span></div>
+    <div class="sec-head"><span class="sec-no">05</span><h2>유사 낙찰 실적 · 시세 비교</h2><span class="sec-note">같은 차종 <b>법원 실낙찰</b> + 소매 시세</span></div>
     <div class="card">
-      <table>
+      {% if comps_won %}
+      <div class="v-label">유사 낙찰 실적 <span class="tag confirmed">실측</span> <span style="font-weight:400;color:var(--ink-faint)">— 같은 차종·유사 연식/주행의 과거 법원 낙찰</span></div>
+      {% if comps_won|length < comp_min_n %}
+      <p class="note" style="margin:6px 0 10px">유사 낙찰 사례 <b>축적 중 ({{ comps_won|length }}건)</b> — {{ comp_min_n }}건 이상 쌓이면 이 차량 예상낙찰가의 개별 보정에 직접 반영됩니다. 아래는 현재까지 확보된 사례입니다.</p>
+      {% endif %}
+      <table style="margin-top:8px">
+        <thead><tr><th>사건번호</th><th class="c">연식</th><th class="r">주행(km)</th><th class="r">시세중앙값</th><th class="r">실낙찰가</th><th class="r">낙찰/시세</th><th class="r">매각일</th></tr></thead>
+        <tbody>
+        {% for c in comps_won %}
+          <tr>
+            <td class="num" style="font-size:12px">{{ c.case_no or '—' }}</td>
+            <td class="c num">{{ c.year or '—' }}</td>
+            <td class="r num">{{ c.mileage_km|won }}</td>
+            <td class="r num">{{ c.median_price|won }}</td>
+            <td class="r num" style="font-weight:700;color:var(--cobalt-deep)">{{ c.winning_price|won }}</td>
+            <td class="r num">{% if c.ratio %}{{ (c.ratio*100)|round|int }}%{% else %}—{% endif %}</td>
+            <td class="r num" style="font-size:12px;color:var(--ink-soft)">{{ c.sale_date or '—' }}</td>
+          </tr>
+        {% endfor %}
+          {% if comp_ratio_med %}<tr class="row-hl"><td colspan="5"><b>표본 {{ comps_won|length }}건 · 낙찰가/시세 중앙값</b></td><td class="r num" style="font-weight:700;color:var(--cobalt)">{{ (comp_ratio_med*100)|round|int }}%</td><td></td></tr>{% endif %}
+        </tbody>
+      </table>
+      <p class="note">법원경매 <b>실제 낙찰 결과</b>(감정·시세와 별개의 실측치)입니다. 같은 차종이 소매 시세 대비 실제 몇 %에 낙찰됐는지 보여주며, 예상낙찰가 산정의 핵심 근거입니다.</p>
+      {% endif %}
+
+      {% if v.comps and is_admin(request) %}
+      <div class="v-label" style="margin-top:24px;padding-top:18px;border-top:1px dashed var(--line-strong)">동급 시세 매물 (SK엔카) <span class="tag verified">관리자</span></div>
+      <table style="margin-top:8px">
         <thead><tr><th>연식</th><th class="r">주행(km)</th><th class="r">가격</th><th>트림</th></tr></thead>
         <tbody>
         {% for c in v.comps[:8] %}
@@ -286,6 +355,7 @@ pre.body{white-space:pre-wrap;font-family:var(--sans);font-size:12.5px;color:var
       </div>
       {% endif %}
       <p class="note">이상치(IQR)를 제거한 동급 매물의 중앙값입니다. 게시가 기준이며 실거래가와 차이가 있을 수 있어, 예상낙찰가는 실측 낙찰률로 별도 보정합니다(10).</p>
+      {% endif %}
     </div>
   </section>
   {% endif %}
@@ -364,7 +434,9 @@ pre.body{white-space:pre-wrap;font-family:var(--sans);font-size:12.5px;color:var
           <tr><td>권리·저당</td><td>인수 부담 권리(별도 등기부·문건 확인 필요)</td><td class="c"><span class="chip warn">현장확인</span></td></tr>
           <tr><td>사고·침수</td><td>{{ v.accident_grade|acc }}{% if v.accident_hits %} — {{ v.accident_hits|join(', ') }}{% endif %} · 골격 손상 여부 현장 확인</td><td class="c"><span class="chip {{ 'risk' if report.stop_active else 'ok' }}">{{ 'STOP 대상' if report.stop_active else '이력상 양호' }}</span></td></tr>
           <tr><td>기관·하체</td><td>시동·누유·변속·하체 부식 — 매각기일 전 보관장소 확인</td><td class="c"><span class="chip warn">현장확인</span></td></tr>
-          <tr><td>상태·옵션·정비</td><td>정비 필요 범위(타이어·소모품)에 따라 정비비 변동 → 06·08 반영</td><td class="c"><span class="chip warn">현장확인</span></td></tr>
+          <tr><td>상태·옵션·정비</td><td>정비 필요 범위(타이어·소모품)에 따라 정비비 변동 → 06·08 반영{% if asum and (asum.condition.major or asum.condition.poor or asum.condition.minor) %} · <span class="{{ 'neg' if asum.condition.major or asum.condition.poor else 'neu' }}">감정 요항에 외관·상태 손상 언급</span>{% endif %}</td><td class="c"><span class="chip {{ 'risk' if asum and (asum.condition.major or asum.condition.poor) else 'warn' }}">현장확인</span></td></tr>
+          {% if asum and asum.inspection %}<tr><td>자동차검사 유효기간</td><td class="num">{{ asum.inspection.valid_to }}{% if asum.inspection.expired %} · <span class="neg">경과(재검사 필요)</span>{% elif asum.inspection.days_left is not none %} · D{{ asum.inspection.days_left }}{% endif %} <span style="color:var(--ink-faint);font-family:var(--sans)">— 감정 요항 기준</span></td><td class="c"><span class="chip {{ 'risk' if asum.inspection.expired else 'ok' }}">{{ '재검사 필요' if asum.inspection.expired else '유효' }}</span></td></tr>{% endif %}
+          {% if v.storage_addr and v.location and v.storage_addr != v.location %}<tr><td>보관장소 확인</td><td>차량 보관장소(<b>{{ v.storage_addr|truncate(24) }}</b>)가 목록상 주소와 달라 <b>실물 위치 사전 확인</b> 권장</td><td class="c"><span class="chip warn">위치 확인</span></td></tr>{% endif %}
           <tr><td>자동차세 체납</td><td>체납 승계 가능 — 관할 구청 사전 확인 권장</td><td class="c"><span class="chip warn">확인 권장</span></td></tr>
         </tbody>
       </table>
@@ -377,9 +449,16 @@ pre.body{white-space:pre-wrap;font-family:var(--sans);font-size:12.5px;color:var
     <div class="sec-head"><span class="sec-no">10</span><h2>산출 로직</h2></div>
     <div class="card">
       <div class="v-label" style="margin-bottom:8px">예상낙찰가 (일반 매수)</div>
-      <div class="logic"><span class="ln">1</span><div class="ld">소매 시세중앙값<small>동급 이상치 제거 후 중앙값</small></div><span class="lv num">{{ med|won }}</span></div>
+      {% if expected and expected.basis and expected.basis.kind == 'min_premium' %}
+      {% set bs = expected.basis %}
+      <div class="logic"><span class="ln">1</span><div class="ld">현 최저매각가<small>유찰이 시장 할인을 이미 반영{% if bs.fail_count %} · 유찰 {{ bs.fail_count }}회{% endif %}</small></div><span class="lv num">{{ bs.min_sale_price|won }}</span></div>
+      <div class="logic"><span class="ln">2</span><div class="ld">× 유찰버킷 낙찰 프리미엄<small>실측 낙찰가/최저가 분포(자기 제외 검증) · 시세×1.10 소프트캡</small></div><span class="lv num">×{{ bs.premium }}</span></div>
+      <div class="logic"><span class="ln">＝</span><div class="ld"><b>예상낙찰가</b><small>참고 정확도 ±{{ report.mae|round|int if report.mae else 30 }}% · 분위수 밴드 {{ report.lo|won if report.lo else '—' }}~{{ report.hi|won if report.hi else '—' }}</small></div><span class="lv num">{{ exp|won }}</span></div>
+      {% else %}
+      <div class="logic"><span class="ln">1</span><div class="ld">소매 시세중앙값<small>동급 이상치 제거 후 중앙값(폴백 경로 — 최저가 미보유)</small></div><span class="lv num">{{ med|won }}</span></div>
       <div class="logic"><span class="ln">2</span><div class="ld">× 실측 낙찰률(유찰횟수 반영)<small>과거 낙찰가/시세 분포{% if v.fail_count %} · 유찰 {{ v.fail_count }}회 버킷{% endif %}</small></div><span class="lv num">×{{ ((report.discount or 0)*100)|round|int }}%</span></div>
       <div class="logic"><span class="ln">＝</span><div class="ld"><b>예상낙찰가</b><small>참고 정확도 ±{{ report.mae|round|int if report.mae else 30 }}% · 분위수 밴드 {{ report.lo|won if report.lo else '—' }}~{{ report.hi|won if report.hi else '—' }}</small></div><span class="lv num">{{ exp|won }}</span></div>
+      {% endif %}
       {% if v.breakdown %}
       <div class="v-label" style="margin:18px 0 8px">재판매 상한가 (마진 기준)</div>
       {% set bd = v.breakdown %}

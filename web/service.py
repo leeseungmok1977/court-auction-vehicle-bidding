@@ -1549,6 +1549,11 @@ def report_data(v: dict, config: dict, bt: dict) -> Optional[dict]:
 
     # 데이터 신뢰도 카테고리(있는 데이터로 도출 — 없으면 추정/낮춤)
     conf = v.get("market_confidence") or 0
+    # 상태·정비비: 하드코딩(60) 대신 보유 실신호로 — 사진·감정 상태등급·검사만료 확인 여부.
+    # 현장확인 전이라 상한 90(완전 확정 아님) · 태그는 'estimated' 유지(단일신호이므로).
+    state_score = 40 + (25 if v.get("photo_count") else 0) \
+        + (20 if v.get("condition_level") and v.get("condition_level") != "unknown" else 0) \
+        + (15 if v.get("inspection_to") else 0)
     cats = [
         {"name": "경매 가격정보", "score": 100, "tag": "confirmed"},
         {"name": "차량 기본정보", "score": 100 if v.get("mileage_km") else 60,
@@ -1556,7 +1561,7 @@ def report_data(v: dict, config: dict, bt: dict) -> Optional[dict]:
         {"name": "사고·이력", "score": 90 if v.get("insurance_history") else 60,
          "tag": "verified" if v.get("insurance_history") else "estimated"},
         {"name": "시장 가격", "score": conf, "tag": "verified"},
-        {"name": "상태·정비비", "score": 60, "tag": "estimated"},
+        {"name": "상태·정비비", "score": min(state_score, 90), "tag": "estimated"},
     ]
     stop_active = v.get("accident_grade") in ("accident", "flood")
     return {
