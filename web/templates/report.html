@@ -19,7 +19,8 @@
 }
 body{background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased;font-feature-settings:"ss01"}
 .page{max-width:880px;margin:0 auto;padding:24px 20px 64px}
-.num{font-family:var(--mono);font-feature-settings:"tnum";letter-spacing:-.01em}
+.num{font-family:var(--mono);font-feature-settings:"tnum";letter-spacing:-.01em;white-space:nowrap}
+.tscroll{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%}
 .no-print{margin-bottom:18px;display:flex;justify-content:flex-end;gap:8px}
 .btn{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:8px 16px;font-size:13px;font-weight:600;border:1px solid var(--line);background:#fff;color:var(--ink);cursor:pointer;text-decoration:none}
 .btn.pri{background:var(--cobalt);color:#fff;border-color:var(--cobalt)}
@@ -300,7 +301,7 @@ details.raw summary{cursor:pointer;font-size:12px;color:var(--cobalt);font-weigh
       {% if comps_won|length < comp_min_n %}
       <p class="note" style="margin:6px 0 10px">유사 낙찰 사례 <b>축적 중 ({{ comps_won|length }}건)</b> — {{ comp_min_n }}건 이상 쌓이면 이 차량 예상낙찰가의 개별 보정에 직접 반영됩니다. 아래는 현재까지 확보된 사례입니다.</p>
       {% endif %}
-      <table style="margin-top:8px">
+      <div class="tscroll"><table style="margin-top:8px">
         <thead><tr><th>사건번호</th><th class="c">연식</th><th class="r">주행(km)</th><th class="r">시세중앙값</th><th class="r">실낙찰가</th><th class="r">낙찰/시세</th><th class="r">매각일</th></tr></thead>
         <tbody>
         {% for c in comps_won %}
@@ -316,13 +317,13 @@ details.raw summary{cursor:pointer;font-size:12px;color:var(--cobalt);font-weigh
         {% endfor %}
           {% if comp_ratio_med %}<tr class="row-hl"><td colspan="5"><b>표본 {{ comps_won|length }}건 · 낙찰가/시세 중앙값</b></td><td class="r num" style="font-weight:700;color:var(--cobalt)">{{ (comp_ratio_med*100)|round|int }}%</td><td></td></tr>{% endif %}
         </tbody>
-      </table>
+      </table></div>
       <p class="note">법원경매 <b>실제 낙찰 결과</b>(감정·시세와 별개의 실측치)입니다. 같은 차종이 소매 시세 대비 실제 몇 %에 낙찰됐는지 보여주며, 예상낙찰가 산정의 핵심 근거입니다.</p>
       {% endif %}
 
       {% if v.comps and is_admin(request) %}
       <div class="v-label" style="margin-top:24px;padding-top:18px;border-top:1px dashed var(--line-strong)">동급 시세 매물 (SK엔카) <span class="tag verified">관리자</span></div>
-      <table style="margin-top:8px">
+      <div class="tscroll"><table style="margin-top:8px">
         <thead><tr><th>연식</th><th class="r">주행(km)</th><th class="r">가격</th><th>트림</th></tr></thead>
         <tbody>
         {% for c in v.comps[:8] %}
@@ -330,7 +331,7 @@ details.raw summary{cursor:pointer;font-size:12px;color:var(--cobalt);font-weigh
         {% endfor %}
           <tr class="row-hl"><td colspan="2"><b>시세중앙값</b> (동급 {{ v.sample_count }}건){% if v.market_cv is not none %} · 편차 ±{{ (v.market_cv*100)|round|int }}%{% endif %}</td><td class="r num" style="font-weight:700;color:var(--cobalt)">{{ med|won }}원</td><td><span class="tag verified">검증</span></td></tr>
         </tbody>
-      </table>
+      </table></div>
       {% if dist %}
       <div style="margin-top:18px">
         <div class="v-label" style="margin-bottom:4px">실매물 시세 분포 <span style="font-weight:400;color:var(--ink-faint)">— 동급 {{ dist.n }}건 · 예상낙찰가가 분포 어디에 위치하는가</span></div>
@@ -365,7 +366,7 @@ details.raw summary{cursor:pointer;font-size:12px;color:var(--cobalt);font-weigh
     <div class="sec-head"><span class="sec-no">06</span><h2>총 취득원가 (All-in Cost)</h2><span class="sec-note">예상낙찰가 {{ exp|won }}원 기준</span></div>
     <div class="card">
       {% set a = report.allin_ref %}
-      <table>
+      <div class="tscroll"><table>
         <thead><tr><th>비용 항목</th><th>산정 근거</th><th class="r">금액</th><th class="c">성격</th></tr></thead>
         <tbody>
           <tr><td>낙찰가</td><td>예상낙찰가(중심 추정)</td><td class="r num">{{ a.bid|won }}원</td><td class="c"><span class="tag estimated">추정</span></td></tr>
@@ -375,7 +376,7 @@ details.raw summary{cursor:pointer;font-size:12px;color:var(--cobalt);font-weigh
           <tr><td>리스크 충당금</td><td>미확인 결함 대비 현금 충당</td><td class="r num">{{ a.reserve|won }}원</td><td class="c"><span class="tag estimated">충당</span></td></tr>
           <tr class="row-sum"><td colspan="2">총 취득원가</td><td class="r num">{{ a.total|won }}원</td><td class="c"><span class="tag estimated">시나리오</span></td></tr>
         </tbody>
-      </table>
+      </table></div>
       <p class="note">취득세는 낙찰가에 연동되어 낙찰가별로 재계산됩니다(07). 개인 실사용이면 리스크 충당금 일부를 제외해 판단할 수 있습니다.</p>
     </div>
   </section>
@@ -384,7 +385,7 @@ details.raw summary{cursor:pointer;font-size:12px;color:var(--cobalt);font-weigh
   <section class="section">
     <div class="sec-head"><span class="sec-no">07</span><h2>낙찰가별 수익 시뮬레이션</h2><span class="sec-note">재판매가 {{ report.resale|won }}원(시세중앙값) 기준</span></div>
     <div class="card">
-      <table>
+      <div class="tscroll"><table>
         <thead><tr><th class="r">낙찰가</th><th class="r">취득세</th><th class="r">부대+충당*</th><th class="r">총 취득원가</th><th class="r">예상 마진</th><th class="c">판정</th></tr></thead>
         <tbody>
         {% for s in report.sim %}
@@ -398,7 +399,7 @@ details.raw summary{cursor:pointer;font-size:12px;color:var(--cobalt);font-weigh
           </tr>
         {% endfor %}
         </tbody>
-      </table>
+      </table></div>
       <p class="note">* 부대비(이전·탁송) + 정비비 + 리스크 충당금. 예상 마진 = 재판매가 − 총 취득원가. 목표마진 {{ report.target_margin|won }}원 이상이면 '우량/적정'. 재판매가는 시세중앙값(보수적)이며 실제 매도가에 따라 달라집니다.</p>
     </div>
   </section>
@@ -407,7 +408,7 @@ details.raw summary{cursor:pointer;font-size:12px;color:var(--cobalt);font-weigh
   <section class="section">
     <div class="sec-head"><span class="sec-no">08</span><h2>민감도 분석 — 정비비 × 재판매가</h2><span class="sec-note">낙찰가 {{ exp|won }}원 고정</span></div>
     <div class="card">
-      <table class="matrix">
+      <div class="tscroll"><table class="matrix">
         <thead><tr><th class="axis">추가 정비비 ↓ / 재판매가 →</th>
           <th class="num">{{ ((report.resale-1000000)/10000)|round|int }}만<br><span class="axis">보수</span></th>
           <th class="num">{{ (report.resale/10000)|round|int }}만<br><span class="axis">기준</span></th>
@@ -419,7 +420,7 @@ details.raw summary{cursor:pointer;font-size:12px;color:var(--cobalt);font-weigh
           </tr>
         {% endfor %}
         </tbody>
-      </table>
+      </table></div>
       <p class="note">단위: 만원(마진). 현장에서 정비비가 예상보다 크거나 매도가가 낮아질수록 마진이 빠르게 줄어듭니다. 음수(적자) 구간에 진입하면 STOP RULE에 준해 입찰을 재검토하십시오.</p>
     </div>
   </section>
@@ -428,7 +429,7 @@ details.raw summary{cursor:pointer;font-size:12px;color:var(--cobalt);font-weigh
   <section class="section">
     <div class="sec-head"><span class="sec-no">09</span><h2>리스크 · 현장확인 항목</h2></div>
     <div class="card">
-      <table>
+      <div class="tscroll"><table>
         <thead><tr><th>항목</th><th>내용</th><th class="c">상태</th></tr></thead>
         <tbody>
           <tr><td>권리·저당</td><td>인수 부담 권리(별도 등기부·문건 확인 필요)</td><td class="c"><span class="chip warn">현장확인</span></td></tr>
@@ -439,7 +440,7 @@ details.raw summary{cursor:pointer;font-size:12px;color:var(--cobalt);font-weigh
           {% if v.storage_addr and v.location and v.storage_addr != v.location %}<tr><td>보관장소 확인</td><td>차량 보관장소(<b>{{ v.storage_addr|truncate(24) }}</b>)가 목록상 주소와 달라 <b>실물 위치 사전 확인</b> 권장</td><td class="c"><span class="chip warn">위치 확인</span></td></tr>{% endif %}
           <tr><td>자동차세 체납</td><td>체납 승계 가능 — 관할 구청 사전 확인 권장</td><td class="c"><span class="chip warn">확인 권장</span></td></tr>
         </tbody>
-      </table>
+      </table></div>
       <p class="note">현장확인에서 결함 발견 시 항목별로 취득원가(정비비/충당금)에 반영하거나, 중대 결함(STOP RULE)이면 입찰을 보류합니다.</p>
     </div>
   </section>
