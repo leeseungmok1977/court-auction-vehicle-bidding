@@ -58,16 +58,20 @@ body{background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:
 .stop.on .tg{background:var(--red)}.stop.off .tg{background:var(--ink-faint)}
 .stop p{font-size:12.5px;line-height:1.55}.stop.on p{color:#7A2B2A}.stop.on b{color:var(--red)}.stop.off p{color:var(--ink-soft)}
 .spectrum{margin-top:22px;padding-top:22px;border-top:1px dashed var(--line-strong)}
-.sp-title{font-size:12px;font-weight:600;color:var(--ink-soft);margin-bottom:40px}
-.sp-wrap{position:relative;margin:0 6px}
+.sp-title{font-size:12px;font-weight:600;color:var(--ink-soft);margin-bottom:12px}
+.sp-wrap{position:relative;margin:0 8px}
+.sp-labels{position:relative;height:56px}   /* 라벨 영역 — JS가 겹침 회피로 행 수에 맞춰 높이 조정 */
 .sp-track{height:9px;border-radius:99px;background:#E8ECF3;position:relative;overflow:hidden}
 .sp-fill{position:absolute;top:0;bottom:0;background:linear-gradient(90deg,var(--cobalt),#4F79E8);border-radius:99px}
-.sp-pin{position:absolute;top:-32px;transform:translateX(-50%);text-align:center;white-space:nowrap}
-.sp-pin .pl{font-size:10px;color:var(--ink-faint)}.sp-pin .pv{font-family:var(--mono);font-size:11px;font-weight:600}
-.sp-pin::after{content:"";display:block;width:1px;height:13px;background:var(--line-strong);margin:2px auto 0}
+.sp-pin{position:absolute;top:0;bottom:0;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;white-space:nowrap;pointer-events:none}
+.sp-sp{flex:0 0 auto}
+.sp-pin .pl{font-size:10px;color:var(--ink-faint);line-height:1.25}
+.sp-pin .pv{font-family:var(--mono);font-size:11px;font-weight:600;line-height:1.2}
 .sp-pin.acc .pv{color:var(--cobalt)}
-.sp-blabel{position:absolute;bottom:-34px;transform:translateX(-50%);font-size:10px;font-weight:700;color:var(--cobalt);white-space:nowrap}
-.sp-foot{margin-top:48px;font-size:11.5px;color:var(--ink-faint)}
+.sp-conn{flex:1 1 auto;width:1px;min-height:6px;background:var(--line-strong);margin-top:2px}
+.sp-pin.acc .sp-conn{background:var(--cobalt);width:1.5px}
+.sp-blabel{position:absolute;bottom:-30px;left:50%;transform:translateX(-50%);font-size:10px;font-weight:700;color:var(--cobalt);white-space:nowrap;text-align:center}
+.sp-foot{margin-top:42px;font-size:11.5px;color:var(--ink-faint)}
 .confw{display:grid;grid-template-columns:180px 1fr;gap:28px;align-items:start}
 .cscore{text-align:center;padding:16px 8px;border:1px solid var(--line);border-radius:12px;background:#FAFBFD}
 .cscore .n{font-family:var(--mono);font-size:42px;font-weight:700;line-height:1.1;color:var(--green)}
@@ -187,11 +191,13 @@ details.raw summary{cursor:pointer;font-size:12px;color:var(--cobalt);font-weigh
       <div class="spectrum">
         <div class="sp-title">가격 스펙트럼 <span style="font-weight:400;color:var(--ink-faint)">— 단위: 만원</span></div>
         <div class="sp-wrap">
+          <div class="sp-labels" id="spLabels">
+            <div class="sp-pin" style="left:{{ (floor/gmax*100)|round(1) }}%"><span class="sp-sp"></span><span class="pl">최저매각가</span><span class="pv num">{{ (floor/10000)|round|int }}</span><i class="sp-conn"></i></div>
+            <div class="sp-pin acc" style="left:{{ (exp/gmax*100)|round(1) }}%"><span class="sp-sp"></span><span class="pl">예상낙찰가</span><span class="pv num">{{ (exp/10000)|round|int }}</span><i class="sp-conn"></i></div>
+            {% if upper %}<div class="sp-pin" style="left:{{ (upper/gmax*100)|round(1) }}%"><span class="sp-sp"></span><span class="pl">상한가</span><span class="pv num">{{ (upper/10000)|round|int }}</span><i class="sp-conn"></i></div>{% endif %}
+            <div class="sp-pin" style="left:{{ (med/gmax*100)|round(1) }}%"><span class="sp-sp"></span><span class="pl">시세중앙값</span><span class="pv num">{{ (med/10000)|round|int }}</span><i class="sp-conn"></i></div>
+          </div>
           <div class="sp-track"><div class="sp-fill" style="left:{{ (floor/gmax*100)|round(1) }}%;width:{{ ((exp-floor)/gmax*100)|round(1) if exp>floor else 0.5 }}%"></div></div>
-          <div class="sp-pin" style="left:{{ (floor/gmax*100)|round(1) }}%"><div class="pl">최저매각가</div><div class="pv num">{{ (floor/10000)|round|int }}</div></div>
-          <div class="sp-pin acc" style="left:{{ (exp/gmax*100)|round(1) }}%"><div class="pl">예상낙찰가</div><div class="pv num">{{ (exp/10000)|round|int }}</div></div>
-          {% if upper %}<div class="sp-pin" style="left:{{ (upper/gmax*100)|round(1) }}%"><div class="pl">상한가</div><div class="pv num">{{ (upper/10000)|round|int }}</div></div>{% endif %}
-          <div class="sp-pin" style="left:{{ (med/gmax*100)|round(1) }}%"><div class="pl">시세중앙값</div><div class="pv num">{{ (med/10000)|round|int }}</div></div>
           <div class="sp-blabel" style="left:{{ (((floor+exp)/2)/gmax*100)|round(1) }}%">{{ '실사용 적합 · 재판매 마진 낮음' if thin_margin else '지금 입찰 가능' if opp else '유찰 대기 구간' }}</div>
         </div>
         <div class="sp-foot">예상낙찰가는 과거 낙찰 실측(낙찰가/시세 분포)에 유찰횟수를 반영한 중심 추정치이며, 밴드는 분위수 기반 불확실 구간입니다(산출: 10).</div>
@@ -494,5 +500,45 @@ details.raw summary{cursor:pointer;font-size:12px;color:var(--cobalt);font-weigh
     <span>발행 {{ now }} · 유효기간 매각기일까지{% if conf %} · CONFIDENCE {{ conf }}/100{% endif %}</span>
   </footer>
 </div>
+<script>
+/* 가격 스펙트럼 라벨 겹침 회피 — 실측 픽셀 폭으로 충돌 검사 후 겹치는 라벨을 위쪽 행으로 분산
+   (핀은 실제 값 위치 그대로 두고 세로 행만 달리해 연결선으로 트랙에 연결 → 화면·모바일·인쇄 모두 안 겹침). */
+(function(){
+  var host = document.getElementById('spLabels'); if(!host) return;
+  var ROWH = 28;
+  function layout(){
+    var pins = Array.prototype.slice.call(host.querySelectorAll('.sp-pin'));
+    if(!pins.length) return;
+    var W = host.clientWidth; if(!W) return;
+    var items = pins.map(function(p){
+      var sp = p.querySelector('.sp-sp'); if(sp) sp.style.height = '0px';   // 폭 측정 전 초기화
+      var lp = parseFloat(p.style.left) || 0;
+      return { el:p, cx: lp/100*W, w: Math.max(p.offsetWidth, 26) };
+    }).sort(function(a,b){ return a.cx - b.cx; });
+    var rows = [];                                   // 각 행이 차지한 x구간
+    items.forEach(function(it){
+      var l = it.cx - it.w/2 - 5, r = it.cx + it.w/2 + 5, placed = -1;
+      for(var i=0;i<rows.length;i++){
+        var clash = rows[i].some(function(s){ return !(r < s.l || l > s.r); });
+        if(!clash){ rows[i].push({l:l,r:r}); placed = i; break; }
+      }
+      if(placed < 0){ rows.push([{l:l,r:r}]); placed = rows.length-1; }
+      it.row = placed;                               // 0 = 트랙에 가장 가까운 행
+    });
+    var maxRow = rows.length - 1;
+    host.style.height = (maxRow*ROWH + 34) + 'px';
+    items.forEach(function(it){
+      var sp = it.el.querySelector('.sp-sp');
+      if(sp) sp.style.height = ((maxRow - it.row)*ROWH) + 'px';   // 위 행일수록 스페이서↑(연결선이 트랙까지 늘어남)
+    });
+  }
+  window.addEventListener('load', layout);
+  window.addEventListener('resize', layout);
+  try{ if(document.fonts && document.fonts.ready) document.fonts.ready.then(layout); }catch(e){}
+  try{ window.matchMedia('print').addEventListener('change', layout); }
+  catch(e){ try{ window.matchMedia('print').addListener(layout); }catch(e2){} }
+  layout();
+})();
+</script>
 </body>
 </html>
