@@ -66,6 +66,7 @@ body{background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:
 .sp-pin{position:absolute;top:0;bottom:0;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;white-space:nowrap;pointer-events:none}
 .sp-sp{flex:0 0 auto}
 .sp-pin .pl{font-size:10px;color:var(--ink-faint);line-height:1.25}
+.sp-pin .la{display:none}   /* 축약 라벨(최저/예상/상한/시세) — 모바일에서만 */
 .sp-pin .pv{font-family:var(--mono);font-size:11px;font-weight:600;line-height:1.2}
 .sp-pin.acc .pv{color:var(--cobalt)}
 .sp-conn{flex:1 1 auto;width:1px;min-height:6px;background:var(--line-strong);margin-top:2px}
@@ -125,7 +126,7 @@ pre.body{white-space:pre-wrap;font-family:var(--sans);font-size:12.5px;color:var
 .abadge.warn{background:var(--amber-tint);border-color:#F0D9AE;color:var(--amber)}.abadge.risk{background:var(--red-tint);border-color:#F2C8C8;color:var(--red)}
 details.raw summary{cursor:pointer;font-size:12px;color:var(--cobalt);font-weight:600;margin:4px 0 8px;list-style:revert}
 @media print{details.raw{display:none}}
-@media (max-width:660px){.vgrid,.confw{grid-template-columns:1fr}.vpts{border-left:none;border-top:1px solid var(--line);padding-left:0;padding-top:16px}.sp-pin .pl{display:none}.card{padding:18px 16px}}
+@media (max-width:660px){.vgrid,.confw{grid-template-columns:1fr}.vpts{border-left:none;border-top:1px solid var(--line);padding-left:0;padding-top:16px}.sp-pin .lf{display:none}.sp-pin .la{display:inline}.card{padding:18px 16px}}
 @media print{body{background:#fff}.page{padding:0;max-width:none}.no-print{display:none}.card,.masthead{border-radius:0;break-inside:avoid}.section{break-inside:avoid}@page{size:A4;margin:12mm}}
 </style>
 </head>
@@ -192,10 +193,10 @@ details.raw summary{cursor:pointer;font-size:12px;color:var(--cobalt);font-weigh
         <div class="sp-title">가격 스펙트럼 <span style="font-weight:400;color:var(--ink-faint)">— 단위: 만원</span></div>
         <div class="sp-wrap">
           <div class="sp-labels" id="spLabels">
-            <div class="sp-pin" style="left:{{ (floor/gmax*100)|round(1) }}%"><span class="sp-sp"></span><span class="pl">최저매각가</span><span class="pv num">{{ (floor/10000)|round|int }}</span><i class="sp-conn"></i></div>
-            <div class="sp-pin acc" style="left:{{ (exp/gmax*100)|round(1) }}%"><span class="sp-sp"></span><span class="pl">예상낙찰가</span><span class="pv num">{{ (exp/10000)|round|int }}</span><i class="sp-conn"></i></div>
-            {% if upper %}<div class="sp-pin" style="left:{{ (upper/gmax*100)|round(1) }}%"><span class="sp-sp"></span><span class="pl">상한가</span><span class="pv num">{{ (upper/10000)|round|int }}</span><i class="sp-conn"></i></div>{% endif %}
-            <div class="sp-pin" style="left:{{ (med/gmax*100)|round(1) }}%"><span class="sp-sp"></span><span class="pl">시세중앙값</span><span class="pv num">{{ (med/10000)|round|int }}</span><i class="sp-conn"></i></div>
+            <div class="sp-pin" style="left:{{ (floor/gmax*100)|round(1) }}%"><span class="sp-sp"></span><span class="pl"><span class="lf">최저매각가</span><span class="la">최저</span></span><span class="pv num">{{ (floor/10000)|round|int }}</span><i class="sp-conn"></i></div>
+            <div class="sp-pin acc" style="left:{{ (exp/gmax*100)|round(1) }}%"><span class="sp-sp"></span><span class="pl"><span class="lf">예상낙찰가</span><span class="la">예상</span></span><span class="pv num">{{ (exp/10000)|round|int }}</span><i class="sp-conn"></i></div>
+            {% if upper %}<div class="sp-pin" style="left:{{ (upper/gmax*100)|round(1) }}%"><span class="sp-sp"></span><span class="pl"><span class="lf">상한가</span><span class="la">상한</span></span><span class="pv num">{{ (upper/10000)|round|int }}</span><i class="sp-conn"></i></div>{% endif %}
+            <div class="sp-pin" style="left:{{ (med/gmax*100)|round(1) }}%"><span class="sp-sp"></span><span class="pl"><span class="lf">시세중앙값</span><span class="la">시세</span></span><span class="pv num">{{ (med/10000)|round|int }}</span><i class="sp-conn"></i></div>
           </div>
           <div class="sp-track"><div class="sp-fill" style="left:{{ (floor/gmax*100)|round(1) }}%;width:{{ ((exp-floor)/gmax*100)|round(1) if exp>floor else 0.5 }}%"></div></div>
           <div class="sp-blabel" style="left:{{ (((floor+exp)/2)/gmax*100)|round(1) }}%">{{ '실사용 적합 · 재판매 마진 낮음' if thin_margin else '지금 입찰 가능' if opp else '유찰 대기 구간' }}</div>
