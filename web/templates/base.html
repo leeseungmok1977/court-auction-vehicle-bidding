@@ -371,6 +371,19 @@
 })();
 </script>
 
+<!-- 뒤로가기: 실제로 온 화면(홈/목록/달력 등)으로 복귀 + 스크롤 복원. 앱 내부 이동이면 history.back(),
+     외부(다른 사이트)에서 바로 들어왔거나 히스토리가 없으면 href(마지막 목록)로 폴백. -->
+<script>
+window._goBack = function(e){
+  try {
+    var ref = document.referrer;
+    var external = ref && new URL(ref).origin !== location.origin;   // 외부 사이트에서 유입
+    if (history.length > 1 && !external) { e.preventDefault(); history.back(); return false; }
+  } catch(err) {}
+  return true;   // 폴백: href(back_url)로 이동
+};
+</script>
+
 {% block script %}{% endblock %}
 </body>
 </html>

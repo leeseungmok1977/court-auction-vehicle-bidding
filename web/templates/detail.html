@@ -43,8 +43,8 @@
     <a href="/vehicle/{{ v.id }}/report" class="btn-ghost text-sm flex items-center gap-1.5" title="분석 리포트(앱 내에서 열림 · 인쇄/PDF 가능)">
       <span class="material-symbols-outlined text-lg">description</span> 리포트</a>
     {% endif %}
-    <a href="{{ back_url or '/vehicles' }}" class="btn-ghost text-sm flex items-center gap-1.5">
-      <span class="material-symbols-outlined text-lg">arrow_back</span> 이전 목록</a>
+    <a href="{{ back_url or '/vehicles' }}" onclick="return _goBack(event)" class="btn-ghost text-sm flex items-center gap-1.5">
+      <span class="material-symbols-outlined text-lg">arrow_back</span> 뒤로</a>
   </div>
 </div>
 
