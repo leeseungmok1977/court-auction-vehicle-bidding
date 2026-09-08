@@ -168,7 +168,10 @@
   /* 강조 깜빡임(0.5초 간격 on/off) — '지금 입찰 추천' 등 주목 요소 */
   @keyframes ncblink{0%,49.9%{opacity:1}50%,100%{opacity:.2}}
   .nc-blink{animation:ncblink 1s step-end infinite}
-  @media (prefers-reduced-motion: reduce){ .nc-blink{animation:none} }
+  /* 종 울림 — 상단을 축으로 좌우 ±30도(0.2초/방향) 흔들림 */
+  @keyframes ncring{0%,100%{transform:rotate(-30deg)}50%{transform:rotate(30deg)}}
+  .nc-ring{display:inline-block;transform-origin:top center;animation:ncring .4s ease-in-out infinite}
+  @media (prefers-reduced-motion: reduce){ .nc-blink,.nc-ring{animation:none} }
 </style>
 <script>try{ if(sessionStorage.getItem("nc_splash")) document.documentElement.className += " splash-done"; }catch(e){}</script>
 <script>
