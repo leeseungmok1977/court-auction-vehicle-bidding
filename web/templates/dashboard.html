@@ -118,15 +118,54 @@
   <h3 class="text-sm font-semibold text-txt flex items-center gap-1.5"><span class="material-symbols-outlined text-primary text-lg">donut_small</span> 경매 라이프사이클 현황</h3>
   <span class="text-xs text-mut">총 <b class="text-txt tnum">{{ total }}</b>대 모니터링</span>
 </div>
-<div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
-  {{ kpi('입찰 검토 가능', counts.get('입찰 검토 가능', 0), 'check_circle', 'text-emerald-700', '/vehicles?judgment=입찰 검토 가능', 'kpi-ok', emph=True, pill='입찰 준비', pillcls='bg-emerald-100 text-emerald-700') }}
-  {{ kpi('입찰예정 (30일)', upcoming, 'event_upcoming', 'text-txt', '/vehicles?upcoming=30&sort=sale_date', 'kpi-upcoming', pill='D-30 이내', pillcls='bg-sky-50 text-sky-700', sub='기일순 →') }}
-  {{ kpi('유찰 대기', counts.get('유찰 대기', 0), 'hourglass_empty', 'text-amber-700', '/vehicles?judgment=유찰 대기', 'kpi-wait', pill='재경매', pillcls='bg-amber-50 text-amber-700') }}
-  {{ kpi('낙찰 (매각)', won, 'gavel', 'text-txt', '/vehicles?result=낙찰&sort=sale_date', 'kpi-won', pill='완료 통계', pillcls='bg-indigo-50 text-indigo-600', sub=('낙찰가율 ' ~ (backtest.discount_median*100)|round|int ~ '%') if backtest.discount_median else None) }}
-  {# 관심 물건은 하단 탭에 있어 제거 · 분석 대기(운영 지표)는 관리자만 #}
-  {% if is_admin(request) %}
-  {{ kpi('분석 대기', pending, 'pending', 'text-txt', '/vehicles?status=pending', 'kpi-pending', pill='분석 대기', pillcls='bg-slate-100 text-mut') }}
-  {% endif %}
+<div class="space-y-3">
+  {# 곧 열리는 경매(시간) → 그 안에서 AI 판단(지금 살지)로 지금 추천 / 더 기다리기로 나눔.
+     '입찰예정=언제 열리나', '유찰 대기=왜 더 기다리나' — 축이 다름을 시각적으로 분리해 혼동 방지 #}
+  <div class="bg-surface border border-line rounded-2xl p-4 sm:p-5">
+    <a href="/vehicles?upcoming=30&sort=sale_date" class="flex items-center justify-between gap-3 group">
+      <div class="flex items-center gap-2.5 min-w-0">
+        <span class="w-9 h-9 rounded-full bg-sky-50 text-sky-700 flex items-center justify-center shrink-0"><span class="material-symbols-outlined text-lg">event_upcoming</span></span>
+        <div class="min-w-0">
+          <div class="text-sm font-semibold text-txt">곧 열리는 경매 <span class="text-xs font-normal text-mut">· 입찰예정 30일</span></div>
+          <div class="text-[11px] text-mut/80 leading-snug">30일 내 매각기일이 잡힌 물건 — 아래는 AI가 '지금 살지'를 판단</div>
+        </div>
+      </div>
+      <div class="text-right shrink-0"><div class="text-2xl font-extrabold text-txt tnum" id="kpi-upcoming">{{ upcoming }}</div><div class="text-[11px] text-primary group-hover:underline">기일순 →</div></div>
+    </a>
+    <div class="grid grid-cols-2 gap-3 mt-4">
+      <a href="/vehicles?judgment=입찰 검토 가능&sort=expected" class="rounded-xl border border-emerald-200 bg-emerald-50/40 p-3.5 block hover:shadow-sm transition tabular-nums">
+        <div class="flex items-center gap-1.5 text-emerald-700 mb-1"><span class="material-symbols-outlined text-lg">check_circle</span><span class="text-xs font-bold">지금 입찰 추천</span></div>
+        <div class="text-3xl font-extrabold text-emerald-700 leading-none" id="kpi-ok">{{ counts.get('입찰 검토 가능', 0) }}</div>
+        <div class="text-[11px] text-mut mt-1 leading-snug">AI가 <b>지금 가격이 적정</b>하다고 본 물건</div>
+      </a>
+      <a href="/vehicles?judgment=유찰 대기" class="rounded-xl border border-amber-200 bg-amber-50/40 p-3.5 block hover:shadow-sm transition tabular-nums">
+        <div class="flex items-center gap-1.5 text-amber-700 mb-1"><span class="material-symbols-outlined text-lg">hourglass_empty</span><span class="text-xs font-bold">더 기다리기 · 재경매</span></div>
+        <div class="text-3xl font-extrabold text-amber-700 leading-none" id="kpi-wait">{{ counts.get('유찰 대기', 0) }}</div>
+        <div class="text-[11px] text-mut mt-1 leading-snug">안 팔려 다음 회차에 <b>최저가 더 내려갈</b> 물건</div>
+      </a>
+    </div>
+  </div>
+
+  {# 종료(통계) + 관리자 운영지표 #}
+  <div class="grid grid-cols-1 {% if is_admin(request) %}sm:grid-cols-2{% endif %} gap-3">
+    <a href="/vehicles?result=낙찰&sort=sale_date" class="bg-surface border border-line rounded-2xl p-4 flex items-center justify-between gap-3 hover:border-primary/50 hover:shadow-sm transition tabular-nums group">
+      <div class="flex items-center gap-2.5 min-w-0">
+        <span class="w-9 h-9 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0"><span class="material-symbols-outlined text-lg">gavel</span></span>
+        <div class="min-w-0"><div class="text-sm font-semibold text-txt">낙찰 완료 <span class="text-xs font-normal text-mut">· 통계</span></div>
+          <div class="text-[11px] text-mut/80 leading-snug">이미 팔린 물건{% if backtest.discount_median %} · 평균 낙찰가율 {{ (backtest.discount_median*100)|round|int }}%{% endif %}</div></div>
+      </div>
+      <span class="text-2xl font-extrabold text-txt tnum shrink-0" id="kpi-won">{{ won }}</span>
+    </a>
+    {% if is_admin(request) %}
+    <a href="/vehicles?status=pending" class="bg-surface border border-line rounded-2xl p-4 flex items-center justify-between gap-3 hover:border-primary/50 transition tabular-nums">
+      <div class="flex items-center gap-2.5 min-w-0">
+        <span class="w-9 h-9 rounded-full bg-slate-100 text-mut flex items-center justify-center shrink-0"><span class="material-symbols-outlined text-lg">pending</span></span>
+        <div class="min-w-0"><div class="text-sm font-semibold text-txt">분석 대기</div><div class="text-[11px] text-mut/80 leading-snug">미분석·미매핑 (운영 지표)</div></div>
+      </div>
+      <span class="text-2xl font-extrabold text-txt tnum shrink-0" id="kpi-pending">{{ pending }}</span>
+    </a>
+    {% endif %}
+  </div>
 </div>
 
 {# 실행 상태 (진행 중일 때만 강조) · 관리자 전용 #}
