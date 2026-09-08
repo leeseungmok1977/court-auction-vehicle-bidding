@@ -46,50 +46,67 @@
   </div>
 </div>
 
-<!-- 집계 지표: AI 예상 낙찰가 중심값 + 시세대비 + IQR + 신뢰도/MAE (대시보드에서 이동) -->
-{% if review_summary %}
-{% set rs = review_summary %}
-<div class="block relative overflow-hidden rounded-2xl px-5 py-5 sm:px-6 mt-4 tabular-nums text-white"
+<!-- 지난달 낙찰 실적: 시세대비 낙찰가율 + 가격대별 + 요일별 (sale_results 100% 실측) -->
+{% if sale_stats %}
+{% set ss = sale_stats %}
+<div class="relative overflow-hidden rounded-2xl px-5 py-5 sm:px-6 mt-4 tabular-nums text-white"
    style="background:linear-gradient(150deg,#16305e 0%,#0f2247 55%,#0b1730 100%)">
   <div class="absolute -right-8 -top-10 w-40 h-40 rounded-full bg-amber-400/10 blur-2xl pointer-events-none"></div>
+
+  <!-- 헤더 -->
   <div class="relative flex items-center gap-2 mb-3">
     <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/10 border border-white/15 text-xs font-semibold text-amber-300">
-      <span class="material-symbols-outlined text-[15px]">psychology</span> AI 예상 낙찰가 중심값</span>
-    <span class="ml-auto text-[11px] text-white/45">검토가능 물건 집계</span>
+      <span class="material-symbols-outlined text-[15px]">bar_chart</span> 지난달 낙찰 실적</span>
+    <span class="ml-auto text-[11px] text-white/45">{{ ss.label }} · 낙찰 {{ ss.n }}건</span>
   </div>
+
+  <!-- 핵심: 시세 대비 낙찰가(중앙값) -->
   <div class="relative flex items-baseline gap-2">
-    <span class="font-mono text-4xl sm:text-[2.75rem] font-extrabold leading-none">{{ (rs.exp_med/10000)|round|int }}</span>
-    <span class="text-lg text-white/70 font-semibold">만원</span>
-    {% if rs.disc_pct and rs.disc_pct > 0 %}<span class="ml-auto text-xs font-bold px-2.5 py-1 rounded-full bg-amber-400 text-[#0b142b] whitespace-nowrap">시세 대비 −{{ rs.disc_pct }}%</span>{% endif %}
+    <span class="font-mono text-4xl sm:text-[2.75rem] font-extrabold leading-none text-amber-300">{{ ss.ratio_med }}<span class="text-2xl">%</span></span>
+    <span class="text-sm text-white/60 leading-tight">시세 대비<br>낙찰가(중앙값)</span>
+    <span class="ml-auto text-xs font-bold px-2.5 py-1 rounded-full bg-white/10 border border-white/15 whitespace-nowrap">최저가 대비 +{{ ss.over_min_med }}%</span>
   </div>
-  {% set span = (rs.exp_hi - rs.exp_lo) or 1 %}
-  {% set b_lo = ((rs.exp_p25 - rs.exp_lo)/span*100)|round(1) %}
-  {% set b_hi = ((rs.exp_p75 - rs.exp_lo)/span*100)|round(1) %}
-  {% set b_med = ((rs.exp_med - rs.exp_lo)/span*100)|round(1) %}
-  <div class="relative mt-4">
-    <div class="flex justify-between text-[11px] mb-1.5">
-      <span class="text-white/55">최저 {{ (rs.exp_lo/10000)|round|int }}만</span>
-      <span class="text-amber-300 font-semibold">예상 범위 (IQR 50%)</span>
-      <span class="text-white/55">최고 {{ (rs.exp_hi/10000)|round|int }}만</span>
+  <div class="relative text-[11px] text-white/45 mt-1.5">낙찰가 절반이 시세의 <span class="text-white/70">{{ ss.ratio_p25 }}~{{ ss.ratio_p75 }}%</span> 구간에 분포</div>
+
+  <!-- 가격대별 시세대비 낙찰가율 -->
+  {% if ss.price_bands %}
+  <div class="relative mt-4 pt-4 border-t border-white/10">
+    <div class="text-[11px] text-white/55 mb-2 flex items-center gap-1">
+      <span class="material-symbols-outlined text-[14px]">payments</span> 가격대별 시세 대비 낙찰가</div>
+    <div class="space-y-1.5">
+    {% for b in ss.price_bands %}
+      <div class="flex items-center gap-2 text-[11px]">
+        <span class="w-[76px] text-white/70 shrink-0">{{ b.label }}</span>
+        <div class="flex-1 h-2 rounded-full bg-white/10 relative overflow-hidden">
+          <div class="absolute inset-y-0 left-0 rounded-full bg-amber-400" style="width:{{ b.ratio }}%"></div>
+        </div>
+        <span class="w-8 text-right font-mono font-semibold text-amber-300">{{ b.ratio }}%</span>
+        <span class="w-8 text-right text-white/40">{{ b.n }}건</span>
+      </div>
+    {% endfor %}
     </div>
-    <div class="relative h-2.5 rounded-full bg-white/10">
-      <div class="absolute top-0 bottom-0 rounded-full bg-amber-400" style="left:{{ b_lo }}%;right:{{ (100-b_hi)|round(1) }}%"></div>
-      <div class="absolute -top-0.5 w-1 h-3.5 rounded bg-white" style="left:calc({{ b_med }}% - 2px)"></div>
+    <div class="text-[10px] text-white/35 mt-1.5">고가일수록 시세에 근접(경쟁↑), 저가일수록 시세보다 크게 저렴</div>
+  </div>
+  {% endif %}
+
+  <!-- 요일별 낙찰 건수 -->
+  <div class="relative mt-4 pt-4 border-t border-white/10">
+    <div class="text-[11px] text-white/55 mb-2 flex items-center gap-1">
+      <span class="material-symbols-outlined text-[14px]">event</span> 요일별 낙찰 건수</div>
+    <div class="flex items-end gap-1.5">
+    {% for w in ss.weekdays %}
+      <div class="flex-1 text-center">
+        <div class="text-[10px] text-white/50 font-mono mb-0.5">{{ w.n }}</div>
+        <div class="h-11 flex items-end">
+          <div class="w-full rounded-t bg-amber-400/80" style="height:{{ w.pct }}%"></div>
+        </div>
+        <div class="text-[10px] text-white/60 mt-0.5">{{ w.name }}</div>
+      </div>
+    {% endfor %}
     </div>
   </div>
-  <div class="relative grid grid-cols-2 gap-3 mt-4 pt-4 border-t border-white/10">
-    <div>
-      <div class="text-[11px] text-white/60 mb-0.5">평균 신뢰도{% if rs.conf_avg and rs.conf_avg>=80 %} <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-400 text-[#0b142b] font-bold">안정권</span>{% elif rs.conf_avg and rs.conf_avg>=60 %} <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-400 text-[#0b142b] font-bold">주의</span>{% endif %}</div>
-      <div class="font-mono font-bold text-xl">{{ rs.conf_avg or '—' }}<span class="text-sm text-white/50 font-normal"> /100</span></div>
-    </div>
-    {% if rs.mae %}
-    <div>
-      <div class="text-[11px] text-white/60 mb-0.5">예측 오차 <span class="text-white/40">MAE</span></div>
-      <div class="font-mono font-bold text-xl {{ 'text-emerald-300' if rs.mae<=15 else 'text-amber-300' }}">±{{ rs.mae|round|int }}%</div>
-      <div class="text-[10px] text-white/40">최근 90일 실측 대조</div>
-    </div>
-    {% endif %}
-  </div>
+
+  <div class="relative text-[10px] text-white/35 mt-3">실제 낙찰 {{ ss.n }}건 집계 · 시세=분석시점 동급 매물 중앙값 · 낙찰가&lt;최저가 오류 제외</div>
 </div>
 {% endif %}
 {% endblock %}

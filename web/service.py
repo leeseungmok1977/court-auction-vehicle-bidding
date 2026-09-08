@@ -1465,6 +1465,74 @@ def alert_items(days: int = 3) -> list:
     return out
 
 
+def last_month_sale_stats() -> Optional[dict]:
+    """달력 하단 '지난달 낙찰 실적' — sale_results(영구 낙찰 히스토리) 기반 100% 실측 통계.
+
+    신뢰성 원칙: 낙찰율(=낙찰/전체 기일)은 유찰 분모 데이터가 없어 계산하지 않는다.
+    낙찰가율(시세·최저가 대비)만 산출한다. 낙찰가<최저매각가인 무결성 위반 행은 제외하고,
+    중앙값을 대표값으로 써서 시세오매칭 이상치(예: 시세 대비 14%)에 흔들리지 않게 한다.
+    """
+    import statistics
+    from datetime import date, timedelta
+    today = date.today()
+
+    def _valid(r):
+        w, m, mn = r.get("winning_price"), r.get("median_price"), r.get("min_sale_price")
+        return (w and m and mn and m > 0 and mn > 0 and w >= mn        # 낙찰가≥최저가(무결성)
+                and (r.get("sale_date") or ""))
+
+    allrows = [r for r in db.list_sale_results() if _valid(r)]
+    if not allrows:
+        return None
+
+    # 지난달(전월). 표본이 얇으면 최근 90일로 폴백해 항상 유의미하게.
+    py, pm = (today.year - 1, 12) if today.month == 1 else (today.year, today.month - 1)
+    mkey = f"{py:04d}-{pm:02d}"
+    rows = [r for r in allrows if r["sale_date"][:7] == mkey]
+    label, window = f"{py}년 {pm}월", "month"
+    if len(rows) < 8:
+        cutoff = (today - timedelta(days=90)).isoformat()
+        rows = [r for r in allrows if r["sale_date"] >= cutoff]
+        label, window = "최근 90일", "90d"
+    if len(rows) < 3:
+        return None
+
+    ratios = sorted(r["winning_price"] / r["median_price"] for r in rows)   # 시세중앙값 대비
+    over_min = sorted(r["winning_price"] / r["min_sale_price"] for r in rows)  # 최저가 대비
+    qs = statistics.quantiles(ratios, n=4) if len(ratios) >= 4 else [ratios[0], statistics.median(ratios), ratios[-1]]
+
+    bands = [("500만 이하", 0, 500), ("500~1000만", 500, 1000),
+             ("1000~2000만", 1000, 2000), ("2000만 이상", 2000, 10 ** 9)]
+    price_bands = []
+    for lab, lo, hi in bands:
+        sub = [r["winning_price"] / r["median_price"] for r in rows
+               if lo <= r["winning_price"] / 10000 < hi]
+        if sub:
+            price_bands.append({"label": lab, "n": len(sub),
+                                "ratio": round(statistics.median(sub) * 100)})
+
+    names = "월화수목금토일"
+    wd = {}
+    for r in rows:
+        try:
+            wd[date.fromisoformat(r["sale_date"]).weekday()] = \
+                wd.get(date.fromisoformat(r["sale_date"]).weekday(), 0) + 1
+        except (ValueError, TypeError):
+            continue
+    wd_max = max(wd.values()) if wd else 1
+    weekdays = [{"name": names[k], "n": wd.get(k, 0),
+                 "pct": max(6, round(wd.get(k, 0) / wd_max * 100)) if wd.get(k, 0) else 3}
+                for k in range(7) if k < 5 or wd.get(k, 0) > 0]
+
+    return {
+        "label": label, "window": window, "n": len(rows),
+        "ratio_med": round(statistics.median(ratios) * 100),   # 시세 대비 낙찰가 %
+        "ratio_p25": round(qs[0] * 100), "ratio_p75": round(qs[2] * 100),
+        "over_min_med": round((statistics.median(over_min) - 1) * 100),  # 최저가 대비 +%
+        "price_bands": price_bands, "weekdays": weekdays,
+    }
+
+
 def _promising(v: dict) -> bool:
     """대표 후보 자격 — 시세 신뢰도 높음 + 오매칭(시세≫최저가) 의심 제외."""
     if v.get("market_confidence_label") != "높음":

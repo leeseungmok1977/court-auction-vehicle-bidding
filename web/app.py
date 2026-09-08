@@ -445,7 +445,7 @@ def calendar_view(request: Request, ym: str = ""):
         "prev_ym": (first - _td(days=1)).strftime("%Y-%m"),
         "next_ym": (last + _td(days=1)).strftime("%Y-%m"),
         "today_iso": today.isoformat(),
-        "review_summary": service.review_summary(),   # 집계 지표 카드(달력 하단)
+        "sale_stats": service.last_month_sale_stats(),   # 지난달 낙찰 실적 카드(달력 하단)
     })
 
 
