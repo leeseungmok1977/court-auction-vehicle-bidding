@@ -298,7 +298,7 @@
     {% if badge %}<span class="absolute top-1 left-1/2 translate-x-1.5 min-w-4 h-4 px-1 rounded-full bg-rose-500 text-white text-[9px] font-bold flex items-center justify-center">{{ badge if badge < 100 else '99+' }}</span>{% endif %}
   </a>
   {% endmacro %}
-  <nav class="lg:hidden shrink-0 flex items-stretch bg-surface border-t border-line shadow-[0_-4px_20px_rgba(15,23,42,0.06)]"
+  <nav class="lg:hidden shrink-0 flex items-stretch bg-surface opacity-80 border-t border-line shadow-[0_-4px_20px_rgba(15,23,42,0.06)]"
        style="padding-bottom:env(safe-area-inset-bottom)">
     {{ tab('/', 'home', '홈', path=='/') }}
     {{ tab('/vehicles', 'directions_car', '차량목록', path.startswith('/vehicle')) }}
