@@ -356,7 +356,12 @@
       sessionStorage.setItem(KEY, JSON.stringify(m));
     } catch(e){}
   }
+  function isBackForward(){   // 뒤로/앞으로(또는 bfcache 복귀)로 진입했는가
+    try { var n = performance.getEntriesByType('navigation')[0]; return !!(n && n.type === 'back_forward'); }
+    catch(e){ return false; }
+  }
   function restore(){
+    // 뒤로가기로 돌아올 때만 복원. KPI·링크로 '새로' 진입하면 복원 안 하고 맨 위 유지.
     var y = load()[url];
     if (typeof y === 'number' && y > 0) {
       el.scrollTop = y;
@@ -366,8 +371,8 @@
   el.addEventListener('click', function(e){ if (e.target.closest && e.target.closest('a')) save(); });
   window.addEventListener('pagehide', save);
   document.addEventListener('visibilitychange', function(){ if (document.visibilityState === 'hidden') save(); });
-  window.addEventListener('pageshow', restore);
-  restore();
+  window.addEventListener('pageshow', function(e){ if (e.persisted || isBackForward()) restore(); });
+  if (isBackForward()) restore();
 })();
 </script>
 
