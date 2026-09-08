@@ -304,6 +304,26 @@ def _resolve_auction_result(history, winning_price) -> Optional[str]:
     return last.get("result") or "미확정"
 
 
+def _result_anomaly(v: dict, today: Optional[str] = None) -> list:
+    """낙찰 결과가 물리적으로 불가능한지 검증(신뢰 최우선) — 반환: 사유 리스트(빈=정상).
+
+    - 낙찰가 < 최저매각가: 최저매각가 미만 낙찰은 불가능(법령상 최저가 이상만 유효 입찰).
+    - 낙찰인데 매각기일 미도래: 매각기일 전에는 낙찰될 수 없음.
+    낙찰결과 조회가 엉뚱한 값을 물건에 붙였을 때(데이터 오염)를 걸러내는 방어선.
+    이상 낙찰은 (a)목록에서 숨기고 (b)모델 학습에서 제외하고 (c)결과 적용 시 거부한다.
+    (낙찰가<최저가는 라벨 무관 검사 — 낙찰결과 스냅샷에도 동작.)
+    """
+    reasons = []
+    win, mn = v.get("winning_price"), v.get("min_sale_price")
+    if win and mn and win < mn:
+        reasons.append("낙찰가<최저매각가")
+    sd = v.get("sale_date")
+    today = today or date.today().isoformat()
+    if v.get("auction_result") == "낙찰" and sd and sd > today:
+        reasons.append("매각기일 미도래")
+    return reasons
+
+
 def _current_min_sale(history, fallback):
     """기일내역에서 '현재(다음 예정) 최저매각가'를 도출.
 
@@ -641,6 +661,7 @@ def update_results(max_courts: int = 100, run_id: Optional[int] = None,
 
     s = new_session(); warmup(s)
     updated = 0
+    anomalies = 0                            # 검증에서 거부한 이상 낙찰 수(신뢰 방어선)
     consecutive_fail = 0
     blocked = False
     req_used = 0                              # 런당 총 외부요청 카운트 (C.4-1)
@@ -703,6 +724,10 @@ def update_results(max_courts: int = 100, run_id: Optional[int] = None,
                     fields["judgment"] = _final_judgment(bid.judgment, v.get("market_confidence_label"))
                     fields["breakdown"] = json.dumps(bid.breakdown, ensure_ascii=False)
                     fields["status"] = "완료"
+            # 낙찰 결과 검증(신뢰 최우선): 낙찰가<최저매각가 또는 매각기일 미도래면 오염으로 보고 반영 거부.
+            if label == "낙찰" and _result_anomaly({**v, **fields}):
+                anomalies += 1
+                continue                       # 불가능한 낙찰은 저장하지 않음(물건은 기존 상태 유지)
             db.update_fields(v["id"], **fields)
             if label == "낙찰" and win and v.get("median_price"):
                 db.record_sale_result(_sale_snapshot({**v, **fields}, win))   # 영구 축적
@@ -719,8 +744,9 @@ def update_results(max_courts: int = 100, run_id: Optional[int] = None,
     return updated
     if finalize and run_id:
         tail = f" · 요청상한 {max_requests} 도달로 일부만 처리(다음 실행에서 이어짐)" if budget_stop else ""
+        _atail = f" · 이상 낙찰 {anomalies}건 거부(신뢰 검증)" if anomalies else ""
         db.update_run(run_id, status="done", finished_at=_now(),
-                      message=f"낙찰결과 {updated}건 반영{tail}")
+                      message=f"낙찰결과 {updated}건 반영{_atail}{tail}")
     return updated
 
 
@@ -909,16 +935,18 @@ def backtest_stats() -> dict:
     rows = db.list_vehicles()
     # 학습 데이터셋: 영구 히스토리(sale_results) ∪ 라이브 낙찰 (id 중복 제거, 히스토리 우선).
     # 라이브 테이블이 갱신·만료돼도 히스토리에 누적된 표본은 유지 → 시간이 지날수록 신뢰성↑.
+    # 이상 낙찰(낙찰가<최저가 등)은 학습에서 제외 — 오염된 표본이 프리미엄·MAE를 흔들지 않게(신뢰 최우선)
     data: dict = {}
     for r in db.list_sale_results():
-        if r.get("median_price") and r.get("winning_price"):
+        if r.get("median_price") and r.get("winning_price") and not _result_anomaly(r):
             data[r["id"]] = r
     for r in rows:
         if (r.get("auction_result") == "낙찰" and r.get("winning_price")
-                and r.get("median_price") and r["id"] not in data):
+                and r.get("median_price") and r["id"] not in data and not _result_anomaly(r)):
             data[r["id"]] = r
     med_rows = list(data.values())
-    live_won = [r for r in rows if r.get("auction_result") == "낙찰" and r.get("winning_price")]
+    live_won = [r for r in rows if r.get("auction_result") == "낙찰"
+                and r.get("winning_price") and not _result_anomaly(r)]
     ratios = sorted(r["winning_price"] / r["median_price"] for r in med_rows)
     out = {"won_total": len(med_rows), "sample": len(med_rows),
            "discount_median": None, "discount_p25": None, "discount_p75": None,

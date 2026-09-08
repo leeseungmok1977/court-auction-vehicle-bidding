@@ -353,6 +353,12 @@ def list_vehicles(judgment: Optional[str] = None, maker: Optional[str] = None,
         where.append("NOT (COALESCE(status,'')='상세없음' OR "
                      "(median_price IS NULL AND "
                      "(mileage_km IS NULL OR COALESCE(photo_count,0)=0)))")
+        # 이상 낙찰(신뢰 검증): 낙찰가<최저매각가 이거나 낙찰인데 매각기일 미도래 → 목록에서 숨김.
+        # (낙찰결과 조회가 엉뚱한 값을 붙인 오염 데이터가 사용자에게 노출돼 신뢰를 무너뜨리는 것 방지)
+        where.append("NOT (COALESCE(auction_result,'')='낙찰' AND ("
+                     "(winning_price IS NOT NULL AND min_sale_price IS NOT NULL "
+                     "AND winning_price < min_sale_price) "
+                     "OR (sale_date IS NOT NULL AND sale_date > date('now','localtime'))))")
     if result:
         where.append("auction_result=?"); params.append(result)
     if starred:
