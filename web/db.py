@@ -161,6 +161,15 @@ CREATE TABLE IF NOT EXISTS usage_daily (  -- 무료 등급 일일 열람 제한(
     user_id TEXT, ymd TEXT, kind TEXT, n INTEGER DEFAULT 0,
     PRIMARY KEY (user_id, ymd, kind)
 );
+CREATE TABLE IF NOT EXISTS anomaly_log (  -- 낙찰/데이터 무결성 검토 감사기록(최종 검토 단계)
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts          TEXT,
+    vehicle_id  TEXT,
+    case_no     TEXT,
+    reasons     TEXT,             -- 이상 사유(콤마)
+    action      TEXT,             -- resolved(재확인 후 복원) / quarantined(등록 보류·숨김) / error
+    note        TEXT              -- 상세 메모
+);
 """
 
 _JSON_COLS = {"accident_hits", "insurance_history", "breakdown", "dxdy_history", "comps",
@@ -813,3 +822,24 @@ def count_sale_results() -> int:
     n = conn.execute("SELECT COUNT(*) c FROM sale_results").fetchone()["c"]
     conn.close()
     return n
+
+
+def record_anomaly(vehicle_id: str, case_no: Optional[str], reasons, action: str,
+                   note: str = "") -> None:
+    """무결성 검토 감사기록 — 이상 발견·재확인 결과를 남긴다(신뢰 추적)."""
+    rs = ", ".join(reasons) if isinstance(reasons, (list, tuple)) else str(reasons or "")
+    conn = connect()
+    with conn:
+        conn.execute(
+            "INSERT INTO anomaly_log (ts, vehicle_id, case_no, reasons, action, note) "
+            "VALUES (?,?,?,?,?,?)",
+            (_now(), vehicle_id, case_no or "", rs, action, note or ""))
+    conn.close()
+
+
+def list_anomalies(limit: int = 100) -> list[dict]:
+    conn = connect()
+    rows = conn.execute("SELECT * FROM anomaly_log ORDER BY id DESC LIMIT ?",
+                        (int(limit),)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]

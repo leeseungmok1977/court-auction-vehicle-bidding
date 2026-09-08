@@ -515,6 +515,7 @@ def daily_update(within_days: int = 30, analyze: bool = True,
     stored = collect_upcoming(within_days=within_days, run_id=run_id, finalize=False)
     _reconcile_min_from_dxdy(within_days)   # 목록이 덮은 dxdy 보정 최저매각가 복원
     analyzed = 0
+    cs = es = None                                  # 세션(⑤ 최종 검토 재확인에서도 재사용)
     if analyze:
         # 분석 대상: 입찰예정 창의 미분석/미매핑 국산차
         targets = [v for v in db.list_vehicles(upcoming_days=within_days)
@@ -555,15 +556,75 @@ def daily_update(within_days: int = 30, analyze: bool = True,
                 db.update_run(run_id, processed=analyzed)
     # ③ 낙찰결과 반영 (매각기일 지난 물건)
     results = update_results(run_id=run_id, finalize=False)
-    # ④ 오늘의 추천 물건 갱신(대시보드 캐러셀) — 매일 아침 리스트업
+    # ⑤ 최종 검토: 구성된 데이터 무결성 검토 → 이상 시 대법원 재확인 → 정상화면 복원, 아니면 등록 보류 + 기록
+    review = {"found": 0, "reviewed": 0, "resolved": 0, "quarantined": 0}
+    try:
+        if cs is None:
+            cs = new_session(); warmup(cs); es = encar.new_session()
+        if run_id:
+            db.update_run(run_id, message="최종 검토(무결성) — 이상 물건 대법원 재확인")
+        review = review_daily_anomalies(cs, es, config, run_id=run_id)
+    except RuntimeError:
+        raise                                       # 차단/비정상 → 상위로 전파(C.4-5)
+    except Exception:  # noqa: BLE001 — 검토 실패가 갱신 전체를 막지 않도록
+        pass
+    # ④ 오늘의 추천 물건 갱신(대시보드 캐러셀) — 검토 후 최종 데이터로
     try:
         refresh_daily_picks(5)
     except Exception:  # noqa: BLE001 — 추천 갱신 실패가 갱신 전체를 막지 않도록
         pass
     if run_id:
+        _rv = (f" · 검토 재확인 {review['reviewed']}(복원 {review['resolved']}·보류 {review['quarantined']})"
+               if review.get("found") else "")
         db.update_run(run_id, status="done", finished_at=_now(),
-                      message=f"입찰예정 {stored} · 분석 {analyzed} · 낙찰결과 {results}건")
-    return {"stored": stored, "analyzed": analyzed, "results": results}
+                      message=f"입찰예정 {stored} · 분석 {analyzed} · 낙찰결과 {results}건{_rv}")
+    return {"stored": stored, "analyzed": analyzed, "results": results, "review": review}
+
+
+def review_daily_anomalies(cs, es, config, run_id: Optional[int] = None,
+                           max_recheck: int = 20) -> dict:
+    """최종 검토(일일 갱신 마지막 단계): 구성된 물건 중 물리적으로 불가능한 낙찰(오염)을 찾아
+    대법원 상세를 **재확인**한다. 재확인 후 정상화되면 등록(복원), 그래도 이상하면 등록 보류
+    (기존 값 유지 → 목록 가드가 숨김)하고 결과를 감사기록(anomaly_log)에 남긴다.
+
+    외부요청은 재확인 대상 수(하드 상한 max_recheck)만큼이며 지연·차단중단(C.4)을 따른다."""
+    from datetime import date as _date
+    today = _date.today().isoformat()
+    anomalous = [v for v in db.list_vehicles() if _result_anomaly(v, today)]
+    out = {"found": len(anomalous), "reviewed": 0, "resolved": 0, "quarantined": 0}
+    for v in anomalous:
+        if out["reviewed"] >= max_recheck:
+            break
+        before = _result_anomaly(v, today)
+        sa = _sa_no_from_docid(v.get("doc_id") or "")
+        if not sa:                                  # 재조회 불가 → 등록 보류(숨김 유지) + 기록
+            db.record_anomaly(v["id"], v.get("case_no"), before, "quarantined",
+                              "재조회 불가(doc_id 없음)")
+            out["quarantined"] += 1
+            continue
+        item = _rebuild_item(v)
+        raw = {"saNo": sa, "boCd": v.get("court_code"), "maemulSer": v.get("item_no") or "1"}
+        try:
+            rec = _analyze_item(cs, es, raw, item, config, v.get("repair_cost") or 500000)
+        except Exception as e:  # noqa: BLE001
+            if _is_block(e):
+                raise                               # 차단 → 상위로 전파(C.4-5)
+            db.record_anomaly(v["id"], v.get("case_no"), before, "error", f"재조회 오류: {str(e)[:50]}")
+            continue
+        out["reviewed"] += 1
+        after = _result_anomaly(rec, today)
+        if not after:                               # 재확인 후 정상화 → 등록(복원)
+            db.upsert_vehicle(rec)
+            db.record_anomaly(v["id"], v.get("case_no"), before, "resolved",
+                              f"재확인 후 정상화(낙찰 {rec.get('auction_result')}, 낙찰가 {rec.get('winning_price')}, 기일 {rec.get('sale_date')})")
+            out["resolved"] += 1
+        else:                                       # 그래도 이상 → 등록 보류(저장 안 함, 기존값 유지→숨김)
+            db.record_anomaly(v["id"], v.get("case_no"), after, "quarantined",
+                              "재확인 후에도 이상 지속 — 등록 보류")
+            out["quarantined"] += 1
+    if out["reviewed"] or out["quarantined"]:
+        invalidate_backtest_cache()
+    return out
 
 
 def _run_daily(within_days: int, analyze: bool, analyze_limit: int, run_id: int) -> None:

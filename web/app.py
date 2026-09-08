@@ -79,11 +79,36 @@ def _require_admin(request: Request) -> None:
 @app.get("/admin", include_in_schema=False)
 def admin_status(request: Request):
     if is_admin(request):
-        body = "관리자 모드 <b>ON</b> (SSH 터널)"
+        body = ("관리자 모드 <b>ON</b> (SSH 터널) · "
+                "<a href='/admin/anomalies'>무결성 검토 기록</a> · <a href='/'>홈</a>")
     else:
         body = ("관리자 화면은 SSH 터널로만 접근합니다: "
-                "<code>ssh -L 9000:127.0.0.1:8000 …</code> 후 <code>http://127.0.0.1:9000</code>")
-    return HTMLResponse(f"<p style='font-family:sans-serif;padding:2rem'>{body} · <a href='/'>홈</a></p>")
+                "<code>ssh -L 9000:127.0.0.1:8000 …</code> 후 <code>http://127.0.0.1:9000</code>"
+                " · <a href='/'>홈</a>")
+    return HTMLResponse(f"<p style='font-family:sans-serif;padding:2rem'>{body}</p>")
+
+
+@app.get("/admin/anomalies", include_in_schema=False)
+def admin_anomalies(request: Request):
+    """무결성 검토 감사기록(최종 검토 단계에서 남긴 이상·재확인 결과) — 관리자 전용."""
+    import html as _html
+    _require_admin(request)
+    rows = db.list_anomalies(200)
+    trs = "".join(
+        "<tr><td>{ts}</td><td>{cn}</td><td>{ac}</td><td>{rs}</td><td>{nt}</td></tr>".format(
+            ts=_html.escape(a.get("ts") or ""), cn=_html.escape(a.get("case_no") or ""),
+            ac=_html.escape(a.get("action") or ""), rs=_html.escape(a.get("reasons") or ""),
+            nt=_html.escape(a.get("note") or "")) for a in rows)
+    doc = (
+        "<html><head><meta charset='utf-8'><title>무결성 검토 기록</title>"
+        "<style>body{font-family:sans-serif;padding:1.5rem;font-size:13px}"
+        "table{border-collapse:collapse;width:100%}th,td{border:1px solid #ddd;padding:6px 8px;text-align:left;vertical-align:top}"
+        "th{background:#f4f6f9}td:nth-child(3){font-weight:600}</style></head><body>"
+        f"<h2>무결성 검토 기록 <span style='color:#888;font-weight:400'>· {len(rows)}건</span></h2>"
+        "<p><a href='/admin'>← 관리자</a> · resolved=재확인 후 복원, quarantined=등록 보류(숨김), error=재조회 오류</p>"
+        "<table><thead><tr><th>시각</th><th>사건번호</th><th>조치</th><th>사유</th><th>메모</th></tr></thead>"
+        f"<tbody>{trs or '<tr><td colspan=5>기록 없음</td></tr>'}</tbody></table></body></html>")
+    return HTMLResponse(doc)
 
 
 # PWA 서비스워커 — 루트 스코프(/)로 서빙해야 앱 전체를 제어(정적경로 서빙 시 스코프가 /static/로 제한됨)
