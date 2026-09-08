@@ -123,16 +123,11 @@
      입찰예정(30일)은 '시간' 필터라 위 상태와 겹치므로 아래 칩으로 분리(합산 대상 아님). #}
   <div class="relative overflow-hidden rounded-2xl p-5 text-white tabular-nums" style="background:linear-gradient(150deg,#16305e 0%,#0f2247 55%,#0b1730 100%)">
     <div class="absolute -right-8 -top-10 w-40 h-40 rounded-full bg-amber-400/10 blur-2xl pointer-events-none"></div>
-    <div class="relative flex items-center justify-between gap-2 mb-4">
-      <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/10 border border-white/15 text-xs font-semibold text-white/90">
-        <span class="material-symbols-outlined text-[15px]">donut_small</span> 상태별 분해</span>
-      <span class="text-[11px] text-white/55">각 칸 합 = 총 <b class="text-white/90">{{ lifecycle.total }}</b>대</span>
-    </div>
     <div class="relative grid grid-cols-2 gap-3">
-      <a href="/vehicles?judgment=입찰 검토 가능&sort=expected&all=1" class="rounded-xl bg-white/[0.07] border border-white/10 p-3.5 block hover:bg-white/[0.12] transition">
-        <div class="flex items-center gap-1.5 text-emerald-300 mb-1.5"><span class="material-symbols-outlined text-lg">check_circle</span><span class="text-xs font-bold">지금 입찰 추천</span></div>
-        <div class="flex items-baseline gap-1"><span class="font-mono text-3xl font-extrabold text-white leading-none" id="kpi-ok">{{ lifecycle.review }}</span><span class="text-base text-white/60 font-semibold">대</span></div>
-        <div class="text-[11px] text-white/55 mt-1.5 leading-snug">지금 가격이 적정 — 바로 검토</div>
+      <a href="/vehicles?judgment=입찰 검토 가능&sort=expected&all=1" class="rounded-xl bg-amber-400 p-3.5 block hover:bg-amber-300 transition shadow-lg shadow-amber-500/20">
+        <div class="flex items-center gap-1.5 text-[#0b142b] mb-1.5"><span class="material-symbols-outlined text-lg">check_circle</span><span class="text-xs font-bold">지금 입찰 추천</span></div>
+        <div class="flex items-baseline gap-1"><span class="font-mono text-3xl font-extrabold text-[#0b142b] leading-none" id="kpi-ok">{{ lifecycle.review }}</span><span class="text-base text-[#0b142b]/70 font-semibold">대</span></div>
+        <div class="text-[11px] text-[#0b142b]/70 mt-1.5 leading-snug font-medium">지금 가격이 적정 — 바로 검토</div>
       </a>
       <a href="/vehicles?judgment=유찰 대기&all=1" class="rounded-xl bg-white/[0.07] border border-white/10 p-3.5 block hover:bg-white/[0.12] transition">
         <div class="flex items-center gap-1.5 text-amber-300 mb-1.5"><span class="material-symbols-outlined text-lg">hourglass_empty</span><span class="text-xs font-bold">유찰 대기 · 재경매</span></div>
