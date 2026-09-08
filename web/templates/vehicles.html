@@ -23,9 +23,9 @@
       <option value="fail_count" {% if sort=='fail_count' %}selected{% endif %}>유찰 많은순</option>
       <option value="inspection" {% if sort=='inspection' %}selected{% endif %}>검사만료 임박순</option>
     </select>
-    <div class="relative">
-      <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-mut text-base pointer-events-none">search</span>
-      <input name="q" value="{{ q }}" class="inp py-1.5 pl-11 w-56" placeholder="차명·제조사·사건번호·법원">
+    <div class="relative flex-1 min-w-[180px] sm:flex-none sm:w-72">
+      <span class="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-mut/60 text-[19px] leading-none pointer-events-none">search</span>
+      <input name="q" value="{{ q }}" style="padding-left:2.3rem" class="inp py-1.5 w-full" placeholder="차명·제조사·사건번호·법원 검색">
     </div>
     {% if upcoming %}<input type="hidden" name="upcoming" value="{{ upcoming }}">{% endif %}
     {% if result %}<input type="hidden" name="result" value="{{ result }}">{% endif %}
