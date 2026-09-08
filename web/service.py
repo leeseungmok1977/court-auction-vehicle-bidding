@@ -343,14 +343,15 @@ def lifecycle_partition() -> dict:
     각 칸은 /vehicles 필터로 그대로 재현되고(카드 수 = 목록 수), 나머지는 '기타'가 흡수해
     항상 합계가 총대수와 일치한다(낙찰 우선 → 판정별, reconcile_won_judgment 후 배타적).
     입찰예정(30일)은 '시간' 필터라 위 상태와 겹치므로 참고값으로만 함께 반환."""
+    # 목록과 동일 규칙(hide_incomplete=True)으로 세어 카드 수 = 목록 수 = 드롭다운 수 보장(혼동 방지).
     total = db.total_vehicles()
-    won = len(db.list_vehicles(result="낙찰"))
-    review = len(db.list_vehicles(judgment="입찰 검토 가능"))
-    wait = len(db.list_vehicles(judgment="유찰 대기"))
-    lowconf = len(db.list_vehicles(judgment="시세 신뢰도 낮음, 수동 검토"))
-    other = max(0, total - won - review - wait - lowconf)      # 보류·미분류·미분석 등 흡수(항상 합=total)
-    return {"total": total, "won": won, "review": review, "wait": wait,
-            "lowconf": lowconf, "other": other, "upcoming30": db.upcoming_count(30)}
+    won = len(db.list_vehicles(result="낙찰", hide_incomplete=True))
+    review = len(db.list_vehicles(judgment="입찰 검토 가능", hide_incomplete=True))
+    wait = len(db.list_vehicles(judgment="유찰 대기", hide_incomplete=True))
+    lowconf = len(db.list_vehicles(judgment="시세 신뢰도 낮음, 수동 검토", hide_incomplete=True))
+    other = max(0, total - won - review - wait - lowconf)      # 보류·미분류·불완전 등 흡수(항상 합=total)
+    return {"total": total, "won": won, "review": review, "wait": wait, "lowconf": lowconf,
+            "other": other, "upcoming30": len(db.list_vehicles(upcoming_days=30, hide_incomplete=True))}
 
 
 def _current_min_sale(history, fallback):

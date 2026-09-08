@@ -125,22 +125,22 @@
   <div class="relative overflow-hidden rounded-2xl p-5 text-white tabular-nums" style="background:linear-gradient(150deg,#16305e 0%,#0f2247 55%,#0b1730 100%)">
     <div class="absolute -right-8 -top-10 w-40 h-40 rounded-full bg-amber-400/10 blur-2xl pointer-events-none"></div>
     <div class="relative grid grid-cols-2 gap-3">
-      <a href="/vehicles?judgment=입찰 검토 가능&sort=expected&all=1" class="rounded-xl bg-amber-400 p-3.5 block hover:bg-amber-300 transition shadow-lg shadow-amber-500/20">
+      <a href="/vehicles?judgment=입찰 검토 가능&sort=expected" class="rounded-xl bg-amber-400 p-3.5 block hover:bg-amber-300 transition shadow-lg shadow-amber-500/20">
         <div class="nc-blink flex items-center gap-1.5 text-emerald-700 mb-1.5"><span class="material-symbols-outlined text-lg" style="font-variation-settings:'FILL' 1">check_circle</span><span class="text-xs font-extrabold">지금 입찰 추천</span></div>
         <div class="flex items-baseline gap-1"><span class="font-mono text-3xl font-extrabold text-[#0b142b] leading-none" id="kpi-ok">{{ lifecycle.review }}</span><span class="text-base text-[#0b142b]/70 font-semibold">대</span></div>
         <div class="text-[11px] text-[#0b142b]/70 mt-1.5 leading-snug font-medium">지금 가격이 적정 — 바로 검토</div>
       </a>
-      <a href="/vehicles?judgment=유찰 대기&all=1" class="rounded-xl bg-white/[0.07] border border-white/10 p-3.5 block hover:bg-white/[0.12] transition">
+      <a href="/vehicles?judgment=유찰 대기" class="rounded-xl bg-white/[0.07] border border-white/10 p-3.5 block hover:bg-white/[0.12] transition">
         <div class="flex items-center gap-1.5 text-amber-300 mb-1.5"><span class="material-symbols-outlined text-lg">hourglass_empty</span><span class="text-xs font-bold">유찰 대기 · 재경매</span></div>
         <div class="flex items-baseline gap-1"><span class="font-mono text-3xl font-extrabold text-white leading-none" id="kpi-wait">{{ lifecycle.wait }}</span><span class="text-base text-white/60 font-semibold">대</span></div>
         <div class="text-[11px] text-white/55 mt-1.5 leading-snug">안 팔려 최저가 더 내려갈 물건</div>
       </a>
-      <a href="/vehicles?judgment=시세 신뢰도 낮음, 수동 검토&all=1" class="rounded-xl bg-white/[0.07] border border-white/10 p-3.5 block hover:bg-white/[0.12] transition">
+      <a href="/vehicles?judgment=시세 신뢰도 낮음, 수동 검토" class="rounded-xl bg-white/[0.07] border border-white/10 p-3.5 block hover:bg-white/[0.12] transition">
         <div class="flex items-center gap-1.5 text-sky-200 mb-1.5"><span class="material-symbols-outlined text-lg">search</span><span class="text-xs font-bold">신뢰도 낮음 · 검토</span></div>
         <div class="flex items-baseline gap-1"><span class="font-mono text-3xl font-extrabold text-white leading-none">{{ lifecycle.lowconf }}</span><span class="text-base text-white/60 font-semibold">대</span></div>
         <div class="text-[11px] text-white/55 mt-1.5 leading-snug">시세 표본 부족 — 수동 확인 필요</div>
       </a>
-      <a href="/vehicles?result=낙찰&sort=sale_date&all=1" class="rounded-xl bg-white/[0.07] border border-white/10 p-3.5 block hover:bg-white/[0.12] transition">
+      <a href="/vehicles?result=낙찰&sort=sale_date" class="rounded-xl bg-white/[0.07] border border-white/10 p-3.5 block hover:bg-white/[0.12] transition">
         <div class="flex items-center gap-1.5 text-indigo-200 mb-1.5"><span class="material-symbols-outlined text-lg">gavel</span><span class="text-xs font-bold">낙찰 · 종결</span></div>
         <div class="flex items-baseline gap-1"><span class="font-mono text-3xl font-extrabold text-white leading-none" id="kpi-won">{{ lifecycle.won }}</span><span class="text-base text-white/60 font-semibold">대</span></div>
         <div class="text-[11px] text-white/55 mt-1.5 leading-snug">이미 끝난 물건{% if backtest.discount_median %} · 낙찰가율 {{ (backtest.discount_median*100)|round|int }}%{% endif %}</div>
@@ -148,7 +148,7 @@
     </div>
     <div class="relative flex items-center justify-between gap-2 mt-3 pt-3 border-t border-white/10 text-[11px]">
       <span class="text-white/50">기타(보류·미분류) <b class="text-white/80">{{ lifecycle.other }}</b>대</span>
-      <a href="/vehicles?upcoming=30&sort=sale_date&all=1" class="inline-flex items-center gap-1 text-sky-200 hover:underline whitespace-nowrap">
+      <a href="/vehicles?upcoming=30&sort=sale_date" class="inline-flex items-center gap-1 text-sky-200 hover:underline whitespace-nowrap">
         <span class="material-symbols-outlined text-[14px]">event_upcoming</span> 곧 열리는 경매 30일 <b id="kpi-upcoming">{{ lifecycle.upcoming30 }}</b>대 · 기일순 →</a>
     </div>
   </div>

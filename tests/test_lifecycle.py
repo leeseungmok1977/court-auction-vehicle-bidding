@@ -22,10 +22,10 @@ def test_partition_sums_to_total(dbmod):
     _v(dbmod, "R1", judgment="입찰 검토 가능", median_price=1000, min_sale_price=800, mileage_km=100)
     _v(dbmod, "W1", judgment="유찰 대기", median_price=1000, min_sale_price=800, mileage_km=100)
     _v(dbmod, "W2", judgment="유찰 대기", median_price=1000, min_sale_price=800, mileage_km=100)
-    _v(dbmod, "L1", judgment="시세 신뢰도 낮음, 수동 검토", mileage_km=100)
+    _v(dbmod, "L1", judgment="시세 신뢰도 낮음, 수동 검토", median_price=500, mileage_km=100)
     _v(dbmod, "N1", judgment="낙찰", auction_result="낙찰", winning_price=1200,
        min_sale_price=800, sale_date="2020-01-01", median_price=1000)
-    _v(dbmod, "O1", judgment="입찰 보류", mileage_km=100)   # 기타
+    _v(dbmod, "O1", judgment="입찰 보류", median_price=500, mileage_km=100)   # 기타
     p = service.lifecycle_partition()
     assert p["review"] + p["wait"] + p["lowconf"] + p["won"] + p["other"] == p["total"]
     assert p["total"] == 6

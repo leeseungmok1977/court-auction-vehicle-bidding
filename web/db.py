@@ -356,12 +356,14 @@ def list_vehicles(judgment: Optional[str] = None, maker: Optional[str] = None,
         where.append("status=?"); params.append(status)
     # 목록 뷰에서만: 평가 불가한 물건 숨김(정보 채워지면 자동 재노출).
     #  - '상세없음'(법원 상세 조회불가), 또는
-    #  - 아직 시세 미산출(median NULL)이면서 주행거리·사진이 없는 물건.
-    #  단, 시세가 산출된 '완료' 물건은 사진/주행이 없어도 유지. 내부 재분석은 이 필터를 안 씀.
+    #  - 아직 시세 미산출(median NULL)이면서 주행거리·사진이 없는 '진행 중' 물건.
+    #  단, **완료(낙찰·종결) 물건은 숨기지 않는다** — 이미 끝난 실측 기록이라 시세 없어도 유지.
+    #  (KPI '낙찰·종결'과 드롭다운 '종결'이 시세 유무로 다른 수를 내던 혼동 방지 — 항상 동일 수)
     if hide_incomplete and status not in ("상세없음", "pending"):
         where.append("NOT (COALESCE(status,'')='상세없음' OR "
-                     "(median_price IS NULL AND "
-                     "(mileage_km IS NULL OR COALESCE(photo_count,0)=0)))")
+                     "(median_price IS NULL "
+                     "AND (mileage_km IS NULL OR COALESCE(photo_count,0)=0) "
+                     "AND COALESCE(auction_result,'')<>'낙찰' AND COALESCE(status,'')<>'종결'))")
         # 이상 낙찰(신뢰 검증): 낙찰가<최저매각가 이거나 낙찰인데 매각기일 미도래 → 목록에서 숨김.
         # (낙찰결과 조회가 엉뚱한 값을 붙인 오염 데이터가 사용자에게 노출돼 신뢰를 무너뜨리는 것 방지)
         where.append("NOT (COALESCE(auction_result,'')='낙찰' AND ("
