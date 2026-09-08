@@ -259,6 +259,7 @@ def dashboard(request: Request):
         "judgments": JUDGMENTS, "settings": db.get_all_settings(),
         "upcoming": db.upcoming_count(30), "pending": db.pending_count(),
         "won": db.won_count(), "backtest": _bt, "review_summary": review_summary,
+        "lifecycle": service.lifecycle_partition(),   # 겹치지 않는 상태 분해(합=총대수)
         "alerts": _pv(service.alert_items(3)),
         "top_makers": [dict(name=m, n=n, **brands.brand_asset(m)) for m, n in db.top_makers(8)],
         "daily_picks": daily_picks,
@@ -329,15 +330,18 @@ VEHICLES_PAGE_SIZE = 12
 @app.get("/vehicles", response_class=HTMLResponse)
 def vehicles(request: Request, judgment: str = "", maker: str = "", q: str = "",
              sort: str = "sale_date", upcoming: str = "", result: str = "", status: str = "",
-             cond: str = "", page: int = 1, date: str = "", court: str = "", promising: str = ""):
+             cond: str = "", page: int = 1, date: str = "", court: str = "", promising: str = "",
+             all: str = ""):
     # upcoming은 str로 받아 빈값/오염값에 견고하게 파싱(폼 hidden 빈값·손편집 URL 대비)
     up = int(upcoming) if upcoming.strip().lstrip("-").isdigit() else 0
     if up < 0:
         up = 0
+    # all=1: 상태 분해 KPI 링크용 — 불완전 물건 숨김을 해제해 카드 수와 목록 수가 정확히 일치.
+    _hide_incomplete = all != "1"
     rows = db.list_vehicles(judgment=judgment or None, maker=maker or None,
                             q=q or None, sort=sort, result=result or None,
                             status=status or None, cond=cond or None,
-                            upcoming_days=up or None, hide_incomplete=True,
+                            upcoming_days=up or None, hide_incomplete=_hide_incomplete,
                             date=date or None, court=court or None,
                             promising=bool(promising))
     _bt = service.backtest_stats()
