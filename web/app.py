@@ -183,6 +183,19 @@ def _mdl(s):
     return s or "—"
 
 
+def _car_name(maker, model):
+    """제조사+차명 결합 표시 — 차명이 이미 제조사로 시작하면 중복 제거.
+    예: maker='BMW', model='BMW 530i xDrive' → 'BMW 530i xDrive'(‘BMW BMW …’ 방지).
+    차명에 제조사가 없으면(예: '쏘나타') 정상적으로 '현대 쏘나타'로 결합."""
+    m = _mdl(model)
+    mk = _re.sub(r"\s+", " ", (maker or "").strip())
+    if m == "—":
+        return mk or "차량"
+    if mk and m.lower().startswith(mk.lower()):
+        return m
+    return (mk + " " + m).strip() if mk else m
+
+
 def _sstat(s):
     """상태 표시 정규화 — 내부 예외 원문을 사용자 친화 라벨로. (원문은 title 툴팁용으로 보존)"""
     s = s or ""
@@ -199,6 +212,7 @@ templates.env.filters["jshort"] = _jshort
 templates.env.filters["acc"] = _acc
 templates.env.filters["mdl"] = _mdl
 templates.env.filters["sstat"] = _sstat
+templates.env.globals["car_name"] = _car_name   # 제조사+차명 중복 제거 결합(‘BMW BMW …’ 방지)
 
 
 def _cur_url(request: Request) -> str:

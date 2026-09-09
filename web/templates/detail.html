@@ -16,7 +16,7 @@
   <div class="min-w-0 flex-1">
     <div class="flex items-center gap-3 flex-wrap">
       {% set _mdl = v.model|mdl %}
-      {% set _name = ((v.maker or '') ~ ' ' ~ (_mdl if _mdl != '—' else ''))|trim %}
+      {% set _name = car_name(v.maker, v.model) %}
       <h1 class="text-2xl font-bold">{% if _name %}{{ _name }}{% else %}<span class="text-mut">차명 미상</span>{% endif %}</h1>
       <span class="text-sm text-mut border border-line rounded px-2 py-0.5">{{ v.year or '—' }}년식</span>
       {% if v.judgment %}<span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-semibold {{ v.judgment|bcls }}">{{ v.judgment }}</span>{% endif %}

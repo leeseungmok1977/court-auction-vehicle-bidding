@@ -151,7 +151,7 @@ details.raw summary{cursor:pointer;font-size:12px;color:var(--cobalt);font-weigh
       </div>
     </div>
     <div class="mh-eyebrow">차량 경매 분석 리포트 · {{ v.court }} · {{ now }}</div>
-    <div class="mh-title">{{ v.year or '' }} {{ v.maker }} {{ v.model|mdl }}</div>
+    <div class="mh-title">{{ v.year or '' }} {{ car_name(v.maker, v.model) }}</div>
     <dl class="mh-meta">
       <div><dt>사건번호</dt><dd class="num">{{ v.case_no }}</dd></div>
       <div><dt>관할 법원</dt><dd>{{ v.court or '—' }}</dd></div>
@@ -256,7 +256,7 @@ details.raw summary{cursor:pointer;font-size:12px;color:var(--cobalt);font-weigh
       {% if photos|length > 1 %}<div class="thumbs" style="margin-bottom:18px">{% for p in photos[1:7] %}<img src="/photo/{{ v.id }}/{{ p }}" loading="lazy" alt="">{% endfor %}</div>{% endif %}
       {% endif %}
       <dl class="kv-grid">
-        <div class="kv"><dt>차량명</dt><dd>{{ v.maker }} {{ v.model|mdl }}</dd></div>
+        <div class="kv"><dt>차량명</dt><dd>{{ car_name(v.maker, v.model) }}</dd></div>
         <div class="kv"><dt>연식</dt><dd class="num">{{ v.year or '—' }}</dd></div>
         <div class="kv"><dt>주행거리</dt><dd class="num">{{ v.mileage_km|won }} km {% if v.mileage_km %}<span class="tag confirmed">확정</span>{% endif %}</dd></div>
         <div class="kv"><dt>배기량 / 연료</dt><dd class="num">{{ v.displacement_cc or '—' }}cc{% if asum and asum.fuel %} · {{ asum.fuel }}{% endif %}</dd></div>
