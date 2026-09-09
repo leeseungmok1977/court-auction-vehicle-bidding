@@ -251,7 +251,7 @@
     <a href="/landing" class="inline-flex items-center gap-1 text-primary hover:underline mb-2"><span class="material-symbols-outlined text-sm">campaign</span> 서비스 소개</a>
     · <a href="/privacy" class="text-primary hover:underline">개인정보처리방침</a><br>
     대법원 법원경매정보 기반 분석 · 소매 시세 참고<br>참고용 분석 도구(투자 권유 아님)
-    {% if is_admin(request) %}<br><span class="text-mut/60">데이터: 대법원 · SK엔카 · config.yaml · 검증용 소량·저속 수집</span>{% endif %}
+    {% if is_admin(request) %}<br><span class="text-mut">데이터: 대법원 · SK엔카 · config.yaml · 검증용 소량·저속 수집</span>{% endif %}
   </div>
 </aside>
 
@@ -263,7 +263,7 @@
       <img src="/static/icons/logo-header.png" alt="" class="w-11 h-11 rounded-lg shrink-0"/>
       <span class="leading-tight">
         <span class="block text-[17px] font-extrabold text-txt tracking-tight whitespace-nowrap">경매로 내차<span class="text-amber-500">GET</span></span>
-        <span class="block text-[11px] text-mut/70 whitespace-nowrap tracking-[0.12em] uppercase">AI Court Auction</span>
+        <span class="block text-[11px] text-mut whitespace-nowrap tracking-[0.12em] uppercase">AI Court Auction</span>
       </span>
     </a>
     <!-- 데스크톱: 페이지 타이틀 (사이드바에 브랜드) -->
@@ -283,7 +283,7 @@
       <span class="material-symbols-outlined">search</span></a>
     <form action="/vehicles" method="get" class="relative hidden lg:block w-72 shrink-0">
       <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-mut text-lg pointer-events-none">search</span>
-      <input name="q" class="w-full bg-surface border border-line text-txt text-sm rounded-md py-2 pl-11 pr-4 focus:outline-none focus:border-primary placeholder:text-mut/60" placeholder="차명·제조사·사건번호·법원 검색…"/>
+      <input name="q" class="w-full bg-surface border border-line text-txt text-sm rounded-md py-2 pl-11 pr-4 focus:outline-none focus:border-primary placeholder:text-mut" placeholder="차명·제조사·사건번호·법원 검색…"/>
     </form>
   </header>
   <div id="appscroll" class="flex-1 overflow-y-auto custom-scrollbar p-4 pb-6 lg:p-8 space-y-6">

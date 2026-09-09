@@ -28,7 +28,7 @@
     {% if d.exp_pct is not none %}<span class="absolute text-[9px] font-semibold text-primary whitespace-nowrap" style="top:0;left:{{ d.exp_pct }}%">▎예상 {{ (d.exp/10000)|round|int }}만</span>{% endif %}
     {% if d.floor_pct is not none %}<span class="absolute text-[9px] text-slate-500 whitespace-nowrap" style="top:14px;left:{{ d.floor_pct }}%">최저 {{ (d.floor/10000)|round|int }}만</span>{% endif %}
     {% if d.median_pct is not none %}<span class="absolute text-[9px] text-mut whitespace-nowrap" style="top:14px;left:{{ d.median_pct }}%;transform:translateX(-100%);padding-right:3px">{{ (d.median/10000)|round|int }}만 시세</span>{% endif %}
-    <span class="absolute text-[9px] text-mut/60" style="top:28px;right:0">최다 {{ d.maxc }}건</span>
+    <span class="absolute text-[9px] text-mut" style="top:28px;right:0">최다 {{ d.maxc }}건</span>
     {# 차트 영역 #}
     <div class="absolute left-0 right-0" style="top:30px;bottom:16px">
       <div class="absolute inset-x-0 top-0 border-t border-dashed border-slate-200"></div>
@@ -41,11 +41,11 @@
       {% if d.exp_pct is not none %}<div class="absolute top-0 bottom-0 border-l-2 border-primary" style="left:{{ d.exp_pct }}%"></div>{% endif %}
     </div>
     {# x축 — 5개 가격 눈금 #}
-    <div class="absolute bottom-0 left-0 right-0 flex justify-between text-[9px] text-mut/60 font-mono">
+    <div class="absolute bottom-0 left-0 right-0 flex justify-between text-[9px] text-mut font-mono">
       {% for f in [0, 0.25, 0.5, 0.75, 1.0] %}<span>{{ ((d.lo + (d.hi-d.lo)*f)/10000)|round|int }}만</span>{% endfor %}
     </div>
   </div>
-  <div class="flex items-center justify-center gap-3 text-[10px] text-mut/70 mt-1">
+  <div class="flex items-center justify-center gap-3 text-[10px] text-mut mt-1">
     <span>동급 {{ d.n }}건 실매물</span>
     <span class="inline-flex items-center gap-1"><span class="inline-block w-2.5 border-t-2 border-primary"></span>예상</span>
     <span class="inline-flex items-center gap-1"><span class="inline-block w-2.5 border-t border-dashed border-slate-400"></span>시세</span>
