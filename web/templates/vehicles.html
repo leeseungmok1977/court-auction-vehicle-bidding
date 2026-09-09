@@ -6,15 +6,15 @@
 <!-- 필터 바 -->
 <div class="bg-surface border border-line rounded-lg p-3">
   <form method="get" action="/vehicles" class="flex flex-wrap gap-2 items-center">
-    <select name="judgment" class="inp py-1.5">
+    <select name="judgment" aria-label="입찰 판정 필터" class="inp py-1.5">
       <option value="">전체 판정</option>
       {% for j in judgments %}<option value="{{ j }}" {% if j==judgment %}selected{% endif %}>{{ j|jshort }}</option>{% endfor %}
     </select>
-    <select name="maker" class="inp py-1.5">
+    <select name="maker" aria-label="제조사 필터" class="inp py-1.5">
       <option value="">전체 제조사</option>
       {% for m in makers %}<option value="{{ m }}" {% if m==maker %}selected{% endif %}>{{ m }}</option>{% endfor %}
     </select>
-    <select name="sort" class="inp py-1.5">
+    <select name="sort" aria-label="정렬 기준" class="inp py-1.5">
       <option value="sale_date" {% if sort=='sale_date' %}selected{% endif %}>매각기일순</option>
       <option value="expected" {% if sort=='expected' %}selected{% endif %}>예상낙찰가 높은순</option>
       <option value="upper_bid" {% if sort=='upper_bid' %}selected{% endif %}>상한가 높은순</option>
