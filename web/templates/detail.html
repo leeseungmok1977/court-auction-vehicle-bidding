@@ -36,7 +36,7 @@
       <span data-fav-icon class="material-symbols-outlined text-lg" style="font-variation-settings:'FILL' 0">star</span>
       <span data-fav-label>즐겨찾기</span></button>
     {% if v.appraisal_ecdoc_id %}
-    <a href="/vehicle/{{ v.id }}/appraisal" target="auctionAppraisal" class="btn-ghost text-sm flex items-center gap-1.5" title="법원 감정평가서 원본(KAPA) — 새 탭에서 열림">
+    <a href="/vehicle/{{ v.id }}/appraisal" target="auctionAppraisal" class="btn-ghost text-sm flex items-center gap-1.5" title="감정 요항(핵심)은 아래에 정리 · 원본 전체는 법원경매정보 열람 안내">
       <span class="material-symbols-outlined text-lg">gavel</span> 감정평가서</a>
     {% endif %}
     {% if v.median_price is not none %}

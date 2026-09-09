@@ -595,34 +595,49 @@ def vehicle_report(request: Request, vid: str):
 
 @app.get("/vehicle/{vid}/appraisal", response_class=HTMLResponse)
 def vehicle_appraisal(vid: str):
-    """감정평가서 원본(KAPA 공식 문서)을 인앱 뷰어로 연결(저장·재배포하지 않음)."""
+    """감정평가서 원본 안내(딥링크). 원본 PDF는 KAPA(ca.kapanet.or.kr)가 법원 세션 토큰 경로로만
+    서빙하며, 우리 서버(EC2)는 KAPA에 네트워크 차단되어 프록시·저장이 불가하다. 따라서 감정 요항(핵심
+    내용)은 상세 화면에 그대로 제공하고, 원본 전체는 법원경매정보로 정직하게 안내한다(외부 요청 없음)."""
+    import html as _html
     v = db.get_vehicle(vid)
     if not v:
         return RedirectResponse("/vehicles", status_code=303)
-    cs_no = service._sa_no_from_docid(v.get("doc_id") or "")
-    dxdy = (v.get("sale_date") or "").replace("-", "")
-    if not cs_no or not v.get("court_code"):
-        return HTMLResponse("<p style='font-family:sans-serif;padding:2rem'>감정평가서 식별정보가 없습니다. 물건을 다시 분석해 주세요.</p>")
-    from src.collect import courtdoc
-    from src.collect.courtauction_list import new_session, warmup
-    try:
-        s = new_session(); warmup(s)
-        url = courtdoc.resolve_appraisal_url(s, v["court_code"], cs_no, dxdy)
-    except Exception as e:  # noqa: BLE001
-        return HTMLResponse(f"<p style='font-family:sans-serif;padding:2rem'>감정평가서 조회 실패/차단: {e}</p>")
-    if not url:
-        return HTMLResponse("<p style='font-family:sans-serif;padding:2rem'>이 물건은 감정평가서 전자문서가 없습니다.</p>")
-    html = (
-        "<!doctype html><html lang=ko><head><meta charset=utf-8>"
-        f"<title>감정평가서 · {v.get('model','')}</title>"
-        "<style>body{margin:0;font-family:Pretendard,'Malgun Gothic',sans-serif}"
-        ".bar{display:flex;gap:1rem;align-items:center;padding:.6rem 1rem;background:#0d253d;color:#fff;font-size:14px}"
-        ".bar a{color:#b9b9f9;text-decoration:none}</style></head><body>"
-        f"<div class=bar><b>감정평가서 원본</b><span>{v.get('court','')} · {v.get('case_no','')}</span>"
-        f"<a href='{url}' target=_blank rel=noopener>↗ 새 탭에서 열기</a>"
-        "<span style='margin-left:auto;opacity:.7'>출처: 한국감정평가사협회(KAPA) 공식 문서 — 원본 연결</span></div>"
-        f"<iframe src='{url}' style='width:100%;height:calc(100vh - 44px);border:0'></iframe></body></html>")
-    return HTMLResponse(html)
+    court = _html.escape(v.get("court") or "—")
+    case = _html.escape(v.get("case_no") or "—")
+    # 법원경매정보 '자동차·중기검색' 페이지(실측 URL) — 딥링크가 물건 단위로는 안 되어 검색 진입점으로 안내
+    court_url = "https://www.courtauction.go.kr/pgj/index.on?w2xPath=/pgj/ui/pgj100/PGJ151F00.xml"
+    page = """<!doctype html><html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>감정평가서 원본 안내</title>
+<style>
+  :root{color-scheme:light}
+  body{margin:0;font-family:'Pretendard','Malgun Gothic',system-ui,sans-serif;background:#f6f9fc;color:#0d253d;
+       min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box}
+  .card{max-width:460px;width:100%;background:#fff;border:1px solid #e3e8ee;border-radius:20px;
+       padding:28px 24px;box-shadow:0 10px 30px rgba(13,37,61,.08)}
+  .ic{width:52px;height:52px;border-radius:14px;background:#eef0ff;display:flex;align-items:center;
+       justify-content:center;font-size:26px;margin-bottom:14px}
+  h1{font-size:19px;margin:0 0 10px;font-weight:800;letter-spacing:-.01em}
+  p{font-size:14px;line-height:1.65;color:#4b5a73;margin:0 0 12px}
+  .meta{background:#f6f9fc;border:1px solid #e3e8ee;border-radius:12px;padding:12px 14px;margin:16px 0;font-size:13px;line-height:1.7}
+  .meta b{color:#0d253d}
+  .note{font-size:12.5px;color:#166534;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:11px 12px;margin:16px 0;line-height:1.6}
+  .btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;box-sizing:border-box;
+       padding:13px;border-radius:12px;background:#533afd;color:#fff;font-weight:700;font-size:15px;text-decoration:none;border:0;cursor:pointer}
+  .btn.sec{background:#fff;color:#4b5a73;border:1px solid #cdd7e3;margin-top:10px}
+  .warn{font-size:12px;color:#5e6c85;margin-top:16px;text-align:center;line-height:1.6}
+</style></head><body>
+<div class="card">
+  <div class="ic">&#128196;</div>
+  <h1>감정평가서 원본</h1>
+  <p>원본 감정평가서(PDF)는 <b>대한민국 법원경매정보</b>의 한국감정평가사협회(KAPA) 전자문서로 제공되며, <b>법원 열람 세션을 통해서만</b> 접근됩니다. 보안 정책상 외부 앱에서 직접 표시할 수 없습니다.</p>
+  <div class="meta">법원 &nbsp;<b>__COURT__</b><br>사건번호 &nbsp;<b>__CASE__</b></div>
+  <div class="note">&#9989; 이 앱은 감정평가서의 <b>핵심 내용(감정 요항 &mdash; 차량 상태&middot;사고&middot;주행거리&middot;감정 근거)</b>을 물건 상세 화면에 이미 정리해 제공합니다. 아래는 <b>원본 전체 문서</b>가 필요할 때만 이용하세요.</div>
+  <a class="btn" href="__COURT_URL__" target="_blank" rel="noopener">법원경매정보에서 열람 &#8599;</a>
+  <button class="btn sec" onclick="window.close()">닫기</button>
+  <div class="warn">법원경매정보 &rarr; <b>자동차&middot;중기검색</b>에서 위 <b>법원&middot;사건번호</b>로 조회하시면 원본 감정평가서&middot;현황조사서를 열람할 수 있습니다.</div>
+</div></body></html>""".replace("__COURT__", court).replace("__CASE__", case).replace("__COURT_URL__", court_url)
+    return HTMLResponse(page)
 
 
 @app.get("/photo/{vid}/{filename}")
