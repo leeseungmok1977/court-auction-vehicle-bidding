@@ -34,7 +34,7 @@
       <div class="relative h-44">
         {% if v.photo_url %}<img src="{{ v.photo_url }}" loading="lazy" alt="{{ v.model|mdl }}" class="w-full h-full object-cover group-hover:brightness-95 transition">
         {% else %}<div class="w-full h-full grid place-items-center bg-slate-100 text-mut"><span class="material-symbols-outlined text-5xl">directions_car</span></div>{% endif %}
-        {% if v.dday is not none and v.dday >= 0 %}<span class="absolute top-2.5 left-2.5 text-[11px] font-bold px-2 py-0.5 rounded-full text-white {{ 'bg-rose-500' if v.dday <= 1 else 'bg-black/60' }}">{{ 'D-DAY' if v.dday == 0 else 'D-' ~ v.dday }}</span>{% endif %}
+        {% if v.dday is not none and v.dday >= 0 %}<span class="absolute top-2.5 left-2.5 text-[11px] font-bold px-2 py-0.5 rounded-full text-white {{ 'bg-rose-600' if v.dday <= 1 else 'bg-black/60' }}">{{ 'D-DAY' if v.dday == 0 else 'D-' ~ v.dday }}</span>{% endif %}
         {% if v.disc_pct and v.disc_pct > 0 %}<span class="absolute top-2.5 right-2.5 text-[11px] font-extrabold px-2 py-0.5 rounded-full bg-amber-400 text-[#0b142b]">시세보다 −{{ v.disc_pct }}%</span>{% endif %}
         <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-3 pt-10 text-white" style="word-break:keep-all">
           <div class="font-bold text-base leading-tight truncate">{{ v.model|mdl }}{% if v.year %} <span class="font-normal text-white/70 text-sm">{{ v.year }}년</span>{% endif %}</div>
@@ -126,7 +126,7 @@
     <div class="absolute -right-8 -top-10 w-40 h-40 rounded-full bg-amber-400/10 blur-2xl pointer-events-none"></div>
     <div class="relative grid grid-cols-2 gap-3">
       <a href="/vehicles?judgment=입찰 검토 가능&sort=expected" class="rounded-xl bg-amber-400 p-3.5 block hover:bg-amber-300 transition shadow-lg shadow-amber-500/20">
-        <div class="nc-blink flex items-center gap-1.5 text-emerald-700 mb-1.5"><span class="material-symbols-outlined text-lg" style="font-variation-settings:'FILL' 1">check_circle</span><span class="text-xs font-extrabold">지금 입찰 추천</span></div>
+        <div class="nc-blink inline-flex items-center gap-1.5 text-emerald-900 mb-1.5"><span class="material-symbols-outlined text-lg" style="font-variation-settings:'FILL' 1">check_circle</span><span class="text-xs font-extrabold">지금 입찰 추천</span></div>
         <div class="flex items-baseline gap-1"><span class="font-mono text-3xl font-extrabold text-[#0b142b] leading-none" id="kpi-ok">{{ lifecycle.review }}</span><span class="text-base text-[#0b142b]/70 font-semibold">대</span></div>
         <div class="text-[11px] text-[#0b142b]/70 mt-1.5 leading-snug font-medium">지금 가격이 적정 — 바로 검토</div>
       </a>

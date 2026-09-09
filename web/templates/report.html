@@ -4,6 +4,7 @@
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>{{ v.model|mdl }} 분석 리포트 · {{ v.case_no }}</title>
+<meta name="description" content="{{ v.model|mdl }} 법원경매 분석 리포트 — 예상 낙찰가·추천 입찰가·시세 대비·유사 낙찰 실적을 담은 경매로 내차GET 리포트."/>
 <link rel="stylesheet" href="/static/app.css?v={{ css_v }}"/>
 {% set med = v.median_price or 0 %}
 {% set floor = v.min_sale_price or 0 %}
@@ -12,9 +13,9 @@
 {% set conf = v.market_confidence or 0 %}
 <style>
 :root{
-  --paper:#F6F7F9;--card:#fff;--ink:#16233A;--ink-soft:#4B5A73;--ink-faint:#8A97AB;
+  --paper:#F6F7F9;--card:#fff;--ink:#16233A;--ink-soft:#4B5A73;--ink-faint:#5F6B7E;
   --line:#E3E7EE;--line-strong:#C9D1DD;--cobalt:#2153D4;--cobalt-deep:#12306E;--cobalt-tint:#EDF2FE;
-  --amber:#D97B06;--amber-tint:#FDF3E3;--green:#0E9F5B;--green-tint:#E7F7EF;--red:#D5403F;--red-tint:#FCEDED;
+  --amber:#B45309;--amber-tint:#FDF3E3;--green:#0A7A45;--green-tint:#E7F7EF;--red:#BE2A2F;--red-tint:#FCEDED;
   --mono:'JetBrains Mono',monospace;--sans:'Pretendard','Malgun Gothic',sans-serif;
 }
 body{background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased;font-feature-settings:"ss01"}
@@ -131,7 +132,7 @@ details.raw summary{cursor:pointer;font-size:12px;color:var(--cobalt);font-weigh
 </style>
 </head>
 <body>
-<div class="page">
+<div class="page" role="main">
   <div class="no-print">
     <a href="/vehicle/{{ v.id }}" class="btn"
        onclick="if(window.opener&&!window.opener.closed){window.opener.focus();window.close();}return true;"><span class="material-symbols-outlined" style="font-size:18px">arrow_back</span> 상세로</a>

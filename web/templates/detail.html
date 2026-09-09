@@ -358,7 +358,7 @@
         <span class="text-xs text-mut font-normal ml-1">— 클릭하면 크게 보기, ← → 로 넘기기</span></h3>
       <div class="grid grid-cols-3 sm:grid-cols-4 gap-2">
         {% for p in photos %}
-        <img src="/photo/{{ v.folder_key or v.id }}/{{ p }}" loading="lazy" onclick="openLB({{ loop.index0 }})"
+        <img src="/photo/{{ v.folder_key or v.id }}/{{ p }}" loading="lazy" alt="{{ v.model|mdl }} 현황 사진 {{ loop.index }}" onclick="openLB({{ loop.index0 }})"
              class="hoverable w-full h-24 object-cover rounded-md border border-line hover:border-primary cursor-pointer">
         {% endfor %}
       </div>
@@ -681,9 +681,9 @@
       <h3 class="text-lg font-semibold mb-3">입찰 메모 <span class="text-xs text-mut font-normal align-middle">— 이 기기에만 저장</span></h3>
       <form data-note-form data-vid="{{ v.id }}" class="space-y-3" onsubmit="return false">
         <div><label class="lbl">최종 입찰가(원)</label>
-          <input class="inp w-48" type="number" step="10000" inputmode="numeric" data-note-input-bid></div>
+          <input class="inp w-48" type="number" step="10000" inputmode="numeric" aria-label="최종 입찰가(원)" data-note-input-bid></div>
         <div><label class="lbl">메모</label>
-          <input class="inp w-full" placeholder="현장 점검 결과, 특이사항 등" data-note-input-memo></div>
+          <input class="inp w-full" placeholder="현장 점검 결과, 특이사항 등" aria-label="메모" data-note-input-memo></div>
         <button type="button" data-note-save class="btn-primary text-sm">저장</button>
         <span data-note-saved class="text-xs text-emerald-600 ml-2" hidden>저장됨 ✓</span>
       </form>
