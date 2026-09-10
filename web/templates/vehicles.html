@@ -140,7 +140,7 @@
               title="{% if closed %}매각 종료 — 입찰 불가{% elif lowconf %}시세 신뢰도 낮음 — 참고용{% elif exp_far %}현 최저매각가가 예상낙찰가보다 높음 — 추가 유찰 후 도달{% endif %}">{{ v.expected_win|won if v.expected_win else '—' }}{% if v.expected_win and not closed and lowconf %}<span class="text-rose-600/70 text-xs align-top">*</span>{% elif v.expected_win and not closed and exp_far %}<span class="text-mut text-xs align-top">↑</span>{% endif %}{% if not closed %}{{ ui.minigauge(v.min_sale_price, v.expected_win, v.median_price) }}{% endif %}</td>
           {# 시세중앙값 · 신뢰도 #}
           <td class="py-2.5 px-3 text-right whitespace-nowrap">
-            <div class="font-mono {{ 'text-rose-600' if over_mkt else 'text-txt' }}">{{ v.median_price|won }}</div>
+            <div class="font-mono {{ 'text-rose-600' if over_mkt else 'text-txt' }}">{{ v.median_price|won }}{% if v.market_platform == '동급참조' %}<span class="ml-1 text-[10px] font-sans font-bold text-amber-700 align-middle" title="외부 시세 조회가 막힌 기간 — 같은 차종·연식의 기존 실측 시세를 참조(신뢰도 한 단계 하향)">참조</span>{% endif %}</div>
             {% if v.market_confidence_label and v.median_price is not none %}
             {% set cl = v.market_confidence_label %}
             {% set dot = 'bg-emerald-500' if cl=='높음' else 'bg-amber-500' if cl=='보통' else 'bg-rose-500' %}
@@ -212,7 +212,7 @@
         {% if v.market_confidence and v.median_price is not none and not closed %}
         <div class="mt-2.5">
           <div class="flex justify-between text-[10px] mb-1">
-            <span class="text-mut">예측 신뢰도 · 시세 <span class="font-mono text-mut">{{ v.median_price|won }}</span></span>
+            <span class="text-mut">예측 신뢰도 · 시세 <span class="font-mono text-mut">{{ v.median_price|won }}</span>{% if v.market_platform == '동급참조' %} <span class="font-bold text-amber-700" title="같은 차종·연식의 기존 실측 시세를 참조(외부 조회 불가 기간)">참조</span>{% endif %}</span>
             <span class="font-semibold {{ confcol }}">{{ v.market_confidence }}% ({{ v.market_confidence_label }})</span>
           </div>
           <div class="h-1.5 rounded-full bg-slate-100 overflow-hidden"><div class="h-full rounded-full {{ confbar }}" style="width:{{ v.market_confidence }}%"></div></div>

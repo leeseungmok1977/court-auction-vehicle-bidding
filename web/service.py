@@ -167,7 +167,8 @@ def _analyze_item(cs, es, raw: dict, item, config: dict, repair_cost: int,
                               trim=encar.trim_hint(item.model),
                               appraisal_value=detail.appraisal_value or item.appraisal_value,
                               config=config)
-            base.update({"market_platform": "encar", "encar_total": res["count"]})
+            base.update({"market_platform": "encar", "encar_total": res["count"],
+                         "market_ref_date": None, "market_ref_id": None})   # 실측 성공 → 동급참조 표기 해제
             base.update(_guarded_market_fields(stats))
             if stats.median_price is not None:  # 표본 있으면 산정
                 bi = BidInput(photo_count=detail.photo_count, median_price=stats.median_price, min_sale_price=item.min_sale_price or 0,
@@ -262,7 +263,13 @@ def start_collection(max_items: int = 5, scan_limit: int = 40,
 
 
 def _is_block(err) -> bool:
-    """403/429 차단 오류인지 (C.4-5 즉시 중단 판정용)."""
+    """403/407/429 차단 오류인지 (C.4-5 즉시 중단 판정용).
+
+    407은 2026-09 엔카가 서버 IP를 차단하며 반환한 코드. 문자열 '차단'만 보던 기존 판정이
+    이를 놓쳐 3일간 '시세 없음'으로 조용히 삼켰다 — 응답 코드로도 판정한다."""
+    code = getattr(getattr(err, "response", None), "status_code", None)
+    if code in (403, 407, 429):
+        return True
     return "차단" in str(err)
 
 
@@ -537,6 +544,91 @@ def _reconcile_min_from_dxdy(within_days: int = 30) -> None:
             db.update_fields(v["id"], **f)
 
 
+REUSE_PLATFORM = "동급참조"   # market_platform 값: 실측(encar)이 아니라 DB의 동급 시세를 참조한 임시 시세
+
+
+def _reuse_key(v: dict):
+    mp = encar.auto_map(v.get("maker"), v.get("model"))
+    return (mp["manufacturer"], mp["model_group"]) if mp else None
+
+
+def reuse_market_prices(within_days: int = 30, max_items: int = 300, year_tol: int = 1) -> dict:
+    """엔카 시세를 못 구한 입찰예정 물건에 DB의 **동급 시세를 참조 적용**(외부요청 0).
+
+    2026-09 엔카 IP 차단으로 시세 수집이 멈추자 신규 물건이 전부 판정 불가로 적체됐다.
+    같은 제조사·모델그룹(auto_map 기준)·연식±1의 **실측** 시세 보유 물건이 있으면 그 중앙값들의
+    중앙값을 참조 시세로 쓴다(연식 일치 → 주행거리 근접 → 신뢰도 → 최신 순으로 상위 5건).
+
+    정직성 원칙:
+    - market_platform='동급참조', market_ref_date(공여자 최신 분석일), market_ref_id(대표 공여자)로 출처 표기.
+    - 신뢰도는 공여자 최고치에서 **한 단계 낮춤**(원본 표본이 아님): '높음'→'보통'만 판정 가능해지고,
+      '보통'→'낮음'은 수동검토로 남는다(과입찰 방지). 참조 시세끼리 연쇄하지 않는다.
+    - 실제 엔카 분석이 성공하면 market_platform='encar'로 덮어써 참조 표기가 사라진다.
+    """
+    import sqlite3
+    import statistics
+    from datetime import date as _date, timedelta as _td
+    config = load_config()
+    today = _date.today()
+    conn = db.connect()
+    conn.row_factory = sqlite3.Row
+    donors_raw = conn.execute(
+        "SELECT id,maker,model,year,mileage_km,median_price,sample_count,market_confidence,"
+        "market_confidence_label,market_cv,match_label,analyzed_at FROM vehicles "
+        "WHERE median_price>0 AND COALESCE(market_platform,'')<>? AND year IS NOT NULL",
+        (REUSE_PLATFORM,)).fetchall()
+    targets = conn.execute(
+        "SELECT id,maker,model,year,mileage_km,repair_cost FROM vehicles "
+        "WHERE (median_price IS NULL OR median_price=0) AND year IS NOT NULL "
+        "AND sale_date >= ? AND sale_date <= ? "
+        "AND COALESCE(auction_result,'') NOT IN ('낙찰','종결') AND COALESCE(status,'')<>'상세없음'",
+        (today.isoformat(), (today + _td(days=within_days)).isoformat())).fetchall()
+    conn.close()
+
+    pool: dict = {}
+    for d in donors_raw:
+        d = dict(d)
+        k = _reuse_key(d)
+        if k:
+            pool.setdefault(k, []).append(d)
+
+    order = {"높음": 2, "보통": 1, "낮음": 0}
+    down = {"높음": "보통", "보통": "낮음", "낮음": "낮음"}
+    out = {"scanned": len(targets), "applied": 0, "no_donor": 0}
+    for t in targets[:max_items]:
+        t = dict(t)
+        k = _reuse_key(t)
+        cands = [d for d in pool.get(k, []) if abs(int(d["year"]) - int(t["year"])) <= year_tol] if k else []
+        if not cands:
+            out["no_donor"] += 1
+            continue
+        mk = t.get("mileage_km")
+
+        def _rank(d):
+            dm = d.get("mileage_km")
+            mdiff = abs(dm - mk) if (dm is not None and mk is not None) else 10 ** 9
+            return (abs(int(d["year"]) - int(t["year"])), mdiff,
+                    -order.get(d.get("market_confidence_label") or "낮음", 0), d.get("analyzed_at") or "")
+
+        cands.sort(key=_rank)
+        top = cands[:5]
+        med = int(statistics.median(d["median_price"] for d in top))
+        best = max((d.get("market_confidence_label") or "낮음" for d in top), key=lambda l: order.get(l, 0))
+        conf = max(0, min(100, max(d.get("market_confidence") or 0 for d in top) - 15))
+        ref = top[0]
+        ref_date = max((d.get("analyzed_at") or "") for d in top)[:10]
+        db.update_fields(t["id"], median_price=med,
+                         sample_count=max(d.get("sample_count") or 0 for d in top),
+                         market_confidence=conf, market_confidence_label=down[best],
+                         market_cv=ref.get("market_cv"), match_label=ref.get("match_label"),
+                         market_platform=REUSE_PLATFORM, market_ref_date=ref_date, market_ref_id=ref["id"])
+        recompute(t["id"], t.get("repair_cost") or 500000, config)   # 판정·상한가는 기존 산정 경로 그대로
+        out["applied"] += 1
+    if out["applied"]:
+        invalidate_backtest_cache()
+    return out
+
+
 def encar_health(timeout: int = 20) -> dict:
     """엔카 수집 가능 여부를 외부요청 1회로 점검 — 차단(407/403/429) 조기 감지.
 
@@ -598,9 +690,14 @@ def daily_update(within_days: int = 30, analyze: bool = True,
             db.update_run(run_id, message=f"⚠ 엔카 차단 감지(HTTP {health['code']}) — 시세 분석 건너뜀")
     if analyze:
         # 분석 대상: 입찰예정 창의 미분석/미매핑 국산차
-        targets = [v for v in db.list_vehicles(upcoming_days=within_days)
+        _pool = db.list_vehicles(upcoming_days=within_days)
+        targets = [v for v in _pool
                    if v.get("status") in ("미분석", "미매핑")
                    and _sa_no_from_docid(v.get("doc_id") or "") and can_analyze(v)]
+        # 동급참조(임시 시세) 물건은 **후순위**로 재분석해 실측 시세로 승격(엔카가 살아있을 때만 도달)
+        targets += [v for v in _pool
+                    if v.get("market_platform") == REUSE_PLATFORM
+                    and _sa_no_from_docid(v.get("doc_id") or "") and can_analyze(v)]
         # 런당 분석 상한: 0(전체)이어도 하드 상한(C.4-1)으로 무제한 외부요청 방지
         DAILY_ANALYZE_CAP = 80
         cap = analyze_limit if (analyze_limit and analyze_limit > 0) else DAILY_ANALYZE_CAP
@@ -621,19 +718,32 @@ def daily_update(within_days: int = 30, analyze: bool = True,
             try:
                 rec = _analyze_item(cs, es, raw, item, config,
                                     v.get("repair_cost") or repair_cost)
+                if v.get("market_platform") == REUSE_PLATFORM and rec.get("median_price") is None:
+                    continue           # 실측 실패 시 동급참조 시세를 유지(퇴행 방지)
                 db.upsert_vehicle(rec)
                 consecutive_fail = 0
                 if rec.get("status") == "완료":
                     analyzed += 1
             except Exception as e:  # noqa: BLE001
-                if _is_block(e):
-                    raise
+                if _is_block(e):       # 엔카 차단 → 이 단계만 중단(C.4-5), 낙찰결과 등 이후 단계는 계속
+                    _code = getattr(getattr(e, "response", None), "status_code", None)
+                    db.set_setting("encar_health_state", "blocked")
+                    db.set_setting("encar_health_code", str(_code or ""))
+                    db.set_setting("encar_health_at", _now())
+                    health = {"state": "blocked", "code": _code}
+                    if run_id:
+                        db.update_run(run_id, message=f"⚠ 분석 중 엔카 차단 감지(HTTP {_code}) — 시세 분석 중단")
+                    break
                 consecutive_fail += 1
                 if consecutive_fail >= 3:      # 비정상 3연속 → 중단 (C.4-5)
                     raise RuntimeError("비정상 응답 3회 연속 — 중단")
 
             if run_id:
                 db.update_run(run_id, processed=analyzed)
+    # ②-1 시세 공백 보완: 엔카를 못 쓴 물건에 DB의 동급 시세를 참조 적용(외부요청 0, 정직 표기)
+    reuse = reuse_market_prices(within_days=within_days)
+    if run_id and reuse.get("applied"):
+        db.update_run(run_id, message=f"동급 시세 참조 적용 {reuse['applied']}건")
     # ③ 낙찰결과 반영 (매각기일 지난 물건)
     results = update_results(run_id=run_id, finalize=False)
     reconcile_won_judgment()   # 낙찰 물건 판정을 '종결'로 정합화(상태 분해 합계 정확)
@@ -658,10 +768,11 @@ def daily_update(within_days: int = 30, analyze: bool = True,
         _rv = (f" · 검토 재확인 {review['reviewed']}(복원 {review['resolved']}·보류 {review['quarantined']})"
                if review.get("found") else "")
         _hv = "" if health["state"] == "ok" else f" · ⚠엔카 {health['state']}(HTTP {health['code']})"
+        _ru = f" · 동급참조 {reuse['applied']}" if reuse.get("applied") else ""
         db.update_run(run_id, status="done", finished_at=_now(),
-                      message=f"입찰예정 {stored} · 분석 {analyzed} · 낙찰결과 {results}건{_rv}{_hv}")
+                      message=f"입찰예정 {stored} · 분석 {analyzed}{_ru} · 낙찰결과 {results}건{_rv}{_hv}")
     return {"stored": stored, "analyzed": analyzed, "results": results,
-            "review": review, "encar_health": health}
+            "review": review, "encar_health": health, "reuse": reuse}
 
 
 def review_daily_anomalies(cs, es, config, run_id: Optional[int] = None,

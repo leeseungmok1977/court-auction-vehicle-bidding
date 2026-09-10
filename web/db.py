@@ -228,7 +228,8 @@ def init_db() -> None:
             conn.execute("ALTER TABLE vehicles ADD COLUMN kcar_checked_at TEXT")
         if "spec_remark" not in cols:
             conn.execute("ALTER TABLE vehicles ADD COLUMN spec_remark TEXT")
-        for col in ("inspection_to", "condition_level", "condition_flags", "photo_order"):
+        for col in ("inspection_to", "condition_level", "condition_flags", "photo_order",
+                    "market_ref_date", "market_ref_id"):   # 동급참조 시세의 출처(정직 표기·추적)
             if col not in cols:
                 conn.execute(f"ALTER TABLE vehicles ADD COLUMN {col} TEXT")
     conn.close()
@@ -278,7 +279,7 @@ _LISTING_KEEP = {
     "repair_cost", "mileage_km", "displacement_cc", "fuel_code", "accident_grade",
     "accident_hits", "insurance_history", "appraisal_ecdoc_id", "spec_remark", "photo_count",
     "inspection_to", "condition_level", "condition_flags", "photo_order",
-    "analyzed_at", "match_label",
+    "analyzed_at", "match_label", "market_ref_date", "market_ref_id",
     "auction_result", "winning_price", "dxdy_history", "result_checked_at", "result_source",
 }
 
@@ -699,6 +700,7 @@ def clear_detailless_market() -> int:
         cur = conn.execute(
             "UPDATE vehicles SET median_price=NULL, mean_price=NULL, min_price=NULL, "
             "sample_count=NULL, encar_total=NULL, market_platform=NULL, match_label=NULL, "
+            "market_ref_date=NULL, market_ref_id=NULL, "
             "market_confidence=NULL, market_confidence_label=NULL, market_cv=NULL, "
             "upper_bid=NULL, lower_bound=NULL, judgment=NULL, breakdown=NULL, "
             "status=CASE WHEN sale_date IS NOT NULL AND sale_date < date('now','localtime') "

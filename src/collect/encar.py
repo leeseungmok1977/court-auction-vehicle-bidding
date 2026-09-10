@@ -243,6 +243,7 @@ def auto_map(court_maker: Optional[str], car_nm: Optional[str],
 
 
 def new_session() -> requests.Session:
+    import os
     s = requests.Session()
     s.headers.update({
         "User-Agent": UA,
@@ -251,6 +252,12 @@ def new_session() -> requests.Session:
         "Referer": "https://www.encar.com/",
         "Origin": "https://www.encar.com",
     })
+    # 아웃바운드 경로 분리(F안): 2026-09 엔카가 서버(AWS) IP를 407로 차단 → ENCAR_PROXY가 있으면
+    # **엔카 요청만** 그 경로로 보낸다(예: 집 회선 → 역방향 SSH 터널 http://127.0.0.1:18080).
+    # 사이트 IP·DNS·법원 수집은 영향 없음. 요청 수·지연은 그대로(C.4 준수).
+    proxy = os.environ.get("ENCAR_PROXY", "").strip()
+    if proxy:
+        s.proxies.update({"http": proxy, "https": proxy})
     return s
 
 

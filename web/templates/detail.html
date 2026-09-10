@@ -470,7 +470,7 @@
         <dt class="text-mut">동모델 전체</dt><dd class="font-mono">{{ v.encar_total|won }} 대</dd>
         <dt class="text-mut">동급 표본</dt><dd class="font-mono">{{ v.sample_count if v.sample_count is not none else '—' }} 건 <span class="text-mut text-xs">{% if v.match_label %}({{ v.match_label }}){% else %}(연식±1·주행±30%){% endif %}</span></dd>
         <dt class="text-mut">평균가</dt><dd class="font-mono">{{ v.mean_price|won }} 원</dd>
-        <dt class="text-mut">중앙값 <span class="text-mut text-xs">엔카</span></dt><dd class="font-mono text-lg font-semibold text-txt tnum">{{ v.median_price|won }} 원</dd>
+        <dt class="text-mut">중앙값 {% if v.market_platform == '동급참조' %}<span class="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 font-bold align-middle whitespace-nowrap" title="외부 시세 조회가 막힌 기간에 같은 차종·연식의 기존 실측 시세를 참조한 값입니다. 신뢰도를 한 단계 낮춰 반영했습니다.">동급 참조{% if v.market_ref_date %} · 기준 {{ v.market_ref_date }}{% endif %}</span>{% else %}<span class="text-mut text-xs">엔카</span>{% endif %}</dt><dd class="font-mono text-lg font-semibold text-txt tnum">{{ v.median_price|won }} 원</dd>
         {% if eff_median and eff_median != v.median_price %}
         <dt class="text-mut">산정 반영 시세</dt><dd class="font-mono text-sm text-primary font-semibold tnum">{{ eff_median|won }} 원 <span class="text-mut text-xs font-normal">(엔카·케이카 블렌드 — 예상낙찰가·상한가에 반영)</span></dd>
         {% endif %}
@@ -490,7 +490,7 @@
       </dl>
       {% if v.min_sale_price and v.median_price and v.min_sale_price > v.median_price %}
       <div class="mt-3 text-xs bg-rose-50 border border-rose-200 text-rose-600 rounded-md px-3 py-2">
-        ⛔ 현재 최저매각가({{ v.min_sale_price|won }}원)가 엔카 시세중앙값({{ v.median_price|won }}원)보다 <b>높습니다</b> — 시세보다 비싼 입찰이 됩니다. 추가 유찰을 기다리세요.
+        ⛔ 현재 최저매각가({{ v.min_sale_price|won }}원)가 시세중앙값({{ v.median_price|won }}원{% if v.market_platform == '동급참조' %}, 동급 참조{% endif %})보다 <b>높습니다</b> — 시세보다 비싼 입찰이 됩니다. 추가 유찰을 기다리세요.
       </div>
       {% endif %}
       {# 예상낙찰가·게이지는 상단 히어로로 이동(중복 제거). 여기 시세 카드는 근거 통계만. #}
