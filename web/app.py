@@ -269,6 +269,7 @@ def dashboard(request: Request):
     _pv = lambda rows: rows if _adm else [service.public_view(r, False) for r in rows]  # noqa: E731
     return templates.TemplateResponse("dashboard.html", {
         "request": request, "counts": counts, "run": run, "total": total,
+        "encar_health": service.encar_health_status(),   # 시세 수집 차단·지연 정직 고지
         "candidates": _pv(candidates), "running": service.is_running(),
         "judgments": JUDGMENTS, "settings": db.get_all_settings(),
         "upcoming": db.upcoming_count(30), "pending": db.pending_count(),

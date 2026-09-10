@@ -537,6 +537,49 @@ def _reconcile_min_from_dxdy(within_days: int = 30) -> None:
             db.update_fields(v["id"], **f)
 
 
+def encar_health(timeout: int = 20) -> dict:
+    """엔카 수집 가능 여부를 외부요청 1회로 점검 — 차단(407/403/429) 조기 감지.
+
+    2026-09 실장애: 엔카가 서버 IP를 407로 차단해 시세 수집이 **3일간 조용히** 멈췄고,
+    그 사이 신규 물건이 전부 '시세 신뢰도 낮음'으로 적체돼 '지금 입찰 추천'이 30→21로 감소했다.
+    매일 갱신 앞단에서 먼저 확인해 (a) 차단이면 분석 단계를 건너뛰어 무의미한 요청 낭비와
+    차단 심화를 막고 (b) 상태·시각을 남겨 사용자/운영자가 침묵의 장애를 즉시 알 수 있게 한다.
+    """
+    state, code = "error", None
+    try:
+        es = encar.new_session()
+        encar.search(es, manufacturer="현대", limit=1)   # 최소 쿼리(제조사만·1건)
+        state, code = "ok", 200
+    except Exception as e:  # noqa: BLE001
+        resp = getattr(e, "response", None)
+        code = getattr(resp, "status_code", None)
+        state = "blocked" if code in (403, 407, 429) else "error"
+    db.set_setting("encar_health_state", state)
+    db.set_setting("encar_health_code", str(code or ""))
+    db.set_setting("encar_health_at", _now())
+    if state == "ok":
+        db.set_setting("encar_health_ok_at", _now())    # 마지막 정상 시각(신선도 표시용)
+    return {"state": state, "code": code}
+
+
+def encar_health_status() -> dict:
+    """저장된 엔카 수집 상태 조회 — **외부요청 없음**(화면 렌더용).
+    시세가 오래됐으면 사용자에게 정직히 알린다(신뢰성 원칙: 낡은 시세를 조용히 보여주지 않는다)."""
+    from datetime import date as _date, datetime as _dt
+    s = db.get_all_settings()
+    state = s.get("encar_health_state") or "unknown"
+    ok_at = s.get("encar_health_ok_at") or ""
+    days = None
+    if ok_at:
+        try:
+            days = (_date.today() - _dt.fromisoformat(ok_at[:19]).date()).days
+        except (ValueError, TypeError):
+            days = None
+    return {"state": state, "code": s.get("encar_health_code") or "",
+            "last_ok": ok_at[:10], "stale_days": days,
+            "degraded": state == "blocked" or (days is not None and days >= 2)}
+
+
 def daily_update(within_days: int = 30, analyze: bool = True,
                  analyze_limit: int = 0, run_id: Optional[int] = None,
                  repair_cost: int = 500000) -> dict:
@@ -546,6 +589,13 @@ def daily_update(within_days: int = 30, analyze: bool = True,
     _reconcile_min_from_dxdy(within_days)   # 목록이 덮은 dxdy 보정 최저매각가 복원
     analyzed = 0
     cs = es = None                                  # 세션(⑤ 최종 검토 재확인에서도 재사용)
+    # ②-0 엔카 차단 조기 감지 — 차단 상태면 시세 분석을 통째로 건너뛴다.
+    #     (차단 중 80건을 재시도해봐야 전부 실패하고 차단만 심화된다 — 2026-09 실장애 교훈)
+    health = encar_health()
+    if health["state"] == "blocked":
+        analyze = False
+        if run_id:
+            db.update_run(run_id, message=f"⚠ 엔카 차단 감지(HTTP {health['code']}) — 시세 분석 건너뜀")
     if analyze:
         # 분석 대상: 입찰예정 창의 미분석/미매핑 국산차
         targets = [v for v in db.list_vehicles(upcoming_days=within_days)
@@ -607,9 +657,11 @@ def daily_update(within_days: int = 30, analyze: bool = True,
     if run_id:
         _rv = (f" · 검토 재확인 {review['reviewed']}(복원 {review['resolved']}·보류 {review['quarantined']})"
                if review.get("found") else "")
+        _hv = "" if health["state"] == "ok" else f" · ⚠엔카 {health['state']}(HTTP {health['code']})"
         db.update_run(run_id, status="done", finished_at=_now(),
-                      message=f"입찰예정 {stored} · 분석 {analyzed} · 낙찰결과 {results}건{_rv}")
-    return {"stored": stored, "analyzed": analyzed, "results": results, "review": review}
+                      message=f"입찰예정 {stored} · 분석 {analyzed} · 낙찰결과 {results}건{_rv}{_hv}")
+    return {"stored": stored, "analyzed": analyzed, "results": results,
+            "review": review, "encar_health": health}
 
 
 def review_daily_anomalies(cs, es, config, run_id: Optional[int] = None,

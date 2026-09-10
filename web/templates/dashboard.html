@@ -3,6 +3,19 @@
 {% block pagetitle %}대시보드{% endblock %}
 {% block content %}
 
+{# 시세 수집 차단·지연 정직 고지 — 낡은 시세를 조용히 보여주지 않는다(신뢰성 원칙).
+   정상일 때는 렌더되지 않으며, 상태는 매일 갱신 앞단의 encar_health()가 기록한다. #}
+{% if encar_health and encar_health.degraded %}
+<div class="flex items-start gap-2.5 rounded-xl border border-amber-300 bg-amber-50 px-3.5 py-3">
+  <span class="material-symbols-outlined text-[20px] shrink-0 text-amber-600">warning</span>
+  <div class="text-[13px] leading-relaxed text-amber-900">
+    <b>시세 데이터 갱신 지연</b> — 외부 시세 조회가 막혀 새로 등록된 물건의 시세·예상낙찰가가 갱신되지 않고 있습니다.{% if encar_health.last_ok %}
+    <span class="whitespace-nowrap">(최종 정상 {{ encar_health.last_ok }}{% if encar_health.stale_days is not none %} · {{ encar_health.stale_days }}일 전{% endif %})</span>{% endif %}
+    <span class="block text-[12px] text-amber-800 mt-0.5">이 기간 수집분은 <b>판정 보류(신뢰도 낮음)</b>로 표시되며, 복구되면 자동으로 다시 산정됩니다.</span>
+  </div>
+</div>
+{% endif %}
+
 <!-- KPI: 히어로(행동 지표) + 보조(상태 카운트) 2계층 -->
 {% macro kpi(label, value, icon, color, href, vid, emph=False, pill=None, pillcls='', sub=None) %}
 <a {% if href %}href="{{ href }}"{% endif %}
