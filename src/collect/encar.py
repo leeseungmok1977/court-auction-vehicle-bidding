@@ -35,7 +35,9 @@ MAKER_NORMALIZE = {
     "쉐보레": "쉐보레(GM대우)", "한국지엠": "쉐보레(GM대우)",
     "지엠대우": "쉐보레(GM대우)", "gm대우": "쉐보레(GM대우)", "대우": "쉐보레(GM대우)",
     "kg모빌리티": "KG모빌리티(쌍용)", "케이지모빌리티": "KG모빌리티(쌍용)",
-    "쌍용": "KG모빌리티(쌍용)",
+    "쌍용": "KG모빌리티(쌍용)", "kgm": "KG모빌리티(쌍용)",
+    # 법인명 표기(실측): '제너럴모터스', 'CHEVROLET …' 등도 엔카 쉐보레로
+    "제너럴모터스": "쉐보레(GM대우)", "chevrolet": "쉐보레(GM대우)",
 }
 
 
@@ -58,6 +60,22 @@ MODELGROUP_ALIAS = {
     "g4렉스턴": "G4 렉스턴", "렉스턴스포츠": "렉스턴 스포츠",
     "코란도스포츠": "코란도", "뉴코란도": "코란도",
     "더뉴카니발": "카니발", "그랜드카니발": "카니발",
+    # 영문 표기 차명(실측: '제너럴모터스 | CHEVROLET TRAVERSE AWD') → 엔카 한글 모델그룹
+    "traverse": "트래버스", "trailblazer": "트레일블레이저", "equinox": "이쿼녹스",
+    "malibu": "말리부", "colorado": "콜로라도", "tahoe": "타호", "spark": "스파크", "trax": "트랙스",
+}
+
+# 차명 앞에 붙는 브랜드 토큰 — 모델그룹 추출 전에 제거한다.
+# (실측: '짚 체로키 2.2'의 첫 토큰이 '짚'으로 잡혀 엔카 검색이 실패했음)
+_BRAND_PREFIX = {
+    "현대", "현대자동차", "기아", "기아자동차", "제네시스", "쌍용", "kg모빌리티", "kgm",
+    "쉐보레", "chevrolet", "gm", "대우", "르노", "르노삼성", "삼성",
+    "벤츠", "메르세데스", "mercedes", "benz", "bmw", "아우디", "audi", "폭스바겐", "volkswagen",
+    "지프", "짚", "jeep", "포드", "ford", "볼보", "volvo", "렉서스", "lexus",
+    "도요타", "토요타", "toyota", "혼다", "honda", "닛산", "nissan", "포르쉐", "porsche",
+    "재규어", "jaguar", "랜드로버", "링컨", "lincoln", "캐딜락", "cadillac",
+    "인피니티", "infiniti", "마세라티", "maserati", "벤틀리", "bentley", "푸조", "peugeot",
+    "시트로엥", "citroen", "테슬라", "tesla", "미니", "mini",
 }
 
 
@@ -73,15 +91,20 @@ def clean_model_group(car_nm: Optional[str]) -> Optional[str]:
     s = re.sub(r"\s+", " ", s).strip()
     if not s:
         return None
+    parts = s.split(" ")                          # 선행 브랜드 토큰 제거('짚 체로키'→'체로키')
+    while len(parts) > 1 and parts[0].lower() in _BRAND_PREFIX:
+        parts = parts[1:]
+    s = " ".join(parts)
     key = s.replace(" ", "").lower()
     if key in MODELGROUP_ALIAS:
         return MODELGROUP_ALIAS[key]
-    return s.split(" ")[0]
+    first = s.split(" ")[0]                       # 첫 토큰도 별칭 조회('TRAVERSE AWD'→트래버스)
+    return MODELGROUP_ALIAS.get(first.lower(), first)
 
 
 # 수입 브랜드 감지 (법원 제조사/차명의 키워드 → 엔카 수입 제조사 표기)
 IMPORT_BRANDS = [
-    (("벤츠", "benz", "메르세데스", "mercedes"), "벤츠"),
+    (("벤츠", "benz", "메르세데스", "mercedes", "다임러", "daimler"), "벤츠"),
     (("bmw", "비엠"), "BMW"),
     (("아우디", "audi"), "아우디"),
     (("폭스바겐", "volkswagen"), "폭스바겐"),
@@ -92,7 +115,7 @@ IMPORT_BRANDS = [
     (("볼보", "volvo"), "볼보"),
     (("렉서스", "lexus"), "렉서스"),
     (("링컨", "lincoln"), "링컨"),
-    (("지프", "jeep"), "지프"),
+    (("지프", "짚", "jeep"), "지프"),
     (("마세라티", "maserati"), "마세라티"),
     (("벤틀리", "bentley", "continental"), "벤틀리"),
     (("포드", "ford"), "포드"),
@@ -164,6 +187,35 @@ def import_model_group(brand: str, car_nm: Optional[str]) -> Optional[str]:
     return clean_model_group(car_nm)  # 아우디·포르쉐·랜드로버·렉서스 등은 첫 토큰이 대체로 일치
 
 
+# 국산 모델명 → 엔카 제조사. 법원 제조사가 비었거나 법인명·오타일 때 차명으로 추정한다.
+# ⚠ 특장·개조 비율이 높아 시세가 왜곡되기 쉬운 상용차(포터·봉고·다마스·라보 등)는 일부러 제외한다
+#   — 잘못된 시세는 시세 없음보다 나쁘다(신뢰성 원칙).
+KOREAN_MODEL_MAKER = {
+    "현대": ("쏘나타", "그랜저", "아반떼", "투싼", "싼타페", "팰리세이드", "코나", "캐스퍼",
+             "베뉴", "스타렉스", "스타리아", "아이오닉", "넥쏘", "벨로스터", "맥스크루즈", "엑센트"),
+    "기아": ("k3", "k5", "k7", "k8", "k9", "카니발", "쏘렌토", "스포티지", "셀토스", "니로",
+             "모닝", "레이", "스토닉", "쏘울", "모하비", "오피러스", "카렌스"),
+    "KG모빌리티(쌍용)": ("렉스턴", "코란도", "티볼리", "토레스", "액티언", "카이런", "체어맨",
+                    "무쏘", "로디우스"),
+    "쉐보레(GM대우)": ("스파크", "트랙스", "트래버스", "말리부", "이쿼녹스", "트레일블레이저",
+                   "올란도", "캡티바", "크루즈", "아베오", "윈스톰", "라세티", "마티즈", "타호"),
+    "르노코리아(삼성)": ("sm3", "sm5", "sm6", "sm7", "qm3", "qm5", "qm6", "xm3", "캡처",
+                    "그랑콜레오스"),
+}
+
+
+def maker_from_model(car_nm: Optional[str]) -> Optional[str]:
+    """차명으로 국산 제조사 추정 — 법원 제조사가 비었거나 법인명/오타일 때의 폴백.
+    실측 예: '기차|K7'(오타)→기아, '(빈값)|렉스턴스포츠'→KG모빌리티."""
+    s = re.sub(r"\([^)]*\)", "", car_nm or "").replace(" ", "").lower()
+    if not s:
+        return None
+    for man, kws in KOREAN_MODEL_MAKER.items():
+        if any(k in s for k in kws):
+            return man
+    return None
+
+
 def auto_map(court_maker: Optional[str], car_nm: Optional[str],
              car_type: str = "Y") -> Optional[dict]:
     """법원 물건의 제조사·차명으로 엔카 매핑 자동 추정. 국산 우선, 이어서 수입."""
@@ -183,6 +235,10 @@ def auto_map(court_maker: Optional[str], car_nm: Optional[str],
         img = import_model_group(brand, car_nm)
         if img:
             return {"car_type": "N", "manufacturer": brand, "model_group": img, "premium": True}
+    # 4) 제조사 미상·법인명·오타 → 차명으로 국산 제조사 추정 (마지막 폴백)
+    man2 = maker_from_model(car_nm)
+    if man2:
+        return {"car_type": car_type, "manufacturer": man2, "model_group": mg}
     return None
 
 
