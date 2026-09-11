@@ -683,6 +683,7 @@ NEWCAR_MAKER_ALIAS = {
 NEWCAR_RECHECK_DAYS = 30        # 매칭 실패/성공 후 재시도 간격(매일 헛요청 방지)
 NEWCAR_MAX_CANDIDATES = 3       # 물건당 시도할 보배 모델 후보 수(연식 검증으로 확정)
 NEWCAR_MAX_REQ_PER_VEHICLE = 45 # 물건 하나가 일일 예산을 독식하지 않도록(캐시 적중은 0으로 계산됨)
+NEWCAR_BASIS_MAX_GAP = 2        # 목표 연식보다 최대 몇 년 전 가격표까지 '당시 출시가'로 인정할지
 
 
 def _nc_cached_or(table, key_col, key, fetch_fn, put_row_fn):
@@ -737,25 +738,30 @@ def newcar_collect_model_year(bs, budget, maker_no: str, model_no: str, year: in
                 if pg["selected_year"] and pg["price_manwon"]:      # 기본 선택 연식의 가격도 캐시
                     db.nc_put("newcar_prices", {"level2_no": level2_no, "year": pg["selected_year"],
                                                 "price_manwon": pg["price_manwon"], "fetched_at": _now()})
-            years = json.loads(g["years_json"] or "[]")
-            years_seen.update(int(y) for y in years if str(y).isdigit())
-            if yr not in years:
+            years = [int(y) for y in json.loads(g["years_json"] or "[]") if str(y).isdigit()]
+            years_seen.update(years)
+            # 보배드림 연식 목록은 **가격이 바뀐 연식만** 기재(실측: 4세대 카니발 2021·2022뿐, 더 뉴 4세대는 2024뿐).
+            # → 목표 연식 이하 가장 최근 가격표를 '당시 출시가'로 쓴다(2년 이내). 그 이상 오래되면 해당 등급은 제외.
+            cand = [y for y in years if y <= year]
+            if not cand or year - max(cand) > NEWCAR_BASIS_MAX_GAP:
                 continue
-            rows = [r for r in db.nc_rows("newcar_prices", "level2_no", level2_no) if r["year"] == yr]
+            use_year = str(max(cand))
+            rows = [r for r in db.nc_rows("newcar_prices", "level2_no", level2_no) if r["year"] == use_year]
             if rows:
                 price = rows[0]["price_manwon"]
             else:
-                pg = bobae.grade_page(bs, budget, maker_no, model_no, level_no, level2_no, year_no=yr)
+                pg = bobae.grade_page(bs, budget, maker_no, model_no, level_no, level2_no, year_no=use_year)
                 price = pg["price_manwon"]
-                db.nc_put("newcar_prices", {"level2_no": level2_no, "year": yr,
+                db.nc_put("newcar_prices", {"level2_no": level2_no, "year": use_year,
                                             "price_manwon": price, "fetched_at": _now()})
                 if pg.get("release") and not g.get("release"):   # 연식 미지정 페이지는 출시일이 공란 → 연식 페이지 값으로 보완
                     g["release"] = pg["release"]
                     db.nc_put("newcar_grades", {"level2_no": level2_no, "release": pg["release"]})
             if price:
-                prices.append((level_name, grade_name, price))
+                prices.append((level_name, grade_name, price, int(use_year)))
                 release = release or g.get("release")
-    return {"prices": prices, "release": release, "n_grades": n_grades}
+    basis_year = max((p[3] for p in prices), default=None)
+    return {"prices": prices, "release": release, "n_grades": n_grades, "basis_year": basis_year}
 
 
 def newcar_collect(max_requests: int = 300, max_models: Optional[int] = None,
@@ -801,6 +807,7 @@ def newcar_collect(max_requests: int = 300, max_models: Optional[int] = None,
                 gens = []
             group = mp["model_group"]
             found = None
+            cut = False                      # 물건당 요청 상한으로 중단됐으면 '실패'로 기록하지 않고 다음 런에서 캐시를 딛고 재개
             v_start = budget.used
             for maker_no in maker_nos:
                 cached = db.nc_rows("newcar_models", "maker_no", maker_no)
@@ -812,6 +819,7 @@ def newcar_collect(max_requests: int = 300, max_models: Optional[int] = None,
                         db.nc_put("newcar_models", {"model_no": no, "maker_no": maker_no, "model_name": name, "fetched_at": _now()})
                 for model_no, model_name in bobae.rank_model_candidates(models, gens, group)[:NEWCAR_MAX_CANDIDATES]:
                     if budget.used - v_start > NEWCAR_MAX_REQ_PER_VEHICLE:
+                        cut = True
                         break
                     models_seen.add(model_no)
                     res = newcar_collect_model_year(bs, budget, maker_no, model_no, int(v["year"]))
@@ -822,10 +830,13 @@ def newcar_collect(max_requests: int = 300, max_models: Optional[int] = None,
             out["vehicles"] += 1
             if found:
                 name, res = found
-                ps = [p for _, _, p in res["prices"]]
+                ps = [p[2] for p in res["prices"]]
                 db.update_fields(v["id"], newcar_min=min(ps), newcar_max=max(ps), newcar_n=len(ps),
-                                 newcar_model=name, newcar_release=res["release"], newcar_checked_at=_now())
+                                 newcar_model=name, newcar_release=res["release"],
+                                 newcar_basis_year=res.get("basis_year"), newcar_checked_at=_now())
                 out["matched"] += 1
+            elif cut:
+                out["cut"] = out.get("cut", 0) + 1      # 표식 없음 → 다음 런에서 재개
             else:
                 db.update_fields(v["id"], newcar_checked_at=_now(), newcar_n=0)
                 out["unmatched"] += 1

@@ -127,17 +127,31 @@ def test_collect_model_year_excludes_and_caches(dbmod, monkeypatch):
     b = bobae.Budget(50)
     res = service.newcar_collect_model_year(None, b, "49", "M1", 2021)
     # 렌터카용 세부모델·택시 등급 제외 → 프리미엄(3,303)·캘리그래피(4,517)만
-    assert sorted(p for _, _, p in res["prices"]) == [3303, 4517]
-    assert res["release"] == "19.11~21.05" and res["n_grades"] == 2
+    assert sorted(p[2] for p in res["prices"]) == [3303, 4517]
+    assert res["release"] == "19.11~21.05" and res["n_grades"] == 2 and res["basis_year"] == 2021
     first_calls = site.calls
     # 2020년식: 캘리그래피는 2020 없음 → 프리미엄만. 목록·등급·기본연식(2020) 가격이 모두 캐시라 요청 0회
     res2 = service.newcar_collect_model_year(None, b, "49", "M1", 2020)
-    assert [p for _, _, p in res2["prices"]] == [3294]
+    assert [p[2] for p in res2["prices"]] == [3294]
     assert site.calls == first_calls
     # 같은 (모델,연식) 재수집은 요청 0
     calls = site.calls
     service.newcar_collect_model_year(None, b, "49", "M1", 2021)
     assert site.calls == calls
+
+
+def test_uses_latest_price_table_at_or_before_target_year(dbmod, monkeypatch):
+    """보배드림 연식 목록은 가격이 바뀐 연식만 기재 → 목표 연식 이하 가장 최근 가격표(2년 이내)를 쓴다.
+    실측: 4세대 카니발 2023년식은 2022년 가격표가 '당시 출시가'."""
+    from web import service
+    site = FakeSite()
+    monkeypatch.setattr(bobae, "fetch", site)
+    monkeypatch.setattr(bobae.time, "sleep", lambda s: None)
+    res = service.newcar_collect_model_year(None, bobae.Budget(50), "49", "M1", 2023)   # 목록엔 2020·2021뿐
+    assert sorted(p[2] for p in res["prices"]) == [3303, 4517]      # 프리미엄·캘리그래피 모두 2021 가격표
+    assert res["basis_year"] == 2021 and all(p[3] == 2021 for p in res["prices"])
+    res_far = service.newcar_collect_model_year(None, bobae.Budget(50), "49", "M1", 2024)  # 3년 차 → 인정 안 함
+    assert res_far["prices"] == []
 
 
 def test_budget_exhaustion_leaves_cache_for_resume(dbmod, monkeypatch):
