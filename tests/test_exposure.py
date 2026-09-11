@@ -80,6 +80,17 @@ def test_admin_sees_newcar_range(app_client):
     assert r.status_code == 200 and "당시 출시가" in r.text and "3,294" in r.text
 
 
+def test_newcar_public_flag_shows_range_without_source(app_client, monkeypatch):
+    """config newcar_public=true: 공개 사용자도 범위를 보되, 출처명(보배드림)은 어떤 경우에도 공개 응답에 없다."""
+    from web import service
+    base = service.load_config()
+    monkeypatch.setattr(service, "load_config", lambda: {**base, "newcar_public": True})
+    for p in ("/vehicle/T1_1", "/vehicle/T1_1/report"):
+        r = app_client.get(p, headers=_PUBLIC)
+        assert r.status_code == 200 and "당시 출시가" in r.text and "3,294" in r.text, p
+        assert "보배드림" not in r.text, f"출처명 공개 노출: {p}"
+
+
 def test_admin_responses_show_encar_raw(app_client):
     c = app_client
     r = c.get("/vehicle/T1_1", headers=_TUNNEL)

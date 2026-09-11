@@ -72,9 +72,9 @@
     <dt class="text-mut">주행거리</dt><dd class="font-mono">{{ v.mileage_km|won }} km</dd>
     <dt class="text-mut">배기량</dt><dd class="font-mono">{{ v.displacement_cc or '—' }} cc</dd>
     <dt class="text-mut">감정가</dt><dd class="font-mono">{{ v.appraisal_value|won }} 원</dd>
-    {# 보배드림 파생값 — compliance §6: 허락/대체출처 확인 전까지 관리자 전용 #}
-    {% if is_admin(request) and v.newcar_min and v.newcar_max %}
-    <dt class="text-mut">당시 출시가 <span class="text-[10px] text-primary font-bold">관리자</span></dt><dd class="font-mono">{{ '{:,}'.format(v.newcar_min) }}{% if v.newcar_max != v.newcar_min %}~{{ '{:,}'.format(v.newcar_max) }}{% endif %}만원 <span class="text-mut text-xs font-sans" title="{{ v.newcar_model }} · {{ v.year }}년식 등급 {{ v.newcar_n }}개 · 영업용(택시·렌터카) 제외 · 출처 보배드림 신차가격표">등급 {{ v.newcar_n }}개 · 보배드림</span></dd>
+    {# 당시 출시가(등급별 범위) — 공개 여부는 config newcar_public. 출처명은 관리자에게만. #}
+    {% if v.newcar_min and v.newcar_max and (is_admin(request) or newcar_public) %}
+    <dt class="text-mut">당시 출시가{% if is_admin(request) and not newcar_public %} <span class="text-[10px] text-primary font-bold">관리자</span>{% endif %}</dt><dd class="font-mono">{{ '{:,}'.format(v.newcar_min) }}{% if v.newcar_max != v.newcar_min %}~{{ '{:,}'.format(v.newcar_max) }}{% endif %}만원 <span class="text-mut text-xs font-sans" title="{{ v.year }}년식 등급 {{ v.newcar_n }}개 범위 · 영업용(택시·렌터카) 제외{% if is_admin(request) %} · {{ v.newcar_model }} · 출처 보배드림 신차가격표{% endif %}">등급 {{ v.newcar_n }}개 범위</span></dd>
     {% endif %}
     <dt class="text-mut">최저매각가</dt><dd class="font-mono text-lg font-semibold text-txt tnum">{{ v.min_sale_price|won }} 원</dd>
     <dt class="text-mut">유찰횟수</dt><dd class="font-mono">{{ v.fail_count if v.fail_count is not none else '—' }} 회</dd>

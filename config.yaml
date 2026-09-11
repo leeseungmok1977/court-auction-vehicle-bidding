@@ -35,6 +35,12 @@ condition_costs:
 year_tol: 1            # 연식 허용 오차 (±년)
 mileage_tol: 0.30      # 주행거리 허용 오차 (±비율)
 
+# 당시 출시가(신차가) 범위 — 보배드림 신차가격표 파생값 (docs/compliance-review.md §6)
+# newcar_public: false = 관리자 화면에만 표시(기본). true = 공개 리포트·상세에도 표시(출처명은 어떤 경우에도 공개하지 않음).
+#   → 공개 전환은 §6 조건(권리자 허락 등) 충족·기록 후에만. newcar_daily_cap = 일일 수집 요청 상한(권고 300).
+newcar_public: false
+newcar_daily_cap: 300
+
 # 모델 매핑 테이블 (경매 차명 → 엔카 제조사/모델그룹). 미매핑 시 알림 후 원문 사용.
 # 엔카 표기 그대로 사용 (예: 벤츠는 CarType=N(수입) + '메르세데스-벤츠')
 model_mapping:
