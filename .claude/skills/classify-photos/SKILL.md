@@ -7,6 +7,8 @@ description: 경매차량 사진 비전 분류 루틴. 미분류(photo_order 없
 
 목적: 최근 수집된 물건은 `photo_order`(비전 분류 순서)가 없어 목록 썸네일이 원본순(지도·서류 먼저)으로 나온다. 이 루틴으로 **미분류만 증분 분류**해 전면·측면·후면부터 나오게 하고, VM에 반영한다.
 
+**2026-09-11부터 1차 정렬은 자동**: 일일 갱신 ②-3이 로컬 모델(`src/parse/photo_autosort.py`, CLIP ONNX int8 + 선형 프로브, 생성형 API 없음)로 신규 물건을 정렬해 `photo_order_src='auto'`로 저장한다(정면 일치 76%·지도 유입 1.4%). 이 루틴은 그 **auto 건을 Claude 비전으로 재분류해 덮어쓰는 주간 검수**다 — `status`의 `UNCLASSIFIED`는 미분류+auto 합계이고, `prep`도 auto를 포함하며, VM 패치 주입은 auto를 덮어쓰고 `vision`으로 승격한다(비전 순서는 `--force` 없이는 보존).
+
 전제: 이 작업은 **Workflow 도구(멀티 에이전트 비전 판독)** 를 쓴다. 프로젝트 루트(`c:\Users\14ZB95N\법원경매조회 및 분석`)에서 실행. 파이썬은 `PYTHONIOENCODING=utf-8 python`.
 
 ## 1) 미분류 건수 확인 (항상 먼저)
