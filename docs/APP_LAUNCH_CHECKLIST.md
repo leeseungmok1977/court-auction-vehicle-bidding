@@ -36,7 +36,15 @@
 **운영자가 할 일 (PWABuilder 웹):**
 - [ ] `pwabuilder.com`에 canonical HTTPS 주소 입력 → 리포트 실행 → **Package For Stores → Android → Google Play**
 - [ ] Package ID = `kr.co.naechaget.app` 확인 (**출시 후 영구 변경 불가**)
-- [ ] App name `경매로 내차GET` / Launcher `내차GET` / startUrl `/?src=twa` / theme·background 자동 채움 확인
+- [ ] App name / Launcher name / startUrl `/?src=twa` / theme·background 자동 채움 확인
+  - ⚠️ **이름이 두 군데로 갈린다(2026-09-12 v1 빌드 실측 확인)**. PWABuilder는 웹 매니페스트에서 그대로 가져온다:
+    | 값 | 출처 | 안드로이드 적용 위치 | 실제로 보이는 곳 |
+    |---|---|---|---|
+    | `appName` | 매니페스트 `name` | `<application android:label>` | 설정 > 앱 목록 |
+    | `launcherName` | 매니페스트 `short_name` | `<activity LauncherActivity android:label>` | **홈 화면 아이콘 아래** |
+  - **홈 화면에 띄우고 싶은 이름을 `web/static/manifest.webmanifest`의 `short_name`에 넣어야 한다.** v1(버전코드 1)은 `short_name`이 `내차GET`이던 시점에 빌드돼 홈 화면에 `내차GET`으로 뜬다. 2026-09-12에 `경매로 내차GET`으로 되돌렸으므로 **다음 재빌드부터 반영**된다(기존 AAB는 바뀌지 않음).
+  - Play 스토어 목록에 뜨는 이름은 이 둘과 **또 별개** — Play Console 「앱 이름」 필드에서 언제든 수정 가능(재빌드 불필요).
+  - 검증법(빌드 후 실측): APK의 `resources.arsc`에서 `appName`/`launcherName` 값을 직접 확인. 추측하지 말 것.
 - [ ] Version code=1, Version name=1.0.0 확인
 - [ ] Signing key = **New** 선택 (alias `naechaget` + 비밀번호 설정) — 이것이 당신의 **"업로드 키"**
   - None은 AAB 미생성 버그로 비권장 / Mine은 향후 "업데이트"용
