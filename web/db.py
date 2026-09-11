@@ -440,12 +440,13 @@ def list_vehicles(judgment: Optional[str] = None, maker: Optional[str] = None,
     sql = "SELECT * FROM vehicles"
     if where:
         sql += " WHERE " + " AND ".join(where)
-    sort_cols = {"sale_date": "sale_date", "min_sale_price": "min_sale_price",
+    sort_cols = {"recent": "collected_at DESC, rowid DESC",   # 최근 등록순(수집일 최신 먼저, 미상은 뒤로)
+                 "sale_date": "sale_date", "min_sale_price": "min_sale_price",
                  "upper_bid": "upper_bid DESC", "median_price": "median_price DESC",
                  "fail_count": "fail_count DESC",
                  "mileage": "mileage_km IS NULL, mileage_km",   # 짧은 주행거리순(NULL 뒤로)
                  "inspection": "inspection_to IS NULL, inspection_to"}
-    sql += f" ORDER BY {sort_cols.get(sort, 'sale_date')}"
+    sql += f" ORDER BY {sort_cols.get(sort, 'recent')}"
     conn = connect()
     rows = conn.execute(sql, params).fetchall()
     conn.close()

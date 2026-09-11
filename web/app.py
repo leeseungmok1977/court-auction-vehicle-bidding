@@ -344,7 +344,7 @@ VEHICLES_PAGE_SIZE = 12
 
 @app.get("/vehicles", response_class=HTMLResponse)
 def vehicles(request: Request, judgment: str = "", maker: str = "", q: str = "",
-             sort: str = "sale_date", upcoming: str = "", result: str = "", status: str = "",
+             sort: str = "recent", upcoming: str = "", result: str = "", status: str = "",
              cond: str = "", page: int = 1, date: str = "", court: str = "", promising: str = "",
              segment: str = "", all: str = ""):
     # upcoming은 str로 받아 빈값/오염값에 견고하게 파싱(폼 hidden 빈값·손편집 URL 대비)

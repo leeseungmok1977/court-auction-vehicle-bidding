@@ -15,6 +15,7 @@
       {% for m in makers %}<option value="{{ m }}" {% if m==maker %}selected{% endif %}>{{ m }}</option>{% endfor %}
     </select>
     <select name="sort" aria-label="정렬 기준" class="inp py-1.5">
+      <option value="recent" {% if sort=='recent' %}selected{% endif %}>최근 등록순</option>
       <option value="sale_date" {% if sort=='sale_date' %}selected{% endif %}>매각기일순</option>
       <option value="expected" {% if sort=='expected' %}selected{% endif %}>예상낙찰가 높은순</option>
       <option value="upper_bid" {% if sort=='upper_bid' %}selected{% endif %}>상한가 높은순</option>
