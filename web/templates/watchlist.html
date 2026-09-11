@@ -107,6 +107,55 @@
   <p class="text-mut mt-2">아직 즐겨찾기한 물건이 없습니다. 물건 상세에서 ☆ 즐겨찾기를 눌러 담으세요.</p>
 </div>
 {% endif %}
+
+{% if not hydrate %}
+<!-- 저장한 검색(관심조건) — 기기 로컬 저장. '새 매물'은 저장 시점 대비 현재 건수 증가분으로 표시 -->
+<section class="mt-8">
+  <div class="flex items-center gap-2 mb-3">
+    <span class="text-lg" aria-hidden="true">🔖</span>
+    <h2 class="text-lg font-semibold text-txt">저장한 검색 <span class="text-mut text-sm font-normal">— 관심 조건 · 새 매물 확인</span></h2>
+  </div>
+  <div id="savedSearches" class="space-y-2"></div>
+  <p id="savedEmpty" class="bg-surface border border-line rounded-lg p-6 text-center text-sm text-mut" hidden>
+    저장한 검색이 없습니다. <a href="/vehicles" class="text-primary underline">차량 목록</a>에서 조건을 고른 뒤 <b class="text-txt">‘검색 저장’</b>을 누르면 여기에서 새 매물을 확인할 수 있어요.
+  </p>
+  <p class="text-[11px] text-mut mt-2">※ 브라우저 알림(푸시)은 준비 중입니다. 지금은 앱을 열 때 저장한 검색의 새 매물 개수를 표시합니다.</p>
+</section>
+<script>
+(function(){
+  var KEY='naechaget:searches';
+  var box=document.getElementById('savedSearches'), empty=document.getElementById('savedEmpty');
+  if(!box) return;
+  function read(){ try{ var a=JSON.parse(localStorage.getItem(KEY)||'[]'); return Array.isArray(a)?a:[]; }catch(e){ return []; } }
+  function write(a){ try{ localStorage.setItem(KEY, JSON.stringify(a)); }catch(e){} }
+  function esc(s){ var d=document.createElement('div'); d.textContent=(s==null?'':String(s)); return d.innerHTML; }
+  function render(){
+    var list=read(); box.innerHTML=''; empty.hidden=list.length>0;
+    list.forEach(function(s, i){
+      var el=document.createElement('div');
+      el.className='bg-surface border border-line rounded-lg p-3 flex items-center gap-3';
+      el.innerHTML=
+        '<a href="/vehicles?'+esc(s.qs)+'" class="flex-1 min-w-0">'
+        +'<div class="font-medium text-txt truncate">'+esc(s.label||'검색')+'</div>'
+        +'<div class="text-[11px] text-mut">저장 시 '+(s.baseline||0)+'건 <span data-new></span></div></a>'
+        +'<button data-seen title="확인함 — 새 매물 기준 갱신" class="shrink-0 text-mut hover:text-emerald-600 px-2 py-1 rounded-md hover:bg-slate-50 text-base font-bold">✓</button>'
+        +'<button data-del title="삭제" class="shrink-0 text-mut hover:text-rose-600 px-2 py-1 rounded-md hover:bg-slate-50 text-base font-bold">✕</button>';
+      var newSpan=el.querySelector('[data-new]');
+      fetch('/api/vehicles/count?'+s.qs,{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){
+        var cur=d.total||0, delta=cur-(s.baseline||0);
+        newSpan.innerHTML = delta>0 ? '· <b class="text-emerald-600">새 매물 +'+delta+'</b> · 현재 '+cur+'건' : '· 현재 '+cur+'건';
+      }).catch(function(){ newSpan.textContent=''; });
+      el.querySelector('[data-del]').addEventListener('click', function(e){ e.preventDefault(); e.stopPropagation(); var l=read(); l.splice(i,1); write(l); render(); });
+      el.querySelector('[data-seen]').addEventListener('click', function(e){ e.preventDefault(); e.stopPropagation();
+        fetch('/api/vehicles/count?'+s.qs,{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){
+          var l=read(); if(l[i]){ l[i].baseline=d.total||0; write(l); render(); } }).catch(function(){}); });
+      box.appendChild(el);
+    });
+  }
+  render();
+})();
+</script>
+{% endif %}
 {% endblock %}
 
 {% block script %}

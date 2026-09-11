@@ -346,7 +346,7 @@ VEHICLES_PAGE_SIZE = 12
 def vehicles(request: Request, judgment: str = "", maker: str = "", q: str = "",
              sort: str = "sale_date", upcoming: str = "", result: str = "", status: str = "",
              cond: str = "", page: int = 1, date: str = "", court: str = "", promising: str = "",
-             all: str = ""):
+             segment: str = "", all: str = ""):
     # upcoming은 str로 받아 빈값/오염값에 견고하게 파싱(폼 hidden 빈값·손편집 URL 대비)
     up = int(upcoming) if upcoming.strip().lstrip("-").isdigit() else 0
     if up < 0:
@@ -359,6 +359,8 @@ def vehicles(request: Request, judgment: str = "", maker: str = "", q: str = "",
                             upcoming_days=up or None, hide_incomplete=_hide_incomplete,
                             date=date or None, court=court or None,
                             promising=bool(promising))
+    if segment:      # 차종 프리셋(상용·패밀리·SUV·세단·경차) — 모델명 근사 분류로 필터
+        rows = [r for r in rows if service.vehicle_segment(r) == segment]
     _bt = service.backtest_stats()
     disc = _bt.get("discount_median")
     mae = _bt.get("mae_pct")
@@ -393,13 +395,16 @@ def vehicles(request: Request, judgment: str = "", maker: str = "", q: str = "",
     qs = urlencode({k: v for k, v in {
         "judgment": judgment, "maker": maker, "q": q, "sort": sort,
         "upcoming": up or "", "result": result, "status": status, "cond": cond,
-        "date": date, "court": court, "promising": promising}.items() if v})
+        "date": date, "court": court, "promising": promising, "segment": segment}.items() if v})
     qs_no_upcoming = urlencode({k: v for k, v in {   # 30일 해제 링크용(upcoming만 제거, 나머지 유지)
         "judgment": judgment, "maker": maker, "q": q, "sort": sort,
         "result": result, "status": status, "cond": cond}.items() if v})
     qs_no_cond = urlencode({k: v for k, v in {        # 상태 필터 토글용(cond만 제거, 나머지 유지)
         "judgment": judgment, "maker": maker, "q": q, "sort": sort,
-        "upcoming": up or "", "result": result, "status": status}.items() if v})
+        "upcoming": up or "", "result": result, "status": status, "segment": segment}.items() if v})
+    qs_no_segment = urlencode({k: v for k, v in {      # 차종 프리셋 칩용(segment만 제거, 나머지 유지)
+        "judgment": judgment, "maker": maker, "q": q, "sort": sort,
+        "upcoming": up or "", "result": result, "status": status, "cond": cond}.items() if v})
     from datetime import date as _date
     _tdy = _date.today().isoformat()
     _tdy_d = _date.today()
@@ -418,16 +423,50 @@ def vehicles(request: Request, judgment: str = "", maker: str = "", q: str = "",
         "request": request, "rows": page_rows, "judgment": judgment, "maker": maker,
         "q": q, "sort": sort, "upcoming": up, "result": result, "status": status,
         "cond": cond, "date": date, "court": court, "promising": promising,
+        "segment": segment, "segment_presets": [(k, lbl) for k, lbl, _ in service.VEHICLE_SEGMENTS],
         "judgments": JUDGMENTS, "makers": db.distinct_makers(),
         "today": _date.today().isoformat(), "mae": mae,
         "total": total, "page": page, "total_pages": total_pages,
         "page_size": VEHICLES_PAGE_SIZE, "qs": qs, "qs_no_upcoming": qs_no_upcoming,
-        "qs_no_cond": qs_no_cond,
+        "qs_no_cond": qs_no_cond, "qs_no_segment": qs_no_segment,
         "range_start": start + 1 if total else 0,
         "range_end": start + len(page_rows),
     })
     resp.set_cookie("last_list", _cur_url(request), max_age=86400)
     return resp
+
+
+@app.get("/api/vehicles/count")
+def vehicles_count(judgment: str = "", maker: str = "", q: str = "", result: str = "",
+                   status: str = "", cond: str = "", upcoming: str = "", date: str = "",
+                   court: str = "", segment: str = ""):
+    """저장한 검색의 '새 매물' 감지용 — 동일 필터의 현재 건수만 반환(JSON). 외부 데이터 없음."""
+    up = int(upcoming) if upcoming.strip().lstrip("-").isdigit() else 0
+    rows = db.list_vehicles(judgment=judgment or None, maker=maker or None, q=q or None,
+                            result=result or None, status=status or None, cond=cond or None,
+                            upcoming_days=(up or None), date=date or None, court=court or None)
+    if segment:
+        rows = [r for r in rows if service.vehicle_segment(r) == segment]
+    return {"total": len(rows)}
+
+
+@app.get("/accuracy", response_class=HTMLResponse)
+def accuracy(request: Request):
+    """예측 적중률 사후검증 — 과거 낙찰 물건으로 예상낙찰가 vs 실제 낙찰가를 정직 측정(LOO).
+    median/winning은 공개 데이터라 공개 노출 가능(엔카 표본수 등 원자료 없음)."""
+    bt = service.backtest_stats()
+    pool = bt.get("pred_pool") or []
+    scatter, axis_max = [], 0
+    if pool:
+        axis_max = max(max(p["pred"], p["actual"]) for p in pool)
+        for p in pool:
+            scatter.append({"x": round(p["actual"] / axis_max * 100, 2),
+                            "y": round(p["pred"] / axis_max * 100, 2),
+                            "within": p["err_pct"] <= 20})
+    return templates.TemplateResponse("accuracy.html", {
+        "request": request, "bt": bt, "scatter": scatter,
+        "axis_max": axis_max, "recent": pool[:24],
+    })
 
 
 @app.get("/calendar", response_class=HTMLResponse)

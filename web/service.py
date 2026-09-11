@@ -1532,6 +1532,42 @@ def invalidate_backtest_cache() -> None:
     _bt_cache["data"] = None
 
 
+# ── 차종(바디타입) 프리셋 분류 — 초보·상용/패밀리 수요자용 빠른 탐색(근사, 모델명 키워드 기반) ──
+# 우선순위 순서대로 첫 매칭 세그먼트를 반환(상용→승합→경차→SUV→세단). 미매칭은 None(‘전체’에만 노출).
+VEHICLE_SEGMENTS = [
+    ("commercial", "상용·화물", ["포터", "봉고", "라보", "다마스", "마이티", "메가트럭", "카고", "탑차", "윙바디",
+                               "트럭", "1톤", "더블캡", "리베로", "프레지오", "이스타나", "그레이스", "덤프", "크레인",
+                               "트레일러", "특장", "냉동", "냉장", "살수", "청소", "진개", "렉카", "사다리", "믹서",
+                               "펌프", "파비스", "프론티어", "무쏘스포츠", "렉스턴스포츠", "코란도스포츠", "픽업"]),
+    ("minivan", "패밀리·7인승", ["카니발", "스타렉스", "스타리아", "쏠라티", "투리스모", "올란도", "카렌스", "로디우스",
+                              "카운티", "그랜버드", "쏠라티"]),
+    ("compact", "경차", ["모닝", "레이", "스파크", "캐스퍼", "마티즈", "비스토", "아토스"]),
+    ("suv", "SUV", ["싼타페", "쏘렌토", "투싼", "스포티지", "모하비", "렉스턴", "티볼리", "코란도", "QM6", "QM5", "QM3",
+                    "트랙스", "트레일블레이저", "셀토스", "코나", "니로", "베뉴", "GV70", "GV80", "GV60", "팰리세이드",
+                    "트래버스", "맥스크루즈", "베라크루즈", "익스플로러", "이쿼녹스", "캡티바", "티구안", "투아렉",
+                    "카이엔", "마칸", "레인지로버", "디스커버리", "이보크", "랭글러", "컴패스", "체로키", "글래디에이터",
+                    "X1", "X2", "X3", "X4", "X5", "X6", "X7", "GLA", "GLB", "GLC", "GLE", "GLS", "Q3", "Q5", "Q7", "Q8",
+                    "XC40", "XC60", "XC90", "CR-V", "HR-V", "파일럿", "EV9", "아이오닉5", "EV6"]),
+    ("sedan", "세단", ["쏘나타", "그랜저", "아반떼", "엑센트", "K3", "K5", "K7", "K8", "K9", "G70", "G80", "G90",
+                     "EQ900", "제네시스", "에쿠스", "체어맨", "임팔라", "말리부", "크루즈", "아슬란", "SM3", "SM5", "SM6",
+                     "5시리즈", "3시리즈", "7시리즈", "6시리즈", "E클래스", "C클래스", "S클래스", "CLS", "파나메라",
+                     "A3", "A4", "A6", "A8", "320", "520", "530", "E200", "E250", "E300"]),
+]
+SEGMENT_LABELS = {k: lbl for k, lbl, _ in VEHICLE_SEGMENTS}
+
+
+def vehicle_segment(v: dict) -> Optional[str]:
+    """물건의 차종 세그먼트 키(commercial/minivan/compact/suv/sedan) 또는 None. 모델명 키워드 근사."""
+    m = (v.get("model") or "").replace(" ", "").upper()
+    if not m:
+        return None
+    for key, _lbl, kws in VEHICLE_SEGMENTS:
+        for kw in kws:
+            if kw.replace(" ", "").upper() in m:
+                return key
+    return None
+
+
 def backtest_stats() -> dict:
     """이미 낙찰된 물건으로 시스템 시세·상한가의 실측 정확도를 백테스트(무네트워크).
 
@@ -1637,6 +1673,7 @@ def backtest_stats() -> dict:
             # LOO MAE(자기 제외 유찰버킷 프리미엄 × 최저가) — 실제 예측의 정직 정확도
             idx = [(_fail_bucket(r.get("fail_count")), r) for r in med_rows if r.get("min_sale_price")]
             loo = []
+            pred_pool = []   # 사후검증 대시보드용: 각 낙찰물건의 (예측=자기제외 LOO, 실제) 쌍 — 정직 정확도
             for i, (bi, r) in enumerate(idx):
                 peers = [(o["winning_price"] / o["min_sale_price"])
                          for j, (bj, o) in enumerate(idx) if j != i and bj == bi]
@@ -1648,9 +1685,22 @@ def backtest_stats() -> dict:
                 pred = r["min_sale_price"] * prem
                 if r.get("median_price"):
                     pred = min(pred, r["median_price"] * 1.10)   # expected_for와 동일 소프트캡
-                loo.append(abs(pred - r["winning_price"]) / r["winning_price"])
+                err = abs(pred - r["winning_price"]) / r["winning_price"]
+                loo.append(err)
+                pred_pool.append({
+                    "pred": int(round(pred)), "actual": int(r["winning_price"]),
+                    "err_pct": round(err * 100, 1), "model": r.get("model"),
+                    "year": r.get("year"), "case_no": r.get("case_no"),
+                    "sale_date": r.get("sale_date"),
+                })
             if loo:
                 out["mae_pct"] = round(st.mean(loo) * 100, 1)
+                out["within10_pct"] = round(sum(1 for e in loo if e <= 0.10) / len(loo) * 100)
+                out["within20_pct"] = round(sum(1 for e in loo if e <= 0.20) / len(loo) * 100)
+                out["pred_n"] = len(loo)
+                # 대시보드 노출용: 최근 매각일 순 예측-실제 쌍(전체는 무거우니 상한)
+                out["pred_pool"] = sorted(
+                    pred_pool, key=lambda p: (p.get("sale_date") or ""), reverse=True)
     # 유사 낙찰(comparable) 매칭용 풀 — 같은 차종·유사 연식·주행거리 낙찰 사례로
     # 예상낙찰가를 개별 보정하기 위한 경량 스냅샷(모델키·연식·주행·할인율·낙찰가).
     out["comp_pool"] = [

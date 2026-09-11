@@ -33,6 +33,8 @@
     {% if cond %}<input type="hidden" name="cond" value="{{ cond }}">{% endif %}
     <button class="btn-ghost text-sm flex items-center gap-1">
       <span class="material-symbols-outlined text-base">filter_list</span> 적용</button>
+    <button type="button" onclick="ncSaveSearch()" class="btn-ghost text-sm flex items-center gap-1" title="현재 검색 조건을 저장 — 즐겨찾기 탭에서 새 매물을 확인합니다">
+      <span aria-hidden="true">🔖</span> 검색 저장</button>
     {% if result %}<a href="/vehicles" class="text-xs bg-sky-50 text-sky-700 border border-sky-200 rounded-full px-3 py-1">결과={{ result }} ✕</a>{% endif %}
     {% if date %}<a href="/vehicles" class="text-xs bg-primary/10 text-primary border border-primary/20 rounded-full px-3 py-1 inline-flex items-center gap-1" title="날짜 필터 해제"><span class="material-symbols-outlined text-[13px] leading-none">event</span>{{ date }} 매각 ✕</a>{% endif %}
     {% if court %}<a href="/courts" class="text-xs bg-primary/10 text-primary border border-primary/20 rounded-full px-3 py-1 inline-flex items-center gap-1" title="법원 선택으로"><span class="material-symbols-outlined text-[13px] leading-none">gavel</span>{% if ',' in court %}법원 {{ court.split(',')|length }}곳{% else %}{{ court|replace('지방법원','지법') }}{% endif %} ✕</a>{% endif %}
@@ -57,6 +59,18 @@
     {% endif %}
     <span class="text-sm text-mut ml-auto">총 <b class="text-txt">{{ total }}</b>건</span>
   </form>
+</div>
+
+<!-- 차종 프리셋 필터(모델명 기준 근사 분류) — 상용·패밀리 등 수요자별 빠른 탐색 -->
+<div class="flex flex-wrap items-center gap-1.5 text-xs px-1">
+  <span class="text-mut font-medium mr-0.5">차종</span>
+  <a href="/vehicles{% if qs_no_segment %}?{{ qs_no_segment }}{% endif %}"
+     class="px-2.5 py-1 rounded-full border {{ 'bg-primary text-white border-primary' if not segment else 'border-line text-mut hover:text-txt hover:bg-slate-50' }}">전체</a>
+  {% for k, lbl in segment_presets %}
+  <a href="/vehicles?segment={{ k }}{% if qs_no_segment %}&{{ qs_no_segment }}{% endif %}"
+     class="px-2.5 py-1 rounded-full border {{ 'bg-primary text-white border-primary' if segment==k else 'border-line text-mut hover:text-txt hover:bg-slate-50' }}">{{ lbl }}</a>
+  {% endfor %}
+  <span class="text-[11px] text-mut ml-1">· 모델명 기준 근사 분류</span>
 </div>
 
 <!-- 상태 범례 — 각 상태에 밑줄+설명(탭/호버). 기호(*,↑)는 문장으로 풀어서 안내 -->
@@ -271,7 +285,32 @@
 <div id="listSkeleton" class="hidden bg-surface border border-line rounded-lg p-4 space-y-2.5" aria-hidden="true">
   {% for i in range(8) %}<div class="skeleton h-11 rounded-md"></div>{% endfor %}
 </div>
-<script>
+<script>window.NC_LIST_TOTAL={{ total }};
+// 관심조건 저장 — 현재 필터를 기기 로컬에 저장(즐겨찾기 탭에서 새 매물 확인). 외부 전송 없음.
+function ncSaveSearch(){
+  try{
+    var p=new URLSearchParams(location.search); p.delete('page'); p.delete('all');
+    var clean=p.toString();
+    var seg={commercial:'상용·화물',minivan:'패밀리·7인승',compact:'경차',suv:'SUV',sedan:'세단'};
+    var parts=[];
+    if(p.get('q')) parts.push('"'+p.get('q')+'"');
+    if(p.get('maker')) parts.push(p.get('maker'));
+    if(p.get('segment')) parts.push(seg[p.get('segment')]||p.get('segment'));
+    if(p.get('judgment')) parts.push(p.get('judgment'));
+    if(p.get('court')) parts.push('법원 지정');
+    if(p.get('upcoming')) parts.push('입찰예정 '+p.get('upcoming')+'일');
+    if(p.get('cond')==='insp_expired') parts.push('검사경과');
+    if(p.get('cond')==='damaged') parts.push('외관손상');
+    var label=parts.length?parts.join(' · '):'전체 물건';
+    var KEY='naechaget:searches', list;
+    try{ list=JSON.parse(localStorage.getItem(KEY)||'[]'); }catch(e){ list=[]; }
+    if(!Array.isArray(list)) list=[];
+    if(list.some(function(s){return s.qs===clean;})){ alert('이미 저장된 검색입니다.'); return; }
+    list.unshift({qs:clean, label:label, baseline:(window.NC_LIST_TOTAL||0), ts:Date.now()});
+    localStorage.setItem(KEY, JSON.stringify(list.slice(0,20)));
+    alert('검색을 저장했습니다.\n즐겨찾기 탭 → 저장한 검색에서 새 매물을 확인하세요.');
+  }catch(e){ alert('저장에 실패했습니다.'); }
+}
 (function(){
   var res=document.getElementById('listResults'), sk=document.getElementById('listSkeleton');
   if(!res||!sk) return;
