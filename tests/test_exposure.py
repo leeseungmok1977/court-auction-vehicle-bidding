@@ -72,7 +72,16 @@ def test_user_responses_have_no_encar_raw(app_client):
         assert r.status_code == 200, p
         assert "ZZLEAKZZ" not in r.text, f"엔카 개별매물 누출(user): {p}"
         assert "동급 매물" not in r.text, f"동급 매물 섹션 누출(user): {p}"
-        assert "보배드림" not in r.text and "당시 출시가" not in r.text, f"보배드림 파생값 공개 노출(user): {p}"
+        assert "보배드림" not in r.text, f"출처명 공개 노출(user): {p}"   # 권리자 조건: 출처명은 어떤 경우에도 비공개
+
+
+def test_newcar_hidden_from_public_when_flag_off(app_client, monkeypatch):
+    from web import service
+    base = service.load_config()
+    monkeypatch.setattr(service, "load_config", lambda: {**base, "newcar_public": False})
+    for p in ("/vehicle/T1_1", "/vehicle/T1_1/report"):
+        r = app_client.get(p, headers=_PUBLIC)
+        assert r.status_code == 200 and "당시 출시가" not in r.text, p
 
 
 def test_admin_sees_newcar_range(app_client):
