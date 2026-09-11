@@ -75,7 +75,7 @@
 </div>
 
 <!-- 상태 범례 — 각 상태에 밑줄+설명(탭/호버). 기호(*,↑)는 문장으로 풀어서 안내 -->
-<div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-mut px-1">
+<div class="gloss-row gloss-up flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-mut px-1">
   {{ ui.gloss('검토 가능', '지금 가격이 적정해 바로 입찰을 검토할 수 있는 물건이에요.', q=false, cls='font-bold text-emerald-700') }}
   {{ ui.gloss('유찰 대기', '아직 최저가가 시세보다 높아, 유찰로 더 내려가길 기다리는 편이 나은 물건이에요.', q=false, cls='font-bold text-amber-700') }}
   {{ ui.gloss('신뢰도 낮음', '동급 시세 표본이 부족해 예상 낙찰가를 믿기 어려운 물건이에요. 직접 시세 확인이 필요합니다.', q=false, cls='font-bold text-sky-700') }}

@@ -170,6 +170,12 @@
   /* 모바일 하단 탭 안정화: 오버스크롤이 브라우저 주소창(툴바)을 토글해 탭이 깜빡이는 것 방지 */
   html,body{overscroll-behavior:none}
   .custom-scrollbar{overscroll-behavior:contain}
+  /* 본문 스크롤 영역은 '세로만' 스크롤한다(안전망).
+     overflow-y:auto만 주면 CSS 규칙상 overflow-x가 visible→auto로 계산되어,
+     어떤 요소든 조금만 넘치면 앱스럽지 않은 가로 스크롤바가 생긴다.
+     clip은 스크롤 컨테이너를 만들지 않아 내부 position:sticky를 깨뜨리지 않고,
+     미지원 브라우저는 이 선언을 무시하므로 기존 동작으로 안전하게 되돌아간다. */
+  #appscroll{overflow-x:clip}
   /* 강조 깜빡임(0.5초 간격 on/off) — '지금 입찰 추천' 등 주목 요소 */
   /* 주목 펄스 — 텍스트 대비 유지 위해 opacity 감쇠 대신 확대/글로우(접근성 4.5:1 보존) */
   @keyframes ncblink{0%,100%{transform:scale(1);filter:none}50%{transform:scale(1.08);filter:drop-shadow(0 0 3px rgba(4,120,87,.5))}}
@@ -193,6 +199,16 @@
   .gloss .pop::before{content:"";position:absolute;left:10px;bottom:100%;border:5px solid transparent;border-bottom-color:#0b142b}
   @media (max-width:420px){ .gloss .pop{max-width:210px} }
   @media (prefers-reduced-motion: reduce){ .gloss .pop{transition:none} }
+  /* 행(row) 기준 팝오버 — 2026-09-12 가로 스크롤 장애 대응.
+     팝오버는 숨김 상태(visibility:hidden)에서도 레이아웃 폭을 차지한다. 가로로 늘어선
+     용어들 중 오른쪽 끝 항목은 팝오버가 화면 밖으로 최대 105px까지 나갔고, 본문
+     스크롤 영역이 그만큼 넓어져 하단에 가로 스크롤바가 생겼다(앱에서 특히 어색).
+     해결: 트리거가 아니라 '행'을 기준 박스로 삼아 팝오버가 행 폭을 넘지 못하게 한다. */
+  .gloss-row{position:relative}
+  .gloss-row .gloss{position:static}
+  .gloss-row .gloss .pop{left:0;right:auto;max-width:min(250px,100%)}
+  .gloss-row .gloss .pop::before{display:none}   /* 기준이 행이라 꼬리 위치가 무의미 */
+  .gloss-row.gloss-up .gloss .pop{top:auto;bottom:calc(100% + 7px)}   /* 화면 하단 범례용 */
   /* 큰글씨(어르신) 모드 — 루트 폰트 확대로 rem 기반 텍스트 일괄 확대(저시력·고령 접근성) */
   html.nc-large{font-size:112.5%}
   #largeToggle[aria-pressed="true"]{background:#2f5fe0;color:#fff}
