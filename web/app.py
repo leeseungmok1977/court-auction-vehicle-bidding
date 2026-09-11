@@ -590,6 +590,7 @@ def vehicle_report(request: Request, vid: str):
         "report": _report, "backtest": bt, "dist": dist if _adm else None,
         "photos": photos, "comps_won": comps_won, "asum": asum, "verdict": verdict,
         "comp_min_n": service.COMP_MIN_N, "comp_ratio_med": comp_ratio_med,
+        "hexa": service.hexagon_scores(v),                    # 01 종합 프로필 육각형(6축, 미산출 축은 None)
         "now": datetime.now().strftime("%Y-%m-%d %H:%M"),
     })
 

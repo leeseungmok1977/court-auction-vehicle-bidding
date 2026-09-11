@@ -544,6 +544,127 @@ def _reconcile_min_from_dxdy(within_days: int = 30) -> None:
             db.update_fields(v["id"], **f)
 
 
+def _interp(x: float, pts: list) -> float:
+    """구간 선형보간(pts는 x 오름차순). 범위 밖은 양끝값으로 고정."""
+    if x <= pts[0][0]:
+        return pts[0][1]
+    for (x0, y0), (x1, y1) in zip(pts, pts[1:]):
+        if x <= x1:
+            return y0 + (y1 - y0) * (x - x0) / (x1 - x0)
+    return pts[-1][1]
+
+
+_HX_R, _HX_C = 95.0, 130.0   # 육각형 SVG(viewBox 260) 반지름·중심
+
+
+def _hx_pt(i: int, frac: float):
+    import math
+    ang = math.radians(-90 + 60 * i)          # 0번 축이 12시, 시계방향
+    return (round(_HX_C + _HX_R * frac * math.cos(ang), 1),
+            round(_HX_C + _HX_R * frac * math.sin(ang), 1))
+
+
+def hexagon_scores(v: dict, today=None) -> dict:
+    """리포트 '종합 프로필' 육각형 — 6축 0~100 점수 + SVG 좌표.
+
+    신뢰성 원칙: **자료가 없는 축은 0으로 꾸미지 않고 None(미산출)** 으로 두고 표·툴팁에 '자료 없음'을 표시한다.
+    각 축의 근거(note)는 실제 입력값으로 적어 사용자가 검증할 수 있게 한다. 공식은 리포트 각주와 동일.
+
+    1 가격 메리트  시세 대비 최저매각가 할인율(시세 없으면 감정가 대비 — 근거에 명시) 0%→10 · 15%→40 · 30%→70 · 45%→90 · 55%+→100
+    2 시세 신뢰도  market_confidence 그대로(동급참조 시세는 이미 한 단계 하향된 값)
+    3 사고·상태    사고 없음 100 / 사고 45 / 침수 0, 상태 poor −20 · fair −5, 검사 만료 −15
+    4 주행 적정성  실주행 ÷ (경과연수×15,000km): 0.5→100 · 1.0→70 · 1.5→45 · 2.0→25 · 3.0+→10
+    5 연식        경과연수: 1→100 · 3→85 · 5→70 · 8→50 · 12→25 · 16+→10
+    6 유동성       동급 매물 규모(엔카 검색 총량, log10): 10건→45 · 100→70 · 1,000→95 · 1,585+→100 (0건→5)
+    """
+    import math
+    from datetime import date as _date
+    today = today or _date.today()
+    axes = []
+
+    # 1) 가격 메리트
+    floor = v.get("min_sale_price") or 0
+    med, appr = v.get("median_price") or 0, v.get("appraisal_value") or 0
+    if floor > 0 and (med > 0 or appr > 0):
+        base, base_nm = (med, "시세") if med > 0 else (appr, "감정가")
+        disc = 1 - floor / base
+        sc = _interp(disc, [(0, 10), (0.15, 40), (0.30, 70), (0.45, 90), (0.55, 100)]) if disc > 0 else 5
+        note = f"{base_nm} {base:,}원 대비 최저가 {floor:,}원 → {'할인 ' + format(disc * 100, '.0f') + '%' if disc > 0 else '시세보다 높음'}"
+        if med <= 0:
+            note += " (시세 없음 → 감정가 기준)"
+        axes.append({"key": "price", "name": "가격 메리트", "score": round(sc), "note": note})
+    else:
+        axes.append({"key": "price", "name": "가격 메리트", "score": None, "note": "최저매각가 또는 기준가 없음"})
+
+    # 2) 시세 신뢰도
+    conf = v.get("market_confidence")
+    if med > 0 and conf is not None:
+        lbl = v.get("market_confidence_label") or ""
+        src = " · 동급 참조 시세" if v.get("market_platform") == REUSE_PLATFORM else ""
+        axes.append({"key": "conf", "name": "시세 신뢰도", "score": int(max(0, min(100, conf))),
+                     "note": f"신뢰도 {conf}/100({lbl}){src}"})
+    else:
+        axes.append({"key": "conf", "name": "시세 신뢰도", "score": None, "note": "동급 시세 미확보"})
+
+    # 3) 사고·상태
+    ag = v.get("accident_grade")
+    if ag in ("none", "accident", "flood"):
+        sc = {"none": 100, "accident": 45, "flood": 0}[ag]
+        parts = [{"none": "사고 이력 없음", "accident": "사고 이력 있음", "flood": "침수/전손 이력"}[ag]]
+        cl = v.get("condition_level")
+        if cl == "poor":
+            sc -= 20; parts.append("상태 미흡")
+        elif cl == "fair":
+            sc -= 5; parts.append("상태 보통")
+        ins = str(v.get("inspection_to") or "")[:10]
+        if len(ins) == 10 and ins < today.isoformat():
+            sc -= 15; parts.append(f"검사 만료({ins})")
+        axes.append({"key": "cond", "name": "사고·상태", "score": max(0, min(100, sc)), "note": " · ".join(parts)})
+    else:
+        axes.append({"key": "cond", "name": "사고·상태", "score": None, "note": "감정 요항 미확보"})
+
+    # 4) 주행 적정성 / 5) 연식
+    yr, km = v.get("year"), v.get("mileage_km")
+    age = (today.year - int(yr)) if yr else None
+    if yr and km is not None:
+        yrs = max(0.5, age)
+        ratio = km / (yrs * 15000)
+        sc = _interp(ratio, [(0.5, 100), (0.75, 85), (1.0, 70), (1.5, 45), (2.0, 25), (3.0, 10)])
+        axes.append({"key": "km", "name": "주행 적정성", "score": round(sc),
+                     "note": f"{km:,}km · 연평균 {km / yrs:,.0f}km (기준 15,000km)"})
+    else:
+        axes.append({"key": "km", "name": "주행 적정성", "score": None, "note": "주행거리 또는 연식 없음"})
+    if yr:
+        sc = _interp(max(0, age), [(1, 100), (3, 85), (5, 70), (8, 50), (12, 25), (16, 10)])
+        axes.append({"key": "age", "name": "연식", "score": round(sc), "note": f"{yr}년식 · {max(0, age)}년 경과"})
+    else:
+        axes.append({"key": "age", "name": "연식", "score": None, "note": "연식 없음"})
+
+    # 6) 유동성
+    n = v.get("encar_total")
+    if n is None:
+        axes.append({"key": "liq", "name": "유동성", "score": None, "note": "동급 매물 규모 미확보", "count": None})
+    else:
+        sc = 5 if n <= 0 else max(5, min(100, 20 + 25 * math.log10(n)))
+        band = "희소" if n < 30 else "보통" if n < 300 else "풍부"
+        axes.append({"key": "liq", "name": "유동성", "score": round(sc),
+                     "note": f"동급 매물 {band}(재판매 용이성)", "count": int(n)})
+
+    # SVG 좌표(중심 130, 반지름 95). 라벨은 바깥쪽, 앵커는 축 위치별.
+    anchors = ["middle", "start", "start", "middle", "end", "end"]
+    dys = [-4, 4, 4, 11, 4, 4]
+    avail = []
+    for i, a in enumerate(axes):
+        a["ex"], a["ey"] = _hx_pt(i, 1.0)
+        lx, ly = _hx_pt(i, 1.24)
+        a["lx"], a["ly"], a["anchor"] = lx, round(ly + dys[i], 1), anchors[i]
+        if a["score"] is not None:
+            a["px"], a["py"] = _hx_pt(i, max(0.04, a["score"] / 100))
+            avail.append(f"{a['px']},{a['py']}")
+    rings = [" ".join(f"{x},{y}" for x, y in (_hx_pt(i, r / 100) for i in range(6))) for r in (25, 50, 75, 100)]
+    return {"axes": axes, "n_avail": len(avail), "poly": " ".join(avail) if len(avail) >= 3 else "", "rings": rings}
+
+
 REUSE_PLATFORM = "동급참조"   # market_platform 값: 실측(encar)이 아니라 DB의 동급 시세를 참조한 임시 시세
 
 

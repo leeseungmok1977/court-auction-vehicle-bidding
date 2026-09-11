@@ -100,6 +100,28 @@ td.r,th.r{text-align:right}td.c,th.c{text-align:center}
 .kv-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:0 36px}
 .kv{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--line);font-size:13px;align-items:baseline}
 .kv dt{color:var(--ink-soft);white-space:nowrap}.kv dd{font-weight:600;text-align:right}
+/* 종합 프로필 육각형 — 단일 시리즈: 2px 선·≥8px 마커+2px 흰 링·10% 워시·실선 헤어라인 그리드, 텍스트는 잉크 토큰 */
+.hexa{margin-top:22px;padding-top:22px;border-top:1px dashed var(--line-strong);display:grid;grid-template-columns:250px 1fr;gap:10px 26px;align-items:start}
+.hx-fig{position:relative}
+.hx-svg{width:100%;height:auto;display:block;overflow:visible}
+.hx-ring{fill:none;stroke:var(--line);stroke-width:1}
+.hx-spoke{stroke:var(--line);stroke-width:1}
+.hx-poly{fill:var(--cobalt);fill-opacity:.1;stroke:var(--cobalt);stroke-width:2;stroke-linejoin:round}
+.hx-dot{fill:var(--cobalt);stroke:#fff;stroke-width:2;transition:r .12s}
+.hx-hit{fill:transparent;outline:none;cursor:default}
+.hx-hit:hover,.hx-hit:focus-visible{stroke:var(--cobalt);stroke-opacity:.35;stroke-width:2}
+.hx-lbl{font-size:10.5px;font-weight:600;fill:var(--ink-soft)}
+.hx-tip{position:absolute;pointer-events:none;display:none;max-width:230px;background:#fff;border:1px solid var(--line-strong);border-radius:8px;padding:8px 10px;font-size:12px;line-height:1.45;color:var(--ink-soft);box-shadow:0 6px 18px rgba(22,35,58,.12);z-index:5}
+.hx-tip b{display:block;font-family:var(--mono);font-size:15px;color:var(--ink);margin-bottom:2px}
+.hx-tbl{display:grid;gap:10px;align-content:start}
+.hx-row{display:grid;grid-template-columns:82px 1fr 34px;gap:6px 10px;align-items:center;font-size:12.5px}
+.hx-row .nm{font-weight:600;color:var(--ink)}
+.hx-row .tk{height:6px;border-radius:99px;background:#EDF0F5;overflow:hidden}.hx-row .fl{height:100%;border-radius:99px;background:var(--cobalt)}
+.hx-row .sc{text-align:right;font-weight:600}
+.hx-row .bs{grid-column:1/-1;margin-top:-3px;font-size:11px;color:var(--ink-faint)}.hx-row .bs b{color:var(--amber)}
+.hx-foot{grid-column:1/-1;margin-top:4px;font-size:11px;color:var(--ink-faint);line-height:1.6}.hx-foot b{color:var(--ink-soft)}
+@media (max-width:640px){.hexa{grid-template-columns:1fr}.hx-fig{max-width:300px;margin:0 auto}}
+@media print{.hx-tip{display:none!important}}
 .chip{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:5px}
 .chip.ok{background:var(--green-tint);color:var(--green)}.chip.warn{background:var(--amber-tint);color:var(--amber)}.chip.risk{background:var(--red-tint);color:var(--red)}
 .pos{color:var(--green)}.neu{color:var(--amber)}.neg{color:var(--red)}
@@ -182,6 +204,36 @@ details.raw summary{cursor:pointer;font-size:12px;color:var(--cobalt);font-weigh
           <li>본 결론의 신뢰도 <b>{{ conf }}/100</b> — 미확정 요소는 현장확인(상태·정비비)뿐이며 결과에 따라 밴드가 조정될 수 있음(09)</li>
         </ul>
       </div>
+      {# 종합 프로필 6축 육각형 — 단일 시리즈(범례 없음), 값은 우측 표·툴팁, 자료 없는 축은 미산출로 둔다 #}
+      {% if hexa and hexa.n_avail >= 3 %}
+      <div class="hexa">
+        <div class="hx-fig">
+          <div class="v-label">종합 프로필 <span style="font-weight:400;color:var(--ink-faint)">— 6축 0~100 · {{ hexa.n_avail }}/6축 산출</span></div>
+          <svg class="hx-svg" viewBox="0 0 260 260" role="img" aria-label="종합 프로필: {% for a in hexa.axes %}{{ a.name }} {{ a.score if a.score is not none else '자료 없음' }}{{ ', ' if not loop.last }}{% endfor %}">
+            {% for pts in hexa.rings %}<polygon class="hx-ring" points="{{ pts }}"/>{% endfor %}
+            {% for a in hexa.axes %}<line class="hx-spoke" x1="130" y1="130" x2="{{ a.ex }}" y2="{{ a.ey }}"/>{% endfor %}
+            {% if hexa.poly %}<polygon class="hx-poly" points="{{ hexa.poly }}"/>{% endif %}
+            {% for a in hexa.axes %}
+              {% if a.score is not none %}<circle class="hx-dot" cx="{{ a.px }}" cy="{{ a.py }}" r="4.5"/><circle class="hx-hit" cx="{{ a.px }}" cy="{{ a.py }}" r="14" tabindex="0" data-i="{{ loop.index0 }}" aria-label="{{ a.name }} {{ a.score }}점 — {{ a.note }}"/>{% endif %}
+              <text class="hx-lbl" x="{{ a.lx }}" y="{{ a.ly }}" text-anchor="{{ a.anchor }}">{{ a.name }}{% if a.score is none %} —{% endif %}</text>
+            {% endfor %}
+          </svg>
+          <div class="hx-tip" id="hxTip" role="status"></div>
+          <script type="application/json" id="hxData">{{ hexa.axes|tojson }}</script>
+        </div>
+        <div class="hx-tbl">
+          {% for a in hexa.axes %}
+          <div class="hx-row">
+            <span class="nm">{{ a.name }}</span>
+            <div class="tk">{% if a.score is not none %}<div class="fl" style="width:{{ a.score }}%"></div>{% endif %}</div>
+            <span class="sc num">{{ a.score if a.score is not none else '—' }}</span>
+            <span class="bs">{{ a.note }}{% if a.key == 'liq' and a.count is not none and is_admin(request) %} · {{ '{:,}'.format(a.count) }}건{% endif %}{% if a.score is none %} · <b>자료 없음(미산출)</b>{% endif %}</span>
+          </div>
+          {% endfor %}
+          <div class="hx-foot">공식 — <b>가격 메리트</b> 시세(없으면 감정가) 대비 최저매각가 할인율 · <b>시세 신뢰도</b> 동급 표본 기반 점수 · <b>사고·상태</b> 사고/침수 이력·상태등급·검사만료 · <b>주행 적정성</b> 경과연수×15,000km 대비 실주행 · <b>연식</b> 경과연수 · <b>유동성</b> 동급 매물 규모(재판매 용이성). 자료가 없는 축은 0으로 채우지 않고 미산출로 둡니다. 축 점수는 서로 합산하지 않으며 종합 점수를 만들지 않습니다.</div>
+        </div>
+      </div>
+      {% endif %}
       <div class="stop {{ 'on' if report.stop_active else 'off' }}">
         <span class="tg">STOP RULE</span>
         <p>{% if report.stop_active %}<b>사고/침수 이력이 감지</b>되었습니다. 현장에서 골격(프레임) 손상·침수 확정 시 본 리포트의 권장가는 <b>즉시 무효</b>이며 입찰 보류를 권장합니다.
@@ -540,6 +592,30 @@ details.raw summary{cursor:pointer;font-size:12px;color:var(--cobalt);font-weigh
   try{ window.matchMedia('print').addEventListener('change', layout); }
   catch(e){ try{ window.matchMedia('print').addListener(layout); }catch(e2){} }
   layout();
+})();
+// 종합 프로필 육각형 툴팁 — hover/focus 동일, 값은 표에도 있어 툴팁이 게이트가 아님. textContent로만 삽입.
+(function(){
+  var tip=document.getElementById('hxTip'), src=document.getElementById('hxData');
+  if(!tip||!src) return;
+  var data=[]; try{ data=JSON.parse(src.textContent||'[]'); }catch(e){ return; }
+  document.querySelectorAll('.hx-hit').forEach(function(h){
+    function show(){
+      var a=data[+h.getAttribute('data-i')]; if(!a) return;
+      tip.textContent='';
+      var b=document.createElement('b'); b.textContent=a.score+'점 · '+a.name;
+      var s=document.createElement('span'); s.textContent=a.note;
+      tip.appendChild(b); tip.appendChild(s);
+      var svg=h.ownerSVGElement, pt=svg.createSVGPoint(); pt.x=h.cx.baseVal.value; pt.y=h.cy.baseVal.value;
+      var sp=pt.matrixTransform(svg.getScreenCTM()), pr=svg.parentNode.getBoundingClientRect();
+      tip.style.display='block';
+      var x=sp.x-pr.left+12, y=sp.y-pr.top+12;
+      if(x+tip.offsetWidth>pr.width) x=Math.max(0,sp.x-pr.left-tip.offsetWidth-12);
+      tip.style.left=x+'px'; tip.style.top=y+'px';
+    }
+    function hide(){ tip.style.display='none'; }
+    h.addEventListener('pointerenter',show); h.addEventListener('focus',show);
+    h.addEventListener('pointerleave',hide); h.addEventListener('blur',hide);
+  });
 })();
 </script>
 </body>
