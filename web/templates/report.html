@@ -227,10 +227,10 @@ details.raw summary{cursor:pointer;font-size:12px;color:var(--cobalt);font-weigh
             <span class="nm">{{ a.name }}</span>
             <div class="tk">{% if a.score is not none %}<div class="fl" style="width:{{ a.score }}%"></div>{% endif %}</div>
             <span class="sc num">{{ a.score if a.score is not none else '—' }}</span>
-            <span class="bs">{{ a.note }}{% if a.key == 'liq' and a.count is not none and is_admin(request) %} · {{ '{:,}'.format(a.count) }}건{% endif %}{% if a.score is none %} · <b>자료 없음(미산출)</b>{% endif %}</span>
+            <span class="bs">{{ a.note }}{% if a.count is defined and a.count is not none %} · {{ '{:,}'.format(a.count) }}건{% endif %}{% if a.score is none %} · <b>자료 없음(미산출)</b>{% endif %}</span>
           </div>
           {% endfor %}
-          <div class="hx-foot">공식 — <b>가격 메리트</b> 시세(없으면 감정가) 대비 최저매각가 할인율 · <b>시세 신뢰도</b> 동급 표본 기반 점수 · <b>사고·상태</b> 사고/침수 이력·상태등급·검사만료 · <b>주행 적정성</b> 경과연수×15,000km 대비 실주행 · <b>연식</b> 경과연수 · <b>유동성</b> 동급 매물 규모(재판매 용이성). 자료가 없는 축은 0으로 채우지 않고 미산출로 둡니다. 축 점수는 서로 합산하지 않으며 종합 점수를 만들지 않습니다.</div>
+          <div class="hx-foot">공식 — <b>가격 메리트</b> 시세(없으면 감정가) 대비 최저매각가 할인율 · <b>시세 신뢰도</b> 동급 표본 기반 점수 · <b>사고·상태</b> 사고/침수 이력·상태등급·검사만료 · <b>주행 적정성</b> 경과연수×15,000km 대비 실주행 · <b>연식</b> 경과연수 · <b>유동성</b> 같은 차종의 시장 매물 규모(재판매 용이성). 자료가 없는 축은 0으로 채우지 않고 미산출로 둡니다. 축 점수는 서로 합산하지 않으며 종합 점수를 만들지 않습니다.</div>
         </div>
       </div>
       {% endif %}

@@ -72,6 +72,14 @@ def test_liquidity_log_scale_and_zero():
     assert _score(service.hexagon_scores(_v(encar_total=5_000), TODAY), "liq")["score"] == 100
 
 
+def test_public_payload_has_no_raw_listing_count():
+    """유동성 축의 매물 건수(엔카 원자료)는 관리자에게만 실린다 — 공개 JSON에 count가 없어야 한다."""
+    pub = _score(service.hexagon_scores(_v(encar_total=1_000), TODAY), "liq")
+    assert "count" not in pub and "동급 매물" not in pub["note"]
+    adm = _score(service.hexagon_scores(_v(encar_total=1_000), TODAY, include_private=True), "liq")
+    assert adm["count"] == 1_000
+
+
 def test_reference_price_is_disclosed():
     h = service.hexagon_scores(_v(market_platform="동급참조", market_confidence=63,
                                   market_confidence_label="보통"), TODAY)

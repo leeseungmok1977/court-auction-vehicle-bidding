@@ -564,7 +564,7 @@ def _hx_pt(i: int, frac: float):
             round(_HX_C + _HX_R * frac * math.sin(ang), 1))
 
 
-def hexagon_scores(v: dict, today=None) -> dict:
+def hexagon_scores(v: dict, today=None, include_private: bool = False) -> dict:
     """리포트 '종합 프로필' 육각형 — 6축 0~100 점수 + SVG 좌표.
 
     신뢰성 원칙: **자료가 없는 축은 0으로 꾸미지 않고 None(미산출)** 으로 두고 표·툴팁에 '자료 없음'을 표시한다.
@@ -640,15 +640,18 @@ def hexagon_scores(v: dict, today=None) -> dict:
     else:
         axes.append({"key": "age", "name": "연식", "score": None, "note": "연식 없음"})
 
-    # 6) 유동성
+    # 6) 유동성 — 매물 건수(엔카 원자료)는 관리자(include_private)에게만 실어 보낸다(M01 격리).
+    #    문구에 '동급 매물'을 쓰지 않는다: 그 문자열은 엔카 원자료 섹션의 누출 감시 토큰이다(test_exposure).
     n = v.get("encar_total")
     if n is None:
-        axes.append({"key": "liq", "name": "유동성", "score": None, "note": "동급 매물 규모 미확보", "count": None})
+        a = {"key": "liq", "name": "유동성", "score": None, "note": "시장 매물 규모 자료 미확보"}
     else:
         sc = 5 if n <= 0 else max(5, min(100, 20 + 25 * math.log10(n)))
         band = "희소" if n < 30 else "보통" if n < 300 else "풍부"
-        axes.append({"key": "liq", "name": "유동성", "score": round(sc),
-                     "note": f"동급 매물 {band}(재판매 용이성)", "count": int(n)})
+        a = {"key": "liq", "name": "유동성", "score": round(sc), "note": f"같은 차종 시장 매물 {band} (재판매 용이성)"}
+        if include_private:
+            a["count"] = int(n)
+    axes.append(a)
 
     # SVG 좌표(중심 130, 반지름 95). 라벨은 바깥쪽, 앵커는 축 위치별.
     anchors = ["middle", "start", "start", "middle", "end", "end"]
