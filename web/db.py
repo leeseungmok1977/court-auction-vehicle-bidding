@@ -229,10 +229,60 @@ def init_db() -> None:
         if "spec_remark" not in cols:
             conn.execute("ALTER TABLE vehicles ADD COLUMN spec_remark TEXT")
         for col in ("inspection_to", "condition_level", "condition_flags", "photo_order",
-                    "market_ref_date", "market_ref_id"):   # 동급참조 시세의 출처(정직 표기·추적)
+                    "market_ref_date", "market_ref_id",     # 동급참조 시세의 출처(정직 표기·추적)
+                    "newcar_model", "newcar_release", "newcar_checked_at"):   # 당시 출시가(보배드림) 표기
             if col not in cols:
                 conn.execute(f"ALTER TABLE vehicles ADD COLUMN {col} TEXT")
+        for col in ("newcar_min", "newcar_max", "newcar_n"):
+            if col not in cols:
+                conn.execute(f"ALTER TABLE vehicles ADD COLUMN {col} INTEGER")
+        conn.executescript(_NEWCAR_SCHEMA)
     conn.close()
+
+
+# ── 보배드림 신차가격표 캐시(모델 단위 1회 수집, (등급,연식) 단위 가격) ──
+_NEWCAR_SCHEMA = """
+CREATE TABLE IF NOT EXISTS newcar_makers (maker_no TEXT PRIMARY KEY, maker_name TEXT, fetched_at TEXT);
+CREATE TABLE IF NOT EXISTS newcar_models (model_no TEXT PRIMARY KEY, maker_no TEXT, model_name TEXT,
+    levels_json TEXT, fetched_at TEXT);
+CREATE TABLE IF NOT EXISTS newcar_levels (level_no TEXT PRIMARY KEY, model_no TEXT, level_name TEXT,
+    grades_json TEXT, fetched_at TEXT);
+CREATE TABLE IF NOT EXISTS newcar_grades (level2_no TEXT PRIMARY KEY, level_no TEXT, model_no TEXT,
+    grade_name TEXT, years_json TEXT, release TEXT, fetched_at TEXT);
+CREATE TABLE IF NOT EXISTS newcar_prices (level2_no TEXT, year TEXT, price_manwon INTEGER, fetched_at TEXT,
+    PRIMARY KEY (level2_no, year));
+"""
+
+
+def nc_get(table: str, key_col: str, key) -> Optional[dict]:
+    conn = connect()
+    r = conn.execute(f"SELECT * FROM {table} WHERE {key_col}=?", (str(key),)).fetchone()
+    conn.close()
+    return dict(r) if r else None
+
+
+_NC_PK = {"newcar_makers": ("maker_no",), "newcar_models": ("model_no",), "newcar_levels": ("level_no",),
+          "newcar_grades": ("level2_no",), "newcar_prices": ("level2_no", "year")}
+
+
+def nc_put(table: str, row: dict) -> None:
+    """PRIMARY KEY 기준 upsert(주어진 열만 갱신, 나머지 열은 보존)."""
+    cols = list(row.keys())
+    pk = _NC_PK[table]
+    sets = [f"{c}=excluded.{c}" for c in cols if c not in pk] or [f"{pk[0]}={pk[0]}"]
+    conn = connect()
+    with conn:
+        conn.execute(f"INSERT INTO {table} ({','.join(cols)}) VALUES ({','.join('?' * len(cols))}) "
+                     f"ON CONFLICT({','.join(pk)}) DO UPDATE SET {','.join(sets)}",
+                     [row[c] for c in cols])
+    conn.close()
+
+
+def nc_rows(table: str, where_col: str, key) -> list:
+    conn = connect()
+    rows = [dict(r) for r in conn.execute(f"SELECT * FROM {table} WHERE {where_col}=?", (str(key),)).fetchall()]
+    conn.close()
+    return rows
 
 
 def _encode(rec: dict) -> dict:
@@ -280,6 +330,7 @@ _LISTING_KEEP = {
     "accident_hits", "insurance_history", "appraisal_ecdoc_id", "spec_remark", "photo_count",
     "inspection_to", "condition_level", "condition_flags", "photo_order",
     "analyzed_at", "match_label", "market_ref_date", "market_ref_id",
+    "newcar_min", "newcar_max", "newcar_n", "newcar_model", "newcar_release", "newcar_checked_at",
     "auction_result", "winning_price", "dxdy_history", "result_checked_at", "result_source",
 }
 

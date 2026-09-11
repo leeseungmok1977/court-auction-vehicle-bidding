@@ -668,6 +668,163 @@ def hexagon_scores(v: dict, today=None, include_private: bool = False) -> dict:
     return {"axes": axes, "n_avail": len(avail), "poly": " ".join(avail) if len(avail) >= 3 else "", "rings": rings}
 
 
+# ── 당시 출시가(신차가) 범위 — 보배드림 신차가격표 ─────────────────────────
+# 엔카 제조사 표기 → 보배드림 제조사명(복수 후보 허용: 쉐보레는 신형 '쉐보레(국산)'·구형 'GM대우'로 나뉨)
+NEWCAR_MAKER_ALIAS = {
+    "현대": ["현대"], "기아": ["기아"], "제네시스": ["제네시스"],
+    "르노코리아(삼성)": ["르노코리아(삼성)"], "쉐보레(GM대우)": ["쉐보레(국산)", "GM대우"],
+    "KG모빌리티(쌍용)": ["KG모빌리티(쌍용)"],
+    "벤츠": ["벤츠"], "BMW": ["BMW"], "아우디": ["아우디"], "폭스바겐": ["폭스바겐"], "미니": ["미니"],
+    "랜드로버": ["랜드로버"], "재규어": ["재규어"], "포르쉐": ["포르쉐"], "볼보": ["볼보"], "렉서스": ["렉서스"],
+    "링컨": ["링컨"], "지프": ["지프"], "마세라티": ["마세라티"], "벤틀리": ["벤틀리"], "포드": ["포드"],
+    "푸조": ["푸조"], "시트로엥/DS": ["시트로엥", "DS"], "인피니티": ["인피니티"], "캐딜락": ["캐딜락"],
+    "테슬라": ["테슬라"], "도요타": ["토요타"], "혼다": ["혼다"], "닛산": ["닛산"],
+}
+NEWCAR_RECHECK_DAYS = 30        # 매칭 실패/성공 후 재시도 간격(매일 헛요청 방지)
+NEWCAR_MAX_CANDIDATES = 3       # 물건당 시도할 보배 모델 후보 수(연식 검증으로 확정)
+
+
+def _nc_cached_or(table, key_col, key, fetch_fn, put_row_fn):
+    row = db.nc_get(table, key_col, key)
+    if row is not None:
+        return row
+    return put_row_fn(fetch_fn())
+
+
+def newcar_collect_model_year(bs, budget, maker_no: str, model_no: str, year: int) -> dict:
+    """한 (모델, 연식)의 등급별 출시가를 캐시 우선으로 모은다 → {'prices':[(세부모델,등급,만원)], 'release', 'n_grades'}.
+
+    영업용(택시·렌터카·장애인·영업용) 세부모델/등급은 제외. 예산 소진 시 BudgetExhausted가 올라가며
+    그때까지의 페이지는 캐시에 남아 다음 런에서 이어진다(부분 결과로 차량 필드를 쓰지 않는다).
+    """
+    import json
+    from src.collect import bobae
+    yr = str(year)
+    m = db.nc_get("newcar_models", "model_no", model_no)
+    if not m or not m.get("levels_json"):
+        levels = bobae.list_levels(bs, budget, maker_no, model_no)
+        db.nc_put("newcar_models", {"model_no": model_no, "maker_no": maker_no,
+                                    "model_name": (m or {}).get("model_name"),
+                                    "levels_json": json.dumps(levels, ensure_ascii=False), "fetched_at": _now()})
+    else:
+        levels = json.loads(m["levels_json"])
+    prices, release, n_grades = [], None, 0
+    for level_no, level_name in levels:
+        if bobae.is_excluded(level_name):
+            continue
+        lv = db.nc_get("newcar_levels", "level_no", level_no)
+        if not lv or not lv.get("grades_json"):
+            grades = bobae.list_grades(bs, budget, maker_no, model_no, level_no)
+            db.nc_put("newcar_levels", {"level_no": level_no, "model_no": model_no, "level_name": level_name,
+                                        "grades_json": json.dumps(grades, ensure_ascii=False), "fetched_at": _now()})
+        else:
+            grades = json.loads(lv["grades_json"])
+        for level2_no, grade_name in grades:
+            if bobae.is_excluded(grade_name):
+                continue
+            n_grades += 1
+            g = db.nc_get("newcar_grades", "level2_no", level2_no)
+            if not g:
+                pg = bobae.grade_page(bs, budget, maker_no, model_no, level_no, level2_no)
+                g = {"level2_no": level2_no, "level_no": level_no, "model_no": model_no, "grade_name": grade_name,
+                     "years_json": json.dumps(pg["years"]), "release": pg["release"], "fetched_at": _now()}
+                db.nc_put("newcar_grades", g)
+                if pg["selected_year"] and pg["price_manwon"]:      # 기본 선택 연식의 가격도 캐시
+                    db.nc_put("newcar_prices", {"level2_no": level2_no, "year": pg["selected_year"],
+                                                "price_manwon": pg["price_manwon"], "fetched_at": _now()})
+            years = json.loads(g["years_json"] or "[]")
+            if yr not in years:
+                continue
+            rows = [r for r in db.nc_rows("newcar_prices", "level2_no", level2_no) if r["year"] == yr]
+            if rows:
+                price = rows[0]["price_manwon"]
+            else:
+                pg = bobae.grade_page(bs, budget, maker_no, model_no, level_no, level2_no, year_no=yr)
+                price = pg["price_manwon"]
+                db.nc_put("newcar_prices", {"level2_no": level2_no, "year": yr,
+                                            "price_manwon": price, "fetched_at": _now()})
+            if price:
+                prices.append((level_name, grade_name, price))
+                release = release or g.get("release")
+    return {"prices": prices, "release": release, "n_grades": n_grades}
+
+
+def newcar_collect(max_requests: int = 300, max_models: Optional[int] = None,
+                   vehicle_ids: Optional[list] = None, within_days: int = 30) -> dict:
+    """입찰예정 물건에 '당시 출시가 최저~최고'를 붙인다(보배드림, 소량·저속, 캐시 우선).
+
+    흐름: 엔카 제조사 → 보배 제조사(별칭) → 보배 모델 목록(캐시) → 엔카 세대명·모델그룹으로 후보 점수 →
+    후보를 연식 검증(해당 연식 등급이 1개라도 있어야 확정)하며 최대 3개 시도 → 등급별 출시가 min/max.
+    실패해도 newcar_checked_at을 남겨 30일간 재시도하지 않는다(억지 매칭·헛요청 방지).
+    """
+    import json
+    from datetime import date as _date, timedelta as _td
+    from src.collect import bobae
+    budget = bobae.Budget(max_requests)
+    bs = bobae.new_session()
+    out = {"vehicles": 0, "matched": 0, "unmatched": 0, "requests": 0, "stopped": None}
+    today = _date.today()
+    cutoff = (today - _td(days=NEWCAR_RECHECK_DAYS)).isoformat()
+    pool = [v for v in db.list_vehicles(upcoming_days=within_days)
+            if v.get("year") and (not vehicle_ids or v["id"] in vehicle_ids)
+            and (v.get("newcar_checked_at") or "") < cutoff]
+    # 제조사 목록(1회 수집 후 캐시)
+    conn = db.connect(); rows = conn.execute("SELECT maker_no, maker_name, fetched_at FROM newcar_makers").fetchall(); conn.close()
+    makers = {r["maker_name"]: r["maker_no"] for r in rows}
+    models_seen = set()
+    try:
+        if not makers:
+            for no, name in bobae.list_makers(bs, budget):
+                db.nc_put("newcar_makers", {"maker_no": no, "maker_name": name, "fetched_at": _now()})
+                makers[name] = no
+        for v in pool:
+            if max_models and len(models_seen) >= max_models:
+                break
+            mp = encar.auto_map(v.get("maker"), v.get("model"))
+            names = NEWCAR_MAKER_ALIAS.get(mp["manufacturer"]) if mp else None
+            maker_nos = [makers[n] for n in (names or []) if n in makers]
+            if not maker_nos:
+                db.update_fields(v["id"], newcar_checked_at=_now(), newcar_n=0); out["unmatched"] += 1; continue
+            gens = []
+            try:
+                gens = list({(c.get("model") or "") for c in (v.get("comps") or []) if c.get("model")})
+            except (TypeError, AttributeError):
+                gens = []
+            group = mp["model_group"]
+            found = None
+            for maker_no in maker_nos:
+                cached = db.nc_rows("newcar_models", "maker_no", maker_no)
+                if cached and all(c.get("model_name") for c in cached):
+                    models = [(c["model_no"], c["model_name"]) for c in cached]
+                else:
+                    models = bobae.list_models(bs, budget, maker_no)
+                    for no, name in models:
+                        db.nc_put("newcar_models", {"model_no": no, "maker_no": maker_no, "model_name": name, "fetched_at": _now()})
+                for model_no, model_name in bobae.rank_model_candidates(models, gens, group)[:NEWCAR_MAX_CANDIDATES]:
+                    models_seen.add(model_no)
+                    res = newcar_collect_model_year(bs, budget, maker_no, model_no, int(v["year"]))
+                    if res["prices"]:
+                        found = (model_name, res); break
+                if found:
+                    break
+            out["vehicles"] += 1
+            if found:
+                name, res = found
+                ps = [p for _, _, p in res["prices"]]
+                db.update_fields(v["id"], newcar_min=min(ps), newcar_max=max(ps), newcar_n=len(ps),
+                                 newcar_model=name, newcar_release=res["release"], newcar_checked_at=_now())
+                out["matched"] += 1
+            else:
+                db.update_fields(v["id"], newcar_checked_at=_now(), newcar_n=0)
+                out["unmatched"] += 1
+    except bobae.BudgetExhausted as e:
+        out["stopped"] = str(e)
+    except RuntimeError as e:                    # 차단 → 즉시 중단·보고(C.4-5)
+        out["stopped"] = f"차단: {e}"
+    out["requests"] = budget.used
+    return out
+
+
 REUSE_PLATFORM = "동급참조"   # market_platform 값: 실측(encar)이 아니라 DB의 동급 시세를 참조한 임시 시세
 
 
@@ -868,6 +1025,13 @@ def daily_update(within_days: int = 30, analyze: bool = True,
     reuse = reuse_market_prices(within_days=within_days)
     if run_id and reuse.get("applied"):
         db.update_run(run_id, message=f"동급 시세 참조 적용 {reuse['applied']}건")
+    # ②-2 당시 출시가 범위(보배드림 신차가격표) — 소량·저속·캐시 우선, 실패해도 갱신 전체를 막지 않음
+    try:
+        if run_id:
+            db.update_run(run_id, message="당시 출시가 범위 수집(보배드림)")
+        newcar = newcar_collect(max_requests=int(config.get("newcar_daily_cap", 300)), within_days=within_days)
+    except Exception as e:  # noqa: BLE001
+        newcar = {"stopped": f"오류: {str(e)[:60]}", "matched": 0}
     # ③ 낙찰결과 반영 (매각기일 지난 물건)
     results = update_results(run_id=run_id, finalize=False)
     reconcile_won_judgment()   # 낙찰 물건 판정을 '종결'로 정합화(상태 분해 합계 정확)
@@ -893,10 +1057,11 @@ def daily_update(within_days: int = 30, analyze: bool = True,
                if review.get("found") else "")
         _hv = "" if health["state"] == "ok" else f" · ⚠엔카 {health['state']}(HTTP {health['code']})"
         _ru = f" · 동급참조 {reuse['applied']}" if reuse.get("applied") else ""
+        _nc = f" · 출시가 {newcar.get('matched', 0)}건" if newcar.get("matched") else ""
         db.update_run(run_id, status="done", finished_at=_now(),
-                      message=f"입찰예정 {stored} · 분석 {analyzed}{_ru} · 낙찰결과 {results}건{_rv}{_hv}")
+                      message=f"입찰예정 {stored} · 분석 {analyzed}{_ru}{_nc} · 낙찰결과 {results}건{_rv}{_hv}")
     return {"stored": stored, "analyzed": analyzed, "results": results,
-            "review": review, "encar_health": health, "reuse": reuse}
+            "review": review, "encar_health": health, "reuse": reuse, "newcar": newcar}
 
 
 def review_daily_anomalies(cs, es, config, run_id: Optional[int] = None,
