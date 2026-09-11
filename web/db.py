@@ -280,7 +280,8 @@ def nc_put(table: str, row: dict) -> None:
 
 def nc_rows(table: str, where_col: str, key) -> list:
     conn = connect()
-    rows = [dict(r) for r in conn.execute(f"SELECT * FROM {table} WHERE {where_col}=?", (str(key),)).fetchall()]
+    rows = [dict(r) for r in conn.execute(f"SELECT * FROM {table} WHERE {where_col}=? ORDER BY rowid",
+                                          (str(key),)).fetchall()]   # 입력(사이트 표시) 순서 보존
     conn.close()
     return rows
 

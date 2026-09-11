@@ -47,15 +47,44 @@ MODELS = [("1", "더 뉴 그랜저"), ("2", "더 뉴 그랜저 하이브리드")
 def test_rank_prefers_generation_name_then_group():
     ranked = bobae.rank_model_candidates(MODELS, ["더 뉴 그랜저 IG"], "그랜저")
     names = [n for _, n in ranked]
-    assert names[:2] == ["더 뉴 그랜저", "더 뉴 그랜저"]         # 동명 2개 모두 상위(연식 검증으로 확정)
+    # 세대명을 포함 관계로 만족하는 세 후보('더 뉴 그랜저'×2, '그랜저IG')가 상위, 동점은 사이트 순서 — 최종 확정은 연식 검증
+    assert names[0] == "더 뉴 그랜저" and sorted(names[:3]) == ["그랜저IG", "더 뉴 그랜저", "더 뉴 그랜저"]
+    assert names[3:] == ["더 뉴 그랜저 하이브리드", "그랜저HG", "디 올 뉴 그랜저"]   # 그룹만 일치 → 사이트 순서
     assert "쏘나타 DN8" not in names                              # 그룹 불일치 제외
     exact = bobae.rank_model_candidates(MODELS, ["그랜저 IG"], "그랜저")
     assert exact[0][1] == "그랜저IG"                              # 정규화 완전일치 최우선
 
 
-def test_rank_without_generation_falls_back_to_group():
+def test_rank_without_generation_falls_back_to_group_in_site_order():
     ranked = bobae.rank_model_candidates(MODELS, [], "그랜저")
     assert len(ranked) == 6 and all("그랜저" in n for _, n in ranked)
+    assert [no for no, _ in ranked] == ["1", "2", "3", "4", "5", "7"]   # 동점 → 사이트 순서(최신 먼저), 가나다순 아님
+
+
+CARNIVAL = [("2812", "더 뉴 카니발 4세대"), ("2327", "카니발 4세대"), ("1902", "더 뉴 카니발"), ("1606", "올 뉴 카니발"),
+            ("773", "그랜드 카니발"), ("36", "카니발2"), ("37", "카니발")]     # 보배드림 사이트 순서(실측)
+
+
+def test_rank_facelift_contains_generation_and_old_bare_names_last():
+    """실측 실패 사례: 세대명 '카니발 4세대'(2023년식은 '더 뉴 카니발 4세대'). 구형 '카니발'·'카니발2'가 앞서면 안 된다."""
+    ranked = [n for _, n in bobae.rank_model_candidates(CARNIVAL, ["카니발 4세대"], "카니발")]
+    assert ranked[:2] == ["카니발 4세대", "더 뉴 카니발 4세대"]
+    assert ranked[-2:] == ["카니발2", "카니발"]
+
+
+def test_collect_abandons_wrong_era_early(dbmod, monkeypatch):
+    """첫 세부모델의 연식이 목표와 3년 이상 동떨어지면(1998~2000 vs 2023) 나머지 세부모델을 요청하지 않는다."""
+    from web import service
+    site = FakeSite()
+    site.levels = [("L1", "2.5 가솔린 7인승"), ("L2", "2.9 디젤 9인승"), ("L3", "2.5 LPG")]
+    site.grades = {"L1": [("G1", "파크")], "L2": [("G2", "랜드")], "L3": [("G3", "E-TECH")]}
+    site.years = {"G1": ["1998", "1999", "2000"], "G2": ["1998"], "G3": ["2000"]}
+    site.price = {("G1", "1998"): 1580, ("G2", "1998"): 1700, ("G3", "2000"): 1500}
+    monkeypatch.setattr(bobae, "fetch", site)
+    monkeypatch.setattr(bobae.time, "sleep", lambda s: None)
+    res = service.newcar_collect_model_year(None, bobae.Budget(50), "3", "M37", 2023)
+    assert res["prices"] == [] and res.get("abandoned") == "era"
+    assert site.calls == 3          # 세부모델 목록 1 + 첫 세부모델 등급 1 + 첫 등급 페이지 1 — 나머지 두 세부모델은 미요청
 
 
 # ── 수집 알고리즘(가짜 fetch) ─────────────────────────────────────────────

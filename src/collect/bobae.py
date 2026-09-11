@@ -100,11 +100,14 @@ def rank_model_candidates(models: list, gen_names: list, group: Optional[str]) -
 
     gen_names = 엔카 동급 매물의 세대명들(예: '더 뉴 그랜저 IG', '그랜저 IG'), group = 우리 모델그룹('그랜저').
     같은 이름이 여러 model_no로 존재할 수 있어(예: '더 뉴 그랜저'×2) 최종 확정은 연식 검증(수집 단계)에서 한다.
+    models 는 **사이트 표시 순서(최신 세대 먼저)** 로 넘긴다 — 동점이면 그 순서를 따른다(가나다순은 구형을 앞세움).
+    실측 교훈(카니발 2023): 세대명 '카니발 4세대'의 2023년식은 보배드림에서 '더 뉴 카니발 4세대'로 분리돼 있고,
+    접두어 규칙은 '카니발'(1998)·'카니발2'(2001)를 우대해 79요청을 낭비했다 → 포함 관계만 쓰고 접두어 규칙은 폐기.
     """
     g = norm(group)
     gens = [norm(x) for x in gen_names if x]
     scored = []
-    for no, name in models:
+    for idx, (no, name) in enumerate(models):
         n = norm(name)
         if g and g not in n:
             continue
@@ -112,20 +115,15 @@ def rank_model_candidates(models: list, gen_names: list, group: Optional[str]) -
         for ge in gens:
             if n == ge:
                 best = max(best, 100)
-            elif ge.startswith(n) or n.startswith(ge):
-                best = max(best, 80 + min(len(n), len(ge)))
-            else:
-                k = 0
-                while k < min(len(n), len(ge)) and n[k] == ge[k]:
-                    k += 1
-                if k >= max(3, len(g)):
-                    best = max(best, 40 + k)
-        if not best and g and not gens:
-            best = 10                                     # 그룹명만 일치(세대 정보 없음)
-        if best:
-            scored.append((best, no, name))
-    scored.sort(key=lambda t: (-t[0], t[2]))
-    return [(no, name) for _, no, name in scored]
+            elif ge in n:                                  # 보배명이 세대명을 포함('더 뉴 카니발 4세대' ⊃ '카니발 4세대')
+                best = max(best, 90 + len(ge))
+            elif n in ge and n != g:                       # 세대명이 보배명을 포함('더 뉴 그랜저 IG' ⊃ '더 뉴 그랜저'), 그룹명 단독은 제외
+                best = max(best, 80 + len(n))
+        if not best:
+            best = 10                                      # 그룹명만 일치 → 사이트 순서(최신 먼저)
+        scored.append((-best, idx, no, name))
+    scored.sort()
+    return [(no, name) for _, _, no, name in scored]
 
 
 # ── 목록 조회 ───────────────────────────────────────────────────────────────

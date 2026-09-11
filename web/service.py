@@ -682,6 +682,7 @@ NEWCAR_MAKER_ALIAS = {
 }
 NEWCAR_RECHECK_DAYS = 30        # 매칭 실패/성공 후 재시도 간격(매일 헛요청 방지)
 NEWCAR_MAX_CANDIDATES = 3       # 물건당 시도할 보배 모델 후보 수(연식 검증으로 확정)
+NEWCAR_MAX_REQ_PER_VEHICLE = 45 # 물건 하나가 일일 예산을 독식하지 않도록(캐시 적중은 0으로 계산됨)
 
 
 def _nc_cached_or(table, key_col, key, fetch_fn, put_row_fn):
@@ -709,9 +710,13 @@ def newcar_collect_model_year(bs, budget, maker_no: str, model_no: str, year: in
     else:
         levels = json.loads(m["levels_json"])
     prices, release, n_grades = [], None, 0
+    years_seen: set = set()
     for level_no, level_name in levels:
         if bobae.is_excluded(level_name):
             continue
+        # 시대 불일치 조기 포기: 첫 세부모델까지 본 연식이 목표와 3년 이상 동떨어지면(예: 1998~2000 vs 2023) 더 요청하지 않는다
+        if years_seen and (max(years_seen) <= year - 3 or min(years_seen) >= year + 3):
+            return {"prices": [], "release": None, "n_grades": n_grades, "abandoned": "era"}
         lv = db.nc_get("newcar_levels", "level_no", level_no)
         if not lv or not lv.get("grades_json"):
             grades = bobae.list_grades(bs, budget, maker_no, model_no, level_no)
@@ -733,6 +738,7 @@ def newcar_collect_model_year(bs, budget, maker_no: str, model_no: str, year: in
                     db.nc_put("newcar_prices", {"level2_no": level2_no, "year": pg["selected_year"],
                                                 "price_manwon": pg["price_manwon"], "fetched_at": _now()})
             years = json.loads(g["years_json"] or "[]")
+            years_seen.update(int(y) for y in years if str(y).isdigit())
             if yr not in years:
                 continue
             rows = [r for r in db.nc_rows("newcar_prices", "level2_no", level2_no) if r["year"] == yr]
@@ -743,6 +749,9 @@ def newcar_collect_model_year(bs, budget, maker_no: str, model_no: str, year: in
                 price = pg["price_manwon"]
                 db.nc_put("newcar_prices", {"level2_no": level2_no, "year": yr,
                                             "price_manwon": price, "fetched_at": _now()})
+                if pg.get("release") and not g.get("release"):   # 연식 미지정 페이지는 출시일이 공란 → 연식 페이지 값으로 보완
+                    g["release"] = pg["release"]
+                    db.nc_put("newcar_grades", {"level2_no": level2_no, "release": pg["release"]})
             if price:
                 prices.append((level_name, grade_name, price))
                 release = release or g.get("release")
@@ -792,6 +801,7 @@ def newcar_collect(max_requests: int = 300, max_models: Optional[int] = None,
                 gens = []
             group = mp["model_group"]
             found = None
+            v_start = budget.used
             for maker_no in maker_nos:
                 cached = db.nc_rows("newcar_models", "maker_no", maker_no)
                 if cached and all(c.get("model_name") for c in cached):
@@ -801,6 +811,8 @@ def newcar_collect(max_requests: int = 300, max_models: Optional[int] = None,
                     for no, name in models:
                         db.nc_put("newcar_models", {"model_no": no, "maker_no": maker_no, "model_name": name, "fetched_at": _now()})
                 for model_no, model_name in bobae.rank_model_candidates(models, gens, group)[:NEWCAR_MAX_CANDIDATES]:
+                    if budget.used - v_start > NEWCAR_MAX_REQ_PER_VEHICLE:
+                        break
                     models_seen.add(model_no)
                     res = newcar_collect_model_year(bs, budget, maker_no, model_no, int(v["year"]))
                     if res["prices"]:
