@@ -22,6 +22,13 @@
   .gloss .pop::before{content:"";position:absolute;left:10px;bottom:100%;border:5px solid transparent;border-bottom-color:#0b142b}
   @media print{ .gloss .pop{display:none} .gloss .q{display:none} .gloss .gt{text-decoration:none} }
   @media (prefers-reduced-motion: reduce){ .gloss .pop{transition:none} }
+  /* 블록 기준 팝오버 — base.html과 같은 규칙(리포트는 인쇄용 단독 페이지라 CSS를 복제해 쓴다).
+     본문 중간의 인라인 용어는 줄바꿈 위치에 따라 팝오버가 화면 밖으로 나가 가로 스크롤을
+     만든다(2026-09-12: 320px에서 +75px). 트리거 대신 '문단'을 기준 박스로 삼아 방지한다. */
+  .gloss-row{position:relative}
+  .gloss-row .gloss{position:static}
+  .gloss-row .gloss .pop{left:0;right:auto;max-width:min(250px,100%)}
+  .gloss-row .gloss .pop::before{display:none}
 </style>
 {% set med = v.median_price or 0 %}
 {% set floor = v.min_sale_price or 0 %}
