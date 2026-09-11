@@ -47,3 +47,17 @@ dashboard_ex/
 
 # 스토어 자산(생성물·바이너리 — scripts/gen_store_assets.py로 재생성)
 store_assets/
+
+# === 안드로이드 서명키·패키지 (절대 커밋 금지) ===
+# PWABuilder/Bubblewrap 산출물. keystore 분실 시 같은 패키지명으로 업데이트 영구 불가,
+# 유출 시 제3자가 동일 서명 앱 배포 가능. signing-key-info.txt엔 비밀번호가 평문으로 들어있다.
+*.keystore
+*.jks
+signing-key-info.txt
+*.aab
+*.apk
+android/*.zip
+android/build/
+# PWABuilder zip 해제 폴더(어떤 이름으로 풀든 걸리게)
+**/signing.keystore
+**/app-release-signed.aab
