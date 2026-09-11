@@ -253,7 +253,7 @@ details.raw summary{cursor:pointer;font-size:12px;color:var(--cobalt);font-weigh
       {% endif %}
       <div class="stop {{ 'on' if report.stop_active else 'off' }}">
         <span class="tg">STOP RULE</span>
-        <p>{% if report.stop_active %}<b>사고/침수 이력이 감지</b>되었습니다. 현장에서 골격(프레임) 손상·침수 확정 시 본 리포트의 권장가는 <b>즉시 무효</b>이며 입찰 보류를 권장합니다.
+        <p class="gloss-row">{% if report.stop_active %}<b>사고/침수 이력이 감지</b>되었습니다. 현장에서 골격(프레임) 손상·침수 확정 시 본 리포트의 권장가는 <b>즉시 무효</b>이며 입찰 보류를 권장합니다.
         {% else %}현장/서류에서 <b>골격(프레임) 사고 · 침수 · 미기재 중대 결함 · {{ ui.gloss('인수 부담 권리관계', '낙찰자가 떠안게 되는 빚·부담이에요. 말소되지 않는 선순위 임차권·지상권, 인수되는 체납 세금·과태료 등이 있으면 낙찰가 외에 추가 부담이 생깁니다. 등기·자동차등록원부로 반드시 확인하세요.', q=false) }}</b> 중 하나라도 확인되면 본 리포트의 권장가는 무효로 간주하고 입찰을 보류하십시오.{% endif %}</p>
       </div>
       <!-- 가격 스펙트럼 -->
