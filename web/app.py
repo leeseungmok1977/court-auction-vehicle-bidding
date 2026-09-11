@@ -312,8 +312,8 @@ def ads_txt():
 def privacy(request: Request):
     """개인정보처리방침(공개 독립 페이지) — Play·AdMob 심사 필수. 문의 이메일은 설정으로 교체 가능."""
     return templates.TemplateResponse("privacy.html", {
-        "request": request, "updated": "2026-09-06", "site": "naechaget.co.kr",
-        "contact": db.get_setting("privacy_contact", "poscointl2026@gmail.com"),
+        "request": request, "updated": "2026-09-11", "site": "naechaget.co.kr",
+        "contact": db.get_setting("privacy_contact", "koreanplus@gmail.com"),
     })
 
 
