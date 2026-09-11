@@ -41,6 +41,10 @@ mileage_tol: 0.30      # 주행거리 허용 오차 (±비율)
 newcar_public: true    # 2026-09-11 보배드림 사용 승낙(조건: 출처명 미표기) — docs/compliance-review.md §6 승낙 기록 참조
 newcar_daily_cap: 300
 
+# 사진 자동 정렬(로컬 모델, src/parse/photo_autosort.py) — 일일 갱신에서 신규 물건만 정렬(photo_order_src='auto').
+# 주간 /classify-photos(Claude 비전)가 auto를 덮어써 보정. 런당 상한(물건 수).
+photo_autosort_daily_cap: 150
+
 # 모델 매핑 테이블 (경매 차명 → 엔카 제조사/모델그룹). 미매핑 시 알림 후 원문 사용.
 # 엔카 표기 그대로 사용 (예: 벤츠는 CarType=N(수입) + '메르세데스-벤츠')
 model_mapping:

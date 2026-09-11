@@ -229,6 +229,7 @@ def init_db() -> None:
         if "spec_remark" not in cols:
             conn.execute("ALTER TABLE vehicles ADD COLUMN spec_remark TEXT")
         for col in ("inspection_to", "condition_level", "condition_flags", "photo_order",
+                    "photo_order_src",                       # 'vision'(Claude 비전) / 'auto'(로컬 모델 자동 정렬)
                     "market_ref_date", "market_ref_id",     # 동급참조 시세의 출처(정직 표기·추적)
                     "newcar_model", "newcar_release", "newcar_checked_at"):   # 당시 출시가(보배드림) 표기
             if col not in cols:
@@ -329,7 +330,7 @@ _LISTING_KEEP = {
     "market_platform", "upper_bid", "lower_bound", "judgment", "breakdown",
     "repair_cost", "mileage_km", "displacement_cc", "fuel_code", "accident_grade",
     "accident_hits", "insurance_history", "appraisal_ecdoc_id", "spec_remark", "photo_count",
-    "inspection_to", "condition_level", "condition_flags", "photo_order",
+    "inspection_to", "condition_level", "condition_flags", "photo_order", "photo_order_src",
     "analyzed_at", "match_label", "market_ref_date", "market_ref_id",
     "newcar_min", "newcar_max", "newcar_n", "newcar_model", "newcar_release", "newcar_checked_at", "newcar_basis_year",
     "auction_result", "winning_price", "dxdy_history", "result_checked_at", "result_source",

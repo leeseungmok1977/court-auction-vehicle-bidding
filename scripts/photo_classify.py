@@ -11,7 +11,9 @@
   args.json      : 워크플로 args (=[{vid, model, n, montage}])
   results.json   : 워크플로 산출물 (=[{vid, front, side, interior, order, confident, note}])
 
-'미분류'는 photo_count>0 이고 photo_order IS NULL 인 물건. 이미 분류된 건은 건드리지 않는다(증분).
+'미분류'는 photo_count>0 이고 photo_order IS NULL 인 물건 + 로컬 모델 자동 정렬(photo_order_src='auto',
+src/parse/photo_autosort.py — 일일 갱신이 채움)된 물건. 비전 분류(src='vision')는 건드리지 않는다(증분).
+apply 는 src='vision'으로 기록해 VM 패치 주입 시 auto를 덮어쓰게 한다.
 """
 from __future__ import annotations
 
@@ -33,12 +35,16 @@ RESULTS = WORK / "results.json"
 PATCH = DATA_DIR / "photo_order_patch.json"   # data/ 최상위(VM scp 편의)
 
 
+_NEEDS_VISION = "(photo_order IS NULL OR photo_order = '' OR photo_order_src = 'auto')"
+
+
 def _unclassified(status: str | None, limit: int | None):
-    """photo_count>0 이고 photo_order 가 비어있는 물건."""
+    """photo_count>0 이고 photo_order 가 비어있거나 자동 정렬(auto)만 된 물건."""
+    db.init_db()
     conn = db.connect()
     sql = ("SELECT id, folder_key, model, status FROM vehicles "
            "WHERE COALESCE(photo_count,0) > 0 "
-           "AND (photo_order IS NULL OR photo_order = '')")
+           f"AND {_NEEDS_VISION}")
     params: list = []
     if status:
         sql += " AND status = ?"
@@ -104,7 +110,7 @@ def cmd_apply(args) -> int:
         seen = set(order)
         order += [i for i in range(1, len(files) + 1) if i not in seen]  # 누락 셀 보충
         photo_order = [files[c - 1] for c in order]
-        db.update_fields(m["vid"], photo_order=photo_order)
+        db.update_fields(m["vid"], photo_order=photo_order, photo_order_src="vision")
         applied += 1
         if not r.get("confident", True):
             low.append((m["vid"], m.get("model"), r.get("note", "")))
@@ -118,14 +124,18 @@ def cmd_apply(args) -> int:
 
 def cmd_status(args) -> int:
     """미분류 건수 확인(루틴 진입점). 'MICLASSIFIED=n' 도 출력해 파싱 편의 제공."""
+    db.init_db()
     conn = db.connect()
     tot = conn.execute("SELECT COUNT(*) FROM vehicles WHERE COALESCE(photo_count,0)>0").fetchone()[0]
     unc = conn.execute(
         "SELECT COUNT(*) FROM vehicles WHERE COALESCE(photo_count,0)>0 "
         "AND (photo_order IS NULL OR photo_order='')").fetchone()[0]
+    auto = conn.execute(
+        "SELECT COUNT(*) FROM vehicles WHERE COALESCE(photo_count,0)>0 "
+        "AND photo_order IS NOT NULL AND photo_order!='' AND photo_order_src='auto'").fetchone()[0]
     conn.close()
-    print(f"사진보유 {tot} · 분류완료 {tot - unc} · 미분류 {unc}")
-    print(f"UNCLASSIFIED={unc}")
+    print(f"사진보유 {tot} · 비전분류 {tot - unc - auto} · 자동정렬(검수 대기) {auto} · 미분류 {unc}")
+    print(f"UNCLASSIFIED={unc + auto}")
     return 0
 
 

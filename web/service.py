@@ -1076,6 +1076,11 @@ def daily_update(within_days: int = 30, analyze: bool = True,
         newcar = newcar_collect(max_requests=int(config.get("newcar_daily_cap", 300)), within_days=within_days)
     except Exception as e:  # noqa: BLE001
         newcar = {"stopped": f"오류: {str(e)[:60]}", "matched": 0}
+    # ②-3 사진 자동 정렬(로컬 모델·외부요청 0) — 신규 물건 썸네일이 지도·서류부터 나오지 않게.
+    #     별도 프로세스로 실행해 모델 메모리를 회수(EC2 RAM 1GB). 모델 미설치·실패는 건너뜀(비치명).
+    if run_id:
+        db.update_run(run_id, message="사진 자동 정렬(신규 물건)")
+    photos = photo_autosort_run(limit=int(config.get("photo_autosort_daily_cap", 150)))
     # ③ 낙찰결과 반영 (매각기일 지난 물건)
     results = update_results(run_id=run_id, finalize=False)
     reconcile_won_judgment()   # 낙찰 물건 판정을 '종결'로 정합화(상태 분해 합계 정확)
@@ -1102,10 +1107,33 @@ def daily_update(within_days: int = 30, analyze: bool = True,
         _hv = "" if health["state"] == "ok" else f" · ⚠엔카 {health['state']}(HTTP {health['code']})"
         _ru = f" · 동급참조 {reuse['applied']}" if reuse.get("applied") else ""
         _nc = f" · 출시가 {newcar.get('matched', 0)}건" if newcar.get("matched") else ""
+        _ph = (f" · 사진정렬 {photos['sorted']}건" if photos.get("sorted")
+               else (" · ⚠사진정렬 건너뜀" if photos.get("error") else ""))
         db.update_run(run_id, status="done", finished_at=_now(),
-                      message=f"입찰예정 {stored} · 분석 {analyzed}{_ru}{_nc} · 낙찰결과 {results}건{_rv}{_hv}")
-    return {"stored": stored, "analyzed": analyzed, "results": results,
-            "review": review, "encar_health": health, "reuse": reuse, "newcar": newcar}
+                      message=f"입찰예정 {stored} · 분석 {analyzed}{_ru}{_nc}{_ph} · 낙찰결과 {results}건{_rv}{_hv}")
+    return {"stored": stored, "analyzed": analyzed, "results": results, "review": review,
+            "encar_health": health, "reuse": reuse, "newcar": newcar, "photos": photos}
+
+
+def photo_autosort_run(limit: int = 150, timeout: int = 1500) -> dict:
+    """②-3 사진 자동 정렬을 별도 프로세스로 실행(src/parse/photo_autosort.py). 결과 JSON 요약 반환.
+    모델 파일이 없거나 실패하면 {'error': …}만 돌려주고 갱신은 계속된다."""
+    import json as _json
+    import os as _os
+    import subprocess
+    import sys as _sys
+    from pathlib import Path as _P
+    root = _P(__file__).resolve().parents[1]
+    cmd = [_sys.executable, "-m", "src.parse.photo_autosort", "--new", "--limit", str(int(limit)), "--json"]
+    try:
+        p = subprocess.run(cmd, cwd=str(root), capture_output=True, text=True, encoding="utf-8", errors="replace",
+                           timeout=timeout, env={**_os.environ, "PYTHONIOENCODING": "utf-8"})
+        lines = [ln for ln in (p.stdout or "").splitlines() if ln.startswith("{")]
+        if lines:
+            return _json.loads(lines[-1])
+        return {"error": ((p.stderr or p.stdout) or "no output").strip()[-200:]}
+    except Exception as e:  # noqa: BLE001 — 타임아웃 등
+        return {"error": str(e)[:160]}
 
 
 def review_daily_anomalies(cs, es, config, run_id: Optional[int] = None,

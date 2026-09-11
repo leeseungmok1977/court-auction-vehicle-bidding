@@ -17,5 +17,9 @@ pydantic==2.12.5
 # 사진 비전 분류 파이프라인 (scripts/photo_classify.py — 몽타주 생성)
 Pillow==11.3.0
 
+# 사진 자동 정렬 — 로컬 모델(src/parse/photo_autosort.py: CLIP ONNX int8 + 선형 프로브, 생성형 API 없음)
+onnxruntime==1.24.4
+numpy==2.4.4
+
 # 테스트
 pytest>=8.0
