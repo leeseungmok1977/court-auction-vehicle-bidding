@@ -178,6 +178,21 @@
   @keyframes ncring{0%,100%{transform:rotate(-30deg)}50%{transform:rotate(30deg)}}
   .nc-ring{display:inline-block;transform-origin:top center;animation:ncring .6s ease-in-out infinite}
   @media (prefers-reduced-motion: reduce){ .nc-blink,.nc-ring{animation:none} }
+  /* 용어 설명 툴팁 — 밑줄 친 용어의 ?를 탭/호버/포커스하면 한 줄 설명. JS 없이 :hover/:focus로 토글(모바일=탭 포커스) */
+  .gloss{position:relative;display:inline-flex;align-items:center;gap:3px;cursor:help;outline:none;vertical-align:baseline}
+  .gloss .gt{text-decoration:underline dotted currentColor;text-underline-offset:2px}
+  .gloss .q{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:50%;
+    background:#cbd5e1;color:#1f2a44;font-size:10px;font-weight:700;line-height:1;flex:none;font-family:inherit}
+  .gloss:hover .q,.gloss:focus-visible .q,.gloss:focus .q{background:#2b62d9;color:#fff}
+  .gloss .pop{position:absolute;left:0;top:calc(100% + 7px);z-index:50;width:max-content;max-width:250px;
+    background:#0b142b;color:#eef2fb;font-size:12px;font-weight:400;line-height:1.55;letter-spacing:-.01em;
+    padding:9px 11px;border-radius:9px;box-shadow:0 10px 30px rgba(11,20,43,.3);
+    opacity:0;visibility:hidden;transform:translateY(-4px);transition:opacity .13s ease,transform .13s ease;
+    pointer-events:none;text-align:left;white-space:normal;font-family:inherit}
+  .gloss:hover .pop,.gloss:focus-within .pop,.gloss:focus .pop{opacity:1;visibility:visible;transform:translateY(0)}
+  .gloss .pop::before{content:"";position:absolute;left:10px;bottom:100%;border:5px solid transparent;border-bottom-color:#0b142b}
+  @media (max-width:420px){ .gloss .pop{max-width:210px} }
+  @media (prefers-reduced-motion: reduce){ .gloss .pop{transition:none} }
 </style>
 <script>try{ if(sessionStorage.getItem("nc_splash")) document.documentElement.className += " splash-done"; }catch(e){}</script>
 <script>

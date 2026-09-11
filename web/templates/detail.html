@@ -71,14 +71,14 @@
   <dl class="grid grid-cols-[130px_1fr] gap-y-2.5 text-sm">
     <dt class="text-mut">주행거리</dt><dd class="font-mono">{{ v.mileage_km|won }} km</dd>
     <dt class="text-mut">배기량</dt><dd class="font-mono">{{ v.displacement_cc or '—' }} cc</dd>
-    <dt class="text-mut">감정가</dt><dd class="font-mono">{{ v.appraisal_value|won }} 원</dd>
+    <dt class="text-mut">{{ ui.gloss('감정가', '법원이 감정평가사를 통해 매긴 차량 가치예요. 최저매각가와 낙찰가율(낙찰가÷감정가)의 기준이 됩니다.') }}</dt><dd class="font-mono">{{ v.appraisal_value|won }} 원</dd>
     {# 당시 출시가(등급별 범위) — 공개 여부는 config newcar_public. 출처명은 관리자에게만. #}
     {% if v.newcar_min and v.newcar_max and (is_admin(request) or newcar_public) %}
     <dt class="text-mut">당시 출시가{% if is_admin(request) and not newcar_public %} <span class="text-[10px] text-primary font-bold">관리자</span>{% endif %}</dt><dd class="font-mono">{{ '{:,}'.format(v.newcar_min) }}{% if v.newcar_max != v.newcar_min %}~{{ '{:,}'.format(v.newcar_max) }}{% endif %}만원 <span class="text-mut text-xs font-sans" title="{{ v.year }}년식 등급 {{ v.newcar_n }}개 범위 · 영업용(택시·렌터카) 제외{% if v.newcar_basis_year and v.newcar_basis_year != v.year %} · {{ v.newcar_basis_year }}년 가격표 기준{% endif %}{% if is_admin(request) %} · {{ v.newcar_model }} · 출처 보배드림 신차가격표{% endif %}">등급 {{ v.newcar_n }}개 범위{% if v.newcar_basis_year and v.newcar_basis_year != v.year %} · {{ v.newcar_basis_year }}년 가격표{% endif %}</span></dd>
     {% endif %}
-    <dt class="text-mut">최저매각가</dt><dd class="font-mono text-lg font-semibold text-txt tnum">{{ v.min_sale_price|won }} 원</dd>
-    <dt class="text-mut">유찰횟수</dt><dd class="font-mono">{{ v.fail_count if v.fail_count is not none else '—' }} 회</dd>
-    <dt class="text-mut">매각 일시</dt>
+    <dt class="text-mut">{{ ui.gloss('최저매각가', '이번 기일에 이 금액 이상 써내야 입찰돼요. 입찰의 출발선이며, 유찰될 때마다 보통 20~30%씩 내려갑니다.') }}</dt><dd class="font-mono text-lg font-semibold text-txt tnum">{{ v.min_sale_price|won }} 원</dd>
+    <dt class="text-mut">{{ ui.gloss('유찰횟수', '입찰자가 없어 매각이 무산된 횟수예요. 많을수록 다음 기일의 최저매각가가 더 내려가 저렴해질 수 있습니다.') }}</dt><dd class="font-mono">{{ v.fail_count if v.fail_count is not none else '—' }} 회</dd>
+    <dt class="text-mut">{{ ui.gloss('매각 일시', '이 날짜·시각에 법원에서 입찰(기일입찰)이 열려요. 정해진 매각 장소에서 직접 또는 대리인이 입찰합니다.') }}</dt>
     {% set awaiting = v.sale_date and today and v.sale_date < today and v.auction_result not in ('낙찰','종결') and v.judgment != '종결' %}
     <dd class="font-mono">{% if awaiting %}<span class="text-amber-700 not-italic font-sans">다음 기일 미정</span> <span class="text-mut text-xs">· 지난 {{ v.sale_date }} 유찰, 법원 재공고 후 자동 반영</span>{% else %}{{ v.sale_date or '—' }}{% if v.sale_time %} <span class="font-semibold text-txt">{{ v.sale_time }}</span> <span class="text-mut text-xs not-italic font-sans">입찰</span>{% endif %}{% endif %}</dd>
     {% if v.sale_place and not awaiting %}
@@ -90,7 +90,7 @@
     <dt class="text-mut">목록상 주소</dt>
     <dd>{{ v.location or '—' }}{% if v.location %}<span class="block text-mut text-xs mt-0.5">※ 법원 목록 표시주소(대개 <b>채무자 주소</b>) — 차량 실제 위치와 다를 수 있음</span>{% endif %}</dd>
     {% endif %}
-    <dt class="text-mut">사고판정</dt>
+    <dt class="text-mut">{{ ui.gloss('사고판정', '감정평가서·이력을 근거로 한 사고 여부 표시예요. 골격(프레임) 사고·침수는 아무리 싸도 입찰 보류 대상입니다.') }}</dt>
     <dd><span class="inline-flex px-2 py-0.5 rounded text-xs font-medium {{
           'bg-emerald-50 text-emerald-700 border border-emerald-200' if v.accident_grade=='none'
           else 'bg-amber-50 text-amber-700 border border-amber-200' if v.accident_grade=='minor'

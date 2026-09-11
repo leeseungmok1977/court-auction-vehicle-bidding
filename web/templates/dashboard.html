@@ -56,7 +56,7 @@
       </div>
       <div class="p-3 flex items-end justify-between gap-2 tabular-nums">
         <div><div class="text-[10px] text-mut">최저 입찰가</div><div class="font-mono text-sm font-semibold text-txt">{{ v.min_sale_price|won }}</div></div>
-        <div class="text-right"><div class="text-[10px] text-primary">AI 예상 낙찰가{% if v.market_confidence %} · 신뢰도 {{ v.market_confidence }}{% endif %}</div><div class="font-mono text-lg font-extrabold text-primary leading-tight">{{ v.expected_win|won if v.expected_win else '—' }}<span class="text-xs font-normal text-mut"> 원</span></div></div>
+        <div class="text-right"><div class="text-[10px] text-primary">AI 예상 낙찰가{% if v.market_confidence %} · 신뢰도 {{ v.market_confidence }}{% if v.market_confidence_label %} <span class="inline-flex items-center gap-0.5 font-bold align-middle {{ 'text-emerald-700' if v.market_confidence_label=='높음' else 'text-amber-700' if v.market_confidence_label=='보통' else 'text-rose-600' }}"><span class="inline-block w-1.5 h-1.5 rounded-full {{ 'bg-emerald-500' if v.market_confidence_label=='높음' else 'bg-amber-500' if v.market_confidence_label=='보통' else 'bg-rose-500' }}"></span>{{ v.market_confidence_label }}</span>{% endif %}{% endif %}</div><div class="font-mono text-lg font-extrabold text-primary leading-tight">{{ v.expected_win|won if v.expected_win else '—' }}<span class="text-xs font-normal text-mut"> 원</span></div></div>
       </div>
     </a>
     {% endfor %}

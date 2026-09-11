@@ -1,5 +1,9 @@
 {# 재사용 UI 매크로 #}
 
+{# 용어 설명 — 경매 초보·고령 사용자를 위해 어려운 용어에 밑줄+? 를 달아 한 줄 설명을 보여준다.
+   탭(포커스)/호버/키보드 모두 지원(CSS는 base.html .gloss). 순수 설명이라 외부 데이터 노출 없음. #}
+{% macro gloss(term, desc) %}<span class="gloss" tabindex="0" role="button" aria-label="{{ term }} — {{ desc }}"><span class="gt">{{ term }}</span><span class="q" aria-hidden="true">?</span><span class="pop" role="tooltip">{{ desc }}</span></span>{% endmacro %}
+
 {# 미니 가격 게이지: 최저매각가 → 예상낙찰가(마커) → 시세중앙값(틱) 위치를 한 줄 바로 #}
 {% macro minigauge(floor, exp, median) %}
 {% if floor and exp and median and ([median, exp]|max) > floor %}
