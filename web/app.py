@@ -592,7 +592,9 @@ def vehicle_report(request: Request, vid: str):
         "report": _report, "backtest": bt, "dist": dist if _adm else None,
         "photos": photos, "comps_won": comps_won, "asum": asum, "verdict": verdict,
         "comp_min_n": service.COMP_MIN_N, "comp_ratio_med": comp_ratio_med,
-        "hexa": service.hexagon_scores(v, include_private=_adm),   # 01 종합 프로필(6축, 미산출=None; 매물건수는 관리자만)
+        # 01 종합 프로필(6축, 미산출=None; 매물건수는 관리자만, 잔존가치는 출시가 공개 규칙과 동일 게이트)
+        "hexa": service.hexagon_scores(v, include_private=_adm,
+                                       newcar_ok=_adm or bool(config.get("newcar_public", False))),
         "newcar_public": bool(config.get("newcar_public", False)),   # 당시 출시가 공개 여부(compliance §6 조건 충족 시 config로 전환)
         "now": datetime.now().strftime("%Y-%m-%d %H:%M"),
     })

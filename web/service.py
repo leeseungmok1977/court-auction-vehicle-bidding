@@ -564,7 +564,7 @@ def _hx_pt(i: int, frac: float):
             round(_HX_C + _HX_R * frac * math.sin(ang), 1))
 
 
-def hexagon_scores(v: dict, today=None, include_private: bool = False) -> dict:
+def hexagon_scores(v: dict, today=None, include_private: bool = False, newcar_ok=None) -> dict:
     """리포트 '종합 프로필' 육각형 — 6축 0~100 점수 + SVG 좌표.
 
     신뢰성 원칙: **자료가 없는 축은 0으로 꾸미지 않고 None(미산출)** 으로 두고 표·툴팁에 '자료 없음'을 표시한다.
@@ -574,8 +574,12 @@ def hexagon_scores(v: dict, today=None, include_private: bool = False) -> dict:
     2 시세 신뢰도  market_confidence 그대로(동급참조 시세는 이미 한 단계 하향된 값)
     3 사고·상태    사고 없음 100 / 사고 45 / 침수 0, 상태 poor −20 · fair −5, 검사 만료 −15
     4 주행 적정성  실주행 ÷ (경과연수×15,000km): 0.5→100 · 1.0→70 · 1.5→45 · 2.0→25 · 3.0+→10
-    5 연식        경과연수: 1→100 · 3→85 · 5→70 · 8→50 · 12→25 · 16+→10
+    5 잔존가치     시세 중앙값 ÷ 당시 출시가(등급 범위 중간값): 15%→10 · 30%→35 · 45%→60 · 60%→80 · 75%→95 · 90%+→100
+                  (구 '연식' 축 대체 — 경과연수는 근거에 표기. 출시가 미확보면 미산출)
     6 유동성       동급 매물 규모(엔카 검색 총량, log10): 10건→45 · 100→70 · 1,000→95 · 1,585+→100 (0건→5)
+
+    newcar_ok: 출시가 파생값을 실어도 되는지(관리자 또는 config.newcar_public). None이면 자동 판정.
+    False면 잔존가치 축은 값·숫자 없이 미산출('당시 출시가' 토큰도 쓰지 않는다 — test_exposure 플래그-off 검사).
     """
     import math
     from datetime import date as _date
@@ -623,7 +627,7 @@ def hexagon_scores(v: dict, today=None, include_private: bool = False) -> dict:
     else:
         axes.append({"key": "cond", "name": "사고·상태", "score": None, "note": "감정 요항 미확보"})
 
-    # 4) 주행 적정성 / 5) 연식
+    # 4) 주행 적정성 (경과연수는 5) 잔존가치 근거에도 쓴다)
     yr, km = v.get("year"), v.get("mileage_km")
     age = (today.year - int(yr)) if yr else None
     if yr and km is not None:
@@ -634,11 +638,28 @@ def hexagon_scores(v: dict, today=None, include_private: bool = False) -> dict:
                      "note": f"{km:,}km · 연평균 {km / yrs:,.0f}km (기준 15,000km)"})
     else:
         axes.append({"key": "km", "name": "주행 적정성", "score": None, "note": "주행거리 또는 연식 없음"})
-    if yr:
-        sc = _interp(max(0, age), [(1, 100), (3, 85), (5, 70), (8, 50), (12, 25), (16, 10)])
-        axes.append({"key": "age", "name": "연식", "score": round(sc), "note": f"{yr}년식 · {max(0, age)}년 경과"})
+    # 5) 잔존가치 — 출시가 범위(등급별 최저~최고, 만원)의 중간값 대비 시세 중앙값. 출처명은 어떤 경우에도 쓰지 않는다(권리자 조건).
+    #    newcar_ok=False(공개 플래그 꺼짐·비관리자)면 값·숫자 모두 내지 않는다.
+    if newcar_ok is None:
+        newcar_ok = include_private or bool(load_config().get("newcar_public", False))
+    nmin, nmax = v.get("newcar_min") or 0, v.get("newcar_max") or 0
+    if not newcar_ok:
+        axes.append({"key": "value", "name": "잔존가치", "score": None, "note": "출시가 자료 미제공"})
+    elif nmin <= 0 or nmax <= 0:
+        axes.append({"key": "value", "name": "잔존가치", "score": None, "note": "출시가 자료 없음"})
+    elif med <= 0:
+        axes.append({"key": "value", "name": "잔존가치", "score": None, "note": "동급 시세 미확보"})
     else:
-        axes.append({"key": "age", "name": "연식", "score": None, "note": "연식 없음"})
+        mid = round((nmin + nmax) / 2)
+        r = med / (mid * 10000)
+        lo, hi = round(100 * med / (nmax * 10000)), round(100 * med / (nmin * 10000))
+        sc = _interp(r, [(0.10, 5), (0.15, 10), (0.30, 35), (0.45, 60), (0.60, 80), (0.75, 95), (0.90, 100)])
+        note = f"출시가 중간 {mid:,}만원 대비 시세 잔존 {r * 100:.0f}%"
+        if nmax != nmin:
+            note += f"(등급 범위 {lo}~{hi}%)"
+        if age is not None:
+            note += f" · {max(0, age)}년 경과"
+        axes.append({"key": "value", "name": "잔존가치", "score": round(sc), "note": note})
 
     # 6) 유동성 — 매물 건수(엔카 원자료)는 관리자(include_private)에게만 실어 보낸다(M01 격리).
     #    문구에 '동급 매물'을 쓰지 않는다: 그 문자열은 엔카 원자료 섹션의 누출 감시 토큰이다(test_exposure).
