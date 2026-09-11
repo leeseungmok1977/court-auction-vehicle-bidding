@@ -446,7 +446,12 @@ def list_vehicles(judgment: Optional[str] = None, maker: Optional[str] = None,
                  "fail_count": "fail_count DESC",
                  "mileage": "mileage_km IS NULL, mileage_km",   # 짧은 주행거리순(NULL 뒤로)
                  "inspection": "inspection_to IS NULL, inspection_to"}
-    sql += f" ORDER BY {sort_cols.get(sort, 'recent')}"
+    # ⚠️ 폴백은 **키 이름이 아니라 컬럼식**이어야 한다. 과거 기본값이 'sale_date'였을 땐
+    # 그것이 우연히 실제 컬럼명이라 동작했으나, 'recent'로 바꾸면서 미지의 sort가 오면
+    # `ORDER BY recent` → sqlite3.OperationalError: no such column: recent 로 500이 났다.
+    # (2026-09-12 장애: 대시보드 '지금 입찰 추천' 등 sort=expected 링크 7곳 전부 500)
+    # sort=expected는 DB가 아니라 app.py에서 파이썬으로 정렬하므로 여기선 기본 정렬로 떨어진다.
+    sql += f" ORDER BY {sort_cols.get(sort) or sort_cols['recent']}"
     conn = connect()
     rows = conn.execute(sql, params).fetchall()
     conn.close()
