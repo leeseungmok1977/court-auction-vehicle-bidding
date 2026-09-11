@@ -456,16 +456,22 @@ def accuracy(request: Request):
     median/winning은 공개 데이터라 공개 노출 가능(엔카 표본수 등 원자료 없음)."""
     bt = service.backtest_stats()
     pool = bt.get("pred_pool") or []
-    scatter, axis_max = [], 0
+    scatter, axis_max, omitted = [], 0, 0
     if pool:
-        axis_max = max(max(p["pred"], p["actual"]) for p in pool)
+        # 축 상한을 95퍼센타일로 — 소수 고가 이상치가 저가 밀집 구간을 뭉개지 않게(가독성).
+        # 상한 초과분은 그래프에서만 생략(통계·MAE엔 그대로 포함)하고 건수를 노출(무음 절단 금지).
+        vals = sorted(max(p["pred"], p["actual"]) for p in pool)
+        axis_max = vals[min(len(vals) - 1, int(len(vals) * 0.95))]
         for p in pool:
+            if max(p["pred"], p["actual"]) > axis_max:
+                omitted += 1
+                continue
             scatter.append({"x": round(p["actual"] / axis_max * 100, 2),
                             "y": round(p["pred"] / axis_max * 100, 2),
                             "within": p["err_pct"] <= 20})
     return templates.TemplateResponse("accuracy.html", {
         "request": request, "bt": bt, "scatter": scatter,
-        "axis_max": axis_max, "recent": pool[:24],
+        "axis_max": axis_max, "scatter_omitted": omitted, "recent": pool[:24],
     })
 
 

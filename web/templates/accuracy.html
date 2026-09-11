@@ -30,12 +30,12 @@
   <div class="bg-surface border border-line rounded-lg p-4">
     <div class="text-xs text-mut">±20% 이내 적중</div>
     <div class="font-mono text-3xl font-bold text-emerald-600 tnum mt-1">{{ bt.within20_pct }}<span class="text-lg text-mut">%</span></div>
-    <div class="text-[11px] text-mut mt-1">±10% 이내는 {{ bt.within10_pct }}%</div>
+    <div class="text-[11px] text-mut mt-1">10건 중 약 {{ (bt.within20_pct/10)|round|int }}건이 오차 ±20% 안</div>
   </div>
   <div class="bg-surface border border-line rounded-lg p-4">
-    <div class="text-xs text-mut">상한가 적중률</div>
-    <div class="font-mono text-3xl font-bold text-txt tnum mt-1">{% if bt.upper_hit_rate is not none %}{{ (bt.upper_hit_rate*100)|round|int }}<span class="text-lg text-mut">%</span>{% else %}—{% endif %}</div>
-    <div class="text-[11px] text-mut mt-1">실낙찰가 ≤ 재판매 상한가 (n={{ bt.upper_n }})</div>
+    <div class="text-xs text-mut">±10% 이내 적중</div>
+    <div class="font-mono text-3xl font-bold text-txt tnum mt-1">{{ bt.within10_pct }}<span class="text-lg text-mut">%</span></div>
+    <div class="text-[11px] text-mut mt-1">더 촘촘한 ±10% 기준 정확도</div>
   </div>
   <div class="bg-surface border border-line rounded-lg p-4">
     <div class="text-xs text-mut">검증 표본</div>
@@ -69,7 +69,7 @@
 {% if scatter %}
 <div class="bg-surface border border-line rounded-lg p-4">
   <h3 class="text-sm font-semibold text-txt mb-1">예측 낙찰가 vs 실제 낙찰가</h3>
-  <p class="text-[11px] text-mut mb-2">점이 <b class="text-txt">대각선</b>에 가까울수록 정확. <span class="text-emerald-600 font-semibold">초록</span> = 오차 ±20% 이내, <span class="text-amber-600 font-semibold">주황</span> = 초과. (단위 만원)</p>
+  <p class="text-[11px] text-mut mb-2">점이 <b class="text-txt">대각선</b>에 가까울수록 정확. <span class="text-emerald-600 font-semibold">초록</span> = 오차 ±20% 이내, <span class="text-amber-600 font-semibold">주황</span> = 초과. (단위 만원){% if scatter_omitted %} · 고가 {{ scatter_omitted }}건은 가독성을 위해 그래프에서 생략(통계·MAE엔 포함){% endif %}</p>
   <div class="overflow-x-auto">
     <svg viewBox="0 0 320 320" class="w-full max-w-[420px] mx-auto" role="img" aria-label="예측 대 실제 낙찰가 산점도 — 표본 {{ scatter|length }}건, 평균오차 ±{{ bt.mae_pct }}%">
       <!-- 축 -->
