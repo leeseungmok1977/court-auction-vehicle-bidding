@@ -48,6 +48,9 @@ def app_client(tmp_path, monkeypatch):
         "comps": [{"year": 2020, "mileage_km": 50000, "price_won": 7770000, "badge": "ZZLEAKZZ"}],
         "kcar_median": 8880000, "kcar_sample": 7,
         "cross_source_status": "agree", "cross_source_rel": 0.03,
+        # 보배드림 신차가격표 파생값 — compliance §6: 허락 전 공개 노출 금지(관리자 전용)
+        "newcar_min": 3294, "newcar_max": 4517, "newcar_n": 5, "newcar_model": "더 뉴 그랜저",
+        "newcar_release": "19.11~21.05", "newcar_checked_at": "2026-09-11 10:00:00",
     })
     import web.app as A
     return TestClient(A.app)
@@ -69,6 +72,12 @@ def test_user_responses_have_no_encar_raw(app_client):
         assert r.status_code == 200, p
         assert "ZZLEAKZZ" not in r.text, f"엔카 개별매물 누출(user): {p}"
         assert "동급 매물" not in r.text, f"동급 매물 섹션 누출(user): {p}"
+        assert "보배드림" not in r.text and "당시 출시가" not in r.text, f"보배드림 파생값 공개 노출(user): {p}"
+
+
+def test_admin_sees_newcar_range(app_client):
+    r = app_client.get("/vehicle/T1_1/report", headers=_TUNNEL)
+    assert r.status_code == 200 and "당시 출시가" in r.text and "3,294" in r.text
 
 
 def test_admin_responses_show_encar_raw(app_client):

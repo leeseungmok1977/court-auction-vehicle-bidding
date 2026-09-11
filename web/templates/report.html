@@ -309,8 +309,9 @@ details.raw summary{cursor:pointer;font-size:12px;color:var(--cobalt);font-weigh
       {% endif %}
       <dl class="kv-grid">
         <div class="kv"><dt>차량명</dt><dd>{{ car_name(v.maker, v.model) }}</dd></div>
-        {% if v.newcar_min and v.newcar_max %}
-        <div class="kv"><dt>당시 출시가</dt><dd class="num">{{ '{:,}'.format(v.newcar_min) }}{% if v.newcar_max != v.newcar_min %}~{{ '{:,}'.format(v.newcar_max) }}{% endif %}만원
+        {# 보배드림 신차가격표 파생값 — compliance §6: 서면 허락/대체출처 교차확인 전까지 관리자 전용 노출 #}
+        {% if is_admin(request) and v.newcar_min and v.newcar_max %}
+        <div class="kv"><dt>당시 출시가 <span class="tag verified">관리자</span></dt><dd class="num">{{ '{:,}'.format(v.newcar_min) }}{% if v.newcar_max != v.newcar_min %}~{{ '{:,}'.format(v.newcar_max) }}{% endif %}만원
           <span style="display:block;font-weight:400;font-size:11px;color:var(--ink-faint)">{{ v.newcar_model }} · {{ v.year }}년식 등급 {{ v.newcar_n }}개{% if v.newcar_release %} · 출시 {{ v.newcar_release }}{% endif %} · 보배드림 신차가격표{% if med %} · 시세 잔존 {{ (100*med/(v.newcar_max*10000))|round|int }}{% if v.newcar_max != v.newcar_min %}~{{ (100*med/(v.newcar_min*10000))|round|int }}{% endif %}%{% endif %}</span></dd></div>
         {% endif %}
         <div class="kv"><dt>연식</dt><dd class="num">{{ v.year or '—' }}</dd></div>
