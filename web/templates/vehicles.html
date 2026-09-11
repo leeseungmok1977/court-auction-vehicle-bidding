@@ -59,10 +59,14 @@
   </form>
 </div>
 
-<!-- 상태 범례 (압축) -->
-<div class="flex flex-wrap items-center gap-x-4 gap-y-0.5 text-xs text-mut px-1">
-  <b class="text-emerald-700">검토 가능</b><b class="text-amber-700">유찰 대기</b><b class="text-sky-700">신뢰도 낮음</b><b class="text-rose-600">입찰 보류</b><b class="text-slate-600">종결·미분석</b>
-  <span class="text-mut">·&nbsp; <span class="text-rose-600/70">*</span>저신뢰 · <span>↑</span>최저가&gt;예상낙찰가</span>
+<!-- 상태 범례 — 각 상태에 밑줄+설명(탭/호버). 기호(*,↑)는 문장으로 풀어서 안내 -->
+<div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-mut px-1">
+  {{ ui.gloss('검토 가능', '지금 가격이 적정해 바로 입찰을 검토할 수 있는 물건이에요.', q=false, cls='font-bold text-emerald-700') }}
+  {{ ui.gloss('유찰 대기', '아직 최저가가 시세보다 높아, 유찰로 더 내려가길 기다리는 편이 나은 물건이에요.', q=false, cls='font-bold text-amber-700') }}
+  {{ ui.gloss('신뢰도 낮음', '동급 시세 표본이 부족해 예상 낙찰가를 믿기 어려운 물건이에요. 직접 시세 확인이 필요합니다.', q=false, cls='font-bold text-sky-700') }}
+  {{ ui.gloss('입찰 보류', '사고·침수·시세 괴리 등 위험 신호가 있어 입찰을 보류하는 편이 좋은 물건이에요.', q=false, cls='font-bold text-rose-600') }}
+  {{ ui.gloss('종결·미분석', '이미 매각이 끝났거나(종결) 아직 분석 전(미분석)인 물건이에요.', q=false, cls='font-bold text-slate-600') }}
+  <span class="text-mut">·&nbsp;표 안의 <span class="text-rose-600/70 font-bold">*</span> = 시세 신뢰도 낮음(참고용) · <span class="font-bold">↑</span> = 최저매각가가 예상낙찰가보다 높음(추가 유찰 필요)</span>
   <span class="ml-auto text-mut">미분석 = 대시보드 <b class="text-txt">[시세 분석]</b> 또는 물건 클릭</span>
 </div>
 

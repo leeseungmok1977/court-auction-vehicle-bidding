@@ -193,8 +193,12 @@
   .gloss .pop::before{content:"";position:absolute;left:10px;bottom:100%;border:5px solid transparent;border-bottom-color:#0b142b}
   @media (max-width:420px){ .gloss .pop{max-width:210px} }
   @media (prefers-reduced-motion: reduce){ .gloss .pop{transition:none} }
+  /* 큰글씨(어르신) 모드 — 루트 폰트 확대로 rem 기반 텍스트 일괄 확대(저시력·고령 접근성) */
+  html.nc-large{font-size:112.5%}
+  #largeToggle[aria-pressed="true"]{background:#2f5fe0;color:#fff}
 </style>
 <script>try{ if(sessionStorage.getItem("nc_splash")) document.documentElement.className += " splash-done"; }catch(e){}</script>
+<script>try{ if(localStorage.getItem("naechaget:large")==="1") document.documentElement.classList.add("nc-large"); }catch(e){}</script>
 <script>
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', function () {
@@ -293,6 +297,9 @@
       <span class="material-symbols-outlined text-primary text-base animate-spin">progress_activity</span>
       <span id="runText" class="text-primary font-semibold">진행 중…</span>
     </a>
+    <button type="button" id="largeToggle" aria-pressed="false" onclick="ncToggleLarge()"
+            class="shrink-0 text-mut hover:text-txt px-2 py-1 rounded-md hover:bg-line/40 transition-colors font-bold text-[15px] leading-none"
+            title="큰글씨 모드 — 글씨를 크게 봅니다" aria-label="큰글씨 모드 전환">가+</button>
     {% set _ac = alert_count() %}
     <a href="/#alerts" class="relative shrink-0 text-mut hover:text-txt p-1.5 rounded-md hover:bg-line/40 transition-colors" title="임박 매각기일 알림 {{ _ac }}건">
       <span class="material-symbols-outlined" style="font-variation-settings:'FILL' {{ 1 if _ac else 0 }}">notifications</span>
@@ -415,6 +422,12 @@ window._goBack = function(e){
   } catch(err) {}
   return true;   // 폴백: href(back_url)로 이동
 };
+</script>
+
+<!-- 큰글씨(어르신) 모드 토글 — 헤더 '가+' 버튼. 상태는 기기 로컬 저장, 로드 전 <head>에서 선적용(FOUC 방지) -->
+<script>
+function ncToggleLarge(){ try{ var on=document.documentElement.classList.toggle('nc-large'); localStorage.setItem('naechaget:large', on?'1':'0'); var b=document.getElementById('largeToggle'); if(b) b.setAttribute('aria-pressed', on?'true':'false'); }catch(e){} }
+(function(){ try{ var b=document.getElementById('largeToggle'); if(b) b.setAttribute('aria-pressed', document.documentElement.classList.contains('nc-large')?'true':'false'); }catch(e){} })();
 </script>
 
 {% block script %}{% endblock %}

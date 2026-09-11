@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+{% import "_macros.html" as ui %}<!DOCTYPE html>
 <html lang="ko">
 <head>
 <meta charset="utf-8"/>
@@ -6,6 +6,23 @@
 <title>{{ v.model|mdl }} 분석 리포트 · {{ v.case_no }}</title>
 <meta name="description" content="{{ v.model|mdl }} 법원경매 분석 리포트 — 예상 낙찰가·추천 입찰가·시세 대비·유사 낙찰 실적을 담은 경매로 내차GET 리포트."/>
 <link rel="stylesheet" href="/static/app.css?v={{ css_v }}"/>
+<style>
+  /* 용어 설명 툴팁 — base.html과 동일 컴포넌트(리포트는 독립 문서라 여기에 별도 정의). 인쇄 시 숨김 유지 */
+  .gloss{position:relative;display:inline-flex;align-items:center;gap:3px;cursor:help;outline:none;vertical-align:baseline}
+  .gloss .gt{text-decoration:underline dotted currentColor;text-underline-offset:2px}
+  .gloss .q{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:50%;
+    background:#cbd5e1;color:#1f2a44;font-size:10px;font-weight:700;line-height:1;flex:none}
+  .gloss:hover .q,.gloss:focus-visible .q,.gloss:focus .q{background:#2b62d9;color:#fff}
+  .gloss .pop{position:absolute;left:0;top:calc(100% + 7px);z-index:50;width:max-content;max-width:250px;
+    background:#0b142b;color:#eef2fb;font-size:12px;font-weight:400;line-height:1.55;letter-spacing:-.01em;
+    padding:9px 11px;border-radius:9px;box-shadow:0 10px 30px rgba(11,20,43,.3);
+    opacity:0;visibility:hidden;transform:translateY(-4px);transition:opacity .13s ease,transform .13s ease;
+    pointer-events:none;text-align:left;white-space:normal}
+  .gloss:hover .pop,.gloss:focus-within .pop,.gloss:focus .pop{opacity:1;visibility:visible;transform:translateY(0)}
+  .gloss .pop::before{content:"";position:absolute;left:10px;bottom:100%;border:5px solid transparent;border-bottom-color:#0b142b}
+  @media print{ .gloss .pop{display:none} .gloss .q{display:none} .gloss .gt{text-decoration:none} }
+  @media (prefers-reduced-motion: reduce){ .gloss .pop{transition:none} }
+</style>
 {% set med = v.median_price or 0 %}
 {% set floor = v.min_sale_price or 0 %}
 {% set exp = (report.exp if report else 0) or 0 %}
@@ -237,7 +254,7 @@ details.raw summary{cursor:pointer;font-size:12px;color:var(--cobalt);font-weigh
       <div class="stop {{ 'on' if report.stop_active else 'off' }}">
         <span class="tg">STOP RULE</span>
         <p>{% if report.stop_active %}<b>사고/침수 이력이 감지</b>되었습니다. 현장에서 골격(프레임) 손상·침수 확정 시 본 리포트의 권장가는 <b>즉시 무효</b>이며 입찰 보류를 권장합니다.
-        {% else %}현장/서류에서 <b>골격(프레임) 사고 · 침수 · 미기재 중대 결함 · 인수 부담 권리관계</b> 중 하나라도 확인되면 본 리포트의 권장가는 무효로 간주하고 입찰을 보류하십시오.{% endif %}</p>
+        {% else %}현장/서류에서 <b>골격(프레임) 사고 · 침수 · 미기재 중대 결함 · {{ ui.gloss('인수 부담 권리관계', '낙찰자가 떠안게 되는 빚·부담이에요. 말소되지 않는 선순위 임차권·지상권, 인수되는 체납 세금·과태료 등이 있으면 낙찰가 외에 추가 부담이 생깁니다. 등기·자동차등록원부로 반드시 확인하세요.', q=false) }}</b> 중 하나라도 확인되면 본 리포트의 권장가는 무효로 간주하고 입찰을 보류하십시오.{% endif %}</p>
       </div>
       <!-- 가격 스펙트럼 -->
       {% if med and floor and exp %}
@@ -318,8 +335,8 @@ details.raw summary{cursor:pointer;font-size:12px;color:var(--cobalt);font-weigh
         <div class="kv"><dt>연식</dt><dd class="num">{{ v.year or '—' }}</dd></div>
         <div class="kv"><dt>주행거리</dt><dd class="num">{{ v.mileage_km|won }} km {% if v.mileage_km %}<span class="tag confirmed">확정</span>{% endif %}</dd></div>
         <div class="kv"><dt>배기량 / 연료</dt><dd class="num">{{ v.displacement_cc or '—' }}cc{% if asum and asum.fuel %} · {{ asum.fuel }}{% endif %}</dd></div>
-        <div class="kv"><dt>감정가</dt><dd class="num">{{ v.appraisal_value|won }}원 {% if v.appraisal_value %}<span class="tag confirmed">확정</span>{% endif %}</dd></div>
-        <div class="kv"><dt>최저매각가</dt><dd class="num">{{ v.min_sale_price|won }}원{% if v.appraisal_value and v.min_sale_price %} ({{ (100*v.min_sale_price/v.appraisal_value)|round|int }}%){% endif %}</dd></div>
+        <div class="kv"><dt>{{ ui.gloss('감정가', '법원이 감정평가사를 통해 매긴 차량 가치예요. 최저매각가와 낙찰가율의 기준이 됩니다.') }}</dt><dd class="num">{{ v.appraisal_value|won }}원 {% if v.appraisal_value %}<span class="tag confirmed">확정</span>{% endif %}</dd></div>
+        <div class="kv"><dt>{{ ui.gloss('최저매각가', '이번 기일에 이 금액 이상 써내야 입찰돼요. 유찰될 때마다 보통 20~30%씩 내려갑니다.') }}</dt><dd class="num">{{ v.min_sale_price|won }}원{% if v.appraisal_value and v.min_sale_price %} ({{ (100*v.min_sale_price/v.appraisal_value)|round|int }}%){% endif %}</dd></div>
         <div class="kv"><dt>유찰횟수</dt><dd class="num">{{ v.fail_count if v.fail_count is not none else '—' }}회</dd></div>
         <div class="kv"><dt>사고판정</dt><dd>{{ v.accident_grade|acc }}{% if v.accident_hits %} <span class="chip warn">{{ v.accident_hits|join(', ') }}</span>{% endif %}</dd></div>
         {% if v.sale_place %}<div class="kv"><dt>매각장소</dt><dd style="font-size:12px">{% if v.court %}{{ v.court }} {% endif %}{{ v.sale_place }}{% if v.sale_time %} · {{ v.sale_time }} 입찰{% endif %}</dd></div>{% endif %}

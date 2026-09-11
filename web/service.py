@@ -2269,6 +2269,23 @@ def price_distribution(v: dict, exp: Optional[int], mae: Optional[float],
     }
 
 
+def allin_estimate(bid: Optional[int], config: dict) -> Optional[dict]:
+    """상세 화면용 간이 총비용 — 낙찰가 + 취득세 + 이전등록·탁송(고정비).
+    초보 사용자의 '그래서 총 얼마 드나' 질문에 답한다. 정비비·리스크 충당금 등 전체 시나리오는
+    리포트 06(총 취득원가)에서 다룬다(여기엔 넣지 않아 과대·혼동 방지). 외부 데이터 노출 없음."""
+    if not bid or bid <= 0:
+        return None
+    tax_rate = config.get("acquisition_tax_rate", 0.07)
+    fc = config.get("fixed_costs", {})
+    transfer = fc.get("transfer_fee", 300000)
+    delivery = fc.get("delivery_fee", 200000)
+    tax = round(bid * tax_rate)
+    fixed = transfer + delivery
+    return {"bid": bid, "tax": tax, "tax_rate": tax_rate,
+            "transfer": transfer, "delivery": delivery, "fixed": fixed,
+            "total": bid + tax + fixed}
+
+
 def report_data(v: dict, config: dict, bt: dict) -> Optional[dict]:
     """종합 분석 리포트용 파생 데이터 — 실데이터·산정로직 기반(취득원가·수익 시뮬·민감도·신뢰도).
 

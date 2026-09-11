@@ -541,6 +541,8 @@ def vehicle_detail(request: Request, vid: str, cc: str = "", an: str = ""):
         "eff_median": eff_med,
         "kcar_enabled": kcar.ENABLED, "cc_msg": cc, "an_msg": an,
         "newcar_public": bool(_cfg.get("newcar_public", False)),   # 당시 출시가 공개 여부(config 전환)
+        # 낙찰 시 간이 총비용(낙찰가+취득세+이전·탁송) — 초보용 '그래서 총 얼마' 답변. 전체는 리포트 06.
+        "allin": service.allin_estimate(expected["price"] if expected else None, _cfg),
     })
 
 

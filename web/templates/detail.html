@@ -36,8 +36,8 @@
       <span data-fav-icon class="material-symbols-outlined text-lg" style="font-variation-settings:'FILL' 0">star</span>
       <span data-fav-label>즐겨찾기</span></button>
     {% if v.appraisal_ecdoc_id %}
-    <a href="/vehicle/{{ v.id }}/appraisal" target="auctionAppraisal" class="btn-ghost text-sm flex items-center gap-1.5" title="감정 요항(핵심)은 아래에 정리 · 원본 전체는 법원경매정보 열람 안내">
-      <span class="material-symbols-outlined text-lg">gavel</span> 감정평가서</a>
+    <a href="/vehicle/{{ v.id }}/appraisal" target="auctionAppraisal" class="btn-ghost text-sm flex items-center gap-1.5" title="새 창에서 열림 — 감정 요항(핵심 상태·검사) 요약과 법원경매정보 원본 열람 안내. 원본 PDF는 법원 사이트에서 확인합니다.">
+      <span class="material-symbols-outlined text-lg">gavel</span> 감정평가서<span class="material-symbols-outlined text-sm leading-none">open_in_new</span></a>
     {% endif %}
     {% if v.median_price is not none %}
     <a href="/vehicle/{{ v.id }}/report" class="btn-ghost text-sm flex items-center gap-1.5" title="분석 리포트(앱 내에서 열림 · 인쇄/PDF 가능)">
@@ -103,6 +103,33 @@
     {% endif %}
   </dl>
 </div>
+
+{# 낙찰 이후 절차 & 예상 비용 — 경매 초보용 안내(교육 콘텐츠 · 외부 데이터 없음). 기본 접힘. #}
+<details class="bg-surface border border-line rounded-lg overflow-hidden">
+  <summary class="flex items-center justify-between gap-2 px-5 py-3.5 cursor-pointer select-none list-none">
+    <span class="flex items-center gap-2 font-semibold text-txt"><span class="material-symbols-outlined text-primary text-xl">flag</span>낙찰받으면? — 이후 절차·예상 비용 안내</span>
+    <span class="text-xs text-mut inline-flex items-center gap-0.5">펼치기<span class="material-symbols-outlined text-base">expand_more</span></span>
+  </summary>
+  <div class="px-5 pb-5 pt-0 space-y-4 text-sm">
+    {% if allin %}
+    <div class="rounded-lg bg-primary/5 border border-primary/20 p-3.5">
+      <div class="text-xs text-mut mb-1">낙찰 시 최소 예상비용 <span class="text-mut">· 예상낙찰가 기준</span></div>
+      <div class="font-mono text-xl font-bold text-primary tnum">{{ allin.total|won }} 원</div>
+      <div class="text-[11px] text-mut mt-1 leading-relaxed">
+        예상낙찰가 {{ allin.bid|won }} + 취득세 {{ (allin.tax_rate*100)|round|int }}% {{ allin.tax|won }} + 이전등록·탁송 {{ allin.fixed|won }}<br>
+        정비비·리스크 충당금까지 포함한 전체 시나리오는 {% if v.median_price is not none %}<a href="/vehicle/{{ v.id }}/report" class="text-primary underline">리포트의 ‘총 취득원가’</a>{% else %}리포트의 ‘총 취득원가’{% endif %}를 참고하세요.
+      </div>
+    </div>
+    {% endif %}
+    <ol class="space-y-2.5">
+      <li class="flex gap-3"><span class="shrink-0 w-6 h-6 rounded-full bg-primary/10 text-primary text-xs font-bold grid place-items-center">1</span><div><b class="text-txt">입찰·낙찰</b> — 매각기일에 법원에 출석해 입찰합니다. 입찰보증금은 <b>통상 최저매각가의 10%</b>(재매각 등 특별조건이면 20~30%). 최고가를 써낸 사람이 낙찰자가 됩니다.</div></li>
+      <li class="flex gap-3"><span class="shrink-0 w-6 h-6 rounded-full bg-primary/10 text-primary text-xs font-bold grid place-items-center">2</span><div><b class="text-txt">매각허가결정</b> — 낙찰 약 1주 뒤 법원이 매각을 허가하고, 다시 약 1주 뒤 확정됩니다. 낙찰받지 못한 사람은 보증금을 돌려받습니다.</div></li>
+      <li class="flex gap-3"><span class="shrink-0 w-6 h-6 rounded-full bg-primary/10 text-primary text-xs font-bold grid place-items-center">3</span><div><b class="text-txt">대금 납부</b> — 법원이 정한 <b>대금지급기한</b>(통상 확정 후 약 1개월 내)까지 잔금을 냅니다. 기한 내 미납 시 <b class="text-rose-600">보증금은 몰수</b>됩니다.</div></li>
+      <li class="flex gap-3"><span class="shrink-0 w-6 h-6 rounded-full bg-primary/10 text-primary text-xs font-bold grid place-items-center">4</span><div><b class="text-txt">소유권 이전·차량 인수</b> — 대금을 내면 소유권을 취득합니다. 자동차 이전등록(취득세 납부)을 하고, 차량 보관장소에서 차를 인수(탁송)합니다.</div></li>
+    </ol>
+    <p class="text-[11px] text-mut leading-relaxed border-t border-line pt-3">※ 보증금율·대금지급기한 등 구체적 조건은 <b>법원 공고·매각물건명세서</b>에 따라 다릅니다. 입찰 전 반드시 해당 사건의 공고를 확인하고, 인수되는 권리·체납은 등기·자동차등록원부로 직접 확인하세요. 본 안내는 일반적인 기일입찰 절차 참고용입니다.</p>
+  </div>
+</details>
 
 {# 낙찰결과 — 낙찰완료 물건은 물건 정보와 AI 예측 사이에 표시 #}
 {% if v.auction_result == '낙찰' and v.winning_price %}
