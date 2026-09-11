@@ -39,7 +39,7 @@ bubblewrap build          # app-release-signed.aab + assetlinks 지문 출력
 출력된 지문을 `assetlinks.json`에 반영 후 재배포.
 
 ## 패키지 정보(제안)
-- packageId: `kr.co.naechaget.twa` (원하는 값으로 변경 가능, 스토어와 일치해야 함)
+- packageId: `kr.co.naechaget.app` (원하는 값으로 변경 가능, 스토어와 일치해야 함)
 - 앱 이름: **경매로 내차GET** / 런처: **내차GET**
 - 색상: theme `#ffffff`, splash/네비 다크 `#0b142b`, 포인트 `#f3b63e`
 - 아이콘: `web/static/icons/icon-512.png`(any) · `icon-maskable-512.png`(maskable)

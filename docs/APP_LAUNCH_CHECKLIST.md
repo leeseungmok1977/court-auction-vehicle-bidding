@@ -2,7 +2,7 @@
 
 # 경매로 내차GET — 스토어 출시·수익화 단일 실행 체크리스트
 
-> 대상 앱: TWA(PWABuilder 래퍼) · 패키지 `kr.co.naechaget.twa` · 도메인 `https://naechaget.co.kr`
+> 대상 앱: TWA(PWABuilder 래퍼) · 패키지 `kr.co.naechaget.app` · 도메인 `https://naechaget.co.kr`
 > 원칙: 웹=앱(웹 수정은 재심사 불필요, 패키지 설정 변경만 재빌드). 순서·의존성 반드시 지킬 것.
 
 ---
@@ -12,7 +12,7 @@
 - [x] PWA 준비 완료 (manifest·서비스워커·아이콘 192/512/maskable·theme #0b142b)
 - [x] 개인정보처리방침 게시: `https://naechaget.co.kr/privacy`
 - [x] `/.well-known/assetlinks.json` 서빙 중 — **단, `sha256_cert_fingerprints`가 PLACEHOLDER (미기입)**
-- [x] `assetlinks.json`의 `package_name`이 `kr.co.naechaget.twa`로 반영됨
+- [x] `assetlinks.json`의 `package_name`이 `kr.co.naechaget.app`로 반영됨
 
 > ⚠️ **도메인 불일치 확인 필요(불확실)**: 리서치 일부는 PWABuilder 입력값으로 `naechaget.duckdns.org`를, 다른 곳은 `naechaget.co.kr`을 씁니다. **TWA의 startUrl 도메인과 assetlinks 서빙 도메인은 반드시 동일**해야 하므로, 실제 canonical 도메인 하나(권장: 소유 도메인 `naechaget.co.kr`)로 통일하고 PWABuilder에도 그 주소를 입력하세요. 리다이렉트가 있으면 "리다이렉트 도착지" 주소를 넣어야 합니다.
 
@@ -35,7 +35,7 @@
 
 **운영자가 할 일 (PWABuilder 웹):**
 - [ ] `pwabuilder.com`에 canonical HTTPS 주소 입력 → 리포트 실행 → **Package For Stores → Android → Google Play**
-- [ ] Package ID = `kr.co.naechaget.twa` 확인 (**출시 후 영구 변경 불가**)
+- [ ] Package ID = `kr.co.naechaget.app` 확인 (**출시 후 영구 변경 불가**)
 - [ ] App name `경매로 내차GET` / Launcher `내차GET` / startUrl `/?src=twa` / theme·background 자동 채움 확인
 - [ ] Version code=1, Version name=1.0.0 확인
 - [ ] Signing key = **New** 선택 (alias `naechaget` + 비밀번호 설정) — 이것이 당신의 **"업로드 키"**
@@ -89,7 +89,7 @@
 **클로드 코드/서버가 할 일:**
 - [ ] `web/static/.well-known/assetlinks.json`의 `PLACEHOLDER...` 자리를 실제 지문으로 교체
   - `sha256_cert_fingerprints`에 **앱 서명 키 + 업로드 키 두 값 배열**로 기입(가장 안전)
-  - `package_name` = `kr.co.naechaget.twa` 정확히 유지
+  - `package_name` = `kr.co.naechaget.app` 정확히 유지
 - [ ] EC2 재배포: `ubuntu@43.202.126.180`, `/home/ubuntu/app`에서 `git pull` + 서비스 재시작
 - [ ] `https://naechaget.co.kr/.well-known/assetlinks.json`이 **HTTPS·리다이렉트 없이·유효 JSON**으로 열리는지 확인 (Google Digital Asset Links API 테스터로 검증)
 
@@ -161,7 +161,7 @@
 
 | 값 | 내용 | 확보 시점 |
 |---|---|---|
-| 패키지명(영구) | `kr.co.naechaget.twa` | 이미 확정 |
+| 패키지명(영구) | `kr.co.naechaget.app` | 이미 확정 |
 | Canonical 도메인 | `https://naechaget.co.kr` (통일 필요) | 지금 |
 | 서명키 alias/비번 | alias `naechaget` + keystore·키 비밀번호 | §2 (New 생성 시) |
 | **앱 서명 키 SHA-256** | Play Console → 앱 무결성 → 앱 서명 | **§4 (첫 .aab 업로드 후)** |
