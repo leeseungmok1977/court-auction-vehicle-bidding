@@ -174,11 +174,13 @@
         <div class="text-[11px] text-white/55 mt-1.5 leading-snug">이미 끝난 물건{% if backtest.discount_median %} · 낙찰가율 {{ (backtest.discount_median*100)|round|int }}%{% endif %}</div>
       </a>
     </div>
-    <div class="relative flex items-center justify-between gap-2 mt-3 pt-3 border-t border-white/10 text-[11px]">
+    {# 320px에서는 오른쪽 링크(whitespace-nowrap)가 폭을 다 먹어 왼쪽 문구가 폭 70px
+   세로 기둥으로 눌렸다. 못 들어가면 줄을 바꾼다(2026-09-12 디자인 검수). #}
+    <div class="relative flex flex-wrap items-center justify-between gap-x-3 gap-y-2 mt-3 pt-3 border-t border-white/10 text-[11px]">
       {# 신뢰도 낮음 + 기타를 한 줄로 묶되(사용자 지시), **링크는 각각 정확한 목록으로** 보낸다.
          하나로 합쳐 링크하면 '520대'라 써놓고 눌러보면 339건이 나와, 이 앱이 지켜온
          '카드 수 = 목록 수' 규칙이 이 줄에서만 깨진다(2026-09-12 검수 적발). #}
-      <span class="text-white/50">
+      <span class="text-white/50 whitespace-nowrap">
         <a href="/vehicles?bucket=lowconf" class="hover:text-white/80 hover:underline">신뢰도 낮음 <b class="text-white/80">{{ lifecycle.lowconf }}</b>대</a>
         · <a href="/vehicles?bucket=other" class="hover:text-white/80 hover:underline">기타·미분석 <b class="text-white/80">{{ lifecycle.other }}</b>대</a>
       </span>
