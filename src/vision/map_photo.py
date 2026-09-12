@@ -28,6 +28,20 @@ from typing import Optional
 PALE_MIN = 0.40      # 밝고 옅은 바탕 비율
 TOP_MIN = 0.60       # 상위 24개 색 빈이 차지하는 비율(평평함)
 EDGE_MAX = 10.0      # 평균 엣지 강도 — 사진은 이보다 크다
+# ⚠ 위 셋만으로는 **차대번호 명판·타이어 스티커**를 지도로 오판한다. 실제로 그랬다.
+#   명판도 밝고 평평하고 선이 적기 때문이다. 지도만 가진 성질은 따로 있다 —
+#   **파스텔 유채색이 넓게 깔린다**(필지 초록·베이지·분홍, 도로 노랑, 하천 파랑).
+#   명판은 사실상 무채색이다. 실측 9장:
+#       지도 5장   pastel 0.68~0.96
+#       명판       0.07
+#       접근로     0.20
+#       차량 사진  0.30~0.52
+#   임계값은 눈대중이 아니라 분포로 잡았다. 앞 세 조건을 통과한 404장의 pastel
+#   히스토그램에 0.30~0.35 구간이 골(1장)이고 그 아래 63장(무채색 무리)이 몰려 있다.
+#   63/404 = 15.6% 는 기존 CLIP 프로브와의 불일치율 15.5% 와 일치한다.
+#   ⚠ 0.60 으로 잡았다가 '보관장소' 라벨이 찍힌 진짜 지도(김포, pastel 0.60)를
+#     떨어뜨렸다. 경계는 넉넉히 둔다 — 지도를 놓치는 쪽이 더 나쁘다.
+PASTEL_MIN = 0.35
 _EXTS = (".jpg", ".jpeg", ".png", ".gif")
 
 
@@ -47,11 +61,13 @@ def map_features(path: str) -> Optional[dict]:
     flat = arr.reshape(-1, 3)
     mx, mn = flat.max(1), flat.min(1)
     sat = np.where(mx > 0, (mx - mn) / np.maximum(mx, 1), 0)
+    val = mx / 255.0
     q = flat // 12
     counts = np.bincount(q[:, 0] * 484 + q[:, 1] * 22 + q[:, 2])
     grey = arr.mean(2)
     return {
         "pale": float(((mx > 195) & (sat < 0.25)).mean()),
+        "pastel": float(((sat >= 0.08) & (sat <= 0.55) & (val > 0.55)).mean()),
         "top": float(np.sort(counts)[-24:].sum() / len(flat)),
         "edge": float((np.abs(np.diff(grey, 1, 1)).mean()
                        + np.abs(np.diff(grey, 1, 0)).mean()) / 2),
@@ -62,7 +78,7 @@ def is_map_features(ft: Optional[dict]) -> bool:
     if not ft:
         return False
     return (ft["pale"] >= PALE_MIN and ft["top"] >= TOP_MIN
-            and ft["edge"] <= EDGE_MAX)
+            and ft["edge"] <= EDGE_MAX and ft.get("pastel", 0) >= PASTEL_MIN)
 
 
 def is_map_photo(path: str) -> bool:

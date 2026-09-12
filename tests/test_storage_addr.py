@@ -200,17 +200,24 @@ def test_source_lookup_does_not_guess_when_files_disagree(one):
 
 # ── 지도 사진 검출 (3단계) ──────────────────────────────────────
 def _synth(path, kind):
-    """지도/차량 사진을 흉내 낸 합성 이미지. 실제 판정 특징을 재현한다."""
+    """지도/차량/명판을 흉내 낸 합성 이미지. 실제 판정 특징을 재현한다."""
     import numpy as np
     from PIL import Image
     rng = np.random.default_rng(0)
     if kind == "map":
-        # 밝은 파스텔 몇 색으로 칠하고 얇은 선만 긋는다
-        a = np.full((200, 200, 3), 245, dtype=np.uint8)
-        a[20:90, 20:120] = (222, 235, 214)
-        a[110:180, 60:190] = (238, 226, 214)
+        # 밝은 파스텔 **유채색**을 넓게 깔고 얇은 선만 긋는다
+        a = np.full((200, 200, 3), 236, dtype=np.uint8)
+        a[0:100, :] = (214, 232, 205)      # 필지 초록
+        a[100:200, :] = (240, 226, 208)    # 필지 베이지
         a[:, 98:101] = (150, 150, 150)
         a[95:98, :] = (150, 150, 150)
+    elif kind == "plate":
+        # 차대번호 명판 — 밝고 평평하고 선이 적지만 **무채색**이다.
+        # pastel 조건이 없으면 이게 지도로 잡힌다(실제 오탐이었다).
+        a = np.full((200, 200, 3), 250, dtype=np.uint8)
+        a[60:150, 20:180] = (35, 35, 35)
+        a[70:80, 30:170] = (230, 230, 230)
+        a[100:110, 30:170] = (230, 230, 230)
     else:
         # 사진: 질감·그림자로 색이 넓게 퍼지고 엣지가 강하다
         a = rng.integers(0, 255, (200, 200, 3), dtype=np.uint8)
@@ -224,6 +231,22 @@ def test_map_detector_separates_maps_from_photos(tmp_path):
     _synth(c, "car")
     assert is_map_photo(str(m)) is True, "지도를 못 잡는다"
     assert is_map_photo(str(c)) is False, "사진을 지도로 잡는다"
+
+
+def test_vin_plate_is_not_mistaken_for_a_map(tmp_path):
+    """차대번호 명판을 지도로 잡으면 안 된다 — 실제 오탐이었다.
+
+    명판도 밝고 평평하고 선이 적어 pale/top/edge 만으로는 지도와 구분되지 않는다.
+    사용자가 '위치도'를 눌렀는데 명판이 나오면 앱이 거짓말을 한 것이다.
+    지도만 가진 성질은 **파스텔 유채색이 넓게 깔린다**는 것이다(실측: 지도 0.68~0.96,
+    명판 0.07, 차량 사진 0.30~0.52).
+    """
+    from src.vision.map_photo import is_map_photo, map_features
+    p = tmp_path / "plate.png"
+    _synth(p, "plate")
+    ft = map_features(str(p))
+    assert ft["pale"] >= 0.40 and ft["edge"] <= 10, "명판은 지도와 pale/edge가 겹쳐야 의미 있는 시험"
+    assert is_map_photo(str(p)) is False, f"명판을 지도로 잡았다: {ft}"
 
 
 def test_map_detector_survives_a_broken_file(tmp_path):
