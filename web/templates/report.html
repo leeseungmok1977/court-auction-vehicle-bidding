@@ -81,8 +81,11 @@ body{background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:
    가장 중요한 STOP RULE·리스크 항목까지 도달률이 사실상 0이었다(2026-09-12 패널 지적). */
 /* 상단 고정 바 — 툴바(상세로·인쇄)와 섹션 점프칩을 함께 붙여 둔다.
    11화면짜리 문서라 스크롤을 내리면 돌아갈 방법이 사라졌다(2026-09-12 사용자 요청). */
-.rtop{position:sticky;top:0;z-index:40;background:var(--paper);
-  margin:-24px -20px 8px;padding:10px 20px 0;border-bottom:1px solid var(--line)}
+.rtop{display:block;position:sticky;top:0;z-index:40;background:var(--paper);
+  margin:-24px -20px 8px;padding:8px 20px 0;border-bottom:1px solid var(--line)}
+/* ⚠ .no-print 가 display:flex 라서 .rtop 에 display:block 을 명시하지 않으면
+   버튼 묶음과 섹션칩이 좌우로 나란히 붙는다(2026-09-12 실측으로 발견). */
+.rtop-btns{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
 .rtop .btn{padding:7px 14px}
 .secnav{display:flex;gap:6px;overflow-x:auto;padding:8px 0;
   -webkit-overflow-scrolling:touch;scrollbar-width:none}
@@ -241,7 +244,7 @@ document.addEventListener('click', function(e){
 </script>
 <div class="page" role="main">
   <div class="rtop no-print">
-  <div>
+  <div class="rtop-btns">
     <a href="/vehicle/{{ v.id }}" class="btn" onclick="return _reportBack(event)"><span class="material-symbols-outlined" style="font-size:18px">arrow_back</span> 상세로</a>
     <button onclick="window.print()" class="btn pri"><span class="material-symbols-outlined" style="font-size:18px">print</span> 인쇄 / PDF 저장</button>
     <span class="btn" style="opacity:.5;cursor:not-allowed;gap:6px" title="곧 제공 — 리포트를 계정에 보관하고 건당 구매(현재 무료·인쇄로 저장하세요)" aria-disabled="true"><span class="material-symbols-outlined" style="font-size:18px">bookmark_add</span> 보관·구매 <span style="font-size:10px;background:var(--line);color:var(--ink-soft);padding:1px 6px;border-radius:99px">준비 중</span></span>
