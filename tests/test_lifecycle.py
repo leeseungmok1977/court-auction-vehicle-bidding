@@ -11,7 +11,10 @@ def dbmod(tmp_path, monkeypatch):
 
 
 def _v(db, id, **kw):
-    base = {"id": id, "folder_key": id, "case_no": id, "item_no": "1",
+    # case_no는 실제 형식(YYYY타경N)이어야 한다 — 공개 목록이 '(중복)' 같은 비정형
+    # 사건번호를 거르기 때문에, id를 그대로 쓰면 픽스처가 통째로 숨겨진다.
+    base = {"id": id, "folder_key": id, "case_no": f"2026타경{abs(hash(id)) % 90000 + 1000}",
+            "item_no": "1",
             "maker": "현대", "model": "쏘나타", "sale_date": "2999-01-01"}
     base.update(kw)
     db.upsert_vehicle(base)

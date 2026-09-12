@@ -429,6 +429,30 @@ def personal_use_saving(v: dict, bt: Optional[dict] = None,
     return int(round(gain)) if gain > 0 else None
 
 
+def personal_use_max_bid(v: dict, bt: Optional[dict] = None,
+                        config: Optional[dict] = None) -> Optional[int]:
+    """실사용 손익분기 — **이 값을 넘겨 낙찰받으면 소매로 사는 게 낫다**(원).
+
+    예상 낙찰가는 '얼마에 팔릴까'의 추정치일 뿐이다. 경매장에서 실제로 필요한 값은
+    '얼마까지 써도 되는가'인데, 지금까지 리포트에는 재판매 마진 기준 상한가만 있었다
+    (2026-09-12 1·2회차 경매 전문가 재지적). 새 데이터가 필요 없다 —
+    personal_use_saving의 부등식을 exp에 대해 풀면 그대로 나온다.
+
+        med×(1−사고감가)×(1+세율) + 소매부대비 = exp×(1+세율) + 경매부대비 + 정비충당
+        ⇒ exp* = (소매총비용 − 경매부대비 − 정비충당) ÷ (1+세율)
+    """
+    med = v.get("median_price")
+    if not med or v.get("market_confidence_label") == "낮음":
+        return None
+    if v.get("runnable") == "no" or v.get("accident_grade") == "flood":
+        return None
+    cfg = config or load_config()
+    rate, _ = use_accident_rate(v, cfg)
+    retail = med * (1 - rate) * (1 + USE_TAX_RATE) + USE_RETAIL_FEE
+    exp_max = (retail - USE_AUCTION_FEE - use_repair_reserve(v, cfg)) / (1 + USE_TAX_RATE)
+    return int(round(exp_max / 100_000) * 100_000) if exp_max > 0 else None
+
+
 def personal_use_detail(v: dict, bt: Optional[dict] = None,
                         config: Optional[dict] = None) -> Optional[dict]:
     """화면 표기용 절감액 내역 — 어떤 가정으로 나온 숫자인지 그대로 보여주기 위한 것."""
@@ -1904,6 +1928,72 @@ def vehicle_segment(v: dict) -> Optional[str]:
     return None
 
 
+# ── 법원별 회차 저감률 ────────────────────────────────────────────────
+# 경매 전문가가 1·2회차 연속으로 요구한 값. 외부 자료가 아니라 **우리가 이미 가진
+# 기일내역**에서 실측한다 — 연속 회차의 최저매각가 비율을 세면 나온다.
+# 2026-09-12 실측 622건: 0.70이 518건, 0.80이 101건으로 사실상 법원별 결정적
+# (수원 89/89 = 0.70, 서울남부 14/14 = 0.80). 나머지는 소수 예외.
+_REDUCTION_MIN_N = 5          # 이 미만이면 법원값을 쓰지 않고 전역값으로
+_reduction_cache: dict = {"key": None, "data": None}
+
+
+def court_reduction_rates() -> dict:
+    """법원별 1회 유찰 시 최저매각가 저감 배율(실측, 무네트워크).
+
+    반환: {"by_court": {법원: {"ratio": 0.7, "n": 89, "share": 1.0}}, "global": 0.7,
+           "n": 622, "observed": {0.7: 518, 0.8: 101}}
+    표본이 부족한 법원은 by_court에 넣지 않는다 — 지어내지 않고 전역값으로 안내한다."""
+    import collections
+    key = db.total_vehicles()
+    if _reduction_cache["data"] is not None and _reduction_cache["key"] == key:
+        return _reduction_cache["data"]
+    per = collections.defaultdict(collections.Counter)
+    allc = collections.Counter()
+    for v in db.list_vehicles(hide_incomplete=False):
+        hist = v.get("dxdy_history")
+        if not hist:
+            continue
+        prices = [h.get("lws_price") for h in hist if isinstance(h, dict) and h.get("lws_price")]
+        for a, b in zip(prices, prices[1:]):
+            if a and b and b < a:
+                r = round(b / a, 2)
+                per[v.get("court") or "?"][r] += 1
+                allc[r] += 1
+    by_court = {}
+    for court, cnt in per.items():
+        n = sum(cnt.values())
+        if n < _REDUCTION_MIN_N:
+            continue
+        ratio, hits = cnt.most_common(1)[0]
+        by_court[court] = {"ratio": ratio, "n": n, "share": round(hits / n, 2)}
+    out = {"by_court": by_court,
+           "global": (allc.most_common(1)[0][0] if allc else 0.7),
+           "n": sum(allc.values()), "observed": dict(allc.most_common(4))}
+    _reduction_cache.update(key=key, data=out)
+    return out
+
+
+def next_min_sale(v: dict, rates: Optional[dict] = None) -> Optional[dict]:
+    """다음 기일 예상 최저매각가 — '이번 회차를 건너뛸까'를 판단할 유일한 숫자.
+
+    유찰 대기 물건의 사용자에게 실제로 필요한 값인데, 상세의 유찰횟수 툴팁은
+    "더 내려갈 수 있습니다"라고 말만 하고 숫자를 주지 않았다(2회차 경매 지적 4).
+
+    반환: {"price", "ratio", "basis": "court"|"global", "n", "court_n"} 또는 None.
+    basis='global'이면 화면에서 '전국 평균 기준'이라고 밝힌다 — 법원값인 척하지 않는다."""
+    mn = v.get("min_sale_price")
+    if not mn or v.get("auction_result") == "낙찰" or v.get("judgment") in ("종결", "입찰 보류"):
+        return None
+    r = rates if rates is not None else court_reduction_rates()
+    c = (r.get("by_court") or {}).get(v.get("court") or "")
+    if c:
+        ratio, basis, court_n = c["ratio"], "court", c["n"]
+    else:
+        ratio, basis, court_n = r.get("global") or 0.7, "global", None
+    return {"price": int(round(mn * ratio / 10_000) * 10_000), "ratio": ratio,
+            "basis": basis, "n": r.get("n"), "court_n": court_n}
+
+
 def backtest_stats() -> dict:
     """이미 낙찰된 물건으로 시스템 시세·상한가의 실측 정확도를 백테스트(무네트워크).
 
@@ -2209,6 +2299,19 @@ def effective_median(v: dict) -> Optional[int]:
     return int(round(((1 - w) * enc + w * kc) / 10000) * 10000)
 
 
+SOFT_CAP_RATIO = 1.10     # 예상낙찰가 상한 = 소매 시세 × 이 배율
+
+
+def soft_cap(med: Optional[int]) -> Optional[int]:
+    """예상낙찰가 소프트캡(10만원 단위). expected_for와 expected_band가 **같은 값**을 쓰게 한다.
+
+    전에는 expected_for가 반올림값(17,500,000), expected_band가 생값(17,490,000)을 써서
+    캡이 걸린 물건에서 리포트 검산이 10,000원 어긋났다."""
+    if not med:
+        return None
+    return int(round(med * SOFT_CAP_RATIO / 100_000) * 100_000)
+
+
 def expected_for(v: dict, bt: dict) -> Optional[int]:
     """물건 dict + 백테스트 통계 → 예상 낙찰가(중심 추정치).
 
@@ -2220,8 +2323,9 @@ def expected_for(v: dict, bt: dict) -> Optional[int]:
     med = effective_median(v)
     if mn and prem:
         est = int(round(mn * prem / 100_000) * 100_000)
-        if med:                     # 소프트 캡: 낙찰가가 시세를 크게 상회하는 비현실 방어(신건·고감정가)
-            est = min(est, int(round(med * 1.10 / 100_000) * 100_000))
+        cap = soft_cap(med)         # 소프트 캡: 낙찰가가 시세를 크게 상회하는 비현실 방어(신건·고감정가)
+        if cap:
+            est = min(est, cap)
         return est
     # 폴백(최저가 없음): 시세 기반 — 유사낙찰 → 모델/유찰/전역 할인율
     cd = comparable_discount(v, bt)
@@ -2248,7 +2352,7 @@ def expected_band(v: dict, bt: dict) -> Optional[dict]:
     mn = v.get("min_sale_price")
     prem = min_premium_for(bt, v.get("fail_count"))
     med = effective_median(v)
-    cap = int(med * 1.10) if med else None
+    cap = soft_cap(med)
 
     def _round(x):
         return int(round(x / 100_000) * 100_000)
@@ -2262,8 +2366,12 @@ def expected_band(v: dict, bt: dict) -> Optional[dict]:
         rel_lo = (p25 / gpm) if (p25 and gpm) else 0.93     # 전역 분포의 상대 폭
         rel_hi = (p75 / gpm) if (p75 and gpm) else 1.07
         lo, hi = _round(_cap(center * rel_lo)), _round(_cap(center * rel_hi))
+        # 캡이 걸린 물건은 화면의 1×2 곱셈이 결과와 안 맞는다(42,000,000×1.129 ≠ 17,500,000).
+        # 인쇄되는 문서라 검산이 닫혀야 해서 캡 전후 값을 basis에 실어 보낸다.
+        _raw = _round(mn * prem)
         basis = {"kind": "min_premium", "min_sale_price": mn,
-                 "premium": round(prem, 3), "fail_count": v.get("fail_count") or 0}
+                 "premium": round(prem, 3), "fail_count": v.get("fail_count") or 0,
+                 "raw": _raw, "cap": cap, "capped": bool(cap and _raw > cap)}
     else:                                 # 폴백: 시세×할인율 분위수
         lo = expected_winning(med, bt.get("discount_p25"))
         hi = expected_winning(med, bt.get("discount_p75"))
@@ -2722,7 +2830,10 @@ def report_data(v: dict, config: dict, bt: dict) -> Optional[dict]:
     if exp:
         levels.add(int(round(exp * 1.08 / 100000) * 100000))
     sim = []
-    for b in sorted(x for x in levels if x and x > 0):
+    # ⚠ 최저매각가 미만은 **법적으로 써낼 수 없는 금액**이다. 소프트캡이 걸린 물건에서
+    # 예상낙찰가가 최저가 아래로 내려가면 그런 금액이 후보로 들어와 '우량'까지 받았다
+    # (2026-09-12 2회차 앱품질 지적 4: 최저 42,000,000인데 10,289,000을 '우량'으로 판정).
+    for b in sorted(x for x in levels if x and x > 0 and (not floor or x >= floor)):
         ai = _allin(b)
         margin = resale - ai["total"]
         grade = ("우량" if margin >= target_margin else "적정" if margin >= target_margin * 0.5

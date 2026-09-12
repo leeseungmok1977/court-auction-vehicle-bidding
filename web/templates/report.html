@@ -339,9 +339,18 @@ document.addEventListener('click', function(e){
       {% if verdict and verdict.text %}<div class="vsum"><b>한줄 판정</b> · {{ verdict.text }}</div>{% endif %}
       <div class="vgrid">
         <div>
-          <div class="v-label">예상 낙찰가 (일반 매수 실입찰{% if report.mae %} ±{{ report.mae|round|int }}%{% endif %})</div>
+          <div class="v-label">예상 낙찰가 <span style="font-weight:400">— 분위수 밴드{% if backtest.within10_pct %} · 실측 ±10% 적중 {{ backtest.within10_pct|round|int }}%{% endif %}</span></div>
           <div class="v-band num">{% if report.lo and report.hi %}{{ (report.lo/10000)|round|int }} <small>~</small> {{ (report.hi/10000)|round|int }}{% else %}{{ (exp/10000)|round|int }}{% endif %}<small> 만원</small></div>
           <div class="v-sub">중심값 <b class="num">{{ exp|won }}원</b> · 재판매 상한가 <b class="num">{{ upper|won }}원</b></div>
+          {% if max_bid %}
+          {# 예상낙찰가는 '얼마에 팔릴까'의 추정일 뿐이다. 경매장에서 실제로 필요한 값은
+             '얼마까지 써도 되는가'다 — 경매 전문가 1·2회차 연속 지적. #}
+          <div class="v-label" style="margin-top:14px">입찰 상한선 <span style="font-weight:400">— 직접 탈 목적 손익분기</span></div>
+          <div class="v-band num" style="color:{{ 'var(--amber)' if exp and exp > max_bid else 'var(--ink)' }}">{{ (max_bid/10000)|round|int }}<small> 만원</small></div>
+          <div class="v-sub">이 값을 넘겨 낙찰받으면 <b>소매로 사는 편이 쌉니다</b>. 취득세·이전·탁송·상태별 정비 충당 포함,
+            사고 이력을 확인하지 못한 차는 사고차로 가정한 보수적 금액입니다.
+            {% if exp and exp > max_bid %}<b style="color:var(--amber)">예상 경쟁가({{ exp|won }}원)가 이미 이 선을 넘어 낙찰 가능성은 낮습니다.</b>{% endif %}</div>
+          {% endif %}
         </div>
         <ul class="vpts">
           <li>현 최저매각가 <b class="num">{{ floor|won }}원</b>은 예상낙찰가 {% if not opp %}초과 — 추가 유찰 대기 권장{% elif over_market %}이하이지만, <b style="color:var(--amber)">예상낙찰가가 소매 시세를 넘어 입찰을 권하지 않습니다</b>{% else %}이하 — 지금 입찰 검토 가능{% endif %}</li>
@@ -388,7 +397,7 @@ document.addEventListener('click', function(e){
       <div class="stop {{ 'on' if report.stop_active else 'off' }}">
         <span class="tg">STOP RULE</span>
         <p class="gloss-row">{% if report.stop_active %}<b>사고/침수 이력이 감지</b>되었습니다. 현장에서 골격(프레임) 손상·침수 확정 시 본 리포트의 권장가는 <b>즉시 무효</b>이며 입찰 보류를 권장합니다.
-        {% else %}현장/서류에서 <b>골격(프레임) 사고 · 침수 · 미기재 중대 결함 · {{ ui.gloss('인수 부담 권리관계', '낙찰자가 떠안게 되는 빚·부담이에요. 말소되지 않는 선순위 임차권·지상권, 인수되는 체납 세금·과태료 등이 있으면 낙찰가 외에 추가 부담이 생깁니다. 등기·자동차등록원부로 반드시 확인하세요.', q=false) }}</b> 중 하나라도 확인되면 본 리포트의 권장가는 무효로 간주하고 입찰을 보류하십시오.{% endif %}</p>
+        {% else %}현장/서류에서 <b>골격(프레임) 사고 · 침수 · 미기재 중대 결함 · {{ ui.gloss('인수 부담 권리관계', '낙찰가 말고 따로 물어내야 하는 돈이에요. 차량 경매에서는 ① 정비·보관업자의 유치권(수리비·보관료) ② 말소되지 않는 저당권·압류 ③ 체납 자동차세·과태료(내지 않으면 이전등록 자체가 막힙니다) ④ 검사 만료 시 재검사비가 해당합니다. 부동산 경매에서 쓰는 권리 개념은 차량에 그대로 적용되지 않습니다. 자동차등록원부(갑구·을구)로 확인하세요.', q=false) }}</b> 중 하나라도 확인되면 본 리포트의 권장가는 무효로 간주하고 입찰을 보류하십시오.{% endif %}</p>
       </div>
       <!-- 가격 스펙트럼 -->
       {% if med and floor and exp %}
@@ -652,7 +661,8 @@ document.addEventListener('click', function(e){
       <div class="tscroll"><table>
         <thead><tr><th>항목</th><th>내용</th><th class="c">상태</th></tr></thead>
         <tbody>
-          <tr><td>권리·저당</td><td>인수 부담 권리(별도 등기부·문건 확인 필요)</td><td class="c"><span class="chip warn">현장확인</span></td></tr>
+          <tr><td>권리·저당</td><td>저당권·압류 말소 여부(<b>자동차등록원부</b> 갑·을구) · 정비/보관업자 <b>유치권</b>(수리비·보관료) — 아래 06 총 취득원가에 <b>반영돼 있지 않음</b></td><td class="c"><span class="chip warn">원부 확인</span></td></tr>
+          <tr><td>보관료·견인비</td><td>낙찰 후 인도까지의 보관료는 낙찰자 부담이 될 수 있음 — 보관장소에 금액 문의</td><td class="c"><span class="chip warn">사전 문의</span></td></tr>
           <tr><td>사고·침수</td><td>{{ v|accv }}{% if v.accident_hits %} — {{ v.accident_hits|join(', ') }}{% endif %} · 골격 손상 여부 현장 확인</td><td class="c"><span class="chip {{ 'risk' if report.stop_active else 'ok' }}">{{ 'STOP 대상' if report.stop_active else ('이력상 양호' if v.insurance_history else '이력 미확인') }}</span></td></tr>
           <tr><td>기관·하체</td><td>시동·누유·변속·하체 부식 — 매각기일 전 보관장소 확인</td><td class="c"><span class="chip warn">현장확인</span></td></tr>
           <tr><td>상태·옵션·정비</td><td>정비 필요 범위(타이어·소모품)에 따라 정비비 변동 → 06·08 반영{% if asum and (asum.condition.major or asum.condition.poor or asum.condition.minor) %} · <span class="{{ 'neg' if asum.condition.major or asum.condition.poor else 'neu' }}">감정 요항에 외관·상태 손상 언급</span>{% endif %}</td><td class="c"><span class="chip {{ 'risk' if asum and (asum.condition.major or asum.condition.poor) else 'warn' }}">현장확인</span></td></tr>
@@ -673,8 +683,12 @@ document.addEventListener('click', function(e){
       {% if expected and expected.basis and expected.basis.kind == 'min_premium' %}
       {% set bs = expected.basis %}
       <div class="logic"><span class="ln">1</span><div class="ld">현 최저매각가<small>유찰이 시장 할인을 이미 반영{% if bs.fail_count %} · 유찰 {{ bs.fail_count }}회{% endif %}</small></div><span class="lv num">{{ bs.min_sale_price|won }}</span></div>
-      <div class="logic"><span class="ln">2</span><div class="ld">× 유찰버킷 낙찰 프리미엄<small>실측 낙찰가/최저가 분포(자기 제외 검증) · 시세×1.10 소프트캡</small></div><span class="lv num">×{{ bs.premium }}</span></div>
-      <div class="logic"><span class="ln">＝</span><div class="ld"><b>예상낙찰가</b><small>참고 정확도 ±{{ report.mae|round|int if report.mae else 30 }}% · 분위수 밴드 {{ report.lo|won if report.lo else '—' }}~{{ report.hi|won if report.hi else '—' }}</small></div><span class="lv num">{{ exp|won }}</span></div>
+      <div class="logic"><span class="ln">2</span><div class="ld">× 유찰버킷 낙찰 프리미엄<small>실측 낙찰가/최저가 분포(자기 제외 검증)</small></div><span class="lv num">×{{ bs.premium }}</span></div>
+      {% if bs.capped %}{# 캡이 걸리면 1×2가 결과와 안 맞는다 — 인쇄물이라 검산이 닫혀야 한다 #}
+      <div class="logic"><span class="ln">3</span><div class="ld">= 캡 적용 전<small>이 값이 시세×1.10을 넘어 아래 상한으로 내립니다</small></div><span class="lv num">{{ bs.raw|won }}</span></div>
+      <div class="logic"><span class="ln">4</span><div class="ld">→ 시세 × 1.10 소프트캡<small>낙찰가가 소매 시세를 크게 넘는 비현실 방어(신건·고감정가)</small></div><span class="lv num">{{ bs.cap|won }}</span></div>
+      {% endif %}
+      <div class="logic"><span class="ln">＝</span><div class="ld"><b>예상낙찰가</b><small>분위수 밴드 {{ report.lo|won if report.lo else '—' }}~{{ report.hi|won if report.hi else '—' }}{% if report.mae %} · 실측 평균오차 ±{{ report.mae|round|int }}%</small>{% endif %}</div><span class="lv num">{{ exp|won }}</span></div>
       {% else %}
       <div class="logic"><span class="ln">1</span><div class="ld">소매 시세중앙값<small>동급 이상치 제거 후 중앙값(폴백 경로 — 최저가 미보유)</small></div><span class="lv num">{{ med|won }}</span></div>
       <div class="logic"><span class="ln">2</span><div class="ld">× 실측 낙찰률(유찰횟수 반영)<small>과거 낙찰가/시세 분포{% if v.fail_count %} · 유찰 {{ v.fail_count }}회 버킷{% endif %}</small></div><span class="lv num">×{{ ((report.discount or 0)*100)|round|int }}%</span></div>

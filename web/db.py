@@ -419,6 +419,10 @@ def list_vehicles(judgment: Optional[str] = None, maker: Optional[str] = None,
                      "(median_price IS NULL "
                      "AND (mileage_km IS NULL OR COALESCE(photo_count,0)=0) "
                      "AND COALESCE(auction_result,'')<>'낙찰' AND COALESCE(status,'')<>'종결'))")
+        # 사건번호가 '(중복)'·'(병합)'처럼 형식을 벗어난 레코드는 숨긴다(2026-09-12 2회차 품질 지적 5).
+        # 사건번호는 사용자가 법원에서 물건을 특정하는 유일한 키다 — '(중복)'으로는 대법원에서
+        # 찾을 수 없고, 즐겨찾기·메모(localStorage 키)가 이 문자열에 묶이면 서로 충돌한다.
+        where.append("case_no GLOB '[0-9][0-9][0-9][0-9]타경*'")
         # 이상 낙찰(신뢰 검증): 낙찰가<최저매각가 이거나 낙찰인데 매각기일 미도래 → 목록에서 숨김.
         # (낙찰결과 조회가 엉뚱한 값을 붙인 오염 데이터가 사용자에게 노출돼 신뢰를 무너뜨리는 것 방지)
         where.append("NOT (COALESCE(auction_result,'')='낙찰' AND ("

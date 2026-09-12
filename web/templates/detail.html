@@ -77,7 +77,14 @@
     <dt class="text-mut">당시 출시가{% if is_admin(request) and not newcar_public %} <span class="text-[10px] text-primary font-bold">관리자</span>{% endif %}</dt><dd class="font-mono">{{ '{:,}'.format(v.newcar_min) }}{% if v.newcar_max != v.newcar_min %}~{{ '{:,}'.format(v.newcar_max) }}{% endif %}만원 <span class="text-mut text-xs font-sans" title="{{ v.year }}년식 등급 {{ v.newcar_n }}개 범위 · 영업용(택시·렌터카) 제외{% if v.newcar_basis_year and v.newcar_basis_year != v.year %} · {{ v.newcar_basis_year }}년 가격표 기준{% endif %}{% if is_admin(request) %} · {{ v.newcar_model }} · 출처 보배드림 신차가격표{% endif %}">등급 {{ v.newcar_n }}개 범위{% if v.newcar_basis_year and v.newcar_basis_year != v.year %} · {{ v.newcar_basis_year }}년 가격표{% endif %}</span></dd>
     {% endif %}
     <dt class="text-mut">{{ ui.gloss('최저매각가', '이번 기일에 이 금액 이상 써내야 입찰돼요. 입찰의 출발선이며, 유찰될 때마다 보통 20~30%씩 내려갑니다.') }}</dt><dd class="font-mono text-lg font-semibold text-txt tnum">{{ v.min_sale_price|won }} 원</dd>
-    <dt class="text-mut">{{ ui.gloss('유찰횟수', '입찰자가 없어 매각이 무산된 횟수예요. 많을수록 다음 기일의 최저매각가가 더 내려가 저렴해질 수 있습니다.') }}</dt><dd class="font-mono">{{ v.fail_count if v.fail_count is not none else '—' }} 회</dd>
+    <dt class="text-mut">{{ ui.gloss('유찰횟수', '입찰자가 없어 매각이 무산된 횟수예요. 유찰될 때마다 다음 기일의 최저매각가가 법원별로 정해진 비율만큼 내려갑니다.') }}</dt><dd class="font-mono">{{ v.fail_count if v.fail_count is not none else '—' }} 회</dd>
+    {# 유찰 대기 사용자가 실제로 필요한 숫자는 '다음엔 얼마부터 시작하나'다(2026-09-12 경매 지적).
+       법원별 저감률은 우리 기일내역에서 실측한 값이고, 표본이 부족하면 전국 기준이라고 밝힌다. #}
+    {% if next_min %}
+    <dt class="text-mut">{{ ui.gloss('다음 기일 예상 최저가', '이번 기일에 유찰되면 다음 기일은 이 금액부터 시작합니다. 법원마다 저감 비율이 달라(대부분 30%, 일부 20%) 우리 기일내역 실측값으로 계산했습니다.') }}</dt>
+    <dd class="font-mono text-txt tnum">{{ next_min.price|won }} 원
+      <span class="text-mut text-xs font-sans not-italic">· {{ ((1-next_min.ratio)*100)|round|int }}% 저감{% if next_min.basis == 'court' %} · 이 법원 실측 {{ next_min.court_n }}회{% else %} · 전국 기준(이 법원 표본 부족){% endif %}</span></dd>
+    {% endif %}
     <dt class="text-mut">{{ ui.gloss('매각 일시', '이 날짜·시각에 법원에서 입찰(기일입찰)이 열려요. 정해진 매각 장소에서 직접 또는 대리인이 입찰합니다.') }}</dt>
     {% set awaiting = v.sale_date and today and v.sale_date < today and v.auction_result not in ('낙찰','종결') and v.judgment != '종결' %}
     <dd class="font-mono">{% if awaiting %}<span class="text-amber-700 not-italic font-sans">다음 기일 미정</span> <span class="text-mut text-xs">· 지난 {{ v.sale_date }} 유찰, 법원 재공고 후 자동 반영</span>{% else %}{{ v.sale_date or '—' }}{% if v.sale_time %} <span class="font-semibold text-txt">{{ v.sale_time }}</span> <span class="text-mut text-xs not-italic font-sans">입찰</span>{% endif %}{% endif %}</dd>

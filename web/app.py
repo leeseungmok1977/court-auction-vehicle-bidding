@@ -635,6 +635,8 @@ def vehicle_detail(request: Request, vid: str, cc: str = "", an: str = ""):
         "newcar_public": bool(_cfg.get("newcar_public", False)),   # 당시 출시가 공개 여부(config 전환)
         # 낙찰 시 간이 총비용(낙찰가+취득세+이전·탁송) — 초보용 '그래서 총 얼마' 답변. 전체는 리포트 06.
         "allin": service.allin_estimate(expected["price"] if expected else None, _cfg),
+        # 다음 기일 예상 최저가 — '이번 회차를 건너뛸까'를 판단할 유일한 숫자
+        "next_min": service.next_min_sale(v),
     })
 
 
@@ -690,6 +692,10 @@ def vehicle_report(request: Request, vid: str):
         # 같은 물건에 "11% 싸다"(상세)와 "시세 초과·비권장"(리포트)이 동시에 나왔다
         # (2026-09-12 2회차 패널 앱품질 지적 1).
         "eff_median": service.effective_median(v),
+        # 실사용 손익분기 상한선 — "얼마까지 써도 되는가". 경매 전문가가 1·2회차 연속
+        # 지적한 항목으로, 예상낙찰가(예측)보다 실제로 더 중요한 값이다.
+        "max_bid": service.personal_use_max_bid(v, bt, config),
+        "next_min": service.next_min_sale(v),
         "comp_min_n": service.COMP_MIN_N, "comp_ratio_med": comp_ratio_med,
         # 01 종합 프로필(6축, 미산출=None; 매물건수는 관리자만, 잔존가치는 출시가 공개 규칙과 동일 게이트)
         "hexa": service.hexagon_scores(v, include_private=_adm,
