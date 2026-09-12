@@ -363,8 +363,16 @@ def use_repair_reserve(v: dict, config: Optional[dict] = None) -> int:
 
     상수 50만원만 쓰면 시동이 걸리지 않는 차에도 같은 금액이 잡혀 절감액이 부풀려진다
     (2026-09-12 2회차 패널 지적). 상태 비용표는 이미 상한가 산정에서 쓰던 값을 그대로 쓴다."""
-    costs = (config or load_config()).get("condition_costs", {}) or {}
+    cfg = config or load_config()
+    costs = cfg.get("condition_costs", {}) or {}
+    # 기본액에 차량가 비례 하한을 건다. 정액만 쓰면 포르쉐 718과 2015년식 카니발의
+    # 충당이 같아진다(3회차 중고차 지적). ⚠ 하한은 **기본액에만** 적용한다 —
+    # 전체에 max()를 걸면 고가차에서 상태별 가산이 통째로 삼켜진다.
+    _rate = float(cfg.get("use_repair_min_rate") or 0)
+    _price = v.get("median_price") or v.get("min_sale_price") or 0
     add = USE_REPAIR_BASE
+    if _rate and _price:
+        add = max(add, int(round(_price * _rate / 10_000) * 10_000))
     lvl = v.get("condition_level")
     if lvl == "poor":
         add += int(costs.get("poor", 0))
@@ -375,13 +383,6 @@ def use_repair_reserve(v: dict, config: Optional[dict] = None) -> int:
         add += int(costs.get("inspection_expired", 0))
     if not v.get("photo_count"):
         add += int(costs.get("no_photos", 0))
-    # 정액만 쓰면 포르쉐 718과 2015년식 카니발의 충당이 같아진다(3회차 중고차 지적).
-    # 고가차는 부품·공임이 비례해 오르므로 차량가의 일정 비율을 **하한**으로 둔다.
-    cfg = config or load_config()
-    rate = float(cfg.get("use_repair_min_rate") or 0)
-    base_price = v.get("median_price") or v.get("min_sale_price") or 0
-    if rate and base_price:
-        add = max(add, int(round(base_price * rate / 10_000) * 10_000))
     return add
 
 
