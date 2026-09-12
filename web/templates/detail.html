@@ -774,24 +774,34 @@
                       ('고정 부대비', bd.get('고정부대비', 0)),
                       ('목표 마진', bd.get('마진', 0))] %}
       <div class="text-xs text-mut mb-2 font-medium">재판매 손익분기 산정 <span class="text-mut">— 소매 시세에서 되팔이 비용 차감(참고)</span></div>
-      <div class="space-y-1.5 mb-3">
-        <div class="flex items-center gap-2 text-xs">
-          <span class="w-36 shrink-0 text-mut whitespace-nowrap">기준시세</span>
-          <div class="flex-1 h-5 rounded bg-primary/10"><div class="bg-primary/70 h-5 rounded" style="width:100%"></div></div>
-          <span class="w-28 text-right font-mono text-txt tnum shrink-0">{{ base|won }}</span>
+      {# 라벨(w-36) + 금액(w-28) + 여백을 빼면 360px에서 막대에 남는 폭이 16px다.
+         16px 막대는 비율을 못 보여주면서 자리만 차지한다 — 읽을 수 없는 그래프는
+         그리지 않는다. 좁은 폭에서는 라벨·금액을 한 줄로 두고 막대를 그 아래
+         전폭(≈288px)으로 내린다. sm(640px) 이상에서만 한 줄 3단이다. #}
+      <div class="space-y-2 sm:space-y-1.5 mb-3">
+        <div class="sm:flex sm:items-center sm:gap-2 text-xs">
+          <div class="flex items-center justify-between gap-2 sm:contents">
+            <span class="sm:w-36 sm:shrink-0 text-mut whitespace-nowrap">기준시세</span>
+            <span class="sm:w-28 sm:text-right font-mono text-txt tnum sm:shrink-0 sm:order-last">{{ base|won }}</span>
+          </div>
+          <div class="flex-1 h-2 sm:h-5 rounded bg-primary/10 mt-1 sm:mt-0"><div class="bg-primary/70 h-2 sm:h-5 rounded" style="width:100%"></div></div>
         </div>
         {% for label, amt in steps %}
-        <div class="flex items-center gap-2 text-xs">
-          <span class="w-36 shrink-0 text-mut whitespace-nowrap">− {{ label }}
-            {% if amt and base %}<span class="text-mut">{{ (amt / base * 100)|round(1) }}%</span>{% endif %}</span>
-          <div class="flex-1 h-4 rounded bg-slate-100"><div class="bg-rose-400 h-4 rounded" style="width:{{ (amt / base * 100)|round(1) if base else 0 }}%"></div></div>
-          <span class="w-28 text-right font-mono text-rose-600 tnum shrink-0">{% if amt %}−{{ amt|won }}{% else %}0{% endif %}</span>
+        <div class="sm:flex sm:items-center sm:gap-2 text-xs">
+          <div class="flex items-center justify-between gap-2 sm:contents">
+            <span class="sm:w-36 sm:shrink-0 text-mut whitespace-nowrap">− {{ label }}
+              {% if amt and base %}<span class="text-mut">{{ (amt / base * 100)|round(1) }}%</span>{% endif %}</span>
+            <span class="sm:w-28 sm:text-right font-mono text-rose-600 tnum sm:shrink-0 sm:order-last">{% if amt %}−{{ amt|won }}{% else %}0{% endif %}</span>
+          </div>
+          <div class="flex-1 h-1.5 sm:h-4 rounded bg-slate-100 mt-1 sm:mt-0"><div class="bg-rose-400 h-1.5 sm:h-4 rounded" style="width:{{ (amt / base * 100)|round(1) if base else 0 }}%"></div></div>
         </div>
         {% endfor %}
-        <div class="flex items-center gap-2 text-xs pt-1.5 border-t border-line">
-          <span class="w-36 shrink-0 font-semibold whitespace-nowrap">= 손익분기 상한</span>
-          <div class="flex-1 h-6 rounded bg-emerald-100"><div class="bg-emerald-500 h-6 rounded" style="width:{{ (v.upper_bid / base * 100)|round(1) if base else 0 }}%"></div></div>
-          <span class="w-28 text-right font-mono font-semibold text-emerald-700 tnum shrink-0">{{ v.upper_bid|won }}</span>
+        <div class="sm:flex sm:items-center sm:gap-2 text-xs pt-1.5 border-t border-line">
+          <div class="flex items-center justify-between gap-2 sm:contents">
+            <span class="sm:w-36 sm:shrink-0 font-semibold whitespace-nowrap">= 손익분기 상한</span>
+            <span class="sm:w-28 sm:text-right font-mono font-semibold text-emerald-700 tnum sm:shrink-0 sm:order-last">{{ v.upper_bid|won }}</span>
+          </div>
+          <div class="flex-1 h-2.5 sm:h-6 rounded bg-emerald-100 mt-1 sm:mt-0"><div class="bg-emerald-500 h-2.5 sm:h-6 rounded" style="width:{{ (v.upper_bid / base * 100)|round(1) if base else 0 }}%"></div></div>
         </div>
       </div>
       <div class="text-xs text-mut mb-4 leading-relaxed border-t border-line pt-2">
