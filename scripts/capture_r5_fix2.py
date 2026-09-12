@@ -28,7 +28,11 @@ CAP_CARD = "h3:has-text('입찰가 산정 근거')"
 SHOTS = [
     ("cap-only-360",   "/vehicle/2026타경3534_1",    360, 2, CAP_CARD),
     ("cap-only-390",   "/vehicle/2026타경3534_1",    390, 2, CAP_CARD),
-    ("cap-floor-360",  "/vehicle/2026타경500477_1",  360, 2, CAP_CARD),
+    # ⚠ 2026타경500477은 하한 케이스가 아니라 일반 캡 케이스였다(검수에서 지적).
+    #    진짜 하한 되밀림 = raw > cap 이면서 최저매각가가 cap을 다시 밀어올린 물건.
+    ("cap-plain-360",  "/vehicle/2026타경500477_1",  360, 2, CAP_CARD),
+    ("cap-floor-360",  "/vehicle/2025타경101362_3",  360, 2, CAP_CARD),
+    ("cap-floor-320",  "/vehicle/2025타경101362_3",  320, 2, CAP_CARD),
     ("hero-thumb-390", "/vehicle/2026타경30903_1",   390, 3, "#heroImg"),
     ("home-thumb-390", "/",                          390, 3, None),
     ("list-thumb-390", "/vehicles",                  390, 3, None),

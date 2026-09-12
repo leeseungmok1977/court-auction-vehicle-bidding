@@ -115,3 +115,24 @@ def test_every_breakdown_deduction_key_is_rendered():
     block = tpl.split("{% set steps = [")[1].split("] %}")[0]
     for key in STEP_KEYS:
         assert key in block, f"detail.html 의 steps 목록에 '{key}' 가 없다"
+
+
+# ── 목록 첫 화면에 물건이 보이는가 (5회차 지적) ──────────────────
+def test_list_legend_is_collapsed_by_default():
+    """판정 범례는 기본 접힘이어야 한다.
+
+    실측: 범례가 펼쳐진 상태에서 첫 물건 카드가 top=563px 이었고 폴드가 743px
+    이라 360px 폰에서 51%, 320px 폰에서는 0%만 보였다. 물건 목록의 첫 화면에
+    물건이 없는 것보다 나쁜 것은 없다.
+
+    `<details>` 에 `open` 이 붙으면 실패한다 — 재방문자의 선택은 localStorage
+    로 복원하고, 서버가 내보내는 기본값은 접힘이다.
+    """
+    import pathlib
+    import re
+    src = pathlib.Path("web/templates/vehicles.html").read_text(encoding="utf-8")
+    m = re.search(r'<details id="listLegend"([^>]*)>', src)
+    assert m, "판정 범례가 <details id=\"listLegend\"> 로 감싸여 있지 않다"
+    assert " open" not in m.group(1), "범례가 기본 펼침이면 첫 카드가 폴드 밖으로 밀린다"
+    # 접힘 상태를 기억하지 않으면 매번 다시 접혀 오히려 성가시다
+    assert "ncListLegend" in src, "접힘 상태를 기기에 기억하지 않는다"

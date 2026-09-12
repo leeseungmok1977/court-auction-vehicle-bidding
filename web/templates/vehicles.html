@@ -82,7 +82,14 @@
 </div>
 
 <!-- 상태 범례 — 각 상태에 밑줄+설명(탭/호버). 기호(*,↑)는 문장으로 풀어서 안내 -->
-<div class="gloss-row gloss-up flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-mut px-1">
+{# 이 범례가 110px을 먹어 첫 물건 카드가 360px 폰에서 절반만, 320px에선 아예
+   안 보였다(첫 카드 top=563px, 폴드 743px). 처음 온 사람에겐 필요하지만
+   재방문자가 매번 볼 것은 아니다 — 접어 두고 상태를 기기에 기억한다.
+   물건 목록에서 첫 화면에 물건이 없는 것보다 나쁜 것은 없다. (5회차) #}
+<details id="listLegend" class="px-1">
+  <summary class="cursor-pointer list-none text-xs text-mut hover:text-txt select-none inline-flex items-center gap-0.5 py-0.5">
+    <span class="material-symbols-outlined text-[14px] leading-none">expand_more</span>판정 표시 설명</summary>
+<div class="gloss-row gloss-up flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-mut mt-1">
   {{ ui.gloss('검토 가능', '지금 가격이 적정해 바로 입찰을 검토할 수 있는 물건이에요.', q=false, cls='font-bold text-emerald-700') }}
   {{ ui.gloss('유찰 대기', '아직 최저가가 시세보다 높아, 유찰로 더 내려가길 기다리는 편이 나은 물건이에요.', q=false, cls='font-bold text-amber-700') }}
   {{ ui.gloss('신뢰도 낮음', '동급 시세 표본이 부족해 예상 낙찰가를 믿기 어려운 물건이에요. 직접 시세 확인이 필요합니다.', q=false, cls='font-bold text-sky-700') }}
@@ -94,6 +101,10 @@
   <span class="text-mut pl-3 -indent-3">·&nbsp;목록의 <span class="text-rose-600/70 font-bold">*</span> = 시세 신뢰도 낮음(참고용) · <span class="font-bold">↑</span> = 최저가 &gt; 예상낙찰가 (유찰 더 필요)</span>
   <span class="text-mut ml-0 lg:ml-auto">미분석 = 대시보드 <b class="text-txt">[시세 분석]</b> 또는 물건 클릭</span>
 </div>
+</details>
+<script>(function(){var d=document.getElementById('listLegend');if(!d)return;
+try{if(localStorage.getItem('ncListLegend')==='1')d.open=true;}catch(e){}
+d.addEventListener('toggle',function(){try{localStorage.setItem('ncListLegend',d.open?'1':'0');}catch(e){}});})();</script>
 
 {% if usepick %}
 {# 배너가 9줄이면 첫 물건 카드가 화면 밖으로 밀린다(디자인 검수 2026-09-12).
@@ -238,7 +249,12 @@ d.addEventListener('toggle',function(){try{localStorage.setItem('ncUsepickBasis'
     <a href="/vehicle/{{ v.id }}" class="block hover:bg-slate-50 transition-colors">
       <div class="relative w-full h-40 bg-slate-100 {% if not v.photo_urls %}flex items-center justify-center text-mut/30{% endif %}">
         {% if v.photo_urls %}
-        <img src="{{ (v.thumb_urls or v.photo_urls)[0] }}" loading="lazy" decoding="async" alt=""
+        {# 전폭 h-40 카드에 320px은 390px 폰 DPR3에서 3.4배 확대라 그릴·번호판이
+           뭉갠다. 목록은 "들어가 볼지"를 거르는 화면이라 여기서 상태가 안 보이면
+           좋은 물건을 그냥 넘긴다. 640이면 1.68배 — 카드 크기엔 충분하다.
+           작은 3장 스트립(w-14=56px)은 320으로 충분하니 올리지 않는다. #}
+        <img src="{{ (v.thumb_urls or v.photo_urls)[0] }}{% if v.thumb_urls %}?w=640{% endif %}"
+             loading="lazy" decoding="async" alt=""
              class="absolute inset-0 w-full h-full object-cover"/>
         {% else %}<span class="material-symbols-outlined text-5xl">directions_car</span>{% endif %}
         <div class="absolute top-2 left-2 flex flex-wrap gap-1">

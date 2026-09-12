@@ -735,10 +735,17 @@
       {% elif wait %}
       <div class="text-center bg-amber-50 border border-amber-200 rounded-lg py-4 mb-4">
         <div class="text-xs text-amber-700 mb-1 font-semibold">⏳ 유찰 대기 — <b>재판매</b> 목적엔 지금 부적합</div>
+        {# "이번 회차는 어떤 금액을 써도 손해"는 판단의 결론이다. 그것이 카드
+           맨 위에, 참고값보다 크게 와야 한다. 전에는 결론이 12px로 카드 맨
+           아래에 있고 참고값이 20px로 맨 위에 있어 위계가 뒤집혀 있었다. #}
+        {% if bidst and bidst.state == 'blocked' %}
+        <div class="text-sm font-semibold text-rose-700 mb-2 px-4 leading-relaxed">✕ 최저매각가({{ bidst.floor|won }}원)가 이미 실사용 손익분기(<b>{{ bidst.max_bid|won }}원</b>)를 넘어 <b>이번 회차는 어떤 금액을 써도 손해</b>입니다.</div>
+        {% endif %}
         {# 라벨은 sans, 숫자만 mono. 한 요소에 묶으면 JetBrains Mono에 한글이 없어
-           글자마다 폴백이 일어나 "산정  상한가(재판매)"로 자간이 벌어진다. #}
-        <div class="text-xl font-semibold text-txt">산정 상한가(재판매)
-          <span class="font-mono tnum">{{ v.upper_bid|won }}</span> 원</div>
+           글자마다 폴백이 일어나 "산정  상한가(재판매)"로 자간이 벌어진다.
+           그리고 '원'을 숫자와 묶지 않으면 360px에서 혼자 다음 줄로 떨어진다. #}
+        <div class="text-xs text-mut">산정 상한가(재판매)</div>
+        <div class="text-lg font-semibold text-txt whitespace-nowrap"><span class="font-mono tnum">{{ v.upper_bid|won }}</span><span class="text-sm font-normal text-mut ml-0.5">원</span></div>
         <div class="text-xs text-mut mt-2 px-4 leading-relaxed">
           현재 최저매각가 <b class="text-txt">{{ v.min_sale_price|won }}원</b>이 재판매 손익분기가보다 높습니다.
           최저가가 <b class="text-amber-700">{{ wait.target|won }}원 이하</b>로 내려오면 재판매도 검토 가능.<br>
@@ -747,9 +754,7 @@
         </div>
         {% if bidst and bidst.state in ('resale', 'usepick') %}
         <div class="text-xs text-emerald-700 mt-2 px-4">✓ 일반 매수 목적이면 현재 최저매각가가 예상낙찰가({{ expected.price|won }}원) 이하라 <b>지금도 검토 가능</b>합니다.{% if bidst.max_bid %} 다만 <b>{{ bidst.max_bid|won }}원</b>을 넘기면 소매가 유리합니다.{% endif %}</div>
-        {% elif bidst and bidst.state == 'blocked' %}
-        <div class="text-xs text-rose-700 mt-2 px-4">✕ 최저매각가({{ bidst.floor|won }}원)가 이미 실사용 손익분기(<b>{{ bidst.max_bid|won }}원</b>)를 넘어 <b>이번 회차는 어떤 금액을 써도 손해</b>입니다.</div>
-        {% endif %}
+        {% endif %}{# blocked 문장은 카드 맨 위로 올렸다 #}
       </div>
       {% elif v.upper_bid is none or v.upper_bid <= 0 %}
       <div class="text-center bg-rose-50 border border-rose-200 rounded-lg py-4 mb-4">
@@ -794,9 +799,13 @@
           <div class="flex items-center justify-between gap-2 sm:contents">
             <span class="sm:w-36 sm:shrink-0 text-mut whitespace-nowrap">− {{ label }}
               {% if amt and base %}<span class="text-mut">{{ (amt / base * 100)|round(1) }}%</span>{% endif %}</span>
-            <span class="sm:w-28 sm:text-right font-mono text-rose-600 tnum sm:shrink-0 sm:order-last">{% if amt %}−{{ amt|won }}{% else %}0{% endif %}</span>
+            {# 0은 빠져나가지 않은 항목이다. 빨강으로 찍으면 훑을 때 "차감이 7건"으로
+               잡혀, 상태 정비 추가 행을 정직하게 노출한 것이 오히려 노이즈가 된다. #}
+            <span class="sm:w-28 sm:text-right font-mono tnum sm:shrink-0 sm:order-last {{ 'text-rose-600' if amt else 'text-mut' }}">{% if amt %}−{{ amt|won }}{% else %}—{% endif %}</span>
           </div>
+          {% if amt %}
           <div class="flex-1 h-1.5 sm:h-4 rounded bg-slate-100 mt-1 sm:mt-0"><div class="bg-rose-400 h-1.5 sm:h-4 rounded" style="width:{{ (amt / base * 100)|round(1) if base else 0 }}%"></div></div>
+          {% endif %}
         </div>
         {% endfor %}
         <div class="sm:flex sm:items-center sm:gap-2 text-xs pt-1.5 border-t border-line">
