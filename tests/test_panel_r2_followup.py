@@ -254,3 +254,35 @@ def test_graded_rate_makes_max_bid_more_conservative_for_multi_accident():
     many = service.personal_use_max_bid(
         v(accident_grade="accident", insurance_history=_ins(own=12)), BT)
     assert one and many and many < one
+
+
+# ── 적중률 층화 (3회차 경매·중고차 공통 지적) ────────────────────
+# "검증 사례가 전부 국산인데 수입차에도 ±9% 배지를 똑같이 찍는다 —
+#  표본에 없는 모집단에 정확도를 전이시키는 과대주장."
+
+def test_strata_never_reports_a_number_without_enough_samples():
+    for r in service.accuracy_strata():
+        if r["n"] < service.ACCURACY_STRATUM_MIN_N:
+            assert r["mae"] is None and r["within10"] is None, (
+                f"{r['group']}/{r['label']}: 표본 {r['n']}건인데 숫자를 냈다")
+        else:
+            assert r["mae"] is not None
+
+
+def test_accuracy_for_picks_the_worse_stratum():
+    """낙관적인 층을 고르면 안 된다 — 불리한 쪽을 택한다."""
+    rows = {(r["group"], r["label"]): r for r in service.accuracy_strata()}
+    car = v(fail_count=5, maker="BMW", model="520d")           # 수입 + 유찰 3회 이상
+    got = service.accuracy_for(car)
+    cands = [rows.get(("제조사", "수입")), rows.get(("유찰횟수", "유찰 3회 이상"))]
+    cands = [c for c in cands if c and c["mae"] is not None]
+    if cands and got:
+        assert got["mae"] == max(c["mae"] for c in cands)
+
+
+def test_domestic_detection_handles_real_maker_strings():
+    for maker, model, dom in [("현대자동차(주)", "그랜저", True), ("기아자동차", "쏘렌토", True),
+                              ("제네시스", "G80", True), ("르노삼성자동차", "QM6", True),
+                              ("BMW", "520d", False), ("메르세데스벤츠코리아", "E220 d", False),
+                              ("마세라티", "르반떼", False)]:
+        assert service.is_domestic_maker({"maker": maker, "model": model}) is dom, maker

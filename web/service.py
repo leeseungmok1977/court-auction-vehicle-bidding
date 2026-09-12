@@ -833,7 +833,29 @@ def accident_label(v: dict) -> str:
     return ACCIDENT_LABELS.get(g, g or "—")
 
 
-def hexagon_scores(v: dict, today=None, include_private: bool = False, newcar_ok=None) -> dict:
+MILEAGE_MISMATCH_ABS = 5_000      # km
+MILEAGE_MISMATCH_RATE = 0.05      # 5%
+
+
+def mileage_mismatch(v: dict, asum: Optional[dict] = None) -> Optional[dict]:
+    """목록 주행거리와 감정요항 주행거리가 어긋나는가.
+
+    3회차 중고차 지적: 2025타경43089는 화면 64,111km인데 감정서는 74,957km다.
+    두 값을 나란히 찍고 어느 쪽으로 값을 매겼는지 말하지 않았다. 계기판 조작 가능성이
+    있는 신호라, 차이가 크면 **주행 적정성 축을 미산출로 내린다** — 이 제품의 미산출 규칙이
+    정확히 이런 데 쓰라고 있는 것이다."""
+    a = (asum or {}).get("mileage") if asum else v.get("appraisal_mileage")
+    b = v.get("mileage_km")
+    if not a or not b:
+        return None
+    diff = abs(int(a) - int(b))
+    if diff < MILEAGE_MISMATCH_ABS and diff < max(int(a), int(b)) * MILEAGE_MISMATCH_RATE:
+        return None
+    return {"listed": int(b), "appraisal": int(a), "diff": diff}
+
+
+def hexagon_scores(v: dict, today=None, include_private: bool = False, newcar_ok=None,
+                   asum: Optional[dict] = None) -> dict:
     """리포트 '종합 프로필' 육각형 — 6축 0~100 점수 + SVG 좌표.
 
     신뢰성 원칙: **자료가 없는 축은 0으로 꾸미지 않고 None(미산출)** 으로 두고 표·툴팁에 '자료 없음'을 표시한다.
@@ -902,7 +924,12 @@ def hexagon_scores(v: dict, today=None, include_private: bool = False, newcar_ok
     # 4) 주행 적정성 (경과연수는 5) 잔존가치 근거에도 쓴다)
     yr, km = v.get("year"), v.get("mileage_km")
     age = (today.year - int(yr)) if yr else None
-    if yr and km is not None:
+    _mm = mileage_mismatch(v, asum)
+    if _mm:
+        # 감정서와 목록의 주행거리가 어긋나면 어느 쪽도 믿을 수 없다 — 점수를 만들지 않는다.
+        axes.append({"key": "km", "name": "주행 적정성", "score": None,
+                     "note": f"주행거리 불일치 — 목록 {_mm['listed']:,}km / 감정요항 {_mm['appraisal']:,}km"})
+    elif yr and km is not None:
         yrs = max(0.5, age)
         ratio = km / (yrs * 15000)
         sc = _interp(ratio, [(0.5, 100), (0.75, 85), (1.0, 70), (1.5, 45), (2.0, 25), (3.0, 10)])
@@ -2180,6 +2207,9 @@ def backtest_stats() -> dict:
                     "err_pct": round(err * 100, 1), "model": r.get("model"),
                     "year": r.get("year"), "case_no": r.get("case_no"),
                     "sale_date": r.get("sale_date"),
+                    # 층화용 — 어떤 종류의 물건에서 잘 맞고 어디서 안 맞는지 공개하기 위함
+                    "maker": r.get("maker"), "fail_count": r.get("fail_count"),
+                    "median_price": r.get("median_price"),
                 })
             if loo:
                 out["mae_pct"] = round(st.mean(loo) * 100, 1)
@@ -2598,6 +2628,81 @@ def plain_verdict(v: dict, expected: Optional[dict],
                         f"직접 타실 목적이면 검토할 만합니다.{cap}"}
     return {"tone": "ok",
             "text": f"{head} {gap_txt} 되팔이 차익은 크지 않고, 직접 타실 목적이면 검토할 만합니다.{cap}"}
+
+
+# ── 적중률 층화 ────────────────────────────────────────────────────
+# 경매·중고차 전문가 공통 지적: 검증 사례 24건이 **전부 국산**인데 수입차 상세에도
+# "실측 오차 ±9%" 배지를 똑같이 찍는다 — 표본에 없는 모집단에 정확도를 전이시키는 과대주장.
+# 층별 표본이 이 값 미만이면 숫자를 내지 않고 '표본 부족'으로 둔다(미산출 규칙과 동일).
+ACCURACY_STRATUM_MIN_N = 8
+
+_DOMESTIC_HINT = ("현대", "기아", "제네시스", "쌍용", "대우", "르노", "쉐보레",
+                  "삼성", "KG", "지엠", "GM", "포터", "봉고")
+
+
+def is_domestic_maker(v: dict) -> bool:
+    blob = f"{v.get('maker') or ''} {v.get('model') or ''}"
+    return any(k in blob for k in _DOMESTIC_HINT)
+
+
+def accuracy_strata(bt: Optional[dict] = None) -> list:
+    """가격대·유찰횟수·국산/수입별 예측 정확도. 표본이 부족한 층은 값 대신 '표본 부족'.
+
+    반환: [{"group","label","n","mae","within10"} ...] — n < ACCURACY_STRATUM_MIN_N이면
+    mae/within10은 None이다. 지어내지 않고 모른다고 말하는 것이 이 제품의 규칙이다."""
+    import statistics as _st
+    bt = bt if bt is not None else backtest_stats()
+    pool = bt.get("pred_pool") or []
+
+    def price_band(p):
+        med = p.get("median_price") or p.get("actual") or 0
+        if med < 5_000_000:
+            return "500만 이하"
+        if med < 10_000_000:
+            return "500~1,000만"
+        if med < 20_000_000:
+            return "1,000~2,000만"
+        return "2,000만 초과"
+
+    def fail_band(p):
+        fc = p.get("fail_count") or 0
+        return "유찰 0~1회" if fc <= 1 else "유찰 2회" if fc == 2 else "유찰 3회 이상"
+
+    groups = [("가격대", price_band), ("유찰횟수", fail_band),
+              ("제조사", lambda p: "국산" if is_domestic_maker(p) else "수입")]
+    out = []
+    for gname, fn in groups:
+        buckets = {}
+        for p in pool:
+            buckets.setdefault(fn(p), []).append(p["err_pct"])
+        for label, errs in buckets.items():
+            enough = len(errs) >= ACCURACY_STRATUM_MIN_N
+            out.append({
+                "group": gname, "label": label, "n": len(errs),
+                "mae": round(_st.mean(errs), 1) if enough else None,
+                "within10": round(sum(1 for e in errs if e <= 10) / len(errs) * 100) if enough else None,
+            })
+    return out
+
+
+def accuracy_for(v: dict, bt: Optional[dict] = None) -> Optional[dict]:
+    """이 물건 **유형**의 실측 오차. 표본이 부족하면 None — 전체 평균으로 대신하지 않는다.
+
+    전체 MAE 하나를 모든 물건에 붙이면, 표본에 없는 유형에도 정확도를 전이시키는
+    과대주장이 된다(3회차 경매·중고차 지적). 유찰 3회 이상은 실측 ±12.8%로
+    전체 평균(±9.2%)보다 확연히 나쁘다."""
+    kind = "국산" if is_domestic_maker(v) else "수입"
+    fc = v.get("fail_count") or 0
+    fband = "유찰 0~1회" if fc <= 1 else "유찰 2회" if fc == 2 else "유찰 3회 이상"
+    rows = {(r["group"], r["label"]): r for r in accuracy_strata(bt)}
+    # 더 불리한(오차가 큰) 층을 택한다 — 낙관적인 쪽을 고르지 않는다.
+    cands = [rows.get(("제조사", kind)), rows.get(("유찰횟수", fband))]
+    cands = [c for c in cands if c and c["mae"] is not None]
+    if not cands:
+        return None
+    worst = max(cands, key=lambda c: c["mae"])
+    return {"mae": worst["mae"], "within10": worst["within10"],
+            "n": worst["n"], "label": worst["label"]}
 
 
 def alert_items(days: int = 3) -> list:

@@ -101,6 +101,37 @@
 
 {# 최근 검증 사례 #}
 {% if recent %}
+{% if strata %}
+<div class="bg-surface border border-line rounded-lg overflow-hidden">
+  <div class="px-4 py-3 border-b border-line">
+    <h3 class="text-sm font-semibold text-txt">어디서 잘 맞고, 어디서 안 맞나 <span class="text-mut font-normal">— 유형별 실측 오차</span></h3>
+    <p class="text-xs text-mut mt-1 leading-relaxed">전체 평균 하나만 보면 모든 물건에 같은 정확도가 있는 것처럼 읽힙니다.
+      표본이 {{ strata_min_n }}건 미만인 유형은 <b class="text-txt">숫자를 내지 않습니다</b>.</p>
+  </div>
+  <div class="divide-y divide-line">
+    {% for g in ['가격대','유찰횟수','제조사'] %}
+    <div class="px-4 py-3">
+      <div class="text-xs font-semibold text-mut mb-2">{{ g }}</div>
+      <div class="space-y-1.5">
+        {% for r in strata if r.group == g %}
+        <div class="flex items-baseline gap-2 text-sm flex-wrap">
+          <span class="text-txt min-w-[7rem]">{{ r.label }}</span>
+          <span class="text-xs text-mut tnum">{{ r.n }}건</span>
+          {% if r.mae is not none %}
+          <span class="ml-auto font-mono tnum {{ 'text-amber-700' if r.mae > 10 else 'text-txt' }}">±{{ r.mae }}%</span>
+          <span class="text-xs text-mut tnum">· ±10% 적중 {{ r.within10 }}%</span>
+          {% else %}
+          <span class="ml-auto text-xs text-mut">표본 부족 — 미산출</span>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
 <div class="bg-surface border border-line rounded-lg overflow-hidden">
   <div class="px-4 py-3 border-b border-line"><h3 class="text-sm font-semibold text-txt">최근 검증 사례 <span class="text-mut font-normal">— 예측과 실제 비교</span></h3></div>
   <div class="overflow-x-auto">

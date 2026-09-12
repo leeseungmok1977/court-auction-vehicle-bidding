@@ -267,7 +267,7 @@
   {% set b = expected.basis %}
   <div class="relative mt-4 pt-3 border-t border-white/10 text-[11px] text-white/55 leading-relaxed" style="word-break:keep-all">
     <span class="text-white/75 font-semibold">산정 기준</span> ·
-    {% if b.kind == 'min_premium' %}최저매각가 <b class="text-white/85 tnum">{{ (b.min_sale_price/10000)|round|int }}만</b> × 유찰 {{ b.fail_count }}회 낙찰 프리미엄 <b class="text-amber-300">×{{ b.premium }}</b>{% else %}소매 시세 <b class="text-white/85 tnum">{% if b.median %}{{ (b.median/10000)|round|int }}만{% else %}—{% endif %}</b> × 경매 할인율 <b class="text-amber-300">×{{ b.discount }}</b>{% endif %}{% if expected.comp_n %} · 동급 낙찰 {{ expected.comp_n }}건{{ ' 반영' if expected.comp_used else '은 참고용(미반영)' }}{% endif %}{% if expected.mae %} · 실측 오차 ±{{ expected.mae|round|int }}%{% endif %}
+    {% if b.kind == 'min_premium' %}최저매각가 <b class="text-white/85 tnum">{{ (b.min_sale_price/10000)|round|int }}만</b> × 유찰 {{ b.fail_count }}회 낙찰 프리미엄 <b class="text-amber-300">×{{ b.premium }}</b>{% else %}소매 시세 <b class="text-white/85 tnum">{% if b.median %}{{ (b.median/10000)|round|int }}만{% else %}—{% endif %}</b> × 경매 할인율 <b class="text-amber-300">×{{ b.discount }}</b>{% endif %}{% if expected.comp_n %} · 동급 낙찰 {{ expected.comp_n }}건{{ ' 반영' if expected.comp_used else '은 참고용(미반영)' }}{% endif %}{% if expected.acc %} · 이 유형({{ expected.acc.label }}, {{ expected.acc.n }}건) 실측 오차 ±{{ expected.acc.mae }}%{% else %} · <b class="text-amber-300">이 유형은 검증 표본 부족</b>{% endif %}
   </div>
   {% endif %}
 </div>

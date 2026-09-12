@@ -519,6 +519,9 @@ def accuracy(request: Request):
     return templates.TemplateResponse("accuracy.html", {
         "request": request, "bt": bt, "scatter": scatter,
         "axis_max": axis_max, "scatter_omitted": omitted, "recent": pool[:24],
+        # 층화 — "어디서 잘 맞고 어디서 안 맞는가". 전체 MAE 하나만 내면
+        # 표본에 없는 유형에도 정확도를 전이시키는 과대주장이 된다(3회차 경매·중고차 지적).
+        "strata": service.accuracy_strata(bt), "strata_min_n": service.ACCURACY_STRATUM_MIN_N,
     })
 
 
@@ -611,7 +614,9 @@ def vehicle_detail(request: Request, vid: str, cc: str = "", an: str = ""):
         expected = {"price": _band["price"], "lo": _band["lo"], "hi": _band["hi"],
                     "premium": _band.get("premium"), "basis": _band.get("basis") or {},
                     "discount": disc, "sample": bt.get("sample"),
-                    "mae": bt.get("mae_pct"), "source": source,
+                    # 전체 MAE가 아니라 **이 유형**의 실측 오차. 없으면 None(배지 안 찍음).
+                    "mae": (service.accuracy_for(v, bt) or {}).get("mae"),
+                    "acc": service.accuracy_for(v, bt), "source": source,
                     "comp_n": _cd[1] if _cd else 0,
                     "comp_used": _used_comps,          # 실제로 산정에 쓰였는가
                     "comp_ratio": _cd[0] if _cd else None}
@@ -713,7 +718,9 @@ def vehicle_report(request: Request, vid: str):
         "comp_min_n": service.COMP_MIN_N, "comp_ratio_med": comp_ratio_med,
         # 01 종합 프로필(6축, 미산출=None; 매물건수는 관리자만, 잔존가치는 출시가 공개 규칙과 동일 게이트)
         "hexa": service.hexagon_scores(v, include_private=_adm,
-                                       newcar_ok=_adm or bool(config.get("newcar_public", False))),
+                                       newcar_ok=_adm or bool(config.get("newcar_public", False)),
+                                       asum=asum),
+        "mile_mismatch": service.mileage_mismatch(v, asum),
         "newcar_public": bool(config.get("newcar_public", False)),   # 당시 출시가 공개 여부(compliance §6 조건 충족 시 config로 전환)
         "now": datetime.now().strftime("%Y-%m-%d %H:%M"),
     })
