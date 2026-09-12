@@ -36,6 +36,8 @@ SHOTS = [
     ("hero-thumb-390", "/vehicle/2026타경30903_1",   390, 3, "#heroImg"),
     ("home-thumb-390", "/",                          390, 3, None),
     ("list-thumb-390", "/vehicles",                  390, 3, None),
+    ("list-360",       "/vehicles",                  360, 2, None),
+    ("list-320",       "/vehicles",                  320, 2, None),
 ]
 
 

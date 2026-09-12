@@ -154,3 +154,20 @@ def test_confidence_bar_does_not_use_verdict_colors():
     expr = m.group(1)
     for bad in ("emerald", "amber", "rose", "green", "red"):
         assert bad not in expr, f"신뢰도 막대에 의미색 '{bad}' 이 남아 있다: {expr.strip()}"
+
+
+def test_apply_button_is_not_duplicated_at_mobile_width():
+    """[적용] 버튼이 좁은 폭에서 두 개 보이면 안 된다.
+
+    `.btn-ghost` 는 tailwind_input.css 의 @layer 밖 평문 CSS라 출력에서 유틸리티
+    **뒤에** 온다. 그래서 버튼에 직접 `hidden` 을 걸면 `display:inline-flex` 가
+    이겨 안 먹는다 — 실제로 360px에서 [적용]이 두 개 보였다.
+    표시 전환은 래퍼 요소에 걸어야 한다.
+    """
+    import pathlib
+    import re
+    src = pathlib.Path("web/templates/vehicles.html").read_text(encoding="utf-8")
+    for m in re.finditer(r'<button[^>]*class="([^"]*btn-ghost[^"]*)"', src):
+        cls = m.group(1)
+        assert "hidden" not in cls, (
+            f"btn-ghost 버튼에 직접 hidden 을 걸면 안 먹는다 (래퍼에 걸 것): {cls}")

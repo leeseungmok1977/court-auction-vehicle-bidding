@@ -32,8 +32,11 @@
     </select>
     {# 빈 셀을 남기지 않도록 [적용]을 그리드 넷째 칸에 넣는다. sm 이상에서는
        sm:contents 로 그리드가 사라져 원래 자리(검색창 뒤)로 흐른다. #}
-    <button class="btn-ghost text-sm flex items-center justify-center gap-1 sm:hidden">
-      <span class="material-symbols-outlined text-base">filter_list</span> 적용</button>
+    {# ⚠ .btn-ghost 는 @layer 밖 평문 CSS라 유틸리티보다 뒤에 온다 — 버튼에 직접
+       hidden/sm:hidden 을 걸면 display:inline-flex 가 이겨서 [적용]이 두 개 보인다.
+       래퍼(span)에 걸어야 먹는다. #}
+    <span class="contents sm:hidden"><button class="btn-ghost text-sm w-full">
+      <span class="material-symbols-outlined text-base">filter_list</span> 적용</button></span>
     </div>
     <div class="relative flex-1 min-w-[180px] sm:flex-none sm:w-72">
       <span class="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-mut text-[19px] leading-none pointer-events-none">search</span>
@@ -46,13 +49,13 @@
     {# 폼 제출로 버킷·추천 필터가 조용히 풀리면 사용자가 다른 모수를 보게 된다 #}
     {% if bucket %}<input type="hidden" name="bucket" value="{{ bucket }}">{% endif %}
     {% if usepick %}<input type="hidden" name="usepick" value="1">{% endif %}
-    <button class="btn-ghost text-sm hidden sm:flex items-center gap-1">
-      <span class="material-symbols-outlined text-base">filter_list</span> 적용</button>
+    <span class="hidden sm:contents"><button class="btn-ghost text-sm">
+      <span class="material-symbols-outlined text-base">filter_list</span> 적용</button></span>
     {# 칩들은 좁은 폭에서 두 줄을 먹는다 — 한 줄 가로 스크롤로 묶어 한 줄만 쓴다.
        숨기는 것이 아니라 밀어서 전부 볼 수 있다. #}
     <div class="flex items-center gap-2 w-full overflow-x-auto custom-scrollbar
                 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:contents sm:overflow-visible">
-    <button type="button" onclick="ncSaveSearch()" class="btn-ghost text-sm flex items-center gap-1" title="현재 검색 조건을 저장 — 즐겨찾기 탭에서 새 매물을 확인합니다">
+    <button type="button" onclick="ncSaveSearch()" class="btn-ghost text-sm whitespace-nowrap shrink-0" title="현재 검색 조건을 저장 — 즐겨찾기 탭에서 새 매물을 확인합니다">
       <span aria-hidden="true">🔖</span> 검색 저장</button>
     {% if usepick %}<a href="/vehicles" class="text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full px-3 py-1 inline-flex items-center gap-1" title="실사용 추천 해제"><span class="material-symbols-outlined text-[13px] leading-none">directions_car</span>실사용 추천 ✕</a>{% endif %}
     {% if bucket %}{% set _bkl = {'wait':'유찰 대기','lowconf':'신뢰도 낮음','other':'기타·미분석'} %}
