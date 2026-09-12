@@ -509,3 +509,38 @@ def test_vision_sourced_address_is_marked_as_an_estimate(client, path):
     html = client.get(path).text
     assert "전주시 덕진구 덕진동1가 1420" in html
     assert "지도 판독" in html, f"{path}: 출처 표기가 없다"
+
+
+def test_storage_patch_round_trip_never_overwrites_source_values(one, tmp_path):
+    """지도 판독 결과를 운영에 옮길 때 원문 값(법원·감정서)을 덮으면 안 된다.
+
+    비전 LLM은 로컬에서 돌리고 결과만 옮긴다 — API 키를 운영 서버에 두지 않기
+    위해서다. 옮기는 과정에서 추정값이 확정값을 밀어내면 안 된다.
+    """
+    db.update_fields("V1", storage_addr="전주시 덕진구 덕진동1가 1420",
+                     storage_src="map_vision", storage_conf="추정")
+    p = tmp_path / "patch.json"
+    assert service.export_storage_patch(str(p)) == 1
+
+    # 옮겨받는 쪽: 하나는 이미 법원값이 있고, 하나는 비어 있다
+    db.upsert_vehicle({"id": "V2", "folder_key": "V2", "case_no": "2026타경2",
+                       "item_no": "1", "court": "수원지방법원", "status": "완료"})
+    db.update_fields("V1", storage_addr="충청남도 서산시 율지8로 52",
+                     storage_src="court", storage_conf=None)
+    out = service.apply_storage_patch(str(p))
+    assert out["kept"] == 1 and out["applied"] == 0
+    assert db.get_vehicle("V1")["storage_src"] == "court", "추정값이 법원값을 덮었다"
+
+    db.update_fields("V1", storage_addr=None, storage_src=None)
+    out2 = service.apply_storage_patch(str(p))
+    assert out2["applied"] == 1
+    assert db.get_vehicle("V1")["storage_src"] == "map_vision"
+
+
+def test_storage_patch_skips_unknown_vehicle_ids(one, tmp_path):
+    import json as _json
+    p = tmp_path / "p.json"
+    p.write_text(_json.dumps([{"id": "NOPE", "addr": "서울특별시 강서구",
+                               "src": "map_vision", "conf": "추정"}]), encoding="utf-8")
+    out = service.apply_storage_patch(str(p))
+    assert out["unknown"] == 1 and out["applied"] == 0

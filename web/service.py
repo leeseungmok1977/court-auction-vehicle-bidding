@@ -1993,6 +1993,47 @@ def reapply_appraisal_guard() -> dict:
     return {"checked": checked, "fixed": fixed}
 
 
+def export_storage_patch(path: str, sources: tuple = ("map_vision", "map_ocr")) -> int:
+    """지도에서 얻은 보관장소를 작은 JSON으로 뽑는다(운영 서버에 옮기기 위함).
+
+    비전 LLM은 로컬 PC에서 돌린다 — **API 키를 운영 서버에 두지 않기 위해서**이고,
+    무거운 작업으로 t3.micro의 응답을 늦추지 않기 위해서다. 결과만 옮긴다.
+    """
+    import json as _json
+    rows = []
+    for v in db.list_vehicles(hide_incomplete=False):
+        if v.get("storage_src") in sources and (v.get("storage_addr") or "").strip():
+            rows.append({"id": v["id"], "addr": v["storage_addr"],
+                         "src": v["storage_src"], "conf": v.get("storage_conf") or "추정"})
+    with open(path, "w", encoding="utf-8") as fh:
+        _json.dump(rows, fh, ensure_ascii=False, indent=1)
+    return len(rows)
+
+
+def apply_storage_patch(path: str) -> dict:
+    """export_storage_patch 결과를 반영한다(운영 서버에서 실행).
+
+    ⚠ 법원 상세·감정서 본문에서 온 값은 **덮지 않는다.** 지도 판독은 추정이고
+    원문 값이 언제나 우선이다. 모르는 물건 id는 조용히 건너뛴다.
+    """
+    import json as _json
+    with open(path, encoding="utf-8") as fh:
+        rows = _json.load(fh)
+    out = {"total": len(rows), "applied": 0, "kept": 0, "unknown": 0}
+    for r in rows:
+        v = db.get_vehicle(r["id"])
+        if not v:
+            out["unknown"] += 1
+            continue
+        if (v.get("storage_addr") or "").strip():
+            out["kept"] += 1
+            continue
+        db.update_fields(r["id"], storage_addr=r["addr"],
+                         storage_src=r["src"], storage_conf=r.get("conf") or "추정")
+        out["applied"] += 1
+    return out
+
+
 def backfill_map_vision(limit: int = 20, delay: float = 6.0,
                         dry_run: bool = False) -> dict:
     """OCR이 실패한 물건에 한해 비전 LLM으로 지도의 인쇄된 주소를 읽는다.
