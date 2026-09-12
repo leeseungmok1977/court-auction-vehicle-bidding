@@ -61,6 +61,12 @@ class BidInput:
     repair_cost: float = 0.0     # 예상 수리비 (사용자 입력, 원)
     appraisal_text: str = ""     # 감정평가서 텍스트 (침수 키워드 판정용)
     photo_count: Optional[int] = None  # 차량 사진 수(None=미상 → 감가 안 함, 0=사진없음 → 감가)
+    # 사고 감가율 override — 호출부가 사고 '건수'와 '이력 미확인' 규칙까지 반영해 넘긴다.
+    # 이게 없으면 이력을 확보 못 한 차가 grade="none" → 감가 0%가 되어, 실사용 상한선은
+    # 15%를 가정하는데 재판매 손익분기만 무사고로 계산되는 이중 소스가 된다
+    # (4회차 중고차 지적: 포르쉐 재판매 손익분기 1,285만원 과대).
+    accident_rate: Optional[float] = None
+    accident_label: str = ""     # 화면 표기용 — "무사고" / "사고 N회" / "이력 미확인(사고 가정)"
 
 
 @dataclass
@@ -107,7 +113,12 @@ def calculate(inp: BidInput, config: dict) -> BidResult:
 
     # 사고 감가율: 침수면 flood 율, 아니면 등급별 율
     rate_table = config["accident_depreciation_rate"]
-    acc_rate = rate_table.get("flood", 1.0) if flood else rate_table.get(inp.accident_grade, 0.0)
+    if flood:
+        acc_rate = rate_table.get("flood", 1.0)
+    elif inp.accident_rate is not None:
+        acc_rate = float(inp.accident_rate)      # 호출부가 건수·미확인 규칙까지 반영한 값
+    else:
+        acc_rate = rate_table.get(inp.accident_grade, 0.0)
 
     accident_dep = base_price * acc_rate
     risk_premium = base_price * config["risk_premium_rate"]
@@ -157,6 +168,8 @@ def calculate(inp: BidInput, config: dict) -> BidResult:
         "플랫폼가중": weight,
         "예상수리비": round(inp.repair_cost),
         "사고등급": AccidentGrade.FLOOD.value if flood else inp.accident_grade,
+        # 근거 없는 "무사고"를 화면에 쓰지 않기 위한 표기용 라벨(호출부가 채운다)
+        "사고표기": ("침수의심" if flood else (inp.accident_label or "")),
         "사고감가율": acc_rate,
         "사고감가": round(accident_dep),
         "리스크프리미엄": round(risk_premium),

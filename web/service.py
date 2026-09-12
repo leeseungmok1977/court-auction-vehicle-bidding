@@ -176,7 +176,10 @@ def _analyze_item(cs, es, raw: dict, item, config: dict, repair_cost: int,
                               sample_count=stats.sample_count, platform="encar",
                               accident_grade=detail.accident_grade, repair_cost=repair_cost,
                               appraisal_text=detail.appraisal_text)
-                bid = calculate(bi, config)
+                _acc_src = {"accident_grade": detail.accident_grade,
+                            "insurance_history": getattr(detail, "insurance_history", None),
+                            "accident_hits": getattr(detail, "accident_hits", None)}
+                bid = calculate(apply_accident_rate(bi, _acc_src, config), config)
                 base.update({
                     "upper_bid": bid.upper_bid, "lower_bound": bid.lower_bound,
                     "judgment": _final_judgment(bid.judgment, stats.confidence_label),
@@ -279,7 +282,12 @@ def _final_judgment(bid_judgment: str, conf_label) -> str:
 
     감정가 괴리·표본부족으로 시세를 못 믿는데 '검토 가능'으로 보이면
     산정 상한가를 신뢰해 과입찰할 위험이 있다(재정 리스크)."""
-    if conf_label == "낮음" and bid_judgment == "입찰 검토 가능":
+    # 예전엔 '입찰 검토 가능'만 하향했다. 그런데 사고 감가를 정직하게 반영하자
+    # 같은 물건이 '유찰 대기'로 떨어지면서 하향을 **피해 갔다** — 시세를 못 믿는다는
+    # 사실이 화면에서 사라진 것이다(4회차). 종결·보류 같은 확정 상태만 남기고
+    # 나머지는 전부 '수동 검토'로 내린다.
+    if conf_label == "낮음" and bid_judgment not in ("종결", "입찰 보류",
+                                                    "시세 신뢰도 낮음, 수동 검토"):
         return "시세 신뢰도 낮음, 수동 검토"
     return bid_judgment
 
@@ -384,6 +392,31 @@ def use_repair_reserve(v: dict, config: Optional[dict] = None) -> int:
     if not v.get("photo_count"):
         add += int(costs.get("no_photos", 0))
     return add
+
+
+def apply_accident_rate(bi, v: dict, config: Optional[dict] = None):
+    """BidInput에 **실사용 상한선과 같은** 사고 감가율·표기를 실어 준다.
+
+    재판매 손익분기(calculator)와 실사용 상한선(personal_use_max_bid)이 서로 다른
+    감가율을 쓰면 한 화면에 감가가 두 개가 된다 — 4회차 중고차 지적: 포르쉐가
+    재판매 블록에서는 "무사고(감가 0.0%)"로 계산돼 손익분기가 1,285만원 과대였고,
+    그 부풀린 값이 bid_state의 resale 분기를 먼저 태워 초록불을 만들었다.
+    무엇보다 **이력을 확보하지 못한 차를 화면이 '무사고'라고 단정**하고 있었다."""
+    cfg = config or load_config()
+    rate, assumed = use_accident_rate(v, cfg)
+    bi.accident_rate = rate
+    hits = accident_hit_count(v)
+    if v.get("accident_grade") == "flood":
+        bi.accident_label = "침수의심"
+    elif assumed:
+        bi.accident_label = "이력 미확인 — 사고차 가정"
+    elif hits:
+        bi.accident_label = f"사고 {hits}회"
+    elif v.get("accident_grade") in ("accident", "minor"):
+        bi.accident_label = "사고 이력 있음"
+    else:
+        bi.accident_label = "무사고(이력 확인됨)"
+    return bi
 
 
 def accident_hit_count(v: dict) -> Optional[int]:
@@ -1737,7 +1770,7 @@ def update_results(max_courts: int = 100, run_id: Optional[int] = None,
                                   sample_count=v.get("sample_count") or 0, platform="encar",
                                   accident_grade=v.get("accident_grade") or "none",
                                   repair_cost=v.get("repair_cost") or 500000)
-                    bid = calculate(bi, config)
+                    bid = calculate(apply_accident_rate(bi, v, config), config)
                     fields["upper_bid"] = bid.upper_bid
                     fields["judgment"] = _final_judgment(bid.judgment, v.get("market_confidence_label"))
                     fields["breakdown"] = json.dumps(bid.breakdown, ensure_ascii=False)
@@ -1946,7 +1979,7 @@ def backfill_accident_grades() -> int:
                           platform=v.get("market_platform") or "encar",
                           accident_grade=grade, repair_cost=v.get("repair_cost") or 500000,
                           appraisal_text=atxt, photo_count=v.get("photo_count"))
-            bid = calculate(bi, config)
+            bid = calculate(apply_accident_rate(bi, v, config), config)
             fields.update(upper_bid=bid.upper_bid, lower_bound=bid.lower_bound,
                           judgment=_final_judgment(bid.judgment, v.get("market_confidence_label")),
                           breakdown=bid.breakdown)
@@ -2546,6 +2579,12 @@ def bid_state(v: dict, bt: Optional[dict] = None, config: Optional[dict] = None)
 
     if v.get("auction_result") == "낙찰" or v.get("judgment") == "종결":
         return out("closed", "매각 종료", "wait")
+    # 침수·전손은 잔존가치 자체를 산정할 수 없다. 분기가 없어서 "아직 비싸니 추가 유찰을
+    # 기다리세요"(= 싸지면 사라)가 나올 수 있었다(4회차 중고차 지적).
+    if v.get("accident_grade") == "flood" or v.get("judgment") == "입찰 보류":
+        return out("blocked", "침수·전손 의심 — 입찰 보류", "stop")
+    if v.get("runnable") == "no":
+        return out("lowconf", "시동·운행 불가 — 판정 보류", "stop")
     if not exp or not med or v.get("market_confidence_label") == "낮음":
         return out("lowconf", "시세 신뢰도 낮음 — 판정 보류", "wait")
     if not (floor and floor <= exp):
@@ -2560,10 +2599,13 @@ def bid_state(v: dict, bt: Optional[dict] = None, config: Optional[dict] = None)
         return out("resale", "재판매 차익 가능", "ok")
     if mb and exp <= mb:
         return out("usepick", "실사용이면 이득", "ok")
-    # 상한선을 넘지만 최저가는 아직 아래 — 경쟁이 붙으면 손해로 넘어간다
-    return out("over_market" if mb else "usepick",
-               "예상 경쟁가가 상한선 초과" if mb else "실사용이면 이득",
-               "caution" if mb else "ok")
+    if mb:
+        # 상한선을 넘지만 최저가는 아직 아래 — 경쟁이 붙으면 손해로 넘어간다
+        return out("over_market", "예상 경쟁가가 상한선 초과", "caution")
+    # ⚠ 상한선을 못 구했으면 **초록불을 켜지 않는다**. 예전엔 mb가 None일 때
+    # "실사용이면 이득"(ok)으로 떨어져, 시동 불가·침수처럼 상한선 산출이 막힌 물건에
+    # 상한선 없는 초록불이 붙었다(4회차 중고차 지적).
+    return out("lowconf", "손익분기 산출 불가 — 판정 보류", "wait")
 
 
 def plain_verdict(v: dict, expected: Optional[dict],
@@ -2577,6 +2619,7 @@ def plain_verdict(v: dict, expected: Optional[dict],
     if not expected or not expected.get("price"):
         return None
     st = st if st is not None else bid_state(v)
+    bt = backtest_stats()
     exp, med = st["exp"], st["med"]
     floor, upper, mb = st["floor"], st["upper"], st["max_bid"]
 
@@ -2592,6 +2635,10 @@ def plain_verdict(v: dict, expected: Optional[dict],
         return {"tone": "wait",
                 "text": f"지금 최저가 {won(floor)}은 예상 낙찰가 {won(exp)}보다 높습니다. "
                         f"아직 비싸니 추가 유찰을 기다리는 게 좋습니다."}
+    if st["state"] == "blocked" and v.get("accident_grade") == "flood":
+        return {"tone": "stop",
+                "text": "침수·전손이 의심되는 물건입니다. 잔존 가치를 산정할 수 없어 "
+                        "예상 낙찰가·입찰 상한선을 제공하지 않습니다. 입찰하지 마세요."}
     if st["state"] == "blocked":
         # 최저매각가조차 손익분기를 넘는다 = 써낼 수 있는 **모든** 금액이 손해다.
         # "낙찰 가능성이 낮다"고만 쓰면 초보자는 "더 쓰면 되겠네"로 읽는다(3회차 경매 지적).
@@ -2600,9 +2647,23 @@ def plain_verdict(v: dict, expected: Optional[dict],
         if nx and mb and nx["price"] <= mb:
             tail = (f" 다음 기일 예상 최저가 {won(nx['price'])}은 상한선 안이므로 "
                     f"이번 회차는 건너뛰고 다음 기일을 기다리는 것이 낫습니다.")
+        # 이 판정이 **가정** 위에 서 있으면 그렇게 말해야 한다. 이력을 확보 못 해
+        # 사고차로 가정한 결과라면, 무사고로 확인될 때 판정이 뒤집힌다는 사실을 숨기면
+        # 사용자는 살 수 있는 차를 건너뛰고도 그 이유를 모른다(4회차 중고차·경매 지적).
+        alt = ""
+        _rate, _assumed = use_accident_rate(v)
+        if _assumed:
+            clean = dict(v)
+            clean["insurance_history"] = {"own_damage": 0, "opp_damage": 0}
+            mb0 = personal_use_max_bid(clean, bt)
+            if mb0 and floor <= mb0:
+                alt = (f" 다만 이 판정은 보험이력을 확보하지 못해 **사고차로 가정**한 결과입니다. "
+                       f"무사고로 확인되면 상한선이 {won(mb0)}으로 올라 이번 회차도 검토 가능해집니다 "
+                       f"— 입찰 전 차대번호로 사고이력을 조회하세요.")
         return {"tone": "stop",
-                "text": f"이번 회차는 입찰하지 마세요. 최저매각가 {won(floor)}이 이미 "
-                        f"실사용 손익분기 {won(mb)}을 넘어, 최저가로 낙찰받아도 소매보다 비쌉니다.{tail}"}
+                "text": (f"이번 회차는 입찰하지 마세요. 최저매각가 {won(floor)}이 이미 "
+                         f"실사용 손익분기 {won(mb)}을 넘어, 최저가로 낙찰받아도 소매보다 "
+                         f"비쌉니다.{tail}{alt}").replace("**", "")}
     if st["state"] == "over_market" and exp > med:
         over = round((exp - med) / med * 100)
         return {"tone": "stop",
@@ -3267,7 +3328,7 @@ def recompute_all_market(run_id: Optional[int] = None, finalize: bool = True) ->
                               accident_grade=v.get("accident_grade") or "none",
                               repair_cost=v.get("repair_cost") or 500000,
                               appraisal_text=atext, photo_count=v.get("photo_count"))
-                bid = calculate(bi, config)
+                bid = calculate(apply_accident_rate(bi, v, config), config)
                 fields.update({"upper_bid": bid.upper_bid, "lower_bound": bid.lower_bound,
                                "judgment": _final_judgment(bid.judgment, fields.get("market_confidence_label")),
                                "breakdown": json.dumps(bid.breakdown, ensure_ascii=False)})
@@ -3323,7 +3384,7 @@ def recompute(vid: str, repair_cost: int, config: dict | None = None) -> Optiona
     bi = BidInput(median_price=v["median_price"] or 0, min_sale_price=v["min_sale_price"] or 0,
                   sample_count=v.get("sample_count") or 0, platform="encar",
                   accident_grade=v.get("accident_grade") or "none", repair_cost=repair_cost)
-    bid = calculate(bi, config)
+    bid = calculate(apply_accident_rate(bi, v, config), config)
     db.update_fields(vid, repair_cost=repair_cost, upper_bid=bid.upper_bid,
                      lower_bound=bid.lower_bound,
                      judgment=_final_judgment(bid.judgment, v.get("market_confidence_label")),
@@ -3537,7 +3598,7 @@ def kcar_crosscheck(vid: str, config: dict | None = None) -> dict:
                       accident_grade=v.get("accident_grade") or "none",
                       repair_cost=v.get("repair_cost") or 500000,
                       appraisal_text=atext, photo_count=v.get("photo_count"))
-        bid = calculate(bi, config)
+        bid = calculate(apply_accident_rate(bi, v, config), config)
         fields.update({"upper_bid": bid.upper_bid, "lower_bound": bid.lower_bound,
                        "judgment": _final_judgment(bid.judgment, stats.confidence_label),
                        "breakdown": json.dumps(bid.breakdown, ensure_ascii=False)})

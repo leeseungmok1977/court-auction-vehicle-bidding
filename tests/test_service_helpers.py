@@ -28,7 +28,13 @@ def test_current_min_sale_fallback_when_empty():
 def test_final_judgment_downgrades_low_confidence():
     assert service._final_judgment("입찰 검토 가능", "낮음") == "시세 신뢰도 낮음, 수동 검토"
     assert service._final_judgment("입찰 검토 가능", "높음") == "입찰 검토 가능"
-    assert service._final_judgment("유찰 대기", "낮음") == "유찰 대기"
+    # 4회차: '유찰 대기'도 하향한다. 사고 감가를 정직하게 반영하자 같은 물건이
+    # '검토 가능' → '유찰 대기'로 떨어지면서 하향을 피해 갔고, 시세를 못 믿는다는
+    # 사실이 화면에서 사라졌다. 확정 상태(종결·보류)만 남긴다.
+    assert service._final_judgment("유찰 대기", "낮음") == "시세 신뢰도 낮음, 수동 검토"
+    assert service._final_judgment("유찰 대기", "높음") == "유찰 대기"
+    assert service._final_judgment("종결", "낮음") == "종결"
+    assert service._final_judgment("입찰 보류", "낮음") == "입찰 보류"
 
 
 def test_is_block():
