@@ -159,3 +159,106 @@ def test_list_and_home_use_thumbnails():
     assert det.count("/thumb/") >= 2, "상세 히어로·스트립이 원본을 쓴다"
     # 라이트박스는 원본이어야 한다(확대해서 보는 용도)
     assert "LB_BASE" in det and '"/photo/"' in det
+
+
+# ── 화면이 자기 말을 뒤집지 않는지 (5회차 배포 후 육안 검수에서 발견) ──
+@pytest.fixture
+def capwin_client(tmp_path, monkeypatch):
+    """상한이 그대로 최종이 되는 물건 — 최저가 <= 캡 <= 원값.
+
+    (CAP_1은 최저가가 캡보다 높아 '하한이 이기는' 반대 경우다. 둘을 섞으면
+     테스트가 검사하려던 분기를 안 타고 조용히 통과한다.)
+    """
+    from web import db
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "capwin.db")
+    monkeypatch.setattr(service, "backtest_stats", lambda *a, **k: BT)
+    db.init_db()
+    db.upsert_vehicle({
+        "id": "CAPWIN_1", "folder_key": "CAPWIN_1", "case_no": "2026타경8003",
+        "item_no": "1", "court": "수원지방법원", "maker": "현대", "model": "그랜저",
+        "year": 2020, "min_sale_price": 22_400_000, "appraisal_value": 28_000_000,
+        "fail_count": 1, "sale_date": "2999-01-01", "status": "완료",
+        "judgment": "유찰 대기", "median_price": 22_900_000, "market_confidence": 78,
+        "market_confidence_label": "높음", "sample_count": 12, "photo_count": 3,
+    })
+    import web.app as A
+    return TestClient(A.app)
+
+
+def test_cap_equal_to_final_prints_the_number_once(capwin_client):
+    """상한 == 최종이면 같은 금액이 나란히 두 번 찍히면 안 된다.
+
+    실제 화면(2026타경3534 그랜저)에 `25,200,000  25,200,000원`이 붙어 나왔다.
+    읽는 사람에겐 "왜 같은 숫자가 두 번?"이고, 산식의 신뢰를 깎는다.
+    """
+    from web import db
+    b = service.expected_band(db.get_vehicle("CAPWIN_1"), BT)
+    assert b["basis"]["capped"] is True, "이 픽스처는 캡이 걸리는 경우여야 한다"
+    assert b["price"] == b["basis"]["cap"], "이 픽스처는 상한==최종 경우여야 한다"
+
+    html = capwin_client.get("/vehicle/CAPWIN_1").text
+    seg = html.split("예상 낙찰가(균형) 산정식")[1].split("</div>\n        </div>")[0]
+    money = f"{b['price']:,}"
+    assert seg.count(money) == 1, (
+        f"상한과 최종이 같은데 {money}이 산식 줄에 {seg.count(money)}번 찍혔다")
+    # 하한이 걸리지 않았으면 '최저매각가 하한' 문구도 나오면 안 된다
+    assert "최저매각가 하한" not in seg
+
+
+def test_floor_override_still_shows_all_three_numbers(tmp_path, monkeypatch):
+    """반대로 최저매각가 하한이 상한을 되밀어낸 경우엔 세 값이 모두 보여야 한다.
+
+    원값 → 상한 → 최종이 다 다른데 하나라도 감추면 최종값이 근거 없이 튀어나온다.
+    """
+    from web import db
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "floor.db")
+    monkeypatch.setattr(service, "backtest_stats", lambda *a, **k: BT)
+    db.init_db()
+    # 시세가 최저매각가보다 훨씬 낮다 → 캡 < 최저가 → 하한이 캡을 되밀어낸다
+    db.upsert_vehicle({
+        "id": "FLOOR_1", "folder_key": "FLOOR_1", "case_no": "2026타경8002",
+        "item_no": "1", "court": "수원지방법원", "maker": "현대", "model": "쏘나타",
+        "year": 2020, "min_sale_price": 35_000_000, "appraisal_value": 50_000_000,
+        "fail_count": 1, "sale_date": "2999-01-01", "status": "완료",
+        "judgment": "유찰 대기", "median_price": 16_000_000, "market_confidence": 78,
+        "market_confidence_label": "높음", "sample_count": 12, "photo_count": 3,
+    })
+    import web.app as A
+    b = service.expected_band(db.get_vehicle("FLOOR_1"), BT)
+    assert b["basis"]["capped"] is True
+    assert b["price"] > b["basis"]["cap"], "이 픽스처는 하한이 이기는 경우여야 한다"
+
+    html = TestClient(A.app).get("/vehicle/FLOOR_1").text
+    seg = html.split("예상 낙찰가(균형) 산정식")[1].split("<div class=\"text-[11px] text-mut")[0]
+    for label, val in (("원값", b["basis"]["raw"]), ("상한", b["basis"]["cap"]),
+                       ("최종", b["price"])):
+        assert f"{val:,}" in seg, f"{label} {val:,} 이 산식에서 빠졌다"
+    assert "최저매각가 하한" in seg
+
+
+def test_no_pre_analysis_notice_when_a_formula_is_shown(tmp_path, monkeypatch):
+    """산정식을 다 찍어놓고 그 아래에 '분석 전'이라고 쓰면 화면이 모순된다.
+
+    실화면 2026타경3534가 정확히 그랬다. 주의: `status == '완료'`인 물건은 이
+    안내 분기 자체를 타지 않으므로, 픽스처는 **반드시 미완료**여야 한다 —
+    안 그러면 안내를 되살려도 테스트가 조용히 통과한다(실제로 그랬다).
+    """
+    from web import db
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "pre.db")
+    monkeypatch.setattr(service, "backtest_stats", lambda *a, **k: BT)
+    db.init_db()
+    db.upsert_vehicle({
+        "id": "PRE_1", "folder_key": "PRE_1", "case_no": "2026타경8004",
+        "item_no": "1", "court": "수원지방법원", "maker": "현대", "model": "그랜저",
+        "year": 2020, "min_sale_price": 22_400_000, "appraisal_value": 28_000_000,
+        "fail_count": 1, "sale_date": "2999-01-01", "status": "대기",
+        "judgment": "유찰 대기", "median_price": 22_900_000, "market_confidence": 78,
+        "market_confidence_label": "높음", "sample_count": 12, "photo_count": 3,
+    })
+    import web.app as A
+    v = db.get_vehicle("PRE_1")
+    assert v["status"] != "완료", "미완료여야 이 분기를 탄다"
+
+    html = TestClient(A.app).get("/vehicle/PRE_1").text
+    assert "예상 낙찰가(균형) 산정식" in html, "픽스처가 산정식을 안 만든다"
+    assert "분석 전 — 상단" not in html

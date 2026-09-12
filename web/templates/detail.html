@@ -668,9 +668,15 @@
              상세만 빠져 있어, 물건 29%가 틀린 곱셈을 인쇄했다(5회차 품질 P0). #}
           <b class="font-mono tnum text-mut">{{ b.raw|won }}</b>
           <span class="text-mut">→ 시세×1.10 상한</span>
-          <b class="font-mono tnum text-txt">{{ b.cap|won }}</b>
-          {% if expected.price != b.cap %}<span class="text-mut">→ 최저매각가 하한</span>{% endif %}
+          {% if expected.price == b.cap %}
+          {# 상한이 그대로 결과다. 여기서 캡 값과 최종값을 따로 찍으면 같은 숫자가
+             나란히 두 번 나와 "왜 두 번?"이 된다 — 한 번만, 최종값으로 찍는다. #}
           <b class="font-mono tnum text-primary text-base">{{ expected.price|won }}원</b>
+          {% else %}
+          <b class="font-mono tnum text-txt">{{ b.cap|won }}</b>
+          <span class="text-mut">→ 최저매각가 하한</span>
+          <b class="font-mono tnum text-primary text-base">{{ expected.price|won }}원</b>
+          {% endif %}
           {% else %}
           <b class="font-mono tnum text-primary text-base">{{ expected.price|won }}원</b>
           {% endif %}
@@ -684,7 +690,10 @@
         </div>
       </div>
       {% endif %}
-      {% if v.status != '완료' %}
+      {# 위에 산정식을 이미 다 찍어놓고 바로 아래에 "분석 전"이라고 쓰면 화면이
+         자기 말을 뒤집는다. 산정식이 나온 물건에는 이 안내를 내지 않는다. #}
+      {% if v.status != '완료' and not (expected and expected.price and expected.basis
+                                        and expected.basis.kind == 'min_premium') %}
       <div class="text-center bg-background border border-line rounded-lg py-4 mb-4">
         <div class="text-sm text-mut">분석 전 — 상단 [이 물건 분석]으로 산정하세요</div>
       </div>
