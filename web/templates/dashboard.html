@@ -163,7 +163,7 @@
         <div class="flex items-baseline gap-1"><span class="font-mono text-3xl font-extrabold text-white leading-none">{{ lifecycle.usepick }}</span><span class="text-base text-white/60 font-semibold">대</span></div>
         <div class="text-[11px] text-white/60 mt-1.5 leading-snug">직접 탈 목적 — 소매보다 싸게</div>
       </a>
-      <a href="/vehicles?judgment=유찰 대기" class="rounded-xl bg-white/[0.07] border border-white/10 p-3.5 block hover:bg-white/[0.12] transition">
+      <a href="/vehicles?bucket=wait" class="rounded-xl bg-white/[0.07] border border-white/10 p-3.5 block hover:bg-white/[0.12] transition">
         <div class="flex items-center gap-1.5 text-amber-300 mb-1.5"><span class="material-symbols-outlined text-lg">hourglass_empty</span><span class="text-xs font-bold">유찰 대기 · 재경매</span></div>
         <div class="flex items-baseline gap-1"><span class="font-mono text-3xl font-extrabold text-white leading-none" id="kpi-wait">{{ lifecycle.wait }}</span><span class="text-base text-white/60 font-semibold">대</span></div>
         <div class="text-[11px] text-white/55 mt-1.5 leading-snug">안 팔려 최저가 더 내려갈 물건</div>
@@ -179,8 +179,8 @@
          하나로 합쳐 링크하면 '520대'라 써놓고 눌러보면 339건이 나와, 이 앱이 지켜온
          '카드 수 = 목록 수' 규칙이 이 줄에서만 깨진다(2026-09-12 검수 적발). #}
       <span class="text-white/50">
-        <a href="/vehicles?judgment=시세 신뢰도 낮음, 수동 검토" class="hover:text-white/80 hover:underline">신뢰도 낮음 <b class="text-white/80">{{ lifecycle.lowconf }}</b>대</a>
-        · <a href="/vehicles?all=1" class="hover:text-white/80 hover:underline">기타·미분석 <b class="text-white/80">{{ lifecycle.other }}</b>대</a>
+        <a href="/vehicles?bucket=lowconf" class="hover:text-white/80 hover:underline">신뢰도 낮음 <b class="text-white/80">{{ lifecycle.lowconf }}</b>대</a>
+        · <a href="/vehicles?bucket=other" class="hover:text-white/80 hover:underline">기타·미분석 <b class="text-white/80">{{ lifecycle.other }}</b>대</a>
       </span>
       <a href="/vehicles?upcoming=30&sort=sale_date" class="inline-flex items-center gap-1 text-sky-200 hover:underline whitespace-nowrap">
         <span class="material-symbols-outlined text-[14px]">event_upcoming</span> 곧 열리는 경매 30일 <b id="kpi-upcoming">{{ lifecycle.upcoming30 }}</b>대 · 기일순 →</a>

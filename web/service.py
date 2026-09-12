@@ -460,6 +460,36 @@ def is_personal_use_pick(v: dict, bt: Optional[dict] = None, today=None) -> bool
     return personal_use_saving(v, bt) is not None
 
 
+# 대시보드 카드 ↔ 목록 필터를 **같은 함수**로 묶는다. 카드에서 usepick을 빼놓고 링크는
+# 안 빼서 "387대"를 눌렀더니 469건이 나오던 문제를 구조적으로 막는다
+# (2026-09-12 2회차 패널 앱품질 지적 3).
+LIFECYCLE_BUCKETS = ("won", "review", "usepick", "wait", "lowconf", "other")
+
+
+def lifecycle_bucket_of(v: dict, bt: Optional[dict] = None) -> str:
+    """물건이 속한 대시보드 버킷 **하나**를 돌려준다.
+
+    뺄셈으로 '기타'를 유도하면 겹침·누락이 생겨 합계가 총대수와 안 맞는다. 판정 순서를
+    한 곳에 못박아 **배타적이고 망라적**이게 만든다 — 어떤 물건도 두 칸에 들어가지 않고,
+    어떤 물건도 어느 칸에도 안 들어가는 일이 없다."""
+    if v.get("auction_result") == "낙찰":
+        return "won"
+    j = v.get("judgment")
+    if j == "입찰 검토 가능":
+        return "review"
+    if is_personal_use_pick(v, bt if bt is not None else backtest_stats()):
+        return "usepick"
+    if j == "유찰 대기":
+        return "wait"
+    if j == "시세 신뢰도 낮음, 수동 검토":
+        return "lowconf"
+    return "other"
+
+
+def in_lifecycle_bucket(v: dict, bucket: str, bt: Optional[dict] = None) -> bool:
+    return lifecycle_bucket_of(v, bt) == bucket
+
+
 def lifecycle_partition() -> dict:
     """전체 물건을 **겹치지 않는 상태**로 분해(합=총대수) — 대시보드 KPI 정합용.
 
@@ -467,21 +497,17 @@ def lifecycle_partition() -> dict:
     항상 합계가 총대수와 일치한다(낙찰 우선 → 판정별, reconcile_won_judgment 후 배타적).
     입찰예정(30일)은 '시간' 필터라 위 상태와 겹치므로 참고값으로만 함께 반환."""
     # 목록과 동일 규칙(hide_incomplete=True)으로 세어 카드 수 = 목록 수 = 드롭다운 수 보장(혼동 방지).
-    total = db.total_vehicles()
-    won = len(db.list_vehicles(result="낙찰", hide_incomplete=True))
-    review = len(db.list_vehicles(judgment="입찰 검토 가능", hide_incomplete=True))
-    wait = len(db.list_vehicles(judgment="유찰 대기", hide_incomplete=True))
-    lowconf = len(db.list_vehicles(judgment="시세 신뢰도 낮음, 수동 검토", hide_incomplete=True))
-    # 실사용 추천 — '유찰 대기'로 분류됐지만 소매보다 싸게 살 수 있는 물건을 건져낸다.
-    # 재판매 기준을 통과한 물건은 is_personal_use_pick가 제외하므로 review와 겹치지 않는다.
+    # ⚠ total_vehicles()는 COUNT(*)라 숨김 물건까지 센다. 헤더에 "총 1320대 모니터링"이라
+    # 띄우고 눌러 들어가면 1167건이 나오던 원인(2026-09-12 2회차 패널 앱품질 지적 3).
+    # 카드 수는 목록 필터(lifecycle_bucket_of)를 **그대로 돌려서** 센다 — 두 경로가 갈리면
+    # 또 어긋난다. 뺄셈으로 '기타'를 유도하지 않는 이유가 이것이다.
     _bt = backtest_stats()
-    usepick_rows = [v for v in db.list_vehicles(upcoming_days=None, hide_incomplete=True)
-                    if is_personal_use_pick(v, _bt)]
-    usepick = len(usepick_rows)
-    wait_only = max(0, wait - sum(1 for v in usepick_rows if v.get("judgment") == "유찰 대기"))
-    lc_only = max(0, lowconf - sum(1 for v in usepick_rows
-                                   if v.get("judgment") == "시세 신뢰도 낮음, 수동 검토"))
-    other = max(0, total - won - review - usepick - wait_only - lc_only)
+    _all = db.list_vehicles(hide_incomplete=True)
+    n = {b: 0 for b in LIFECYCLE_BUCKETS}
+    for v in _all:
+        n[lifecycle_bucket_of(v, _bt)] += 1
+    total, won, review = len(_all), n["won"], n["review"]
+    usepick, wait_only, lc_only, other = n["usepick"], n["wait"], n["lowconf"], n["other"]
     return {"total": total, "won": won, "review": review, "wait": wait_only, "lowconf": lc_only,
             "usepick": usepick, "other": other,
             # 신뢰도 낮음 + 기타를 한 줄로 묶어 보여주기 위한 합계(사용자 지시 2026-09-12)
@@ -2647,8 +2673,12 @@ def report_data(v: dict, config: dict, bt: dict) -> Optional[dict]:
     """종합 분석 리포트용 파생 데이터 — 실데이터·산정로직 기반(취득원가·수익 시뮬·민감도·신뢰도).
 
     지어내지 않는다: 있는 값으로 계산하고, 추정 항목은 화면에서 태그(추정)로 정직 표기.
+
+    시세는 **effective_median**(산정에 실제 반영하는 값)을 쓴다 — §01 판정문·상세 화면과
+    같은 값이어야 한다. 원본 median_price를 쓰면 같은 리포트 안에서 §01은 블렌드,
+    §07 재판매가는 원본이 되어 두 숫자가 어긋난다(2026-09-12 2회차 패널 앱품질 지적 1).
     """
-    med = v.get("median_price")
+    med = effective_median(v) or v.get("median_price")
     if not med:
         return None
     floor = v.get("min_sale_price") or 0

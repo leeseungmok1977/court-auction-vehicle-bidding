@@ -367,7 +367,7 @@ VEHICLES_PAGE_SIZE = 12
 def vehicles(request: Request, judgment: str = "", maker: str = "", q: str = "",
              sort: str = "recent", upcoming: str = "", result: str = "", status: str = "",
              cond: str = "", page: int = 1, date: str = "", court: str = "", promising: str = "",
-             segment: str = "", all: str = "", usepick: str = ""):
+             segment: str = "", all: str = "", usepick: str = "", bucket: str = ""):
     # upcoming은 str로 받아 빈값/오염값에 견고하게 파싱(폼 hidden 빈값·손편집 URL 대비)
     up = int(upcoming) if upcoming.strip().lstrip("-").isdigit() else 0
     if up < 0:
@@ -383,6 +383,8 @@ def vehicles(request: Request, judgment: str = "", maker: str = "", q: str = "",
     if segment:      # 차종 프리셋(상용·패밀리·SUV·세단·경차) — 모델명 근사 분류로 필터
         rows = [r for r in rows if service.vehicle_segment(r) == segment]
     _bt = service.backtest_stats()
+    if bucket:       # 대시보드 카드 링크 — 카드 수와 목록 수가 정확히 같아야 한다
+        rows = [r for r in rows if service.in_lifecycle_bucket(r, bucket, _bt)]
     if usepick == "1":   # 실사용 추천 — 되팔이 마진이 아니라 '소매보다 싼가'로 거른다
         rows = [r for r in rows if service.is_personal_use_pick(r, _bt)]
         for r in rows:   # 추천 근거(소매 대비 절감액)를 화면에 보여주기 위해 행에 싣는다
@@ -466,7 +468,8 @@ def vehicles(request: Request, judgment: str = "", maker: str = "", q: str = "",
 @app.get("/api/vehicles/count")
 def vehicles_count(judgment: str = "", maker: str = "", q: str = "", result: str = "",
                    status: str = "", cond: str = "", upcoming: str = "", date: str = "",
-                   court: str = "", segment: str = "", all: str = ""):
+                   court: str = "", segment: str = "", all: str = "", bucket: str = "",
+                   usepick: str = ""):
     """저장한 검색의 '새 매물' 감지용 — 동일 필터의 현재 건수만 반환(JSON). 외부 데이터 없음.
 
     ⚠️ `/vehicles`와 **같은 모수**를 써야 한다. 예전엔 hide_incomplete를 넘기지 않아
@@ -479,6 +482,12 @@ def vehicles_count(judgment: str = "", maker: str = "", q: str = "", result: str
                             hide_incomplete=(all != "1"))
     if segment:
         rows = [r for r in rows if service.vehicle_segment(r) == segment]
+    if bucket or usepick == "1":     # /vehicles와 같은 필터를 타야 건수가 일치한다
+        _bt = service.backtest_stats()
+        if bucket:
+            rows = [r for r in rows if service.in_lifecycle_bucket(r, bucket, _bt)]
+        if usepick == "1":
+            rows = [r for r in rows if service.is_personal_use_pick(r, _bt)]
     return {"total": len(rows)}
 
 
@@ -670,6 +679,11 @@ def vehicle_report(request: Request, vid: str):
         "request": request, "v": service.public_view(v, _adm), "expected": expected, "appraisal": appraisal,
         "report": _report, "backtest": bt, "dist": dist if _adm else None,
         "photos": photos, "comps_won": comps_won, "asum": asum, "verdict": verdict,
+        # 리포트의 판정·비율은 상세·산정과 **같은 시세**를 써야 한다. plain_verdict/report_data는
+        # 이미 effective_median(엔카+케이카 블렌드)을 쓰는데 템플릿만 원본 median_price를 써서
+        # 같은 물건에 "11% 싸다"(상세)와 "시세 초과·비권장"(리포트)이 동시에 나왔다
+        # (2026-09-12 2회차 패널 앱품질 지적 1).
+        "eff_median": service.effective_median(v),
         "comp_min_n": service.COMP_MIN_N, "comp_ratio_med": comp_ratio_med,
         # 01 종합 프로필(6축, 미산출=None; 매물건수는 관리자만, 잔존가치는 출시가 공개 규칙과 동일 게이트)
         "hexa": service.hexagon_scores(v, include_private=_adm,

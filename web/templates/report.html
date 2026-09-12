@@ -30,7 +30,7 @@
   .gloss-row .gloss .pop{left:0;right:auto;max-width:min(250px,100%)}
   .gloss-row .gloss .pop::before{display:none}
 </style>
-{% set med = v.median_price or 0 %}
+{% set med = eff_median or v.median_price or 0 %}   {# 상세·산정과 동일한 시세(§01 판정문과 일치) #}
 {% set floor = v.min_sale_price or 0 %}
 {% set exp = (report.exp if report else 0) or 0 %}
 {% set upper = v.upper_bid or 0 %}
