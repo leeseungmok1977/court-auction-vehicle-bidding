@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+import re
 import threading
 import time
 import traceback
@@ -705,6 +706,61 @@ NEWCAR_RECHECK_DAYS = 30        # 매칭 실패/성공 후 재시도 간격(매�
 NEWCAR_MAX_CANDIDATES = 3       # 물건당 시도할 보배 모델 후보 수(연식 검증으로 확정)
 NEWCAR_MAX_REQ_PER_VEHICLE = 45 # 물건 하나가 일일 예산을 독식하지 않도록(캐시 적중은 0으로 계산됨)
 NEWCAR_BASIS_MAX_GAP = 2        # 목표 연식보다 최대 몇 년 전 가격표까지 '당시 출시가'로 인정할지
+# 일일 요청 상한(사용자 승인 2026-09-12로 300 → 1200 상향).
+# 요청 간 5초 고정이므로 1200이면 하루 약 100분간 0.2건/초로 흘려보낸다.
+# C.4의 안전장치는 그대로: 지연 5초·물건당 45건·403/429 즉시중단·실패 시 30일 백오프.
+NEWCAR_DAILY_CAP = 1200
+# 신차 가격표에 없을 차종(중장비·특장) — 매칭은 실패하는데 물건당 최대 45요청을 태운다.
+# 2026-09-12 실측(입찰예정 428건)에서 덤프트럭 18·굴착기 6·공기압축기 4·탱크로리 3·지게차 2 등 약 50건.
+NEWCAR_SKIP_WORDS = ("덤프트럭", "굴착기", "지게차", "공기압축기", "콘크리트펌프", "펌프카",
+                     "탱크로리", "고소작업", "크레인", "트랙터", "로더", "믹서", "살수차",
+                     "청소차", "소방차", "사다리차", "트레일러", "특장", "재단")
+# 반대로 반드시 남길 경상용(실제 매칭 성공 사례 있음 — 포터2 일렉트릭 4,060~4,274만원)
+NEWCAR_KEEP_WORDS = ("포터", "봉고", "마이티", "렉스턴")
+# 제작사명+톤수로 적힌 개조 화물차(예: 대우25톤카고트럭·한중4톤카고)는 가격표가 없다.
+# 단 1톤급(포터·봉고)은 위 KEEP로 살린다.
+NEWCAR_TON_RE = re.compile(r"(\d+(?:\.\d+)?)\s*톤")
+
+
+def newcar_skip(v: dict) -> bool:
+    """출시가 수집을 건너뛸 물건인가(중장비·특장). 예산을 태우기만 하는 대상만 좁게 거른다."""
+    m = (v.get("model") or "").replace(" ", "")
+    if not m:
+        return False                      # 모델명이 없으면 앞단에서 요청 0으로 걸러진다
+    if any(w in m for w in NEWCAR_KEEP_WORDS):
+        return False
+    if any(w in m for w in NEWCAR_SKIP_WORDS):
+        return True
+    ton = NEWCAR_TON_RE.search(m)
+    return bool(ton and float(ton.group(1)) >= 2)
+
+
+def newcar_pool(vehicles: list, cutoff: str, vehicle_ids: Optional[list] = None) -> list:
+    """출시가를 채울 물건을 고르고 **사용자가 먼저 보는 순서**로 정렬한다.
+
+    왜 정렬이 필요한가(2026-09-12 실측): 입찰예정 428건이 (모델,연식) 320가지로 흩어져 있고
+    그중 270가지가 1건짜리라 캐시 이점이 거의 안 생긴다. 무작위 순서로 돌린 결과
+    **추천 17건 중 출시가 확보가 0건**이었다 — 홈에서 가장 먼저 보이는 화면의 잔존가치 축이
+    전부 '미산출'로 떴다. 같은 예산으로 순서만 바꿔 체감 커버리지를 올린다.
+
+    순서: ① 추천(입찰 검토 가능) → ② 매각기일 임박 → ③ id.
+    vehicle_ids로 특정 물건을 콕 집은 경우(관리자 수동)는 제외 규칙을 적용하지 않는다.
+    """
+    manual = bool(vehicle_ids)
+    picked = []
+    for v in vehicles:
+        if not v.get("year"):
+            continue
+        if manual and v["id"] not in vehicle_ids:
+            continue
+        if (v.get("newcar_checked_at") or "") >= cutoff:
+            continue
+        if not manual and newcar_skip(v):
+            continue
+        picked.append(v)
+    picked.sort(key=lambda v: (0 if v.get("judgment") == "입찰 검토 가능" else 1,
+                               v.get("sale_date") or "9999-12-31", v.get("id") or ""))
+    return picked
 
 
 def _nc_cached_or(table, key_col, key, fetch_fn, put_row_fn):
@@ -785,7 +841,7 @@ def newcar_collect_model_year(bs, budget, maker_no: str, model_no: str, year: in
     return {"prices": prices, "release": release, "n_grades": n_grades, "basis_year": basis_year}
 
 
-def newcar_collect(max_requests: int = 300, max_models: Optional[int] = None,
+def newcar_collect(max_requests: int = NEWCAR_DAILY_CAP, max_models: Optional[int] = None,
                    vehicle_ids: Optional[list] = None, within_days: int = 30) -> dict:
     """입찰예정 물건에 '당시 출시가 최저~최고'를 붙인다(보배드림, 소량·저속, 캐시 우선).
 
@@ -801,9 +857,7 @@ def newcar_collect(max_requests: int = 300, max_models: Optional[int] = None,
     out = {"vehicles": 0, "matched": 0, "unmatched": 0, "requests": 0, "stopped": None}
     today = _date.today()
     cutoff = (today - _td(days=NEWCAR_RECHECK_DAYS)).isoformat()
-    pool = [v for v in db.list_vehicles(upcoming_days=within_days)
-            if v.get("year") and (not vehicle_ids or v["id"] in vehicle_ids)
-            and (v.get("newcar_checked_at") or "") < cutoff]
+    pool = newcar_pool(db.list_vehicles(upcoming_days=within_days), cutoff, vehicle_ids)
     # 제조사 목록(1회 수집 후 캐시)
     conn = db.connect(); rows = conn.execute("SELECT maker_no, maker_name, fetched_at FROM newcar_makers").fetchall(); conn.close()
     makers = {r["maker_name"]: r["maker_no"] for r in rows}
@@ -1073,7 +1127,7 @@ def daily_update(within_days: int = 30, analyze: bool = True,
     try:
         if run_id:
             db.update_run(run_id, message="당시 출시가 범위 수집(보배드림)")
-        newcar = newcar_collect(max_requests=int(config.get("newcar_daily_cap", 300)), within_days=within_days)
+        newcar = newcar_collect(max_requests=int(config.get("newcar_daily_cap", NEWCAR_DAILY_CAP)), within_days=within_days)
     except Exception as e:  # noqa: BLE001
         newcar = {"stopped": f"오류: {str(e)[:60]}", "matched": 0}
     # ②-3 사진 자동 정렬(로컬 모델·외부요청 0) — 신규 물건 썸네일이 지도·서류부터 나오지 않게.
