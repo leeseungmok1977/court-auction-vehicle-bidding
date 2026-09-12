@@ -81,8 +81,11 @@
   {{ ui.gloss('신뢰도 낮음', '동급 시세 표본이 부족해 예상 낙찰가를 믿기 어려운 물건이에요. 직접 시세 확인이 필요합니다.', q=false, cls='font-bold text-sky-700') }}
   {{ ui.gloss('입찰 보류', '사고·침수·시세 괴리 등 위험 신호가 있어 입찰을 보류하는 편이 좋은 물건이에요.', q=false, cls='font-bold text-rose-600') }}
   {{ ui.gloss('종결·미분석', '이미 매각이 끝났거나(종결) 아직 분석 전(미분석)인 물건이에요.', q=false, cls='font-bold text-slate-600') }}
-  <span class="text-mut">·&nbsp;표 안의 <span class="text-rose-600/70 font-bold">*</span> = 시세 신뢰도 낮음(참고용) · <span class="font-bold">↑</span> = 최저매각가가 예상낙찰가보다 높음(추가 유찰 필요)</span>
-  <span class="ml-auto text-mut">미분석 = 대시보드 <b class="text-txt">[시세 분석]</b> 또는 물건 클릭</span>
+  {# 이어지는 줄이 '·' 불릿과 같은 기준선에서 시작하면 새 항목처럼 읽힌다 → 행잉 인덴트.
+     마지막 줄만 ml-auto로 우측에 떠 정렬 축이 둘이 되던 것도 모바일에선 좌측으로 통일.
+     모바일은 표가 아니라 카드라 '표 안의'는 사실과 다르다 → '목록의'. (2026-09-12 검수) #}
+  <span class="text-mut pl-3 -indent-3">·&nbsp;목록의 <span class="text-rose-600/70 font-bold">*</span> = 시세 신뢰도 낮음(참고용) · <span class="font-bold">↑</span> = 최저가 &gt; 예상낙찰가 (유찰 더 필요)</span>
+  <span class="text-mut ml-0 lg:ml-auto">미분석 = 대시보드 <b class="text-txt">[시세 분석]</b> 또는 물건 클릭</span>
 </div>
 
 <!-- 테이블 (데스크톱 lg+) / 카드 (모바일) -->

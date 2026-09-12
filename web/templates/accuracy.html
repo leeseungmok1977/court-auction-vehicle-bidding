@@ -30,12 +30,12 @@
   <div class="bg-surface border border-line rounded-lg p-4">
     <div class="text-xs text-mut">±20% 이내 적중</div>
     <div class="font-mono text-3xl font-bold text-emerald-600 tnum mt-1">{{ bt.within20_pct }}<span class="text-lg text-mut">%</span></div>
-    <div class="text-[11px] text-mut mt-1">10건 중 약 {{ (bt.within20_pct/10)|round|int }}건이 오차 ±20% 안</div>
+    <div class="text-[11px] text-mut mt-1">10건 중 약 {{ (bt.within20_pct/10)|round|int }}건 적중</div>
   </div>
   <div class="bg-surface border border-line rounded-lg p-4">
     <div class="text-xs text-mut">±10% 이내 적중</div>
     <div class="font-mono text-3xl font-bold text-txt tnum mt-1">{{ bt.within10_pct }}<span class="text-lg text-mut">%</span></div>
-    <div class="text-[11px] text-mut mt-1">더 촘촘한 ±10% 기준 정확도</div>
+    <div class="text-[11px] text-mut mt-1">더 엄격한 기준의 정확도</div>
   </div>
   <div class="bg-surface border border-line rounded-lg p-4">
     <div class="text-xs text-mut">검증 표본</div>
@@ -47,10 +47,16 @@
 {# 낙찰가율 분포 요약 #}
 {% if bt.discount_median %}
 <div class="bg-surface border border-line rounded-lg p-4">
-  <div class="flex items-baseline justify-between gap-2 mb-2">
-    <h3 class="text-sm font-semibold text-txt">실제 낙찰가율 <span class="text-mut font-normal">— 낙찰가 ÷ 소매 시세중앙값</span></h3>
-    <span class="font-mono text-sm text-mut">중앙값 <b class="text-primary">{{ (bt.discount_median*100)|round|int }}%</b></span>
+  {# 한 줄에 제목·수식·값 3덩어리를 넣으면 360px에서 '÷'가 줄 첫머리로 가고 '중앙값'이
+     두 번 나온다(2026-09-12 디자인 검수). 값은 1행 우측, 수식은 2행 전체폭 캡션으로 분리. #}
+  <div class="flex items-baseline justify-between gap-2">
+    <h3 class="text-sm font-semibold text-txt min-w-0">실제 낙찰가율</h3>
+    <div class="shrink-0 text-right leading-tight">
+      <div class="text-[10px] text-mut">중앙값</div>
+      <div class="font-mono text-lg font-bold text-primary tnum">{{ (bt.discount_median*100)|round|int }}%</div>
+    </div>
   </div>
+  <p class="text-[11px] text-mut mb-2">낙찰가 ÷ 소매 시세중앙값</p>
   {% if bt.discount_p25 and bt.discount_p75 %}
   {% set lo = (bt.discount_p25*100)|round|int %}{% set hi = (bt.discount_p75*100)|round|int %}{% set md = (bt.discount_median*100)|round|int %}
   <div class="relative h-8">

@@ -58,8 +58,12 @@ body {
   word-break: keep-all;          /* 상속 — 한글 어절이 중간에서 갈리지 않게 */
   overflow-wrap: break-word;     /* 끊을 수 없는 긴 문자열이 영역을 뚫는 것만 방지 */
 }
-/* 표는 예외 — 셀이 최소폭을 잃으면 가로 스크롤이 길어진다 */
-table, thead, tbody, tr, th, td { word-break: normal; }
+/* 표도 어절은 지킨다. ⚠ 한글에서 `word-break: normal`은 "끊지 마라"가 아니라
+   **"음절 아무 데서나 끊어라"** 다 — 예외로 두면 표 안에서만 '충당'이 '충/당'으로 갈린다
+   (2026-09-12 디자인 검수 적발: 리포트 총취득원가 표에서 마지막 줄 11px = 한 글자).
+   대신 `overflow-wrap: anywhere` 를 쓴다. break-word 와 달리 min-content 계산에 반영돼
+   셀 최소폭이 '가장 긴 어절'만큼 부풀지 않으므로 가로 스크롤이 늘지 않는다. */
+table, thead, tbody, tr, th, td { word-break: keep-all; overflow-wrap: anywhere; }
 
 /* 스크롤바(라이트) */
 .custom-scrollbar::-webkit-scrollbar { width: 10px; height: 10px; }
