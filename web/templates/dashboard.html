@@ -258,7 +258,8 @@
   </div>
   <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
     {% for v in alerts[:6] %}
-    <a href="/vehicle/{{ v.id }}" class="flex gap-3 border border-line rounded-lg p-3 hover:border-amber-300 hover:bg-amber-50/30 transition tabular-nums">
+    {# 그리드 아이템은 min-width:auto라 내용 최소폭이 트랙을 밀어낸다 — 320px에서 카드를 넘던 원인 #}
+    <a href="/vehicle/{{ v.id }}" class="flex gap-3 min-w-0 border border-line rounded-lg p-3 hover:border-amber-300 hover:bg-amber-50/30 transition tabular-nums">
       <div class="w-20 h-16 shrink-0 rounded-md overflow-hidden bg-slate-100 flex items-center justify-center">
         {% if v.photo_url %}<img src="{{ v.photo_url }}" alt="" loading="lazy" class="w-full h-full object-cover">
         {% else %}<span class="material-symbols-outlined text-mut text-3xl">directions_car</span>{% endif %}
