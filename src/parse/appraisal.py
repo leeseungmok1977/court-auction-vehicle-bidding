@@ -78,7 +78,9 @@ def parse_appraisal(text: str, today: Optional[date] = None) -> Optional[dict]:
     runnable = None
     if re.search(r"(시동|운행)[^.]{0,12}(가능|양호)", clean):
         runnable = True
-    if re.search(r"(시동|운행)[^.]{0,12}(불가|불능|안 ?됨|되지\s*않)", clean):
+    # 실측 미탐(2026-09-12): "차량키가 보관장소에 있으나 시동이 걸리지 않는바" —
+    # 기존 패턴은 '되지 않'만 봐서 '걸리지 않'을 놓쳤다. 감정요항 실제 표현을 반영한다.
+    if re.search(r"(시동|운행)[^.]{0,12}(불가|불능|안 ?됨|(?:되|걸리|켜지)지\s*않)", clean):
         runnable = False
 
     # 등급(밸류에이션용, 보수적): 관리불량·중대손상 → poor / 경미손상 → fair / 그 외 → unknown

@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS vehicles (
     inspection_to TEXT,          -- 자동차검사 유효기간 만료일 (감정요항 파싱)
     condition_level TEXT,        -- 상태 등급: unknown/fair/poor (감정요항 파싱)
     condition_flags TEXT,        -- json: 상태·검사 플래그
+    runnable      TEXT,          -- 시동·운행: yes/no/unknown (감정요항 파싱)
     photo_order   TEXT,          -- json: 사진 파일명 순서(정면·측면·실내… 비전 분류)
     photo_count   INTEGER,
     folder_key    TEXT,
@@ -228,7 +229,7 @@ def init_db() -> None:
             conn.execute("ALTER TABLE vehicles ADD COLUMN kcar_checked_at TEXT")
         if "spec_remark" not in cols:
             conn.execute("ALTER TABLE vehicles ADD COLUMN spec_remark TEXT")
-        for col in ("inspection_to", "condition_level", "condition_flags", "photo_order",
+        for col in ("inspection_to", "condition_level", "condition_flags", "runnable", "photo_order",
                     "photo_order_src",                       # 'vision'(Claude 비전) / 'auto'(로컬 모델 자동 정렬)
                     "market_ref_date", "market_ref_id",     # 동급참조 시세의 출처(정직 표기·추적)
                     "newcar_model", "newcar_release", "newcar_checked_at"):   # 당시 출시가(보배드림) 표기
@@ -330,7 +331,7 @@ _LISTING_KEEP = {
     "market_platform", "upper_bid", "lower_bound", "judgment", "breakdown",
     "repair_cost", "mileage_km", "displacement_cc", "fuel_code", "accident_grade",
     "accident_hits", "insurance_history", "appraisal_ecdoc_id", "spec_remark", "photo_count",
-    "inspection_to", "condition_level", "condition_flags", "photo_order", "photo_order_src",
+    "inspection_to", "condition_level", "condition_flags", "runnable", "photo_order", "photo_order_src",
     "analyzed_at", "match_label", "market_ref_date", "market_ref_id",
     "newcar_min", "newcar_max", "newcar_n", "newcar_model", "newcar_release", "newcar_checked_at", "newcar_basis_year",
     "auction_result", "winning_price", "dxdy_history", "result_checked_at", "result_source",

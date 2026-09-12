@@ -182,7 +182,14 @@ td.r,th.r{text-align:right}td.c,th.c{text-align:center}
 .hx-svg{width:100%;height:auto;display:block;overflow:visible}
 .hx-ring{fill:none;stroke:var(--line);stroke-width:1}
 .hx-spoke{stroke:var(--line);stroke-width:1}
-.hx-poly{fill:var(--cobalt);fill-opacity:.1;stroke:var(--cobalt);stroke-width:2;stroke-linejoin:round}
+.hx-poly{fill:var(--cobalt);fill-opacity:.08;stroke:none}
+/* 미산출 축은 점선 스포크 + 회색 라벨로 '자료 없음'을 그림에서도 드러낸다.
+   건너뛴 변(측정값이 아니라 이어붙인 선)은 점선 — 실선으로 그리면 그 축이 0점으로 읽힌다
+   (2026-09-12 디자인 검수 2회차: 사고·상태 0점 오독은 이 제품에서 가장 비싼 오해). */
+.hx-spoke-off{stroke:var(--ink-faint);stroke-width:1;stroke-dasharray:3 3;opacity:.7}
+.hx-edge{stroke:var(--cobalt);stroke-width:2;stroke-linecap:round;fill:none}
+.hx-edge.gap{stroke-dasharray:5 4;opacity:.55}
+.hx-lbl-off{font-size:9px;font-weight:600;fill:var(--ink-faint)}
 .hx-dot{fill:var(--cobalt);stroke:#fff;stroke-width:2;transition:r .12s}
 .hx-hit{fill:transparent;outline:none;cursor:default}
 .hx-hit:hover,.hx-hit:focus-visible{stroke:var(--cobalt);stroke-opacity:.35;stroke-width:2}
@@ -354,11 +361,12 @@ document.addEventListener('click', function(e){
           <div class="v-label">종합 프로필 <span style="font-weight:400;color:var(--ink-faint)">— 6축 0~100 · {{ hexa.n_avail }}/6축 산출</span></div>
           <svg class="hx-svg" viewBox="0 0 260 260" role="img" aria-label="종합 프로필: {% for a in hexa.axes %}{{ a.name }} {{ a.score if a.score is not none else '자료 없음' }}{{ ', ' if not loop.last }}{% endfor %}">
             {% for pts in hexa.rings %}<polygon class="hx-ring" points="{{ pts }}"/>{% endfor %}
-            {% for a in hexa.axes %}<line class="hx-spoke" x1="130" y1="130" x2="{{ a.ex }}" y2="{{ a.ey }}"/>{% endfor %}
+            {% for a in hexa.axes %}<line class="{{ 'hx-spoke' if a.score is not none else 'hx-spoke-off' }}" x1="130" y1="130" x2="{{ a.ex }}" y2="{{ a.ey }}"/>{% endfor %}
             {% if hexa.poly %}<polygon class="hx-poly" points="{{ hexa.poly }}"/>{% endif %}
+            {% for e in hexa.edges %}<line class="hx-edge{{ ' gap' if e.dashed }}" x1="{{ e.x1 }}" y1="{{ e.y1 }}" x2="{{ e.x2 }}" y2="{{ e.y2 }}"/>{% endfor %}
             {% for a in hexa.axes %}
               {% if a.score is not none %}<circle class="hx-dot" cx="{{ a.px }}" cy="{{ a.py }}" r="4.5"/><circle class="hx-hit" cx="{{ a.px }}" cy="{{ a.py }}" r="14" tabindex="0" data-i="{{ loop.index0 }}" aria-label="{{ a.name }} {{ a.score }}점 — {{ a.note }}"/>{% endif %}
-              <text class="hx-lbl" x="{{ a.lx }}" y="{{ a.ly }}" text-anchor="{{ a.anchor }}">{{ a.name }}{% if a.score is none %} —{% endif %}</text>
+              <text class="hx-lbl" x="{{ a.lx }}" y="{{ a.ly }}" text-anchor="{{ a.anchor }}">{{ a.name }}</text>{% if a.score is none %}<text class="hx-lbl-off" x="{{ a.lx }}" y="{{ a.ly + 11 }}" text-anchor="{{ a.anchor }}">미산출</text>{% endif %}
             {% endfor %}
           </svg>
           <div class="hx-tip" id="hxTip" role="status"></div>

@@ -353,31 +353,93 @@ def reconcile_won_judgment() -> int:
 USE_TAX_RATE = 0.07          # 취득세(비영업용 승용)
 USE_AUCTION_FEE = 500_000    # 경매 취득 부대비 — 이전등록 + 탁송
 USE_RETAIL_FEE = 300_000     # 소매 구매 부대비 — 이전등록
-USE_REPAIR_RESERVE = 500_000 # 경매차 정비 충당(성능점검·보증이 없으므로 보수적으로 잡는다)
+USE_REPAIR_BASE = 500_000    # 정비 충당 기본(성능점검·보증이 없음) — 상태별 비용은 config에서 가산
+# 시세/감정가 정합 대역 — market_match.appraisal_guard의 strong 대역과 동일하게 맞춘다.
+USE_APPRAISAL_LOW, USE_APPRAISAL_HIGH = 0.50, 1.80
 
 
-def personal_use_saving(v: dict, bt: Optional[dict] = None) -> Optional[int]:
+def use_repair_reserve(v: dict, config: Optional[dict] = None) -> int:
+    """실사용 정비 충당(원). 기본액 + config.yaml의 condition_costs를 물건 상태에 맞춰 가산.
+
+    상수 50만원만 쓰면 시동이 걸리지 않는 차에도 같은 금액이 잡혀 절감액이 부풀려진다
+    (2026-09-12 2회차 패널 지적). 상태 비용표는 이미 상한가 산정에서 쓰던 값을 그대로 쓴다."""
+    costs = (config or load_config()).get("condition_costs", {}) or {}
+    add = USE_REPAIR_BASE
+    lvl = v.get("condition_level")
+    if lvl == "poor":
+        add += int(costs.get("poor", 0))
+    elif lvl == "fair":
+        add += int(costs.get("fair", 0))
+    ins = str(v.get("inspection_to") or "")[:10]
+    if len(ins) == 10 and ins < date.today().isoformat():
+        add += int(costs.get("inspection_expired", 0))
+    if not v.get("photo_count"):
+        add += int(costs.get("no_photos", 0))
+    return add
+
+
+def use_accident_rate(v: dict, config: Optional[dict] = None) -> tuple:
+    """비교 대상 소매 시세에 적용할 사고 감가율과 '가정 여부'.
+
+    소매 시세 표본은 대부분 무사고차다. 사고 이력이 있는 차를 그 값과 그냥 비교하면
+    절감액이 과대평가된다. 사고 이력을 **확인하지 못한** 경우에도 무사고로 치지 않는다
+    — 경매는 취소가 안 되므로 불리한 쪽으로 가정한다(실측: 추천 82건 중 근거 있는 무사고 0건).
+
+    반환: (감가율, 가정으로 적용했는지)"""
+    rates = (config or load_config()).get("accident_depreciation_rate", {}) or {}
+    ag = v.get("accident_grade")
+    if ag in ("accident", "minor", "flood"):
+        return float(rates.get(ag, 0) or 0), False
+    if ag == "none" and accident_evidence(v):
+        return float(rates.get("none", 0) or 0), False
+    return float(rates.get("accident", 0.15) or 0), True   # 이력 미확인 → 사고 가정
+
+
+def personal_use_saving(v: dict, bt: Optional[dict] = None,
+                        config: Optional[dict] = None) -> Optional[int]:
     """실사용 목적으로 경매가 소매보다 얼마나 싼가(원). 이득이 없으면 None.
 
     비교 기준은 **예상 낙찰가**다. 최저매각가로 계산하면 '그 값에 낙찰될 때만' 성립하는
     낙관적 수치가 되고, 무엇보다 예상낙찰가가 시세를 넘는 물건에 '비권장' 경고를 띄우면서
     같은 물건을 추천 칸에 올리는 모순이 생긴다(2026-09-12 P0-3 수정과 정합).
 
-        경매 총비용 = 예상낙찰가 × (1+취득세) + 이전·탁송 + 정비충당
-        소매 총비용 = 소매 시세  × (1+취득세) + 이전등록
-    """
+        경매 총비용 = 예상낙찰가 × (1+취득세) + 이전·탁송 + 상태별 정비충당
+        소매 총비용 = 소매 시세 × (1−사고감가) × (1+취득세) + 이전등록
+
+    사고감가를 빼는 이유는 use_accident_rate 주석 참조. 절감액은 항상 **보수적인 쪽**으로
+    계산한다 — 나중에 무사고로 확인되면 이득이 커질 뿐, 반대로 놀랄 일은 없다."""
     med = v.get("median_price")
     if not med or v.get("market_confidence_label") == "낮음":
         return None                      # 시세를 못 믿으면 비교 자체가 성립하지 않는다
     if v.get("accident_grade") == "flood" or v.get("judgment") in ("종결", "입찰 보류"):
         return None
+    if v.get("runnable") == "no":
+        return None                      # 시동·운행 불가 — 수리비가 열려 있어 '싸다'고 말할 수 없다
+    ap = v.get("appraisal_value") or 0
+    if ap and not (USE_APPRAISAL_LOW <= med / ap <= USE_APPRAISAL_HIGH):
+        return None                      # 시세가 감정가와 어긋남 = 오매칭 의심 → 절감액 신뢰 불가
     exp = expected_for(v, bt if bt is not None else backtest_stats())
     if not exp:
         return None
-    auction = exp * (1 + USE_TAX_RATE) + USE_AUCTION_FEE + USE_REPAIR_RESERVE
-    retail = med * (1 + USE_TAX_RATE) + USE_RETAIL_FEE
+    cfg = config or load_config()
+    rate, _assumed = use_accident_rate(v, cfg)
+    auction = exp * (1 + USE_TAX_RATE) + USE_AUCTION_FEE + use_repair_reserve(v, cfg)
+    retail = med * (1 - rate) * (1 + USE_TAX_RATE) + USE_RETAIL_FEE
     gain = retail - auction
     return int(round(gain)) if gain > 0 else None
+
+
+def personal_use_detail(v: dict, bt: Optional[dict] = None,
+                        config: Optional[dict] = None) -> Optional[dict]:
+    """화면 표기용 절감액 내역 — 어떤 가정으로 나온 숫자인지 그대로 보여주기 위한 것."""
+    saving = personal_use_saving(v, bt, config)
+    if saving is None:
+        return None
+    cfg = config or load_config()
+    rate, assumed = use_accident_rate(v, cfg)
+    return {"saving": saving, "reserve": use_repair_reserve(v, cfg),
+            "accident_rate": rate, "accident_assumed": assumed,
+            "comp": int(round((v.get("median_price") or 0) * (1 - rate)))}
 
 
 def is_personal_use_pick(v: dict, bt: Optional[dict] = None, today=None) -> bool:
@@ -780,7 +842,22 @@ def hexagon_scores(v: dict, today=None, include_private: bool = False, newcar_ok
             a["px"], a["py"] = _hx_pt(i, max(0.04, a["score"] / 100))
             avail.append(f"{a['px']},{a['py']}")
     rings = [" ".join(f"{x},{y}" for x, y in (_hx_pt(i, r / 100) for i in range(6))) for r in (25, 50, 75, 100)]
-    return {"axes": axes, "n_avail": len(avail), "poly": " ".join(avail) if len(avail) >= 3 else "", "rings": rings}
+
+    # 폴리곤 변(edge)을 개별 선분으로도 내보낸다.
+    # 왜: 미산출 축은 꼭짓점을 안 찍지만, **남은 축끼리 직선으로 이으면 그 선이 미산출 축 방향의
+    # 중심 근처를 지나** 사용자에게 '그 축은 0점'으로 읽힌다(2026-09-12 디자인 검수 2회차 적발).
+    # 사고·상태가 0점으로 오독되는 건 이 제품에서 가장 비싼 오해다.
+    # 그래서 **축을 건너뛴 변은 점선**으로 그려 "이 변은 측정값이 아니라 이어붙인 선"임을 밝힌다.
+    scored = [i for i, a in enumerate(axes) if a["score"] is not None]
+    edges = []
+    if len(scored) >= 3:
+        for k, i in enumerate(scored):
+            j = scored[(k + 1) % len(scored)]
+            gap = (j - i) % 6                      # 1이면 이웃 축, 2 이상이면 미산출 축을 건너뛴 변
+            edges.append({"x1": axes[i]["px"], "y1": axes[i]["py"],
+                          "x2": axes[j]["px"], "y2": axes[j]["py"], "dashed": gap > 1})
+    return {"axes": axes, "n_avail": len(avail),
+            "poly": " ".join(avail) if len(avail) >= 3 else "", "edges": edges, "rings": rings}
 
 
 # ── 당시 출시가(신차가) 범위 — 보배드림 신차가격표 ─────────────────────────
@@ -1622,20 +1699,27 @@ def _appraisal_signals(text: str, config: Optional[dict] = None) -> dict:
     if not p:
         return {}
     insp = p.get("inspection")
+    run = p["condition"].get("runnable")
     return {
         "inspection_to": insp["valid_to"] if insp else None,
         "condition_level": p["condition"]["level"],
         "condition_flags": p["condition"]["damage"] or None,
+        # 시동·운행 여부는 실사용 추천의 하드 배제 조건이라 별도 컬럼으로 보존한다.
+        # 키워드 부재를 '운행 가능'으로 단정하지 않는다 → unknown.
+        "runnable": {True: "yes", False: "no"}.get(run, "unknown"),
     }
 
 
-def backfill_appraisal_signals() -> int:
-    """저장된 감정요항(appraisal.txt)에서 검사만료일·상태등급을 채운다(무네트워크, 최초 1회).
-    condition_level이 아직 없는(NULL) 물건만 처리 → 이후 시작 시엔 빠르게 통과."""
+def backfill_appraisal_signals(force: bool = False) -> int:
+    """저장된 감정요항(appraisal.txt)에서 검사만료일·상태등급·시동여부를 채운다(무네트워크).
+
+    기본은 condition_level이 아직 없는(NULL) 물건만 처리 → 시작 시엔 빠르게 통과.
+    force=True면 전건 재파싱한다 — 파서 규칙이 바뀌었을 때 쓴다(2026-09-12: '시동이
+    걸리지 않는' 표현 미탐을 고쳐 재파싱이 필요했다)."""
     import os
     updated = 0
     for v in db.list_vehicles():
-        if v.get("condition_level"):
+        if v.get("condition_level") and not force:
             continue
         fk = v.get("folder_key") or v.get("id")
         fp = os.path.join("data", fk, "appraisal.txt")
@@ -1648,9 +1732,41 @@ def backfill_appraisal_signals() -> int:
         db.update_fields(v["id"],
                          condition_level=sig.get("condition_level") or "unknown",
                          inspection_to=sig.get("inspection_to"),
-                         condition_flags=sig.get("condition_flags"))
+                         condition_flags=sig.get("condition_flags"),
+                         runnable=sig.get("runnable") or "unknown")
         updated += 1
     return updated
+
+
+def reapply_appraisal_guard() -> dict:
+    """저장된 시세·감정가로 감정가 정합 비율을 다시 계산하고, 어긋난 신뢰도를 낮춘다(무네트워크).
+
+    2026-09-12 2회차 패널 실측: 2016 그랜저(대구 2026타경100075)는 시세 2,750만 / 감정가 850만
+    = **3.24배**인데 저장된 market_vs_appraisal은 0.69, 신뢰도는 59('보통')였다. 가드는 매칭
+    시점에 한 번만 돌고, 이후 감정가나 시세가 갱신돼도 다시 돌지 않아 값이 낡은 것이다.
+    낡은 신뢰도는 '보통'으로 보여 추천 게이트를 그대로 통과한다.
+
+    신뢰도를 **올리지는 않는다** — 상한만 다시 건다(낮추는 방향만)."""
+    from src.parse.market_match import appraisal_guard, _confidence_label
+    config = load_config()
+    fixed, checked = 0, 0
+    for v in db.list_vehicles(hide_incomplete=False):
+        med, ap = v.get("median_price"), v.get("appraisal_value")
+        if not med or not ap:
+            continue
+        checked += 1
+        cap, note, ratio = appraisal_guard(med, ap, config)
+        upd = {}
+        if ratio is not None and v.get("market_vs_appraisal") != ratio:
+            upd["market_vs_appraisal"] = ratio
+        conf = v.get("market_confidence")
+        if cap is not None and conf is not None and conf > cap:
+            upd["market_confidence"] = cap
+            upd["market_confidence_label"] = _confidence_label(cap)
+        if upd:
+            db.update_fields(v["id"], **upd)
+            fixed += 1
+    return {"checked": checked, "fixed": fixed}
 
 
 def backfill_accident_grades() -> int:
