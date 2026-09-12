@@ -234,16 +234,37 @@ def test_floor_override_still_shows_all_three_numbers(tmp_path, monkeypatch):
         "market_confidence_label": "높음", "sample_count": 12, "photo_count": 3,
     })
     import web.app as A
-    b = service.expected_band(db.get_vehicle("FLOOR_1"), BT)
+    _v = db.get_vehicle("FLOOR_1")
+    v_min = _v["min_sale_price"]
+    b = service.expected_band(_v, BT)
     assert b["basis"]["capped"] is True
     assert b["price"] > b["basis"]["cap"], "이 픽스처는 하한이 이기는 경우여야 한다"
 
     html = TestClient(A.app).get("/vehicle/FLOOR_1").text
     seg = html.split("예상 낙찰가(균형) 산정식")[1].split("<div class=\"text-[11px] text-mut")[0]
-    for label, val in (("원값", b["basis"]["raw"]), ("상한", b["basis"]["cap"]),
+    for label, val in (("원값", b["basis"]["raw"]), ("절단값", b["basis"]["cap"]),
                        ("최종", b["price"])):
         assert f"{val:,}" in seg, f"{label} {val:,} 이 산식에서 빠졌다"
-    assert "최저매각가 하한" in seg
+    # 하한이 걸렸다는 사실이 설명돼야 한다 (표현은 바뀔 수 있으므로 느슨하게)
+    assert "하한" in seg
+
+    import re as _re
+    # ⚠ 절단값 바로 뒤에 '최저매각가' 라벨을 붙이면 한 줄이 `값 = 설명` 쌍으로 읽혀
+    #   "최저매각가 = 18,600,000"이 된다. 실제 최저매각가는 그보다 높고, 바로 아래
+    #   카드가 그 값을 적는다 — 한 화면에 최저매각가가 두 개로 보인다.
+    #   **최저가 미만은 무효 입찰**이라 회수할 수 없는 손해다.
+    plain = _re.sub(r"<[^>]+>", " ", seg)
+    plain = _re.sub(r"\s+", " ", plain)
+    cap_txt = f'{b["basis"]["cap"]:,}'
+    after = plain.split(cap_txt, 1)[1][:24] if cap_txt in plain else ""
+    # 위험한 것은 **명사 라벨**('최저매각가 하한')이다 — 한 줄이 `값 = 설명` 쌍으로
+    # 읽힌다. 조사가 붙은 문장('최저매각가가 그보다 높아 …')은 값을 가리키지 않으므로
+    # 괜찮다. 둘을 조사 유무로 가른다.
+    assert not _re.match(r"\s*(→\s*)?최저매각가\s*하한", after), (
+        f"절단값 {cap_txt} 바로 뒤에 '최저매각가 하한' 라벨이 와서 그 값이 "
+        f"최저매각가로 읽힌다: …{cap_txt}{after!r}")
+    # 실제 최저매각가는 화면 어딘가에 그 값으로 있어야 한다
+    assert f'{v_min:,}' in html, "실제 최저매각가가 화면에 없다"
 
 
 def test_no_pre_analysis_notice_when_a_formula_is_shown(tmp_path, monkeypatch):

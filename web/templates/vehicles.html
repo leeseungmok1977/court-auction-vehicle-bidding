@@ -5,16 +5,21 @@
 
 <!-- 필터 바 -->
 <div class="bg-surface border border-line rounded-lg p-3">
+  {# 320×568에서 첫 물건 카드가 폴드 아래로 밀렸다. 필터를 접는 건 검색·정렬이
+     이 화면의 존재 이유라 하지 않는다 — 대신 압축한다. 셀렉트 3개가 각자 한 줄을
+     쓰면서 오른쪽에 200px씩 빈 공간을 남기고 있었다(가장 넓은 것도 149px).
+     좁은 폭에서만 2열 그리드로 묶고, sm 이상에서는 기존 flex 그대로 둔다. #}
   <form method="get" action="/vehicles" class="flex flex-wrap gap-2 items-center">
-    <select name="judgment" aria-label="입찰 판정 필터" class="inp py-1.5">
+    <div class="grid grid-cols-2 gap-2 w-full sm:contents">
+    <select name="judgment" aria-label="입찰 판정 필터" class="inp py-1.5 min-w-0">
       <option value="">전체 판정</option>
       {% for j in judgments %}<option value="{{ j }}" {% if j==judgment %}selected{% endif %}>{{ j|jshort }}</option>{% endfor %}
     </select>
-    <select name="maker" aria-label="제조사 필터" class="inp py-1.5">
+    <select name="maker" aria-label="제조사 필터" class="inp py-1.5 min-w-0">
       <option value="">전체 제조사</option>
       {% for m in makers %}<option value="{{ m }}" {% if m==maker %}selected{% endif %}>{{ m }}</option>{% endfor %}
     </select>
-    <select name="sort" aria-label="정렬 기준" class="inp py-1.5">
+    <select name="sort" aria-label="정렬 기준" class="inp py-1.5 min-w-0">
       {% if usepick %}<option value="" selected>절감액 큰 순</option>{% endif %}
       <option value="recent" {% if sort=='recent' and not usepick %}selected{% endif %}>최근 등록순</option>
       <option value="sale_date" {% if sort=='sale_date' %}selected{% endif %}>매각기일순</option>
@@ -25,6 +30,11 @@
       <option value="fail_count" {% if sort=='fail_count' %}selected{% endif %}>유찰 많은순</option>
       <option value="inspection" {% if sort=='inspection' %}selected{% endif %}>검사만료 임박순</option>
     </select>
+    {# 빈 셀을 남기지 않도록 [적용]을 그리드 넷째 칸에 넣는다. sm 이상에서는
+       sm:contents 로 그리드가 사라져 원래 자리(검색창 뒤)로 흐른다. #}
+    <button class="btn-ghost text-sm flex items-center justify-center gap-1 sm:hidden">
+      <span class="material-symbols-outlined text-base">filter_list</span> 적용</button>
+    </div>
     <div class="relative flex-1 min-w-[180px] sm:flex-none sm:w-72">
       <span class="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-mut text-[19px] leading-none pointer-events-none">search</span>
       <input name="q" value="{{ q }}" style="padding-left:2.3rem" class="inp py-1.5 w-full" placeholder="차명·제조사·사건번호·법원">
@@ -36,8 +46,12 @@
     {# 폼 제출로 버킷·추천 필터가 조용히 풀리면 사용자가 다른 모수를 보게 된다 #}
     {% if bucket %}<input type="hidden" name="bucket" value="{{ bucket }}">{% endif %}
     {% if usepick %}<input type="hidden" name="usepick" value="1">{% endif %}
-    <button class="btn-ghost text-sm flex items-center gap-1">
+    <button class="btn-ghost text-sm hidden sm:flex items-center gap-1">
       <span class="material-symbols-outlined text-base">filter_list</span> 적용</button>
+    {# 칩들은 좁은 폭에서 두 줄을 먹는다 — 한 줄 가로 스크롤로 묶어 한 줄만 쓴다.
+       숨기는 것이 아니라 밀어서 전부 볼 수 있다. #}
+    <div class="flex items-center gap-2 w-full overflow-x-auto custom-scrollbar
+                [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:contents sm:overflow-visible">
     <button type="button" onclick="ncSaveSearch()" class="btn-ghost text-sm flex items-center gap-1" title="현재 검색 조건을 저장 — 즐겨찾기 탭에서 새 매물을 확인합니다">
       <span aria-hidden="true">🔖</span> 검색 저장</button>
     {% if usepick %}<a href="/vehicles" class="text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full px-3 py-1 inline-flex items-center gap-1" title="실사용 추천 해제"><span class="material-symbols-outlined text-[13px] leading-none">directions_car</span>실사용 추천 ✕</a>{% endif %}
@@ -49,36 +63,38 @@
     {% if upcoming %}
     <a href="/vehicles?{{ qs_no_upcoming }}" class="text-xs bg-primary/10 text-primary border border-primary/20 rounded-full px-3 py-1 flex items-center gap-1">입찰예정 {{ upcoming }}일 ✕</a>
     {% else %}
-    <a href="/vehicles?{% if qs %}{{ qs }}&{% endif %}upcoming=30" class="text-xs border border-line text-mut rounded-full px-3 py-1 hover:text-txt hover:bg-slate-50">입찰예정 30일만</a>
+    <a href="/vehicles?{% if qs %}{{ qs }}&{% endif %}upcoming=30" class="text-xs border border-line text-mut rounded-full px-3 py-1 whitespace-nowrap shrink-0 hover:text-txt hover:bg-slate-50">입찰예정 30일만</a>
     {% endif %}
     {# 상태 퀵필터 — 검사경과 / 외관손상 #}
     {% if cond=='insp_expired' %}
     <a href="/vehicles?{{ qs_no_cond }}" class="text-xs bg-rose-50 text-rose-600 border border-rose-200 rounded-full px-3 py-1">검사 경과 ✕</a>
     {% else %}
-    <a href="/vehicles?{% if qs_no_cond %}{{ qs_no_cond }}&{% endif %}cond=insp_expired" class="text-xs border border-line text-mut rounded-full px-3 py-1 hover:text-txt hover:bg-slate-50">검사 경과</a>
+    <a href="/vehicles?{% if qs_no_cond %}{{ qs_no_cond }}&{% endif %}cond=insp_expired" class="text-xs border border-line text-mut rounded-full px-3 py-1 whitespace-nowrap shrink-0 hover:text-txt hover:bg-slate-50">검사 경과</a>
     {% endif %}
     {% if cond=='damaged' %}
     <a href="/vehicles?{{ qs_no_cond }}" class="text-xs bg-amber-50 text-amber-700 border border-amber-200 rounded-full px-3 py-1">외관 손상 ✕</a>
     {% else %}
-    <a href="/vehicles?{% if qs_no_cond %}{{ qs_no_cond }}&{% endif %}cond=damaged" class="text-xs border border-line text-mut rounded-full px-3 py-1 hover:text-txt hover:bg-slate-50">외관 손상</a>
+    <a href="/vehicles?{% if qs_no_cond %}{{ qs_no_cond }}&{% endif %}cond=damaged" class="text-xs border border-line text-mut rounded-full px-3 py-1 whitespace-nowrap shrink-0 hover:text-txt hover:bg-slate-50">외관 손상</a>
     {% endif %}
     {% if promising %}{# 집계 카드 '검토 추천'에서 진입 — 신뢰도 높음+오매칭 제외 큐레이션. 클릭 시 전체 보기 #}
     <a href="/vehicles?judgment=입찰 검토 가능&sort=expected" class="text-xs bg-amber-50 text-amber-700 border border-amber-200 rounded-full px-3 py-1 flex items-center gap-1" title="신뢰도 높음 + 오매칭 제외한 검토 추천만. 클릭하면 전체 검토가능을 봅니다.">🎯 검토 추천 ✕</a>
     {% endif %}
-    <span class="text-sm text-mut ml-auto">총 <b class="text-txt">{{ total }}</b>건</span>
+    </div>
+    <span class="text-sm text-mut ml-auto whitespace-nowrap">총 <b class="text-txt">{{ total }}</b>건</span>
   </form>
 </div>
 
 <!-- 차종 프리셋 필터(모델명 기준 근사 분류) — 상용·패밀리 등 수요자별 빠른 탐색 -->
-<div class="flex flex-wrap items-center gap-1.5 text-xs px-1">
-  <span class="text-mut font-medium mr-0.5">차종</span>
+<div class="flex items-center gap-1.5 text-xs px-1 overflow-x-auto
+            [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:flex-wrap sm:overflow-visible">
+  <span class="text-mut font-medium mr-0.5 shrink-0">차종</span>
   <a href="/vehicles{% if qs_no_segment %}?{{ qs_no_segment }}{% endif %}"
-     class="px-2.5 py-1 rounded-full border {{ 'bg-primary text-white border-primary' if not segment else 'border-line text-mut hover:text-txt hover:bg-slate-50' }}">전체</a>
+     class="px-2.5 py-1 rounded-full border whitespace-nowrap shrink-0 {{ 'bg-primary text-white border-primary' if not segment else 'border-line text-mut hover:text-txt hover:bg-slate-50' }}">전체</a>
   {% for k, lbl in segment_presets %}
   <a href="/vehicles?segment={{ k }}{% if qs_no_segment %}&{{ qs_no_segment }}{% endif %}"
-     class="px-2.5 py-1 rounded-full border {{ 'bg-primary text-white border-primary' if segment==k else 'border-line text-mut hover:text-txt hover:bg-slate-50' }}">{{ lbl }}</a>
+     class="px-2.5 py-1 rounded-full border whitespace-nowrap shrink-0 {{ 'bg-primary text-white border-primary' if segment==k else 'border-line text-mut hover:text-txt hover:bg-slate-50' }}">{{ lbl }}</a>
   {% endfor %}
-  <span class="text-[11px] text-mut ml-1">· 모델명 기준 근사 분류</span>
+  <span class="text-[11px] text-mut ml-1 whitespace-nowrap shrink-0">· 모델명 기준 근사 분류</span>
 </div>
 
 <!-- 상태 범례 — 각 상태에 밑줄+설명(탭/호버). 기호(*,↑)는 문장으로 풀어서 안내 -->
@@ -267,9 +283,16 @@ d.addEventListener('toggle',function(){try{localStorage.setItem('ncUsepickBasis'
         {% else %}<span class="material-symbols-outlined text-5xl">directions_car</span>{% endif %}
         <div class="absolute top-2 left-2 flex flex-wrap gap-1">
           {% if show_dday %}<span class="text-[10px] font-bold px-2 py-0.5 rounded-full text-white {{ 'bg-rose-500' if v.dday <= 1 else 'bg-primary' }}">{{ 'D-DAY' if v.dday == 0 else 'D-' ~ v.dday }} 입찰</span>{% endif %}
-          {% if v.fail_count and v.fail_count > 0 %}<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-orange-500/90 text-white">유찰 {{ v.fail_count }}회</span>{% endif %}
+          {# 유찰은 주의 대상이 아니다 — 오히려 가격이 내려간 사실이다. 솔리드
+             오렌지로 칠하면 이 디자인 시스템에서 주의 신호(외관 손상·검사 경과)와
+             같은 색이 되고, 정작 판정 칩보다 강하게 읽힌다. 중립으로 내린다. #}
+          {% if v.fail_count and v.fail_count > 0 %}<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-black/55 text-white backdrop-blur-sm">유찰 {{ v.fail_count }}회</span>{% endif %}
         </div>
-        <span class="absolute top-2 right-2 text-[10px] font-semibold px-2 py-0.5 rounded-full {{ (v.bidst.tone if v.bidst else '')|tcls }}">{{ v.bidst.label if v.bidst else (v.judgment|jshort if v.judgment else v.status|sstat) }}</span>
+        {# 카드에서 가장 강해야 할 것은 판정이다. 사진 위 칩 셋 중 판정만 옅은
+           배경 + 아웃라인이라 중립 정보(D-11·유찰 1회)보다 조용했다. stop/wait는
+           솔리드로 올려 눈이 먼저 닿게 한다. (5회차 디자인 2차) #}
+        {% set _tone = v.bidst.tone if v.bidst else '' %}
+        <span class="absolute top-2 right-2 text-[10px] font-bold px-2 py-0.5 rounded-full {% if _tone == 'stop' %}bg-rose-600 text-white shadow-sm{% elif _tone == 'wait' %}bg-amber-500 text-white shadow-sm{% else %}{{ _tone|tcls }}{% endif %}">{{ v.bidst.label if v.bidst else (v.judgment|jshort if v.judgment else v.status|sstat) }}</span>
         <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent px-3 pt-6 pb-2 flex items-end justify-between">
           <div class="flex items-center gap-1.5 text-[11px] text-white font-medium">
             {% if v.year %}<span class="bg-white/25 rounded px-1.5 py-0.5">{{ v.year }}년식</span>{% endif %}
