@@ -81,13 +81,24 @@ def _fuel_from_text(text: str) -> Optional[str]:
     return None
 
 
-def _mileage_from_text(text: str) -> Optional[int]:
+def _mileage_from_text(text: str, item_no=None) -> Optional[int]:
     """감정 요항 텍스트에서 주행거리 추출 (구조화 필드가 빈 경우 보조).
 
     예: '계기판상 주행거리는 52,902㎞임.' / '주행거리 123,456km'
+
+    ⚠ 다물건 감정서는 기호1~N의 주행거리를 한 줄에 나열한다. 첫 매치를 잡으면
+    **남의 차 주행거리가 이 차에 붙는다** — 2025타경101362에서 기호3 그랜저(70,842km)가
+    148,589km(기호1 값)로 표시됐고, 그 값이 시세 매칭·상한선까지 전파됐다
+    (5회차 중고차 P0). item_no가 있으면 그 기호 구간에서만 찾는다.
     """
     if not text:
         return None
+    from .appraisal import is_multi_symbol, slice_for_symbol
+    if is_multi_symbol(text):
+        sub, ok = slice_for_symbol(text, item_no)
+        if not ok:
+            return None          # 어느 차 것인지 모르면 값을 만들지 않는다
+        text = sub
     m = re.search(r"주행거리[^0-9]{0,15}([0-9][0-9,]{1,})\s*(?:㎞|km|키로|킬로)", text)
     if not m:
         m = re.search(r"([0-9][0-9,]{2,})\s*(?:㎞|km)", text)
@@ -294,7 +305,9 @@ def parse_detail(resp_json: dict, config: Optional[dict] = None) -> DetailInfo:
     # 주행거리: 구조화 필드 우선, 없으면 요항 텍스트에서 보조 추출
     mileage = _to_int(obj.get("drvnDistIndctCtt"))
     if mileage is None:
-        mileage = _mileage_from_text(appraisal_text)
+        # 물건번호(기호)를 넘겨 다물건 감정서에서 남의 차 값을 집지 않게 한다
+        _seq = str(dx.get("dspslGdsSeq") or obj.get("dspslGdsSeq") or "").strip()
+        mileage = _mileage_from_text(appraisal_text, item_no=_seq or None)
 
     dxdy_history, winning_price = _parse_dxdy(result)
 
