@@ -2004,6 +2004,7 @@ def backfill_multilot_mileage() -> dict:
     어느 차 것인지 못 가리면 값을 지우지 않고 **그대로 둔다**(현 상태 유지가 안전).
     """
     import os
+    import re as _re
     from src.parse.appraisal import is_multi_symbol
     from src.parse.detail_parser import _mileage_from_text
     out = {"checked": 0, "multi": 0, "changed": 0, "cleared": 0}
@@ -2025,6 +2026,16 @@ def backfill_multilot_mileage() -> dict:
         if got and got != cur:
             db.update_fields(v["id"], mileage_km=got)
             out["changed"] += 1
+        elif not got and cur:
+            # 귀속 실패(감정서 기호 오기 등). 저장값이 **다른 기호의 값과 같으면**
+            # 그건 남의 차 주행거리다 — 그대로 두면 시세 매칭이 계속 틀린다.
+            # 실측: 2025타경101362는 감정서가 '기호4'를 두 번 적어 기호5를 못 가린다.
+            others = {int(x.replace(",", ""))
+                      for x in _re.findall(r"주행거리[^0-9]{0,6}([0-9][0-9,]{3,})", text)}
+            mine = _mileage_from_text(text, item_no=v.get("item_no"))
+            if cur in others and mine is None and len(others) > 1:
+                db.update_fields(v["id"], mileage_km=None)
+                out["cleared"] += 1
     return out
 
 
