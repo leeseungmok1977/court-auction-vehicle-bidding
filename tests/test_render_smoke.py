@@ -171,3 +171,28 @@ def test_case_number_is_not_monospaced():
                 continue
             if "font-mono" in line:
                 raise AssertionError(f"{f.name}:{i} 사건번호에 font-mono가 걸렸다")
+
+
+def test_no_multichar_hangul_inside_monospace():
+    """mono 요소 안에 한글 단어가 들어가면 안 된다.
+
+    ⚠ 이 파일에는 `_mono_elements_with_hangul()`이 **정의만 되어 있고 어떤
+    테스트도 쓰지 않았다.** 그래서 상세의
+    `<div class="text-xl font-semibold font-mono">산정 상한가(재판매) …</div>`
+    가 그대로 배포됐고, 화면에 "산정  상한가(재판매)"로 자간이 벌어졌다.
+    헬퍼를 만들어놓고 연결하지 않은 것이 원인이라, 여기서 연결한다.
+
+    단위 한 글자(원·회·건·대)는 허용한다 — mono 스택에 Pretendard가 있어
+    일관되게 폴백하고, 숫자 뒤 한 글자는 자간 붕괴로 읽히지 않는다.
+    """
+    offenders = []
+    for f in sorted(_TPL.glob("*.html")):
+        for line, why in _mono_elements_with_hangul(f):
+            if why.startswith("리터럴 한글: "):
+                literal = why[len("리터럴 한글: "):]
+                if len(_HANGUL.findall(literal)) <= 1:
+                    continue
+            offenders.append(f"{f.name}:{line} {why}")
+    assert not offenders, (
+        "mono 안에 한글 단어가 있다 (라벨은 sans, 숫자만 mono로 분리하라):\n  "
+        + "\n  ".join(offenders))

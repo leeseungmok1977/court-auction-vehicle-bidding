@@ -77,7 +77,7 @@
     <dt class="text-mut">{{ ui.gloss('감정가', '법원이 감정평가사를 통해 매긴 차량 가치예요. 최저매각가와 낙찰가율(낙찰가÷감정가)의 기준이 됩니다.') }}</dt><dd class="font-mono">{{ v.appraisal_value|won }} 원</dd>
     {# 당시 출시가(등급별 범위) — 공개 여부는 config newcar_public. 출처명은 관리자에게만. #}
     {% if v.newcar_min and v.newcar_max and (is_admin(request) or newcar_public) %}
-    <dt class="text-mut">당시 출시가{% if is_admin(request) and not newcar_public %} <span class="text-[10px] text-primary font-bold">관리자</span>{% endif %}</dt><dd class="font-mono">{{ '{:,}'.format(v.newcar_min) }}{% if v.newcar_max != v.newcar_min %}~{{ '{:,}'.format(v.newcar_max) }}{% endif %}만원 <span class="text-mut text-xs font-sans" title="{{ v.year }}년식 등급 {{ v.newcar_n }}개 범위 · 영업용(택시·렌터카) 제외{% if v.newcar_basis_year and v.newcar_basis_year != v.year %} · {{ v.newcar_basis_year }}년 가격표 기준{% endif %}{% if is_admin(request) %} · {{ v.newcar_model }} · 출처 보배드림 신차가격표{% endif %}">등급 {{ v.newcar_n }}개 범위{% if v.newcar_basis_year and v.newcar_basis_year != v.year %} · {{ v.newcar_basis_year }}년 가격표{% endif %}</span></dd>
+    <dt class="text-mut">당시 출시가{% if is_admin(request) and not newcar_public %} <span class="text-[10px] text-primary font-bold">관리자</span>{% endif %}</dt><dd><span class="font-mono tnum">{{ '{:,}'.format(v.newcar_min) }}{% if v.newcar_max != v.newcar_min %}~{{ '{:,}'.format(v.newcar_max) }}{% endif %}</span>만원 <span class="text-mut text-xs font-sans" title="{{ v.year }}년식 등급 {{ v.newcar_n }}개 범위 · 영업용(택시·렌터카) 제외{% if v.newcar_basis_year and v.newcar_basis_year != v.year %} · {{ v.newcar_basis_year }}년 가격표 기준{% endif %}{% if is_admin(request) %} · {{ v.newcar_model }} · 출처 보배드림 신차가격표{% endif %}">등급 {{ v.newcar_n }}개 범위{% if v.newcar_basis_year and v.newcar_basis_year != v.year %} · {{ v.newcar_basis_year }}년 가격표{% endif %}</span></dd>
     {% endif %}
     <dt class="text-mut">{{ ui.gloss('최저매각가', '이번 기일에 이 금액 이상 써내야 입찰돼요. 입찰의 출발선이며, 유찰될 때마다 보통 20~30%씩 내려갑니다.') }}</dt><dd class="font-mono text-lg font-semibold text-txt tnum"><span class="nc-unit">{{ v.min_sale_price|won }} 원</span></dd>
     <dt class="text-mut">{{ ui.gloss('유찰횟수', '입찰자가 없어 매각이 무산된 횟수예요. 유찰될 때마다 다음 기일의 최저매각가가 법원별로 정해진 비율만큼 내려갑니다.') }}</dt><dd class="font-mono">{{ v.fail_count if v.fail_count is not none else '—' }} 회</dd>
@@ -577,11 +577,11 @@
           <span class="text-mut text-xs">(낮을수록 신뢰↑)</span></dd>
         {% endif %}
         {% if v.market_vs_appraisal is not none %}
-        <dt class="text-mut">감정가 대비</dt><dd class="font-mono text-sm">시세가 감정가의
+        <dt class="text-mut">감정가 대비</dt><dd class="text-sm">시세가 감정가의
           <b class="{{ 'text-mut' if v.market_confidence_label == '낮음'
                        else 'text-rose-600' if v.market_vs_appraisal < 0.50 or v.market_vs_appraisal > 1.8
                        else 'text-amber-700' if v.market_vs_appraisal < 0.65 or v.market_vs_appraisal > 1.28
-                       else 'text-emerald-700' }}">{{ (v.market_vs_appraisal*100)|round(0)|int }}%</b>
+                       else 'text-emerald-700' }} font-mono tnum">{{ (v.market_vs_appraisal*100)|round(0)|int }}%</b>
           {% if v.market_confidence_label == '낮음' %}<span class="text-mut text-xs">(신뢰도 낮음 — 참고용)</span>{% endif %}</dd>
         {% endif %}
       </dl>
@@ -735,7 +735,10 @@
       {% elif wait %}
       <div class="text-center bg-amber-50 border border-amber-200 rounded-lg py-4 mb-4">
         <div class="text-xs text-amber-700 mb-1 font-semibold">⏳ 유찰 대기 — <b>재판매</b> 목적엔 지금 부적합</div>
-        <div class="text-xl font-semibold font-mono text-txt tnum">산정 상한가(재판매) {{ v.upper_bid|won }} 원</div>
+        {# 라벨은 sans, 숫자만 mono. 한 요소에 묶으면 JetBrains Mono에 한글이 없어
+           글자마다 폴백이 일어나 "산정  상한가(재판매)"로 자간이 벌어진다. #}
+        <div class="text-xl font-semibold text-txt">산정 상한가(재판매)
+          <span class="font-mono tnum">{{ v.upper_bid|won }}</span> 원</div>
         <div class="text-xs text-mut mt-2 px-4 leading-relaxed">
           현재 최저매각가 <b class="text-txt">{{ v.min_sale_price|won }}원</b>이 재판매 손익분기가보다 높습니다.
           최저가가 <b class="text-amber-700">{{ wait.target|won }}원 이하</b>로 내려오면 재판매도 검토 가능.<br>
@@ -756,7 +759,7 @@
       {% else %}
       <div class="text-center bg-background border border-line rounded-lg py-4 mb-4">
         <div class="text-xs text-mut mb-1">재판매 손익분기 <span class="text-mut">(참고 — 되팔이 목적)</span></div>
-        <div class="text-xl font-semibold font-mono tnum text-emerald-700">~ {{ v.upper_bid|won }} 원 이하</div>
+        <div class="text-xl font-semibold text-emerald-700">~ <span class="font-mono tnum">{{ v.upper_bid|won }}</span> 원 이하</div>
         <div class="text-xs text-mut mt-1 px-4 leading-relaxed">되팔이 목적이면 <b class="text-txt">이 값 이하</b>로 낙찰돼야 차익. 실제 입찰가는 위 <b class="text-primary">추천 입찰 전략</b> 기준. </div>
       </div>
       {% endif %}
