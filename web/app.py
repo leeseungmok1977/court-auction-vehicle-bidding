@@ -422,19 +422,22 @@ def vehicles(request: Request, judgment: str = "", maker: str = "", q: str = "",
             r["photo_urls"] = []
         r["photo_lot_mixed"] = r["id"] in mlot   # 동일사건 다물건 → 사진 혼재 가능
     from urllib.parse import urlencode
-    qs = urlencode({k: v for k, v in {
-        "judgment": judgment, "maker": maker, "q": q, "sort": sort,
-        "upcoming": up or "", "result": result, "status": status, "cond": cond,
-        "date": date, "court": court, "promising": promising, "segment": segment}.items() if v})
-    qs_no_upcoming = urlencode({k: v for k, v in {   # 30일 해제 링크용(upcoming만 제거, 나머지 유지)
-        "judgment": judgment, "maker": maker, "q": q, "sort": sort,
-        "result": result, "status": status, "cond": cond}.items() if v})
-    qs_no_cond = urlencode({k: v for k, v in {        # 상태 필터 토글용(cond만 제거, 나머지 유지)
-        "judgment": judgment, "maker": maker, "q": q, "sort": sort,
-        "upcoming": up or "", "result": result, "status": status, "segment": segment}.items() if v})
-    qs_no_segment = urlencode({k: v for k, v in {      # 차종 프리셋 칩용(segment만 제거, 나머지 유지)
-        "judgment": judgment, "maker": maker, "q": q, "sort": sort,
-        "upcoming": up or "", "result": result, "status": status, "cond": cond}.items() if v})
+    # 필터 4종을 손으로 나열하다 보니 새 파라미터를 넣을 때마다 빠뜨린다 — bucket·usepick이
+    # 페이지네이션·칩 링크에서 전부 누락돼, 실사용 추천 22건에서 "2"를 누르면 전체 1167건이
+    # 나왔다(2026-09-12 디자인 검수 블로커). 한 곳에서 만들고 필요한 키만 뺀다.
+    _filters = {"judgment": judgment, "maker": maker, "q": q, "sort": sort,
+                "upcoming": up or "", "result": result, "status": status, "cond": cond,
+                "date": date, "court": court, "promising": promising, "segment": segment,
+                "bucket": bucket, "usepick": usepick, "all": all}
+
+    def _qs(*drop: str) -> str:
+        return urlencode({k: v for k, v in _filters.items() if v and k not in drop})
+
+    qs = _qs()
+    qs_no_upcoming = _qs("upcoming")    # 30일 해제 링크용(upcoming만 제거, 나머지 유지)
+    qs_no_cond = _qs("cond")            # 상태 필터 토글용
+    qs_no_segment = _qs("segment")      # 차종 프리셋 칩용
+    qs_no_bucket = _qs("bucket")        # 버킷 해제 칩용
     from datetime import date as _date
     _tdy = _date.today().isoformat()
     _tdy_d = _date.today()
@@ -460,6 +463,7 @@ def vehicles(request: Request, judgment: str = "", maker: str = "", q: str = "",
         "total": total, "page": page, "total_pages": total_pages,
         "page_size": VEHICLES_PAGE_SIZE, "qs": qs, "qs_no_upcoming": qs_no_upcoming,
         "qs_no_cond": qs_no_cond, "qs_no_segment": qs_no_segment,
+        "qs_no_bucket": qs_no_bucket, "bucket": bucket,
         "range_start": start + 1 if total else 0,
         "range_end": start + len(page_rows),
     })

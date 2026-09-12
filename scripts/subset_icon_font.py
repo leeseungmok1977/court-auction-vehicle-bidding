@@ -82,6 +82,12 @@ def fetch_subset(icons: list[str]) -> bytes:
     return data
 
 
+try:                       # Windows 기본 cp949에서 ⚠ 같은 문자가 UnicodeEncodeError를 낸다
+    sys.stdout.reconfigure(encoding="utf-8")
+except Exception:          # noqa: BLE001 — 출력 인코딩 때문에 서브셋을 실패시키지 않는다
+    pass
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--check", action="store_true", help="재생성 없이 누락만 보고")

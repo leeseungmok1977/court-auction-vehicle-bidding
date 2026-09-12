@@ -23,6 +23,7 @@ event_repeat
 event_upcoming
 expand_more
 explore
+filter_alt
 filter_list
 flag
 function

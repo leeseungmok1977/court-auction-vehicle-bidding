@@ -61,6 +61,21 @@ def client(tmp_path, monkeypatch):
              market_confidence_label="높음", judgment="종결", auction_result="낙찰",
              winning_price=11000000),
     ]
+    # 페이지네이션이 실제로 생기도록 '유찰 대기'를 페이지 크기 이상으로 채운다
+    # (물건이 적으면 페이지 링크가 없어 아래 테스트가 조용히 공허해진다)
+    for i in range(20):
+        rows.append(dict(base, id=f"WB{i}_1", case_no=f"2026타경9{i:03d}",
+                         min_sale_price=39000000, appraisal_value=40000000,
+                         median_price=40000000, market_confidence_label="높음",
+                         judgment="유찰 대기"))
+        rows.append(dict(base, id=f"LB{i}_1", case_no=f"2026타경8{i:03d}",
+                         min_sale_price=10000000, appraisal_value=12000000,
+                         median_price=13000000, market_confidence_label="낮음",
+                         judgment="시세 신뢰도 낮음, 수동 검토"))
+        rows.append(dict(base, id=f"UB{i}_1", case_no=f"2026타경7{i:03d}",
+                         min_sale_price=20000000, appraisal_value=30000000,
+                         median_price=40000000, market_confidence_label="높음",
+                         judgment="유찰 대기"))
     for r in rows:
         db.upsert_vehicle(r)
     import web.app as A
@@ -126,3 +141,28 @@ def test_dashboard_header_number_matches_the_list(client):
     m = re.search(r"총\s*<b[^>]*>([\d,]+)</b>\s*대\s*모니터링", html)
     assert m, "헤더 총계를 못 찾음"
     assert int(m.group(1).replace(",", "")) == _list_count(client, "/vehicles")
+
+
+@pytest.mark.parametrize("href", [
+    "/vehicles?bucket=wait", "/vehicles?bucket=lowconf", "/vehicles?usepick=1",
+])
+def test_filters_survive_pagination(client, href):
+    """2페이지로 넘어가도 필터가 유지돼야 한다.
+
+    2026-09-12 디자인 검수 블로커: 실사용 추천 22건 목록에서 '2'를 누르면
+    `/vehicles?sort=recent&page=2` — 필터가 통째로 빠져 전체 1167건이 나왔다.
+    카드 숫자 = 목록 건수 규칙이 1페이지에서만 지켜지고 있었다."""
+    import re
+    html = client.get(href, headers=_PUBLIC).text
+    links = re.findall(r'href="(/vehicles\?[^"]*page=\d+[^"]*)"', html)
+    key = href.split("?", 1)[1].split("=")[0]
+    assert links, f"{href}: 페이지 링크가 없어 이 테스트가 공허하다 — 픽스처를 늘려야 한다"
+    for ln in links:
+        assert key in ln, f"페이지 링크에서 {key}가 사라짐: {ln}"
+
+
+def test_filter_form_keeps_bucket_and_usepick(client):
+    """'적용' 버튼(폼 제출)으로도 필터가 풀리면 안 된다."""
+    for href, name in (("/vehicles?bucket=wait", "bucket"), ("/vehicles?usepick=1", "usepick")):
+        html = client.get(href, headers=_PUBLIC).text
+        assert f'name="{name}"' in html, f"{href}: 폼에 {name} hidden input이 없다"

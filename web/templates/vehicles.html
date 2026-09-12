@@ -33,11 +33,16 @@
     {% if result %}<input type="hidden" name="result" value="{{ result }}">{% endif %}
     {% if status %}<input type="hidden" name="status" value="{{ status }}">{% endif %}
     {% if cond %}<input type="hidden" name="cond" value="{{ cond }}">{% endif %}
+    {# 폼 제출로 버킷·추천 필터가 조용히 풀리면 사용자가 다른 모수를 보게 된다 #}
+    {% if bucket %}<input type="hidden" name="bucket" value="{{ bucket }}">{% endif %}
+    {% if usepick %}<input type="hidden" name="usepick" value="1">{% endif %}
     <button class="btn-ghost text-sm flex items-center gap-1">
       <span class="material-symbols-outlined text-base">filter_list</span> 적용</button>
     <button type="button" onclick="ncSaveSearch()" class="btn-ghost text-sm flex items-center gap-1" title="현재 검색 조건을 저장 — 즐겨찾기 탭에서 새 매물을 확인합니다">
       <span aria-hidden="true">🔖</span> 검색 저장</button>
     {% if usepick %}<a href="/vehicles" class="text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full px-3 py-1 inline-flex items-center gap-1" title="실사용 추천 해제"><span class="material-symbols-outlined text-[13px] leading-none">directions_car</span>실사용 추천 ✕</a>{% endif %}
+    {% if bucket %}{% set _bkl = {'wait':'유찰 대기','lowconf':'신뢰도 낮음','other':'기타·미분석'} %}
+    <a href="/vehicles{% if qs_no_bucket %}?{{ qs_no_bucket }}{% endif %}" class="text-xs bg-sky-50 text-sky-700 border border-sky-200 rounded-full px-3 py-1 inline-flex items-center gap-1" title="{{ _bkl.get(bucket, bucket) }} 필터 해제"><span class="material-symbols-outlined text-[13px] leading-none">filter_alt</span>{{ _bkl.get(bucket, bucket) }} {{ total }} ✕</a>{% endif %}
     {% if result %}<a href="/vehicles" class="text-xs bg-sky-50 text-sky-700 border border-sky-200 rounded-full px-3 py-1">결과={{ result }} ✕</a>{% endif %}
     {% if date %}<a href="/vehicles" class="text-xs bg-primary/10 text-primary border border-primary/20 rounded-full px-3 py-1 inline-flex items-center gap-1" title="날짜 필터 해제"><span class="material-symbols-outlined text-[13px] leading-none">event</span>{{ date }} 매각 ✕</a>{% endif %}
     {% if court %}<a href="/courts" class="text-xs bg-primary/10 text-primary border border-primary/20 rounded-full px-3 py-1 inline-flex items-center gap-1" title="법원 선택으로"><span class="material-symbols-outlined text-[13px] leading-none">gavel</span>{% if ',' in court %}법원 {{ court.split(',')|length }}곳{% else %}{{ court|replace('지방법원','지법') }}{% endif %} ✕</a>{% endif %}
