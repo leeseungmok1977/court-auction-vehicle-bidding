@@ -1993,6 +1993,41 @@ def reapply_appraisal_guard() -> dict:
     return {"checked": checked, "fixed": fixed}
 
 
+def backfill_multilot_mileage() -> dict:
+    """다물건 사건의 주행거리를 저장된 감정서에서 **기호별로** 재도출한다(무네트워크).
+
+    수집 시점에 문서 전체의 첫 매치를 집어, 한 사건의 물건 전부가 같은 주행거리를
+    갖고 있다(5회차 실측 2025타경101362: 5건 모두 148,589km, 기호3의 실제 값은 70,842km).
+    주행거리는 시세 매칭의 제1변수라 오염이 상한선까지 그대로 전파된다.
+
+    ⚠ 외부 요청을 하지 않는다. 이미 받아 둔 `data/<key>/appraisal.txt`만 다시 읽는다.
+    어느 차 것인지 못 가리면 값을 지우지 않고 **그대로 둔다**(현 상태 유지가 안전).
+    """
+    import os
+    from src.parse.appraisal import is_multi_symbol
+    from src.parse.detail_parser import _mileage_from_text
+    out = {"checked": 0, "multi": 0, "changed": 0, "cleared": 0}
+    for v in db.list_vehicles(hide_incomplete=False):
+        fk = v.get("folder_key") or v.get("id")
+        fp = os.path.join("data", fk, "appraisal.txt")
+        if not os.path.exists(fp):
+            continue
+        out["checked"] += 1
+        try:
+            text = open(fp, encoding="utf-8").read()
+        except OSError:
+            continue
+        if not is_multi_symbol(text):
+            continue
+        out["multi"] += 1
+        got = _mileage_from_text(text, item_no=v.get("item_no"))
+        cur = v.get("mileage_km")
+        if got and got != cur:
+            db.update_fields(v["id"], mileage_km=got)
+            out["changed"] += 1
+    return out
+
+
 def backfill_accident_grades() -> int:
     """저장된 감정요항(appraisal.txt) + 매각물건명세(spec_remark)로 사고판정을 재도출(무네트워크).
 
