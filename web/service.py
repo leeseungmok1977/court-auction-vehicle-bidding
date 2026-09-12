@@ -1993,6 +1993,92 @@ def reapply_appraisal_guard() -> dict:
     return {"checked": checked, "fixed": fixed}
 
 
+def backfill_map_vision(limit: int = 20, delay: float = 6.0,
+                        dry_run: bool = False) -> dict:
+    """OCR이 실패한 물건에 한해 비전 LLM으로 지도의 인쇄된 주소를 읽는다.
+
+    ⚠ 외부 유료 API를 호출한다. C.4에 따라:
+      · 런당 호출 상한(`limit`)을 반드시 건다 — 무한 순회 금지
+      · 호출 사이 `delay`초 대기(기본 6초)
+      · 429/403/5xx 가 **3연속**이면 즉시 중단하고 사유를 담아 반환
+    대상은 `map_photos` 가 있고 `storage_addr` 가 비어 있으며 **OCR을 이미 시도한**
+    물건뿐이다. 법원 상세·감정서 본문 값은 절대 덮지 않는다.
+    """
+    import os
+    from src.vision import map_vision as MV
+
+    gu = known_gu_names()
+    csido = court_sido_map()
+    out = {"tried": 0, "found": 0, "rejected": 0, "no_map": 0,
+           "tokens_in": 0, "tokens_out": 0, "aborted": "", "why": {}}
+    streak = 0
+    for v in db.list_vehicles(hide_incomplete=False):
+        if out["tried"] >= limit:
+            break
+        if (v.get("storage_addr") or "").strip():
+            continue
+        maps = v.get("map_photos") or []
+        if not maps:
+            continue
+        fk = v.get("folder_key") or v.get("id")
+        path = os.path.join("data", fk, "photos", maps[0])
+        if not os.path.exists(path):
+            out["no_map"] += 1
+            continue
+
+        MV.polite_sleep(delay)
+        out["tried"] += 1
+        try:
+            res = MV.read_map(path)
+            streak = 0
+        except MV.VisionError as e:
+            streak += 1
+            if streak >= 3:
+                out["aborted"] = f"{e} — 3연속 비정상, 중단"
+                return out
+            continue
+        out["tokens_in"] += res.get("usage_in", 0)
+        out["tokens_out"] += res.get("usage_out", 0)
+        got = MV.accept(res, gu, csido.get(v.get("court")))
+        if got["addr"]:
+            out["found"] += 1
+            if not dry_run:
+                db.update_fields(v["id"], storage_addr=got["addr"],
+                                 storage_src="map_vision",
+                                 storage_conf=MV.CONF_LABEL.get(got["level"], "추정"))
+        else:
+            out["rejected"] += 1
+            key = got["why"][:40]
+            out["why"][key] = out["why"].get(key, 0) + 1
+    return out
+
+
+def court_sido_map(min_share: float = 0.05) -> dict:
+    """법원 → 그 법원 물건에서 실제로 관찰된 시·도 집합(무네트워크).
+
+    위치를 **추정**하는 데 쓰지 않는다. 비전 LLM이 낸 답이 명백히 모순인지
+    **반증**하는 데만 쓴다(예: 서산지원 물건에 '서대문구'가 나오면 버린다).
+    그래서 최빈값 하나가 아니라 일정 비율 이상 나타난 시·도를 모두 담는다 —
+    좁게 잡으면 인접 시·군 보관소를 잘못 버린다.
+    """
+    from collections import Counter, defaultdict
+    from src.vision.map_vision import sido_of
+
+    seen = defaultdict(Counter)
+    for v in db.list_vehicles(hide_incomplete=False):
+        court = v.get("court")
+        if not court:
+            continue
+        sd = sido_of(v.get("storage_addr") or "") or sido_of(v.get("location") or "")
+        if sd:
+            seen[court][sd] += 1
+    out = {}
+    for court, c in seen.items():
+        n = sum(c.values())
+        out[court] = {k for k, m in c.items() if m / n >= min_share}
+    return out
+
+
 def known_gu_names() -> set:
     """앱이 이미 아는 시·군·구 이름 — OCR이 지명을 지어내는 것을 막는 대조표.
 

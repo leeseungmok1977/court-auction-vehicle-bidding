@@ -406,3 +406,106 @@ def test_ocr_does_not_retry_a_vehicle_it_already_attempted(one, monkeypatch):
     assert len(calls) == 1, "이미 시도한 물건을 또 읽었다"
     service.backfill_map_ocr(redo=True)           # 강제 재시도는 다시 읽는다
     assert len(calls) == 2
+
+
+# ── 비전 LLM 폴백 (OCR 실패분 한정) ──────────────────────────────
+from src.vision.map_vision import accept as v_accept  # noqa: E402
+
+GU2 = {"전주시", "덕진구", "서산시", "서대문구", "안양시"}
+
+
+def test_vision_accepts_a_printed_address():
+    """큰 글씨로 인쇄된 주소를 옮기는 것은 정확하다 — 실측 전주 건."""
+    got = v_accept({"printed_address": "전주시 덕진구 덕진동1가 1420",
+                    "nearby_labels": ["덕진구", "전주역"], "label_kind": "보관장소"}, GU2)
+    assert got["addr"] == "전주시 덕진구 덕진동1가 1420" and got["level"] == "full"
+
+
+def test_vision_never_uses_labels_the_model_claims_to_have_read():
+    """⚠ 이 테스트가 이 기능의 핵심 안전장치다.
+
+    실측: 충남 **서산시** 지도를 주고 물었더니 모델이 `서대문구`·`영천동`·`서대문역`
+    (서울 지명)을 "읽었다"고 답했다. 근거(evidence)를 요구해도 소용없다 —
+    **근거 자체가 지어내진다.** 그래서 주변 지명은 채택 경로에서 통째로 뺀다.
+    """
+    got = v_accept({"printed_address": None,
+                    "nearby_labels": ["서대문구", "영천동", "서대문역"],
+                    "label_kind": "보관장소"}, GU2)
+    assert got["addr"] == "", f"지어낸 지명을 주소로 채택했다: {got}"
+    assert "인쇄돼 있지 않" in got["why"]
+
+
+def test_vision_rejects_a_bongeon_only_map():
+    """'본건' 지도는 채무자 주소일 수 있다 — 보관장소로 쓰지 않는다."""
+    got = v_accept({"printed_address": "서산시 동문동 195-4",
+                    "nearby_labels": [], "label_kind": "본건"}, GU2)
+    assert got["addr"] == ""
+
+
+def test_vision_rejects_an_address_contradicting_the_court_region():
+    """법원 관할 시·도와 어긋나면 버린다 — 추정이 아니라 반증에만 쓴다."""
+    got = v_accept({"printed_address": "서울특별시 서대문구 영천동 1",
+                    "nearby_labels": [], "label_kind": "보관장소"},
+                   GU2, court_sido={"충남"})
+    assert got["addr"] == "" and "어긋남" in got["why"]
+    # 같은 시·도면 통과한다(정읍지원 물건의 전주시 주소처럼)
+    ok = v_accept({"printed_address": "전주시 덕진구 덕진동1가 1420",
+                   "nearby_labels": [], "label_kind": "보관장소"},
+                  GU2, court_sido={"전북"})
+    assert ok["addr"].startswith("전주시")
+
+
+def test_vision_rejects_label_text_mistaken_for_an_address():
+    """모델이 라벨 자체나 파편을 주소로 내는 경우가 있다 — 실측 '보관장소', '1393-3 강변북로'."""
+    for junk in ("보관장소", "1393-3 강변북로", "null"):
+        got = v_accept({"printed_address": junk, "nearby_labels": [],
+                        "label_kind": "보관장소"}, GU2)
+        assert got["addr"] == "", f"쓰레기 문자열을 주소로 채택했다: {junk}"
+
+
+def test_vision_backfill_skips_vehicles_that_already_have_an_address(one, monkeypatch):
+    db.update_fields("V1", storage_addr="경기도 수원시 팔달구 매산로 1",
+                     storage_src="court", map_photos=["m.png"])
+    called = []
+    monkeypatch.setattr("src.vision.map_vision.read_map",
+                        lambda *a, **k: called.append(1) or {})
+    out = service.backfill_map_vision(limit=5, delay=0)
+    assert not called and out["tried"] == 0
+
+
+def test_vision_backfill_aborts_after_three_consecutive_failures(one, monkeypatch):
+    """C.4 중단 조건 — 429/403 이 3연속이면 즉시 멈춘다."""
+    from src.vision.map_vision import VisionError
+    (one / "photos").mkdir()
+    for i in range(6):
+        db.upsert_vehicle({"id": f"W{i}", "folder_key": "V1", "case_no": "2026타경9",
+                           "item_no": "1", "court": "수원지방법원", "status": "완료"})
+        db.update_fields(f"W{i}", map_photos=["m.png"])
+        (one / "photos" / "m.png").write_bytes(b"x")
+    calls = []
+
+    def boom(*a, **k):
+        calls.append(1)
+        raise VisionError("HTTP 429")
+    monkeypatch.setattr("src.vision.map_vision.read_map", boom)
+    out = service.backfill_map_vision(limit=50, delay=0)
+    assert out["aborted"] and "429" in out["aborted"]
+    assert len(calls) == 3, f"3연속에서 멈춰야 하는데 {len(calls)}회 호출했다"
+
+
+def test_vision_api_key_is_never_hardcoded():
+    """C.4 — 키는 gitignore된 docs/.env 에서만 읽는다."""
+    import pathlib
+    src = pathlib.Path("src/vision/map_vision.py").read_text(encoding="utf-8")
+    assert "sk-" not in src, "소스에 키가 박혀 있다"
+    assert "docs" in src and ".env" in src
+
+
+@pytest.mark.parametrize("path", ["/vehicle/S1", "/vehicle/S1/report"])
+def test_vision_sourced_address_is_marked_as_an_estimate(client, path):
+    """지도 판독 값은 확정이 아니다 — 출처와 추정 표기가 함께 나와야 한다."""
+    db.update_fields("S1", storage_addr="전주시 덕진구 덕진동1가 1420",
+                     storage_src="map_vision", storage_conf="추정")
+    html = client.get(path).text
+    assert "전주시 덕진구 덕진동1가 1420" in html
+    assert "지도 판독" in html, f"{path}: 출처 표기가 없다"
