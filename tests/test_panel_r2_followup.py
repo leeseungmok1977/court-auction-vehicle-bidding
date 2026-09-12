@@ -510,3 +510,20 @@ def test_single_symbol_appraisal_is_unaffected():
     sig = service._appraisal_signals(
         "본건 차량은 차량키가 있으나 시동이 걸리지 않는바 참고바람.", item_no="1")
     assert sig["runnable"] == "no"
+
+
+def test_domestic_detection_survives_corrupted_maker():
+    """maker가 손상돼도 모델명으로 국산을 건진다.
+
+    5회차 품질 실측: 1,320건 중 22건이 '수입'으로 오분류돼(빈값 11·'현' 2·'기차'·
+    '(주)련대자동차' 등), 제네시스 G80이 수입차 오차 코호트(±10.3%, n=41)를 인용했다.
+    """
+    for maker, model in [("", "G80"), ("현", "G80"), ("기차", "쏘렌토"),
+                         ("(주)련대자동차", "그랜저"), ("케이지모빌리티(주)", "토레스"),
+                         ("", "카니발"), ("", "스파크")]:
+        assert service.is_domestic_maker({"maker": maker, "model": model}) is True, (maker, model)
+    # 판매사가 국산 힌트에 걸려도 차가 수입이면 수입이다 (한국지엠 + 캐딜락).
+    for maker, model in [("BMW", "520d"), ("메르세데스벤츠코리아", "E220 d"),
+                         ("마세라티", "르반떼"), ("아우디", "A6"),
+                         ("GM", "캐딜락 에스컬레이드(ESCALADE)"), ("", "MINI Cooper Clubman")]:
+        assert service.is_domestic_maker({"maker": maker, "model": model}) is False, (maker, model)

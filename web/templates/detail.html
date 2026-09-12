@@ -51,7 +51,7 @@
 {# 대표사진 히어로(법차식) — 차량을 먼저 인식. 화살표로 클릭 없이 인라인 넘김, 클릭 시 큰 갤러리 #}
 {% if photos %}
 <div class="relative rounded-lg overflow-hidden border border-line">
-  <img id="heroImg" src="/photo/{{ v.folder_key or v.id }}/{{ photos[0] }}" loading="lazy" alt="{{ v.model|mdl }}"
+  <img id="heroImg" src="/thumb/{{ v.folder_key or v.id }}/{{ photos[0] }}" loading="lazy" alt="{{ v.model|mdl }}"
        onclick="openLB(heroIdx)" title="크게 보기"
        class="w-full h-44 sm:h-56 object-cover cursor-pointer hover:brightness-95 transition">
   {% if photos|length > 1 %}
@@ -452,7 +452,7 @@
         <span class="text-xs text-mut font-normal ml-1">— 클릭하면 크게 보기, ← → 로 넘기기</span></h3>
       <div class="grid grid-cols-3 sm:grid-cols-4 gap-2">
         {% for p in photos %}
-        <img src="/photo/{{ v.folder_key or v.id }}/{{ p }}" loading="lazy" alt="{{ v.model|mdl }} 현황 사진 {{ loop.index }}" onclick="openLB({{ loop.index0 }})"
+        <img src="/thumb/{{ v.folder_key or v.id }}/{{ p }}" loading="lazy" alt="{{ v.model|mdl }} 현황 사진 {{ loop.index }}" onclick="openLB({{ loop.index0 }})"
              class="hoverable w-full h-24 object-cover rounded-md border border-line hover:border-primary cursor-pointer">
         {% endfor %}
       </div>
@@ -663,8 +663,21 @@
           <span class="text-mut whitespace-nowrap">유찰 {{ b.fail_count }}회 낙찰 프리미엄</span>
           <b class="font-mono text-primary">×{{ b.premium }}</b>
           <span class="text-mut">=</span>
+          {% if b.capped %}
+          {# 캡이 걸리면 1×2가 결과와 안 맞는다. 리포트 §10은 캡 2줄을 이미 내는데
+             상세만 빠져 있어, 물건 29%가 틀린 곱셈을 인쇄했다(5회차 품질 P0). #}
+          <b class="font-mono tnum text-mut">{{ b.raw|won }}</b>
+          <span class="text-mut">→ 시세×1.10 상한</span>
+          <b class="font-mono tnum text-txt">{{ b.cap|won }}</b>
+          {% if expected.price != b.cap %}<span class="text-mut">→ 최저매각가 하한</span>{% endif %}
           <b class="font-mono tnum text-primary text-base">{{ expected.price|won }}원</b>
+          {% else %}
+          <b class="font-mono tnum text-primary text-base">{{ expected.price|won }}원</b>
+          {% endif %}
         </div>
+        {% if b.capped %}
+        <div class="text-[11px] text-amber-700 mt-1.5 leading-relaxed">최저매각가 × 프리미엄이 소매 시세의 1.10배를 넘어 상한을 적용했습니다{% if expected.price > b.cap %}. 다만 그 상한이 최저매각가보다 낮아, 써낼 수 없는 금액이 되지 않도록 최저매각가를 하한으로 뒀습니다{% endif %}.</div>
+        {% endif %}
         <div class="text-[11px] text-mut mt-2 leading-relaxed">
           유찰로 내려간 <b class="text-txt">최저매각가</b>가 시장 할인을 이미 반영 → 동급 <b>낙찰가/최저가 프리미엄</b>(유찰 많을수록↑)만 곱합니다(시세보다 안정적).
           {% if expected.comp_n %}동급 낙찰 {{ expected.comp_n }}건은 <b class="text-txt">참고용</b>(이 경로에선 미반영) · {% endif %}{% if expected.mae %}실측 오차 ±{{ expected.mae|round|int }}%. {% endif %}보수·균형·공격 3단은 위 <b>추천 입찰 전략</b> 참고.

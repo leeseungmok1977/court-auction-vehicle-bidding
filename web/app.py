@@ -815,7 +815,16 @@ def _thumb_path(safe_vid: str, safe: str) -> "pathlib.Path":
 
 
 def _make_thumb(src, dst) -> bool:
-    """원본 → WebP 썸네일. 실패하면 False(호출부가 원본으로 폴백한다)."""
+    """원본 → WebP 썸네일. 실패하면 False(호출부가 원본으로 폴백한다).
+
+    ⚠ **임시파일에 쓰고 os.replace로 원자 교체한다.** 서빙 경로에 직접 쓰면,
+    다른 요청이 `dst.exists()`가 True인 **0바이트 상태**를 보고 그대로 내보낸다.
+    그 응답이 `200 + Content-Length 0 + max-age=604800`이라 **빈 이미지가 7일간
+    캐시**되고 새로고침으로도 안 고쳐진다(5회차 품질 P0: 동시 8요청 중 3~5건 재현).
+    """
+    import os as _os
+    import tempfile
+    tmp = None
     try:
         from PIL import Image
         dst.parent.mkdir(parents=True, exist_ok=True)
@@ -824,10 +833,22 @@ def _make_thumb(src, dst) -> bool:
             if im.width > _THUMB_W:
                 im = im.resize((_THUMB_W, max(1, round(im.height * _THUMB_W / im.width))),
                                Image.LANCZOS)
-            im.save(dst, "WEBP", quality=78, method=4)
+            fd, tmp = tempfile.mkstemp(dir=str(dst.parent), suffix=".tmp")
+            _os.close(fd)
+            im.save(tmp, "WEBP", quality=78, method=4)
+        if _os.path.getsize(tmp) == 0:
+            raise OSError("empty thumbnail")
+        _os.replace(tmp, str(dst))          # 원자적 — 부분 파일이 서빙되지 않는다
+        tmp = None
         return True
     except Exception:  # noqa: BLE001 — 썸네일 실패가 목록을 죽이면 안 된다
         return False
+    finally:
+        if tmp:
+            try:
+                _os.unlink(tmp)
+            except OSError:
+                pass
 
 
 @app.get("/thumb/{vid}/{filename}")
@@ -842,9 +863,11 @@ def thumb(vid: str, filename: str):
         if not (root in src.parents and src.exists() and src.is_file()):
             raise ValueError("not found")
         dst = _thumb_path(safe_vid, safe)
-        if not dst.exists() or dst.stat().st_mtime < src.stat().st_mtime:
+        _st = dst.stat() if dst.exists() else None
+        if _st is None or _st.st_size == 0 or _st.st_mtime < src.stat().st_mtime:
             if not _make_thumb(src, dst):
-                return FileResponse(str(src))
+                # 폴백에는 장기 캐시를 붙이지 않는다 — 다음 요청에 다시 시도해야 한다
+                return FileResponse(str(src), headers={"Cache-Control": "no-store"})
         return FileResponse(str(dst), media_type="image/webp",
                             headers={"Cache-Control": "public, max-age=604800"})
     except (ValueError, OSError):

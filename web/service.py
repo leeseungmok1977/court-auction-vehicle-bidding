@@ -2850,13 +2850,47 @@ def plain_verdict(v: dict, expected: Optional[dict],
 # 층별 표본이 이 값 미만이면 숫자를 내지 않고 '표본 부족'으로 둔다(미산출 규칙과 동일).
 ACCURACY_STRATUM_MIN_N = 8
 
-_DOMESTIC_HINT = ("현대", "기아", "제네시스", "쌍용", "대우", "르노", "쉐보레",
-                  "삼성", "KG", "지엠", "GM", "포터", "봉고")
+# ⚠ maker 값이 수집 과정에서 손상되는 경우가 있다 — 빈 문자열 11건, '현'(현대 잘림) 2건,
+# '기차'·'기라'(기아 손상), '(주)련대자동차'(현대 손상) 등 1,320건 중 22건이 '수입'으로
+# 오분류돼, 제네시스 G80이 "이 유형(수입, 41건) 실측 오차 ±10.3%"를 인용했다
+# (국산 코호트라면 131건·±9%). 5회차 품질 지적 5.
+# 그래서 제조사 문자열뿐 아니라 **모델명**으로도 판정한다 — 모델명은 손상이 적다.
+_DOMESTIC_HINT = ("현대", "련대", "기아", "기차", "기라", "제네시스", "쌍용", "대우",
+                  "르노", "쉐보레", "삼성", "KG", "케이지", "지엠", "GM", "포터", "봉고")
+_DOMESTIC_MODEL = (
+    "그랜저", "쏘나타", "아반떼", "싼타페", "투싼", "코나", "베뉴", "팰리세이드", "스타리아",
+    "제네시스", "G70", "G80", "G90", "GV60", "GV70", "GV80", "에쿠스", "제네시스쿠페",
+    "쏘렌토", "스포티지", "카니발", "K3", "K5", "K7", "K8", "K9", "모닝", "레이", "니로",
+    "셀토스", "쏘울", "스토닉", "봉고", "모하비", "EV6", "EV9",
+    "티볼리", "코란도", "렉스턴", "토레스", "스파크", "말리부", "트랙스", "트레일블레이저",
+    "이쿼녹스", "트래버스", "콜로라도", "임팔라", "캡티바", "올란도", "다마스", "라보",
+    "QM3", "QM5", "QM6", "SM3", "SM5", "SM6", "SM7", "XM3", "마스터", "캐스퍼", "벨로스터",
+    "i30", "i40", "아이오닉", "포터", "마이티", "쏠라티", "그랜드스타렉스", "스타렉스")
+
+
+# 수입 브랜드는 국산 힌트보다 **먼저** 본다 — 'GM' + '캐딜락 에스컬레이드'처럼
+# 판매사(한국지엠)는 국산 힌트에 걸리지만 차는 수입인 경우가 있다.
+_IMPORT_BRAND = (
+    "BMW", "벤츠", "BENZ", "MERCEDES", "메르세데스", "아우디", "AUDI", "폭스바겐", "폭스바켄",
+    "VOLKSWAGEN", "포르쉐", "PORSCHE", "랜드로버", "LAND ROVER", "레인지로버", "재규어", "JAGUAR",
+    "볼보", "VOLVO", "미니", "MINI", "렉서스", "LEXUS", "토요타", "도요타", "TOYOTA",
+    "혼다", "HONDA", "닛산", "NISSAN", "인피니티", "INFINITI", "포드", "FORD", "링컨", "LINCOLN",
+    "크라이슬러", "CHRYSLER", "지프", "짚", "JEEP", "캐딜락", "CADILLAC", "테슬라", "TESLA",
+    "푸조", "PEUGEOT", "PEUGOET", "시트로엥", "CITROEN", "마세라티", "MASERATI", "페라리",
+    "람보르기니", "벤틀리", "롤스로이스", "피아트", "FIAT", "BYD", "MAN ", "스카니아", "SCANIA")
 
 
 def is_domestic_maker(v: dict) -> bool:
-    blob = f"{v.get('maker') or ''} {v.get('model') or ''}"
-    return any(k in blob for k in _DOMESTIC_HINT)
+    """국산차인가. maker가 손상돼도 **모델명**으로 건질 수 있게 이중으로 본다."""
+    maker = str(v.get("maker") or "")
+    model = str(v.get("model") or "")
+    blob = f"{maker} {model}"
+    if any(k in blob.upper() for k in _IMPORT_BRAND):
+        return False
+    if any(k in blob for k in _DOMESTIC_HINT):
+        return True
+    up = model.upper().replace(" ", "")
+    return any(m.upper().replace(" ", "") in up for m in _DOMESTIC_MODEL if m)
 
 
 def accuracy_strata(bt: Optional[dict] = None) -> list:
@@ -3057,7 +3091,9 @@ def _pick_photo_url(v: dict) -> Optional[str]:
     avail = {p.name for p in pdir.iterdir() if p.is_file()}
     order = [n for n in (v.get("photo_order") or []) if n in avail]
     names = order + sorted(n for n in avail if n not in order)
-    return f"/photo/{fk}/{names[0]}" if names else None
+    # 홈 카드·알림 썸네일도 축소본을 쓴다. 목록만 /thumb으로 바꾼 탓에 홈이 3G에서
+    # 43.1초·2,158KB(이미지 1,652KB)였다 — 병목이 옮겨간 것뿐이었다(5회차 품질 P1).
+    return f"/thumb/{fk}/{names[0]}" if names else None
 
 
 def _pick_dict(v: dict, bt: dict) -> dict:
