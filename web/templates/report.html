@@ -79,13 +79,21 @@ body{background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:
 .vpts b{color:var(--ink)}
 /* 섹션 점프 바 — 리포트는 9,600px(=11화면)짜리 문서인데 고정 요소가 하나도 없어
    가장 중요한 STOP RULE·리스크 항목까지 도달률이 사실상 0이었다(2026-09-12 패널 지적). */
-.secnav{position:sticky;top:0;z-index:30;display:flex;gap:6px;overflow-x:auto;
-  padding:8px 0;margin-bottom:4px;background:#fff;border-bottom:1px solid var(--line)}
+/* 상단 고정 바 — 툴바(상세로·인쇄)와 섹션 점프칩을 함께 붙여 둔다.
+   11화면짜리 문서라 스크롤을 내리면 돌아갈 방법이 사라졌다(2026-09-12 사용자 요청). */
+.rtop{position:sticky;top:0;z-index:40;background:var(--paper);
+  margin:-24px -20px 8px;padding:10px 20px 0;border-bottom:1px solid var(--line)}
+.rtop .btn{padding:7px 14px}
+.secnav{display:flex;gap:6px;overflow-x:auto;padding:8px 0;
+  -webkit-overflow-scrolling:touch;scrollbar-width:none}
+.secnav::-webkit-scrollbar{display:none}
+/* 고정 바 높이만큼 여유를 둬 점프 시 제목이 가리지 않게 한다 */
+.sec-head[id]{scroll-margin-top:104px}
 .secnav a{flex:none;font-size:12px;font-weight:700;color:var(--ink-soft);text-decoration:none;
   padding:7px 11px;border-radius:99px;background:#F4F6F9;border:1px solid var(--line);white-space:nowrap}
 .secnav a:hover{color:var(--ink);background:#E9EEF5}
 .secnav a.warn{color:#7A2B2A;background:var(--red-tint);border-color:#F2C8C8}
-@media print{ .secnav{display:none} }
+@media print{ .rtop{display:none} }
 .proc{margin:16px 0 0;padding-left:20px}
 .proc li{font-size:13px;line-height:1.6;color:var(--ink-soft);margin-bottom:9px}
 .proc li b{color:var(--ink)}
@@ -197,31 +205,54 @@ details.raw summary{cursor:pointer;font-size:12px;color:var(--cobalt);font-weigh
 function _reportBack(e){
   try{
     if (window.opener && !window.opener.closed) { window.opener.focus(); window.close(); return false; }
+    var target = e.currentTarget.getAttribute('href');
     var ref = document.referrer;
     if (ref) {
       var u = new URL(ref);
       var path = decodeURIComponent(u.pathname);
       if (u.origin === location.origin && path.indexOf('/vehicle/') === 0
           && !/\/report$/.test(path) && history.length > 1) {
-        e.preventDefault(); history.back(); return false;
+        e.preventDefault();
+        var here = location.pathname;
+        history.back();
+        /* 안전망: 되감았는데도 여전히 리포트면(해시 이동 등으로 스택이 어긋난 경우)
+           직전 차량정보 화면으로 직접 이동한다. '상세로'는 반드시 그 차로 가야 한다. */
+        setTimeout(function(){ if (location.pathname === here) location.href = target; }, 350);
+        return false;
       }
     }
   }catch(err){}
   return true;
 }
+
+/* 섹션 점프칩은 히스토리를 쌓지 않는다.
+   해시 링크는 클릭할 때마다 방문 기록이 늘어서, 칩을 세 번 누르고 '상세로'를 누르면
+   차량정보가 아니라 직전에 눌렀던 섹션으로 되돌아갔다(2026-09-12 사용자 제보).
+   scrollIntoView + replaceState로 주소만 갱신한다. */
+document.addEventListener('click', function(e){
+  var a = e.target.closest && e.target.closest('.secnav a[href^="#"]');
+  if (!a) return;
+  var el = document.getElementById(a.getAttribute('href').slice(1));
+  if (!el) return;
+  e.preventDefault();
+  el.scrollIntoView({behavior:'smooth', block:'start'});
+  try { history.replaceState(null, '', a.getAttribute('href')); } catch(err) {}
+});
 </script>
 <div class="page" role="main">
-  <div class="no-print">
+  <div class="rtop no-print">
+  <div>
     <a href="/vehicle/{{ v.id }}" class="btn" onclick="return _reportBack(event)"><span class="material-symbols-outlined" style="font-size:18px">arrow_back</span> 상세로</a>
     <button onclick="window.print()" class="btn pri"><span class="material-symbols-outlined" style="font-size:18px">print</span> 인쇄 / PDF 저장</button>
     <span class="btn" style="opacity:.5;cursor:not-allowed;gap:6px" title="곧 제공 — 리포트를 계정에 보관하고 건당 구매(현재 무료·인쇄로 저장하세요)" aria-disabled="true"><span class="material-symbols-outlined" style="font-size:18px">bookmark_add</span> 보관·구매 <span style="font-size:10px;background:var(--line);color:var(--ink-soft);padding:1px 6px;border-radius:99px">준비 중</span></span>
   </div>
 
-  <nav class="secnav no-print" aria-label="섹션 바로가기">
+  <nav class="secnav" aria-label="섹션 바로가기">
     <a href="#sec01">결론</a><a href="#sec02">신뢰도</a><a href="#sec05">시세비교</a>
     <a href="#sec06">총 취득원가</a><a href="#sec09" class="warn">⚠ 리스크·현장확인</a>
     <a href="#sec12" class="warn">낙찰 전후 절차</a>
   </nav>
+  </div>
 
   <!-- 마스트헤드 -->
   <header class="masthead">

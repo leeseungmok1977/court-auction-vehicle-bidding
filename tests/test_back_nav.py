@@ -44,3 +44,28 @@ def test_report_back_does_not_grow_history():
     assert "history.back()" in body, "링크로만 이동하면 히스토리가 쌓여 '뒤로'가 리포트로 간다"
     assert "window.opener" in body, "새 창으로 열린 경우 창을 닫는 처리가 사라졌다"
     assert "/report$" in body, "직전이 리포트가 아닌 상세인지 확인하는 조건이 없다"
+
+
+def test_section_chips_do_not_push_history():
+    """해시 링크는 누를 때마다 방문 기록이 쌓인다.
+
+    칩을 몇 번 누르고 '상세로'를 누르면 차량정보가 아니라 직전에 눌렀던 섹션으로
+    되돌아갔다(2026-09-12 제보). scrollIntoView + replaceState로 주소만 갱신한다.
+    """
+    assert "replaceState" in REPORT, "섹션칩이 여전히 히스토리를 쌓는다"
+    assert "scrollIntoView" in REPORT
+    assert ".secnav a[href^=" in REPORT, "섹션칩 클릭 가로채기 셀렉터가 없다"
+
+
+def test_report_back_has_fallback():
+    """되감기가 어긋나도 '상세로'는 반드시 그 차량 화면으로 가야 한다."""
+    assert "location.href = target" in REPORT, "되감기 실패 시 직접 이동하는 안전망이 없다"
+
+
+def test_report_toolbar_is_sticky():
+    """11화면 문서에서 스크롤을 내려도 '상세로'·인쇄·섹션칩이 남아야 한다."""
+    m = re.search(r"\.rtop\{([^}]*)\}", REPORT)
+    assert m and "position:sticky" in m.group(1), "상단 바가 고정되지 않는다"
+    assert 'class="rtop no-print"' in REPORT
+    assert re.search(r"\.sec-head\[id\]\{scroll-margin-top:\d+px\}", REPORT), \
+        "고정 바에 제목이 가리지 않도록 하는 scroll-margin이 없다"
