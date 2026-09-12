@@ -706,10 +706,14 @@ NEWCAR_RECHECK_DAYS = 30        # 매칭 실패/성공 후 재시도 간격(매�
 NEWCAR_MAX_CANDIDATES = 3       # 물건당 시도할 보배 모델 후보 수(연식 검증으로 확정)
 NEWCAR_MAX_REQ_PER_VEHICLE = 45 # 물건 하나가 일일 예산을 독식하지 않도록(캐시 적중은 0으로 계산됨)
 NEWCAR_BASIS_MAX_GAP = 2        # 목표 연식보다 최대 몇 년 전 가격표까지 '당시 출시가'로 인정할지
-# 일일 요청 상한(사용자 승인 2026-09-12로 300 → 1200 상향).
-# 요청 간 5초 고정이므로 1200이면 하루 약 100분간 0.2건/초로 흘려보낸다.
-# C.4의 안전장치는 그대로: 지연 5초·물건당 45건·403/429 즉시중단·실패 시 30일 백오프.
-NEWCAR_DAILY_CAP = 1200
+# 일일 요청 상한(사용자 승인 2026-09-12: 300 → 1200 → **2400**).
+# 요청 간 5초 고정이므로 2400이면 하루 최대 약 3시간 20분간 0.2건/초로 흘려보낸다.
+#
+# 높게 잡아도 안전한 이유: 이 값은 **상한**일 뿐이고 수집은 대기열이 비면 그냥 끝난다.
+# 즉 백필이 끝나면 하루 사용량은 신규 물건이 필요로 하는 만큼으로 저절로 내려간다(자기제한적).
+# 당시 출시가는 **과거 값이라 변하지 않으므로** 본질적으로 1회성 백필 + 소량 유지보수다.
+# C.4 안전장치는 그대로: 지연 5초·물건당 45건·403/429 즉시중단·실패 시 30일 재시도.
+NEWCAR_DAILY_CAP = 2400
 # 신차 가격표에 없을 차종(중장비·특장) — 매칭은 실패하는데 물건당 최대 45요청을 태운다.
 # 2026-09-12 실측(입찰예정 428건)에서 덤프트럭 18·굴착기 6·공기압축기 4·탱크로리 3·지게차 2 등 약 50건.
 NEWCAR_SKIP_WORDS = ("덤프트럭", "굴착기", "지게차", "공기압축기", "콘크리트펌프", "펌프카",
@@ -744,6 +748,8 @@ def newcar_pool(vehicles: list, cutoff: str, vehicle_ids: Optional[list] = None)
     전부 '미산출'로 떴다. 같은 예산으로 순서만 바꿔 체감 커버리지를 올린다.
 
     순서: ① 추천(입찰 검토 가능) → ② 매각기일 임박 → ③ id.
+    이미 `newcar_min`이 있는 물건은 **영구 제외** — 당시 출시가는 과거 값이라 변하지 않는다.
+    (이전에는 30일마다 성공 건까지 재조회해 예산을 갉아먹었다.)
     vehicle_ids로 특정 물건을 콕 집은 경우(관리자 수동)는 제외 규칙을 적용하지 않는다.
     """
     manual = bool(vehicle_ids)
@@ -753,8 +759,10 @@ def newcar_pool(vehicles: list, cutoff: str, vehicle_ids: Optional[list] = None)
             continue
         if manual and v["id"] not in vehicle_ids:
             continue
+        if v.get("newcar_min") is not None:
+            continue          # 이미 확보 — 당시 출시가는 과거 값이라 바뀌지 않는다(재조회는 순수 낭비)
         if (v.get("newcar_checked_at") or "") >= cutoff:
-            continue
+            continue          # 실패 이력은 백오프 기간 동안만 쉬었다가 재시도
         if not manual and newcar_skip(v):
             continue
         picked.append(v)
@@ -858,6 +866,7 @@ def newcar_collect(max_requests: int = NEWCAR_DAILY_CAP, max_models: Optional[in
     today = _date.today()
     cutoff = (today - _td(days=NEWCAR_RECHECK_DAYS)).isoformat()
     pool = newcar_pool(db.list_vehicles(upcoming_days=within_days), cutoff, vehicle_ids)
+    out["pool"] = len(pool)          # 백필 진행률을 런 메시지로 보이게 한다
     # 제조사 목록(1회 수집 후 캐시)
     conn = db.connect(); rows = conn.execute("SELECT maker_no, maker_name, fetched_at FROM newcar_makers").fetchall(); conn.close()
     makers = {r["maker_name"]: r["maker_no"] for r in rows}
@@ -920,6 +929,7 @@ def newcar_collect(max_requests: int = NEWCAR_DAILY_CAP, max_models: Optional[in
     except RuntimeError as e:                    # 차단 → 즉시 중단·보고(C.4-5)
         out["stopped"] = f"차단: {e}"
     out["requests"] = budget.used
+    out["remaining"] = max(0, out.get("pool", 0) - out["vehicles"])
     return out
 
 
@@ -1160,7 +1170,8 @@ def daily_update(within_days: int = 30, analyze: bool = True,
                if review.get("found") else "")
         _hv = "" if health["state"] == "ok" else f" · ⚠엔카 {health['state']}(HTTP {health['code']})"
         _ru = f" · 동급참조 {reuse['applied']}" if reuse.get("applied") else ""
-        _nc = f" · 출시가 {newcar.get('matched', 0)}건" if newcar.get("matched") else ""
+        _nc = (f" · 출시가 {newcar.get('matched', 0)}건(대기 {newcar.get('remaining', 0)})"
+               if (newcar.get("matched") or newcar.get("remaining")) else "")
         _ph = (f" · 사진정렬 {photos['sorted']}건" if photos.get("sorted")
                else (" · ⚠사진정렬 건너뜀" if photos.get("error") else ""))
         db.update_run(run_id, status="done", finished_at=_now(),

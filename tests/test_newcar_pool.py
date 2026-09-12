@@ -88,8 +88,46 @@ def test_safety_knobs_unchanged_after_cap_raise():
     assert bobae.REQUEST_DELAY_SEC >= 5, "요청 간 지연은 5초 이상이어야 한다(C.4-2)"
     assert service.NEWCAR_MAX_REQ_PER_VEHICLE <= 45, "물건 하나가 일일 예산을 독식하면 안 된다"
     assert service.NEWCAR_RECHECK_DAYS >= 30, "실패 물건 재시도 백오프가 짧아지면 헛요청이 는다"
-    assert 0 < service.NEWCAR_DAILY_CAP <= 2000, "런당 하드캡은 반드시 존재해야 한다(C.4-1)"
+    # 상한은 반드시 존재하고, 상식적인 범위여야 한다.
+    # 5000이면 5초 지연 기준 약 7시간 — 하루 종일 긁는 수준이라 그 이상은 승인 없이 두지 않는다.
+    assert 0 < service.NEWCAR_DAILY_CAP <= 5000, "런당 하드캡은 반드시 존재해야 한다(C.4-1)"
 
 
 def test_cap_raised_as_approved():
-    assert service.NEWCAR_DAILY_CAP == 1200, "2026-09-12 사용자 승인값"
+    assert service.NEWCAR_DAILY_CAP == 2400, "2026-09-12 사용자 승인값(300 → 1200 → 2400)"
+
+
+def test_cap_is_self_limiting_not_a_quota():
+    """상한은 '쓸 수 있는 최대'일 뿐 '매일 쓰는 양'이 아니다.
+
+    수집은 대기열이 비면 예산이 남아도 끝난다. 그래서 백필이 끝나면 하루 사용량은
+    신규 물건이 필요로 하는 만큼으로 저절로 내려간다. 이 성질이 깨지면(예: 빈 대기열에도
+    예산을 소진하도록 바뀌면) 상한을 높게 둔 근거가 사라진다.
+    """
+    import inspect
+    src = inspect.getsource(service.newcar_collect)
+    assert "for v in pool:" in src, "대기열 순회 구조가 바뀌었다 — 자기제한성 재검토 필요"
+
+
+# ── ④ 확보한 출시가는 다시 조회하지 않는다 ────────────────────
+def test_successful_vehicle_is_never_rechecked():
+    """당시 출시가는 과거 값이라 변하지 않는다 — 재조회는 순수 낭비.
+
+    이전 구현은 성공 건도 30일 뒤 다시 조회해 예산을 갉아먹었다(사용자 지적 2026-09-12).
+    """
+    rows = [
+        v("K5", id="got", newcar_min=3090, newcar_max=3920, newcar_checked_at="2020-01-01"),
+        v("K5", id="never", newcar_checked_at="2020-01-01"),
+    ]
+    got = [x["id"] for x in service.newcar_pool(rows, cutoff="2026-08-13")]
+    assert got == ["never"], "이미 출시가를 확보한 물건은 영구 제외여야 한다"
+
+
+def test_failed_vehicle_retries_after_backoff():
+    """실패는 매칭 개선 여지가 있으므로 백오프 후 재시도한다."""
+    rows = [
+        v("K5", id="recent", newcar_checked_at="2026-09-01"),   # cutoff 이후 → 쉼
+        v("K5", id="old",    newcar_checked_at="2026-07-01"),   # cutoff 이전 → 재시도
+    ]
+    got = [x["id"] for x in service.newcar_pool(rows, cutoff="2026-08-13")]
+    assert got == ["old"]
