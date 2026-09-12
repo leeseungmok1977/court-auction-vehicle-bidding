@@ -466,6 +466,18 @@ def is_personal_use_pick(v: dict, bt: Optional[dict] = None, today=None) -> bool
 LIFECYCLE_BUCKETS = ("won", "review", "usepick", "wait", "lowconf", "other")
 
 
+def _review_biddable(v: dict, today=None) -> bool:
+    """'입찰 검토 가능' 카드에 실제로 들어가는 조건 — db.list_vehicles의 judgment 필터와 동일.
+
+    목록 쪽에만 있던 조건(기일 미도래·낙찰/종결 아님·상세없음 아님)을 버킷 함수가 빠뜨리면
+    카드는 34, 링크는 17이 된다. 두 곳이 갈리지 않도록 여기에 한 번만 적는다."""
+    if (v.get("sale_date") or "") < (today or date.today()).isoformat():
+        return False
+    if (v.get("auction_result") or "") in ("낙찰", "종결"):
+        return False
+    return (v.get("status") or "") != "상세없음"
+
+
 def lifecycle_bucket_of(v: dict, bt: Optional[dict] = None) -> str:
     """물건이 속한 대시보드 버킷 **하나**를 돌려준다.
 
@@ -475,7 +487,7 @@ def lifecycle_bucket_of(v: dict, bt: Optional[dict] = None) -> str:
     if v.get("auction_result") == "낙찰":
         return "won"
     j = v.get("judgment")
-    if j == "입찰 검토 가능":
+    if j == "입찰 검토 가능" and _review_biddable(v):
         return "review"
     if is_personal_use_pick(v, bt if bt is not None else backtest_stats()):
         return "usepick"

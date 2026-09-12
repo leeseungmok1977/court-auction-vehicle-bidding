@@ -41,6 +41,11 @@ def client(tmp_path, monkeypatch):
         dict(base, id="L1_1", case_no="2026타경14", min_sale_price=10000000,
              appraisal_value=12000000, median_price=13000000,
              market_confidence_label="낮음", judgment="시세 신뢰도 낮음, 수동 검토"),
+        # 기일이 지난 '입찰 검토 가능' — 목록 필터는 빼는데 버킷이 안 빼면
+        # 카드 34 / 링크 17처럼 갈린다(실제로 그렇게 갈렸다).
+        dict(base, id="P1_1", case_no="2026타경18", min_sale_price=10000000,
+             appraisal_value=12000000, median_price=13000000, sale_date="2020-01-01",
+             market_confidence_label="높음", judgment="입찰 검토 가능"),
         dict(base, id="O1_1", case_no="2026타경15", min_sale_price=10000000,
              appraisal_value=12000000, judgment="입찰 보류", accident_grade="flood"),
         dict(base, id="O2_1", case_no="2026타경16", min_sale_price=10000000,
