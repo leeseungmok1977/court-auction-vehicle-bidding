@@ -753,7 +753,11 @@
       {% if v.breakdown and v.median_price is not none and v.upper_bid %}
       {% set bd = v.breakdown %}
       {% set base = bd['기준시세'] or 1 %}
+      {# '상태정비추가'(검사 경과·시동 불가 등)는 합계에서는 빠지는데 표에는 없었다.
+         물건 727건 중 250건(34.4%)에서 화면의 뺄셈이 안 맞았고, 최대 245만원까지
+         차이가 났다. 숨겨서도 안 되는 항목이다 — 사유까지 같이 낸다. (5회차) #}
       {% set steps = [('예상 수리비', bd.get('예상수리비', 0)),
+                      ('상태 정비 추가', bd.get('상태정비추가', 0)),
                       ('사고 감가', bd.get('사고감가', 0)),
                       ('리스크 프리미엄', bd.get('리스크프리미엄', 0)),
                       ('취득세', bd.get('취득세', 0)),
@@ -781,6 +785,9 @@
         </div>
       </div>
       <div class="text-xs text-mut mb-4 leading-relaxed border-t border-line pt-2">
+        {% if bd.get('상태정비추가') and bd.get('상태사유') %}
+        <div class="mb-1.5">상태 정비 추가 사유 — <b class="text-txt">{{ bd.get('상태사유')|join(' · ') }}</b></div>
+        {% endif %}
         사고등급 <b class="text-txt">{{ bd.get('사고등급')|acc }}</b>(감가 {{ (bd.get('사고감가율', 0) * 100)|round(1) }}%){% if is_admin(request) %}
         · 플랫폼 {{ bd.get('플랫폼') }}(×{{ bd.get('플랫폼가중') }})
         · 시세 표본 {{ bd.get('표본수') }}건{% endif %}

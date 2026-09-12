@@ -744,6 +744,10 @@ document.addEventListener('click', function(e){
       {% set bd = v.breakdown %}
       <div class="logic"><span class="ln">1</span><div class="ld">기준시세</div><span class="lv num">{{ bd['기준시세']|won }}</span></div>
       <div class="logic"><span class="ln">2</span><div class="ld">− 수리비 − 사고감가 − 리스크프리미엄<small>{{ bd['예상수리비']|won }} + {{ bd['사고감가']|won }} + {{ bd['리스크프리미엄']|won }}</small></div><span class="lv num">−{{ (bd['예상수리비']+bd['사고감가']+bd['리스크프리미엄'])|won }}</span></div>
+      {# 상태정비추가는 합계에서만 빠지고 어느 줄에도 없어, 1~3을 더해도 ＝와 안 맞았다. #}
+      {% if bd.get('상태정비추가') %}
+      <div class="logic"><span class="ln">2′</span><div class="ld">− 상태 정비 추가<small>{{ bd.get('상태사유', [])|join(' · ') }}</small></div><span class="lv num">−{{ bd['상태정비추가']|won }}</span></div>
+      {% endif %}
       <div class="logic"><span class="ln">3</span><div class="ld">− 취득세 − 고정부대비 − 목표마진<small>{{ bd['취득세']|won }} + {{ bd['고정부대비']|won }} + {{ bd['마진']|won }}</small></div><span class="lv num">−{{ (bd['취득세']+bd['고정부대비']+bd['마진'])|won }}</span></div>
       <div class="logic"><span class="ln">＝</span><div class="ld"><b>재판매 상한가</b><small>이 값 이하로 낙찰 시 목표마진 확보</small></div><span class="lv num">{{ upper|won }}</span></div>
       {% endif %}
