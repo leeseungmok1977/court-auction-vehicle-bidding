@@ -344,7 +344,7 @@
     {% if next_min %}<span class="block mt-1">다음 기일 예상 최저가는 <b>{{ next_min.price|won }}원</b>입니다.</span>{% endif %}
   </div>
   {% else %}
-  <p class="text-sm text-mut mb-4">세 값 모두 <b>위 예상낙찰가와 같은 기준</b>(최저매각가 × 유찰 프리미엄)이며, <b class="text-primary">균형 = 상단 예상낙찰가</b>입니다.{% if expected.p_mid is not none %} 낙찰 확률은 과거 낙찰 {{ backtest.pred_n or '' }}건의 <b>낙찰가÷최저매각가 분포</b>에서 이 금액 이하로 낙찰된 비율입니다(실측).{% else %} <b class="text-txt">표본이 부족해 낙찰 확률은 표시하지 않습니다.</b>{% endif %} 높게 쓸수록 낙찰 가능성↑·차익↓.{% if _mb %} <b class="text-txt">입찰 상한선 {{ _mb|won }}원</b>을 넘는 칸은 금액을 제시하지 않습니다.{% endif %}</p>
+  <p class="text-sm text-mut mb-4">세 값 모두 <b>위 예상낙찰가와 같은 기준</b>(최저매각가 × 유찰 프리미엄)이며, <b class="text-primary">균형 = 상단 예상낙찰가</b>입니다.{% if expected.p_mid is not none %} 낙찰 확률은 과거 낙찰 {{ expected.prob_n }}건의 <b>낙찰가÷최저매각가 분포</b>에서 이 금액 이하로 낙찰된 비율입니다(실측).{% else %} <b class="text-txt">표본이 부족해 낙찰 확률은 표시하지 않습니다.</b>{% endif %} 높게 쓸수록 낙찰 가능성↑·차익↓.{% if _mb %} <b class="text-txt">입찰 상한선 {{ _mb|won }}원</b>을 넘는 칸은 금액을 제시하지 않습니다.{% endif %}</p>
   <div class="grid grid-cols-3 gap-1.5 sm:gap-2 tabular-nums">
     {# 소프트캡이 상단을 자르면 공격=균형이 되는데 확률만 달랐다(727건 중 265건) —
        같은 금액에 다른 확률을 붙이는 자기모순이었다. 실측 확률은 같은 금액에 같은 값을 준다. #}

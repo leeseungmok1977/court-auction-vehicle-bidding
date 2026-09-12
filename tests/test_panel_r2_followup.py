@@ -11,7 +11,11 @@ from starlette.testclient import TestClient
 
 from web import service
 
-BT = {"discount_median": 0.74, "mae_pct": 9.2, "sample": 172, "within10_pct": 62,
+# min_premium_pool이 없으면 win_probability가 None → 템플릿이 else 분기만 탄다.
+# 4회차에 이것 때문에 "낙찰 확률" 분기의 UndefinedError(프로덕션 500)를 못 잡았다 —
+# 품질 전문가가 경고한 "픽스처가 그 분기를 렌더한 적이 없다"에 그대로 빠진 것이다.
+BT = {"min_premium_pool": [round(1.00 + i * 0.004, 4) for i in range(60)],
+      "discount_median": 0.74, "mae_pct": 9.2, "sample": 172, "within10_pct": 62,
       "min_premium_median": 1.13, "min_premium_by_fail": {"0": 1.20, "1": 1.13, "2+": 1.06},
       "min_premium_p25": 1.05, "min_premium_p75": 1.22}
 

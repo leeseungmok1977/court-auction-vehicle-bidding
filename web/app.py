@@ -644,6 +644,7 @@ def vehicle_detail(request: Request, vid: str, cc: str = "", an: str = ""):
                     "p_lo": service.win_probability(v, _band.get("lo"), bt) if _band else None,
                     "p_mid": service.win_probability(v, _band.get("price"), bt) if _band else None,
                     "p_hi": service.win_probability(v, _band.get("hi"), bt) if _band else None,
+                    "prob_n": len(bt.get("min_premium_pool") or []),
                     "comp_used": _used_comps,          # 실제로 산정에 쓰였는가
                     "comp_ratio": _cd[0] if _cd else None}
     dist = service.price_distribution(
