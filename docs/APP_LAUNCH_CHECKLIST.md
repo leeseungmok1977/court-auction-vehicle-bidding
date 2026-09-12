@@ -80,8 +80,7 @@
 | Key alias | `naechaget` | 비밀번호는 `signing-key-info.txt` |
 | Billing | OFF | v1은 결제 없음 |
 
-키 파일 위치: `Downloads
-aechaget-signing\` (zip에서 꺼내 둠, 저장소 밖)
+키 파일 위치: `C:\Users\14ZB95N\Downloads\naechaget-signing\` (zip에서 꺼내 둠 — 저장소 밖, 커밋 금지)
 
 **Play Console**
 1. 테스트 및 출시 → 테스트 → **비공개 테스트** → **새 버전 만들기**
@@ -92,6 +91,8 @@ aechaget-signing\` (zip에서 꺼내 둠, 저장소 밖)
 
 > 💡 비공개 테스트 기간 중 업데이트를 1회 이상 넣으면 프로덕션 심사에 유리하다는 것이 업체·커뮤니티 경험칙이다.
 > 다만 **assetlinks 지문은 그대로 유효**하다(Play 앱 서명 키는 안 바뀜) — 주소창 문제는 재발하지 않는다.
+
+---
 
 ## 3. Play Console에 앱 생성 + 내부 테스트 업로드
 
