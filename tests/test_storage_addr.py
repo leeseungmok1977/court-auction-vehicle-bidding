@@ -173,3 +173,26 @@ def test_missing_storage_does_not_claim_the_court_omitted_it(client):
     html = client.get("/vehicle/S1").text
     assert "법원 미표시" not in html
     assert "확인되지 않음" in html
+
+
+def test_backfill_fills_missing_source_for_existing_values(one):
+    """값은 있는데 출처가 없는 행 — 운영에 309건 있었다.
+
+    출처를 함께 내기로 한 이상, 출처 없는 값은 표기 규칙의 구멍이다.
+    """
+    (one / "d.json").write_text(json.dumps(
+        {"storage_addr": "경기도 수원시 팔달구 매산로 1"}, ensure_ascii=False), encoding="utf-8")
+    db.update_fields("V1", storage_addr="경기도 수원시 팔달구 매산로 1", storage_src=None)
+    out = service.backfill_storage_addr()
+    assert out["already"] == 1 and out["src_filled"] == 1
+    assert db.get_vehicle("V1")["storage_src"] == "court"
+
+
+def test_source_lookup_does_not_guess_when_files_disagree(one):
+    """저장된 값과 파일의 값이 다르면 출처를 지어내지 않는다."""
+    (one / "d.json").write_text(json.dumps(
+        {"storage_addr": "부산광역시 강서구 경전철로 202"}, ensure_ascii=False), encoding="utf-8")
+    db.update_fields("V1", storage_addr="경기도 수원시 팔달구 매산로 1", storage_src=None)
+    out = service.backfill_storage_addr()
+    assert out["src_filled"] == 0
+    assert not (db.get_vehicle("V1")["storage_src"] or "")

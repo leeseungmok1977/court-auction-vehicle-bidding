@@ -1993,6 +1993,41 @@ def reapply_appraisal_guard() -> dict:
     return {"checked": checked, "fixed": fixed}
 
 
+def _storage_src_of(folder_key: str, addr: str) -> str:
+    """이미 저장된 보관장소가 어느 파일에서 온 값인지 되짚는다(무네트워크).
+
+    값만 있고 출처가 없는 행이 실제로 있었다(운영 309건) — 화면에 출처를 함께
+    내기로 한 이상, 출처 없는 값은 표기 규칙의 구멍이 된다.
+    """
+    import json as _json
+    import os
+    from src.parse.detail_parser import _storage_from_text
+
+    folder = os.path.join("data", folder_key)
+    if not os.path.isdir(folder):
+        return ""
+    norm = " ".join(addr.split())
+    for name in sorted(os.listdir(folder)):
+        if not name.endswith(".json"):
+            continue
+        try:
+            with open(os.path.join(folder, name), encoding="utf-8") as fh:
+                d = _json.load(fh)
+        except (OSError, ValueError):
+            continue
+        if isinstance(d, dict) and " ".join(str(d.get("storage_addr") or "").split()) == norm:
+            return "court"
+    fp = os.path.join(folder, "appraisal.txt")
+    if os.path.exists(fp):
+        try:
+            with open(fp, encoding="utf-8") as fh:
+                if " ".join(_storage_from_text(fh.read()).split()) == norm:
+                    return "text"
+        except OSError:
+            pass
+    return ""
+
+
 def backfill_storage_addr() -> dict:
     """차량 보관장소를 이미 받아 둔 파일에서 채운다(무네트워크).
 
@@ -2012,13 +2047,22 @@ def backfill_storage_addr() -> dict:
     import os
     from src.parse.detail_parser import _storage_from_text
 
-    out = {"checked": 0, "from_court": 0, "from_text": 0, "already": 0, "none": 0}
+    out = {"checked": 0, "from_court": 0, "from_text": 0,
+           "already": 0, "src_filled": 0, "none": 0}
     for v in db.list_vehicles(hide_incomplete=False):
         out["checked"] += 1
-        if (v.get("storage_addr") or "").strip():
-            out["already"] += 1
-            continue
+        have = (v.get("storage_addr") or "").strip()
         fk = v.get("folder_key") or v.get("id")
+        if have:
+            out["already"] += 1
+            # 값은 있는데 출처가 없는 행이 있다(기능 도입 후 분석이 자연히 채운 것).
+            # 출처 없이 주소만 내면 화면 원칙이 깨지므로, 어디서 온 값인지 되짚는다.
+            if not (v.get("storage_src") or "").strip():
+                src = _storage_src_of(fk, have)
+                if src:
+                    db.update_fields(v["id"], storage_src=src)
+                    out["src_filled"] += 1
+            continue
         folder = os.path.join("data", fk)
         if not os.path.isdir(folder):
             out["none"] += 1
