@@ -190,10 +190,29 @@ details.raw summary{cursor:pointer;font-size:12px;color:var(--cobalt);font-weigh
 </style>
 </head>
 <body>
+<script>
+/* '상세로'는 히스토리를 늘리지 않고 되돌아간다.
+   링크로 이동하면 [목록, 상세, 리포트, 상세]가 쌓여 상세의 '뒤로'가 리포트로 가버린다.
+   새 창으로 열린 경우엔 창을 닫아 원래 탭으로 돌아간다. */
+function _reportBack(e){
+  try{
+    if (window.opener && !window.opener.closed) { window.opener.focus(); window.close(); return false; }
+    var ref = document.referrer;
+    if (ref) {
+      var u = new URL(ref);
+      var path = decodeURIComponent(u.pathname);
+      if (u.origin === location.origin && path.indexOf('/vehicle/') === 0
+          && !/\/report$/.test(path) && history.length > 1) {
+        e.preventDefault(); history.back(); return false;
+      }
+    }
+  }catch(err){}
+  return true;
+}
+</script>
 <div class="page" role="main">
   <div class="no-print">
-    <a href="/vehicle/{{ v.id }}" class="btn"
-       onclick="if(window.opener&&!window.opener.closed){window.opener.focus();window.close();}return true;"><span class="material-symbols-outlined" style="font-size:18px">arrow_back</span> 상세로</a>
+    <a href="/vehicle/{{ v.id }}" class="btn" onclick="return _reportBack(event)"><span class="material-symbols-outlined" style="font-size:18px">arrow_back</span> 상세로</a>
     <button onclick="window.print()" class="btn pri"><span class="material-symbols-outlined" style="font-size:18px">print</span> 인쇄 / PDF 저장</button>
     <span class="btn" style="opacity:.5;cursor:not-allowed;gap:6px" title="곧 제공 — 리포트를 계정에 보관하고 건당 구매(현재 무료·인쇄로 저장하세요)" aria-disabled="true"><span class="material-symbols-outlined" style="font-size:18px">bookmark_add</span> 보관·구매 <span style="font-size:10px;background:var(--line);color:var(--ink-soft);padding:1px 6px;border-radius:99px">준비 중</span></span>
   </div>

@@ -447,10 +447,19 @@
      외부(다른 사이트)에서 바로 들어왔거나 히스토리가 없으면 href(마지막 목록)로 폴백. -->
 <script>
 window._goBack = function(e){
+  /* '뒤로'는 브라우저 뒤로가기가 아니라 **목록으로 돌아가는** 버튼이다.
+     히스토리 되감기는 직전 화면이 목록일 때만 쓴다(그때만 스크롤 위치가 복원돼 이득이 있다).
+     직전이 리포트나 다른 상세면 되감기가 그리로 돌아가 루프가 된다 —
+     목록 → 상세 → 리포트 → '상세로' → 상세 에서 '뒤로'를 누르면 리포트로 갔다(2026-09-12 제보).
+     그 경우엔 href(back_url = 마지막으로 본 목록 URL)로 그냥 이동한다. */
   try {
     var ref = document.referrer;
-    var external = ref && new URL(ref).origin !== location.origin;   // 외부 사이트에서 유입
-    if (history.length > 1 && !external) { e.preventDefault(); history.back(); return false; }
+    if (!ref) return true;                                        // 직접 진입 → href
+    var u = new URL(ref);
+    if (u.origin !== location.origin) return true;                // 외부 유입 → href
+    var path = decodeURIComponent(u.pathname);
+    if (!/^\/(vehicles|calendar|courts|watchlist)?$/.test(path)) return true;   // 목록이 아니면 href
+    if (history.length > 1) { e.preventDefault(); history.back(); return false; }
   } catch(err) {}
   return true;   // 폴백: href(back_url)로 이동
 };
