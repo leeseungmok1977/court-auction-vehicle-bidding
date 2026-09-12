@@ -86,10 +86,11 @@
     {% if promising %}{# 집계 카드 '검토 추천'에서 진입 — 신뢰도 높음+오매칭 제외 큐레이션. 클릭 시 전체 보기 #}
     <a href="/vehicles?judgment=입찰 검토 가능&sort=expected" class="text-xs bg-amber-50 text-amber-700 border border-amber-200 rounded-full px-3 py-1 flex items-center gap-1" title="신뢰도 높음 + 오매칭 제외한 검토 추천만. 클릭하면 전체 검토가능을 봅니다.">🎯 검토 추천 ✕</a>
     {% endif %}
-    {# 좁은 폭에서 '총 N건'이 한 줄(약 40px)을 통째로 먹는다 — 첫 화면이 19%뿐인
-       320px에서는 비싼 자리다. 칩 줄 끝에 붙여 자기 줄을 없앤다. #}
-    <span class="text-sm text-mut ml-auto pl-2 whitespace-nowrap shrink-0">총 <b class="text-txt">{{ total }}</b>건</span>
     </div>
+    {# '총 N건'은 스크롤 컨테이너 안에 두면 ml-auto가 스크롤 끝으로 밀어 화면 밖으로
+       나간다(실제로 그랬다). 좁은 폭에서는 아래 '판정 표시 설명' 줄의 빈 오른쪽으로
+       옮겨 자기 줄을 없앤다 — sm 이상에서만 여기 남는다. #}
+    <span class="hidden sm:inline text-sm text-mut ml-auto whitespace-nowrap">총 <b class="text-txt">{{ total }}</b>건</span>
   </form>
 </div>
 
@@ -114,8 +115,9 @@
    재방문자가 매번 볼 것은 아니다 — 접어 두고 상태를 기기에 기억한다.
    물건 목록에서 첫 화면에 물건이 없는 것보다 나쁜 것은 없다. (5회차) #}
 <details id="listLegend" class="px-1">
-  <summary class="cursor-pointer list-none text-xs text-mut hover:text-txt select-none inline-flex items-center gap-0.5 py-0.5">
-    <span class="material-symbols-outlined text-[14px] leading-none">expand_more</span>판정 표시 설명</summary>
+  <summary class="cursor-pointer list-none text-xs text-mut hover:text-txt select-none flex items-center gap-0.5 py-0.5">
+    <span class="material-symbols-outlined text-[14px] leading-none">expand_more</span>판정 표시 설명
+    <span class="ml-auto sm:hidden text-sm whitespace-nowrap">총 <b class="text-txt">{{ total }}</b>건</span></summary>
 <div class="gloss-row gloss-up flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-mut mt-1">
   {{ ui.gloss('검토 가능', '지금 가격이 적정해 바로 입찰을 검토할 수 있는 물건이에요.', q=false, cls='font-bold text-emerald-700') }}
   {{ ui.gloss('유찰 대기', '아직 최저가가 시세보다 높아, 유찰로 더 내려가길 기다리는 편이 나은 물건이에요.', q=false, cls='font-bold text-amber-700') }}
