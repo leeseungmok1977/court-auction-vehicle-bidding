@@ -673,6 +673,8 @@ def vehicle_detail(request: Request, vid: str, cc: str = "", an: str = ""):
         "allin": service.allin_estimate(expected["price"] if expected else None, _cfg),
         # 다음 기일 예상 최저가 — '이번 회차를 건너뛸까'를 판단할 유일한 숫자
         "next_min": service.next_min_sale(v),
+        # 표시된 최저매각가가 직전(유찰된) 기일 값으로 보이면 그렇게 밝힌다
+        "stale_floor": service.stale_floor(v),
         # 판정 단일 소스 — 상세·리포트가 서로 다른 말을 하지 않도록 같은 값을 쓴다
         "bidst": _bidst,
         "use": service.personal_use_detail(v, bt, _cfg),
@@ -736,6 +738,8 @@ def vehicle_report(request: Request, vid: str):
         # 지적한 항목으로, 예상낙찰가(예측)보다 실제로 더 중요한 값이다.
         "max_bid": _bidst.get("max_bid"),
         "next_min": service.next_min_sale(v),
+        # 표시된 최저매각가가 직전(유찰된) 기일 값으로 보이면 그렇게 밝힌다
+        "stale_floor": service.stale_floor(v),
         "bidst": _bidst,          # 판정 단일 소스 — 상세와 같은 값
         "use": service.personal_use_detail(v, bt, config),
         "comp_min_n": service.COMP_MIN_N, "comp_ratio_med": comp_ratio_med,

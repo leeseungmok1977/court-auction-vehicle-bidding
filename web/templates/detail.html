@@ -80,6 +80,13 @@
     <dt class="text-mut">{{ ui.gloss('유찰횟수', '입찰자가 없어 매각이 무산된 횟수예요. 유찰될 때마다 다음 기일의 최저매각가가 법원별로 정해진 비율만큼 내려갑니다.') }}</dt><dd class="font-mono">{{ v.fail_count if v.fail_count is not none else '—' }} 회</dd>
     {# 유찰 대기 사용자가 실제로 필요한 숫자는 '다음엔 얼마부터 시작하나'다(2026-09-12 경매 지적).
        법원별 저감률은 우리 기일내역에서 실측한 값이고, 표본이 부족하면 전국 기준이라고 밝힌다. #}
+    {% if stale_floor %}
+    {# 유찰 1회 이상인데 최저가가 감정가와 같다 = 저감 후 가격이 아직 공고되지 않았다.
+       이 값으로 만든 예측은 지어낸 값이라 예상낙찰가를 미산출로 둔다(4회차 경매 P0). #}
+    <dt class="text-amber-800">가격 확인 필요</dt>
+    <dd class="text-amber-800 text-sm not-italic font-sans leading-relaxed">표시된 최저매각가가 <b>직전 기일 값</b>으로 보입니다(유찰 {{ v.fail_count }}회인데 감정가와 같음).
+      다음 기일 최저가가 공고되면 자동 반영됩니다 — 그때까지 <b>예상 낙찰가는 산출하지 않습니다</b>(입찰 상한선은 시세에서 나오므로 그대로 유효합니다).</dd>
+    {% endif %}
     {% if next_min %}
     <dt class="text-mut">{{ ui.gloss('다음 기일 예상 최저가', '이번 기일에 유찰되면 다음 기일은 이 금액부터 시작합니다. 법원마다 저감 비율이 달라(대부분 30%, 일부 20%) 우리 기일내역 실측값으로 계산했습니다.') }}</dt>
     <dd class="font-mono text-txt tnum"><span class="nc-unit">{{ next_min.price|won }} 원</span>

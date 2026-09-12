@@ -2441,12 +2441,30 @@ def soft_cap(med: Optional[int]) -> Optional[int]:
     return int(round(med * SOFT_CAP_RATIO / 100_000) * 100_000)
 
 
+def stale_floor(v: dict) -> bool:
+    """표시된 최저매각가가 **직전(유찰된) 기일 값**으로 보이는가.
+
+    유찰이 1회 이상인데 최저매각가가 감정가와 같으면, 법원이 저감 후 가격을 아직
+    공고하지 않은 것이다. 그런데 예상낙찰가 산식이 `최저매각가 × 프리미엄`이라
+    낡은 가격의 오차가 **산식 전체에 100% 전파**된다. 방향은 항상 하나 — 가격을
+    부풀려 blocked를 띄우고 **살 수 있는 차를 못 사게 한다**(4회차 경매 P0:
+    X7은 진짜 출발선 8,400만 기준이면 상한선 안인데 "1억 1,990만을 공격적으로 쓰라"고 했다).
+
+    더 나쁜 건 이 오류가 **/accuracy에 절대 안 잡힌다**는 것이다 — 낙찰이 안 나므로
+    검증 표본에 들어가지 않는다. 앱의 가장 큰 가격 오류가 사후검증 사각지대에 있다.
+    """
+    ap, mn = v.get("appraisal_value") or 0, v.get("min_sale_price") or 0
+    return bool(ap and mn and ap == mn and (v.get("fail_count") or 0) >= 1)
+
+
 def expected_for(v: dict, bt: dict) -> Optional[int]:
     """물건 dict + 백테스트 통계 → 예상 낙찰가(중심 추정치).
 
     핵심: **최저매각가 × 유찰버킷 프리미엄**(낙찰가/최저가). 유찰로 내려간 최저가가
     시장 할인을 이미 반영해 낙찰가/시세보다 훨씬 안정적 → 실측 오차 최소(~10%).
     최저매각가가 없으면 시세×할인율(유사낙찰→모델→유찰→전역)로 폴백."""
+    if stale_floor(v):
+        return None      # 낡은 출발선으로 만든 예측은 지어낸 값이다 — 미산출로 둔다
     mn = v.get("min_sale_price")
     prem = min_premium_for(bt, v.get("fail_count"))
     med = effective_median(v)

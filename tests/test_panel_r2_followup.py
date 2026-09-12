@@ -411,3 +411,33 @@ def test_resale_breakeven_uses_the_same_accident_rate(bidclient):
     service.apply_accident_rate(bi, car)
     assert bi.accident_rate == service.use_accident_rate(car)[0]
     assert "무사고" not in bi.accident_label, "근거 없이 무사고라고 쓰면 안 된다"
+
+
+# ── 낡은 최저가 (4회차 경매 P0) ──────────────────────────────────
+# 유찰 1회 이상인데 최저가 == 감정가 = 저감 후 가격이 아직 공고되지 않은 것.
+# 산식이 `최저매각가 × 프리미엄`이라 오차가 100% 전파되고, 방향은 항상 '부풀림'이다.
+# 그리고 이 오류는 /accuracy에 절대 안 잡힌다 — 낙찰이 안 나므로 검증 표본에 없다.
+
+def test_stale_floor_detected():
+    assert service.stale_floor(v(appraisal_value=20_000_000,
+                                 min_sale_price=20_000_000, fail_count=1)) is True
+    assert service.stale_floor(v(appraisal_value=20_000_000,
+                                 min_sale_price=14_000_000, fail_count=1)) is False
+    assert service.stale_floor(v(appraisal_value=20_000_000,
+                                 min_sale_price=20_000_000, fail_count=0)) is False
+
+
+def test_stale_floor_blocks_expected_price():
+    """낡은 출발선으로 만든 예측은 지어낸 값이다."""
+    stale = v(appraisal_value=120_000_000, min_sale_price=120_000_000,
+              fail_count=1, median_price=100_000_000)
+    assert service.expected_for(stale, BT) is None
+    # 상한선은 **시세**에서 나오므로 낡은 최저가와 무관하게 유효하다 — 지우지 않는다.
+    assert service.personal_use_max_bid(stale, BT) is not None
+    st = service.bid_state(stale, BT)
+    assert st["tone"] != "ok", "가격을 못 믿는데 초록불이면 안 된다"
+    assert st["state"] == "lowconf"
+    # 정상 물건은 그대로 산출된다
+    ok = v(appraisal_value=120_000_000, min_sale_price=84_000_000,
+           fail_count=1, median_price=100_000_000)
+    assert service.expected_for(ok, BT) is not None
