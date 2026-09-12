@@ -17,7 +17,12 @@ from web import service
 BT = {"min_premium_pool": [round(1.00 + i * 0.004, 4) for i in range(60)],
       "discount_median": 0.74, "mae_pct": 9.2, "sample": 172, "within10_pct": 62,
       "min_premium_median": 1.13, "min_premium_by_fail": {"0": 1.20, "1": 1.13, "2+": 1.06},
-      "min_premium_p25": 1.05, "min_premium_p75": 1.22}
+      "min_premium_p25": 1.05, "min_premium_p75": 1.22,
+      # accuracy_for()가 층별 오차를 내려면 pred_pool이 필요하다. 없으면 추천 게이트가
+      # "오차를 모르면 추천하지 않는다"로 막아 픽스처가 전부 빠진다(의도된 동작).
+      "pred_pool": [{"err_pct": 8.0 + (i % 5), "maker": "현대", "model": "쏘나타",
+                     "fail_count": 1, "median_price": 20_000_000, "actual": 20_000_000}
+                    for i in range(40)],}
 
 
 def v(**kw):
@@ -62,7 +67,10 @@ def test_soft_cap_is_shown_as_its_own_step():
     b = service.expected_band(capped, BT)
     assert b["basis"]["capped"] is True
     assert b["basis"]["raw"] > b["basis"]["cap"]
-    assert b["price"] <= b["basis"]["cap"]
+    # 5회차: 캡을 최저매각가 아래로 내리면 **법적으로 써낼 수 없는 금액**이 인쇄된다
+    # (실측 61장 중 6장, 덤프트럭은 최저가의 27%). 최저가 하한이 캡보다 우선한다.
+    assert b["price"] == max(b["basis"]["cap"], capped["min_sale_price"])
+    assert b["price"] >= capped["min_sale_price"]
     # 캡이 안 걸리는 평범한 물건은 단계를 늘리지 않는다
     plain = service.expected_band(v(), BT)
     assert plain["basis"]["capped"] is False
@@ -256,8 +264,10 @@ def test_accident_rate_increases_with_hit_count():
     assert rates[0] < rates[-1], "1회와 12회의 감가가 같으면 안 된다"
 
 
-def test_accident_count_uses_both_own_and_opposite_damage():
-    assert service.accident_hit_count(v(insurance_history=_ins(own=2, opp=3))) == 5
+def test_accident_count_uses_own_damage_only():
+    # 4회차엔 own+opp를 더했다. 5회차 중고차 지적: 상대차피해는 이 차가 남의 차에
+    # 입힌 손상이라 이 차의 가치와 무관하다. 더하면 감가가 계통적으로 과대해진다.
+    assert service.accident_hit_count(v(insurance_history=_ins(own=2, opp=3))) == 2
     # 이력을 확보하지 못하면 0이 아니라 '모른다' — 0으로 치면 근거 없는 무사고가 된다
     assert service.accident_hit_count(v()) is None
     assert service.accident_hit_count(v(insurance_history={"owner_changes": 2})) is None
@@ -445,3 +455,58 @@ def test_stale_floor_blocks_expected_price():
     ok = v(appraisal_value=120_000_000, min_sale_price=84_000_000,
            fail_count=1, median_price=100_000_000)
     assert service.expected_for(ok, BT) is not None
+
+
+# ── 상대차피해는 이 차의 감가가 아니다 (5회차 중고차 지적 3) ─────
+def test_opposite_damage_is_not_counted_as_own_accident():
+    """상대차피해는 이 차가 남의 차에 입힌 손상이다 — 이 차 가치와 무관하다."""
+    only_opp = v(accident_grade="accident",
+                 insurance_history={"own_damage": 0, "opp_damage": 1})
+    assert service.accident_hit_count(only_opp) == 0
+    assert service.opposite_damage_count(only_opp) == 1
+    # 내차 4 + 상대차 4를 8건으로 세면 30%가 되지만, 내차 기준이면 22%다
+    mixed = v(accident_grade="accident",
+              insurance_history={"own_damage": 4, "opp_damage": 4})
+    own_only = v(accident_grade="accident",
+                 insurance_history={"own_damage": 4, "opp_damage": 0})
+    assert service.use_accident_rate(mixed)[0] == service.use_accident_rate(own_only)[0]
+
+
+# ── 다물건 감정서: 남의 차 정보가 붙지 않는다 (5회차 중고차 P0) ──
+# 실측(2025타경101362): 기호3 그랜저(실제 70,842km)가 화면에 148,589km(기호1 값)로
+# 표시되고, "기호2, 4는 시동이 안되는 상태" 문장에 걸려 시동 멀쩡한 기호3에 STOP이 붙었다.
+_MULTI = """기호1 싼타페:2016년식, 주행거리-148,589km  기호3 그랜져:2020년식, 주행거리-70,842km
+2) 기호1, 3, 5는 시동상태 보통이며 기호2, 4는 시동이 안되는 상태로 추정.
+기호3 : 내차 피해(1회 - 3,995,341원)"""
+
+
+def test_multi_symbol_appraisal_is_detected():
+    from src.parse.appraisal import is_multi_symbol
+    assert is_multi_symbol(_MULTI) is True
+    assert is_multi_symbol("본건 차량은 시동이 걸리지 않는바.") is False
+
+
+@pytest.mark.parametrize("sym,runnable", [(1, True), (2, False), (3, True), (4, False)])
+def test_symbol_slice_keeps_only_this_vehicle(sym, runnable):
+    from src.parse.appraisal import slice_for_symbol, parse_appraisal
+    sub, ok = slice_for_symbol(_MULTI, sym)
+    assert ok, "분리 실패"
+    assert parse_appraisal(sub)["condition"]["runnable"] is runnable
+    # 남의 차 주행거리가 섞이면 안 된다
+    if sym == 3:
+        assert "148,589" not in sub and "70,842" in sub
+
+
+def test_unsplittable_multi_symbol_claims_nothing():
+    """분리에 실패하면 상태를 주장하지 않는다 — 남의 차 서술로 판정하는 것보다 낫다."""
+    from web import service
+    sig = service._appraisal_signals(_MULTI, item_no=None)
+    assert sig["condition_level"] == "unknown" and sig["runnable"] == "unknown"
+
+
+def test_single_symbol_appraisal_is_unaffected():
+    """단일 물건 감정서는 예전과 똑같이 동작해야 한다(과잉 차단 방지)."""
+    from web import service
+    sig = service._appraisal_signals(
+        "본건 차량은 차량키가 있으나 시동이 걸리지 않는바 참고바람.", item_no="1")
+    assert sig["runnable"] == "no"

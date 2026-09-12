@@ -18,11 +18,18 @@ from web import service
 # 이 필드를 빼면 '시세×할인율' 폴백으로 새 경로를 타 테스트가 의도를 못 지킨다.
 BT = {"discount_median": 0.74, "mae_pct": 9.2, "sample": 172,
       "min_premium_median": 1.13, "min_premium_by_fail": {"0": 1.20, "1": 1.13, "2+": 1.06},
-      "min_premium_p25": 1.05, "min_premium_p75": 1.22}
+      "min_premium_p25": 1.05, "min_premium_p75": 1.22,
+      # accuracy_for()가 층별 오차를 내려면 pred_pool이 필요하다. 없으면 추천 게이트가
+      # "오차를 모르면 추천하지 않는다"로 막아 픽스처가 전부 빠진다(의도된 동작).
+      "pred_pool": [{"err_pct": 8.0 + (i % 5), "maker": "현대", "model": "쏘나타",
+                     "fail_count": 1, "median_price": 20_000_000, "actual": 20_000_000}
+                    for i in range(40)],}
 
 
 def v(**kw):
-    base = {"median_price": 40_000_000, "min_sale_price": 28_000_000, "fail_count": 1,
+    # 절감액이 층 오차(≈10%)를 넘는 물건이어야 '실사용 추천'에 든다.
+    # 최저가 2,800만이면 절감 87만 < 오차 316만이라 유의하지 않다(5회차 게이트).
+    base = {"median_price": 40_000_000, "min_sale_price": 22_000_000, "fail_count": 1,
             "market_confidence_label": "높음", "accident_grade": "none", "judgment": "유찰 대기"}
     base.update(kw)
     return base

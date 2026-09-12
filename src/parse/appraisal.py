@@ -45,6 +45,56 @@ _COND_SENT_KW = ["외관", "상태", "시동", "운행", "관리", "결함", "�
                  "정비", "교체", "수리", "이상"]
 
 
+# ── 다물건 감정서: 기호 단위 분리 ─────────────────────────────────
+# 한 사건에 물건이 여러 개면 감정서 1부가 기호1~N을 함께 서술한다. 문서 전체를
+# 스캔하면 **남의 차 정보가 이 차에 붙는다** — 5회차 실측(2025타경101362):
+#   기호3 그랜저(실제 70,842km)가 화면에 148,589km(기호1 값)로 표시되고,
+#   "기호2, 4는 시동이 안되는 상태" 문장에 걸려 **시동 멀쩡한 기호3에 STOP**이 붙었다.
+#   매각기일이 남은, 지금 입찰 가능한 물건이었다.
+#
+# 기호는 "기호1", "기호(2)", "기호1, 3, 5는"처럼 나열로도 쓰인다. 그래서 문장이 아니라
+# **기호 마커 위치로 텍스트를 쪼개** 각 구간을 그 기호 그룹에 귀속시킨다.
+_SYM_GROUP = re.compile(r"기호\s*\(?\s*(\d{1,2}(?:\s*[,·]\s*\d{1,2})*)\s*\)?")
+
+
+def _symbols(chunk: str) -> set:
+    return {int(x) for x in re.findall(r"\d{1,2}", chunk or "")}
+
+
+def is_multi_symbol(text: str) -> bool:
+    """감정서가 여러 기호를 함께 서술하는가."""
+    seen = set()
+    for m in _SYM_GROUP.finditer(text or ""):
+        seen |= _symbols(m.group(1))
+    return len(seen) >= 2
+
+
+def slice_for_symbol(text: str, item_no) -> tuple:
+    """이 물건(기호 N)에 귀속되는 구간만 남긴다.
+
+    반환: (해당 텍스트, 신뢰 가능 여부). 분리에 실패하면 (원문, False) —
+    호출부는 False면 상태·시동·검사기간을 **미상으로 두어야 한다**. 남의 차 서술로
+    판정하는 것보다 모른다고 하는 편이 낫다(이 제품의 기존 규칙).
+    """
+    if not text or not is_multi_symbol(text):
+        return text, True
+    try:
+        want = int(str(item_no).strip())
+    except (TypeError, ValueError):
+        return text, False
+    marks = list(_SYM_GROUP.finditer(text))
+    if not marks:
+        return text, False
+    kept = []
+    for k, m in enumerate(marks):
+        end = marks[k + 1].start() if k + 1 < len(marks) else len(text)
+        if want in _symbols(m.group(1)):
+            kept.append(text[m.start():end])
+    if not kept:
+        return text, False
+    return " ".join(kept), True
+
+
 def parse_appraisal(text: str, today: Optional[date] = None) -> Optional[dict]:
     """요항 텍스트 → 구조화 dict. 추출 불가 항목은 None/빈값(원문은 raw로 보존)."""
     if not text or not text.strip():
@@ -83,7 +133,8 @@ def parse_appraisal(text: str, today: Optional[date] = None) -> Optional[dict]:
     damage = minor + major
     poor = any(k in clean for k in _POOR_KW)
     runnable = None
-    if re.search(r"(시동|운행)[^.]{0,12}(가능|양호)", clean):
+    # "시동상태 보통"도 시동이 걸린다는 뜻이다(다물건 감정서에서 흔한 표현).
+    if re.search(r"(시동|운행)[^.]{0,14}(가능|양호|보통)", clean):
         runnable = True
     # 실측 미탐(2026-09-12): "차량키가 보관장소에 있으나 시동이 걸리지 않는바" —
     # 기존 패턴은 '되지 않'만 봐서 '걸리지 않'을 놓쳤다. 감정요항 실제 표현을 반영한다.

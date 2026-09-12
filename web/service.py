@@ -119,7 +119,8 @@ def _analyze_item(cs, es, raw: dict, item, config: dict, repair_cost: int,
         "photo_count": detail.photo_count,
         "repair_cost": repair_cost, "analyzed_at": _now(),
     })
-    base.update(_appraisal_signals(detail.appraisal_text, config))   # 검사만료일·상태등급 저장
+    base.update(_appraisal_signals(detail.appraisal_text, config,
+                                   item_no=getattr(detail, "item_no", None) or item.item_no))
     # 낙찰결과는 데이터가 있을 때만 기록(빈 종결 물건이 기존 확정결과를 NULL로 덮지 않도록)
     if detail.dxdy_history or detail.winning_price is not None:
         base.update({
@@ -433,7 +434,27 @@ def accident_hit_count(v: dict) -> Optional[int]:
     if not isinstance(ih, dict) or ("own_damage" not in ih and "opp_damage" not in ih):
         return None
     try:
-        return int(ih.get("own_damage") or 0) + int(ih.get("opp_damage") or 0)
+        # ⚠ **내차피해만** 센다. `opp_damage`(상대차피해)는 이 차가 남의 차에 입힌
+        # 손상이라 이 차의 가치와 무관하다. 예전엔 둘을 더해서, 내차 0회·상대차 1회인
+        # 물건이 "사고 1회"로 10% 감가됐고, 내차4+상대차4는 8건으로 세어 30%를 먹었다
+        # (내차 기준이면 22% — 8%p 과대. 5회차 중고차 지적 3).
+        return int(ih.get("own_damage") or 0)
+    except (TypeError, ValueError):
+        return None
+
+
+def opposite_damage_count(v: dict) -> Optional[int]:
+    """상대차피해 건수 — 표기 전용(감가에는 쓰지 않는다)."""
+    ih = v.get("insurance_history")
+    if isinstance(ih, str):
+        try:
+            ih = json.loads(ih)
+        except Exception:  # noqa: BLE001
+            return None
+    if not isinstance(ih, dict) or "opp_damage" not in ih:
+        return None
+    try:
+        return int(ih.get("opp_damage") or 0)
     except (TypeError, ValueError):
         return None
 
@@ -553,6 +574,24 @@ def personal_use_detail(v: dict, bt: Optional[dict] = None,
             "comp": int(round(med * (1 - rate)))}
 
 
+def personal_use_significant(v: dict, bt: Optional[dict] = None) -> bool:
+    """절감액이 **이 유형의 실측 오차보다 큰가**. 아니면 이득이라 부르지 않는다.
+
+    5회차 경매 지적: 게이트가 `gain > 0`(1원)이라 추천 17건 중 15건의 절감액이
+    앱이 스스로 공표한 MAE보다 작았다. K5는 3만원 — 오차 ±51만원 안에서
+    이득/손해의 **부호조차 결정되지 않는다.** 경매는 취소가 안 되고 성능점검 보증도
+    반품도 없다. 층의 오차를 못 구하면 추천하지 않는다(모르면 멈춘다).
+    """
+    saving = personal_use_saving(v, bt)
+    if not saving:
+        return False
+    acc = accuracy_for(v, bt)
+    exp = expected_for(v, bt if bt is not None else backtest_stats())
+    if not acc or not acc.get("mae") or not exp:
+        return False          # 오차를 모르면 유의성을 주장할 수 없다
+    return saving > exp * acc["mae"] / 100.0
+
+
 def is_personal_use_pick(v: dict, bt: Optional[dict] = None, today=None) -> bool:
     """'실사용 추천' 칸에 들어갈 물건인가.
 
@@ -568,7 +607,7 @@ def is_personal_use_pick(v: dict, bt: Optional[dict] = None, today=None) -> bool
     d = (today or date.today()).isoformat()
     if (v.get("sale_date") or "") < d:
         return False
-    return personal_use_saving(v, bt) is not None
+    return personal_use_significant(v, bt)
 
 
 # 대시보드 카드 ↔ 목록 필터를 **같은 함수**로 묶는다. 카드에서 usepick을 빼놓고 링크는
@@ -1867,13 +1906,21 @@ def backfill_photo_count() -> int:
     return updated
 
 
-def _appraisal_signals(text: str, config: Optional[dict] = None) -> dict:
+def _appraisal_signals(text: str, config: Optional[dict] = None,
+                       item_no=None) -> dict:
     """감정요항 텍스트 → 저장용 신호(검사만료일·상태등급·손상표현). 텍스트 없으면 {}.
     inspection_to는 만료일(안정적)만 저장 — '경과' 여부는 조회 시점에 판정(시간이 지나도 정확)."""
-    from src.parse.appraisal import parse_appraisal
-    p = parse_appraisal(text or "")
+    from src.parse.appraisal import parse_appraisal, slice_for_symbol
+    # 다물건 사건은 감정서 1부가 기호1~N을 함께 서술한다. 이 물건의 기호 구간만 쓴다 —
+    # 문서 전체를 스캔하면 남의 차 주행거리·시동 상태가 이 차에 붙는다(5회차 중고차 P0).
+    text, trusted = slice_for_symbol(text or "", item_no)
+    p = parse_appraisal(text)
     if not p:
         return {}
+    if not trusted:
+        # 기호 분리에 실패했으면 상태를 주장하지 않는다(원문은 화면에 그대로 남는다).
+        return {"inspection_to": None, "condition_level": "unknown",
+                "condition_flags": None, "runnable": "unknown"}
     insp = p.get("inspection")
     run = p["condition"].get("runnable")
     return {
@@ -1902,7 +1949,8 @@ def backfill_appraisal_signals(force: bool = False) -> int:
         if not os.path.exists(fp):
             continue
         try:
-            sig = _appraisal_signals(open(fp, encoding="utf-8").read())
+            sig = _appraisal_signals(open(fp, encoding="utf-8").read(),
+                                     item_no=v.get("item_no"))
         except Exception:  # noqa: BLE001
             sig = {}
         db.update_fields(v["id"],
@@ -2472,7 +2520,9 @@ def expected_for(v: dict, bt: dict) -> Optional[int]:
         est = int(round(mn * prem / 100_000) * 100_000)
         cap = soft_cap(med)         # 소프트 캡: 낙찰가가 시세를 크게 상회하는 비현실 방어(신건·고감정가)
         if cap:
-            return min(est, cap)
+            # ⚠ 캡을 최저매각가 아래로 내리면 **법적으로 써낼 수 없는 금액**이 인쇄된다
+            # (5회차 실측: 61장 중 6장, 덤프트럭은 최저가의 27%). 최저가를 하한으로 건다.
+            return max(min(est, cap), int(mn))
         # ⚠ 시세가 없으면 캡이 꺼진다 — 방어가 가장 필요한 물건(상용·특수차 201건)에만
         # 방어가 없던 셈이다. 게다가 프리미엄은 승용 낙찰 172건에서 학습한 값이라
         # 덤프트럭·특장차에 전이할 근거가 없다. 숫자를 지어내지 말고 미산출로 둔다
@@ -2486,11 +2536,21 @@ def expected_for(v: dict, bt: dict) -> Optional[int]:
 
 
 def win_probability(v: dict, bid: Optional[int], bt: Optional[dict] = None) -> Optional[int]:
-    """이 금액을 써냈을 때 낙찰될 확률(%) — 실측 분포에서 계산한다.
+    """**낙찰된 사건 중** 이 금액 이하로 낙찰된 비율(%).
 
-    과거 낙찰의 (낙찰가 ÷ 최저매각가) 분포에서, 내 배수 이하로 낙찰된 비율이
-    곧 "이 금액이면 이겼을 비율"이다. 표본이 부족하면 **None**을 돌려주고 화면은
-    확률을 표시하지 않는다 — 지어낸 숫자를 실측이라고 적지 않는다."""
+    ⚠ 이것은 "낙찰될 확률"이 **아니다.** 분모에 무입찰 유찰 기일이 빠져 있다.
+    5회차 경매 전문가 지적: 무입찰로 유찰된 기일에 최저가만 써냈다면 이겼을 텐데,
+    그 기일들이 분모에서 빠지면 **낮은 금액의 승률만 골라서 깎인다** — 사용자를
+    더 높이 쓰게 미는 방향이다. 실제 낙찰 가능성은
+        P = P(무입찰) + (1 − P(무입찰)) × 이 값
+    이라 항상 이 값보다 크다.
+
+    지금 `sale_results`에는 낙찰만 기록돼 무입찰 비율을 셀 수 없다(기일내역에는
+    유찰 615건이 있으나 낙찰 기일은 없어 같은 모집단이 아니다). 그래서 값을
+    보정하지 않고 **라벨을 정확한 정의로 바꿨다** — 근거 없이 보정하면 편향을
+    다른 편향으로 바꾸는 것뿐이다. 분모 확보는 데이터 과제로 남긴다
+    (docs/reviews/2026-09-12-r5.md '남은 것' 1번).
+    """
     bt = bt if bt is not None else backtest_stats()
     pool = bt.get("min_premium_pool") or []
     mn = v.get("min_sale_price") or 0
@@ -3351,7 +3411,7 @@ def recompute_all_market(run_id: Optional[int] = None, finalize: bool = True) ->
                               appraisal_value=v.get("appraisal_value"), config=config)
             fields = {"market_platform": "encar", "encar_total": res.get("count"),
                       "analyzed_at": _now()}
-            fields.update(_appraisal_signals(atext, config))   # 검사만료일·상태등급 갱신
+            fields.update(_appraisal_signals(atext, config, item_no=v.get("item_no")))
             # 케이카 2소스 교차검증: 라이브(캐시+상한) 또는 저장값 재적용 → fresh 엔카 median에 반영
             stats, _kf, _blk = _kcar_cross_live(ks, kcache, kreq, v, fuel, listings,
                                                 stats, year, config)

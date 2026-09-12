@@ -20,7 +20,12 @@ BT = {"discount_median": 0.74, "mae_pct": 9.2, "sample": 172,
       "discount_p25": 0.62, "discount_p75": 0.86, "discount_by_fail": {}, "discount_by_model": {},
       "upper_hit_rate": None, "upper_n": 0, "within10_pct": 62, "within20_pct": 96,
       "actual_mae_pct": None, "actual_sample": 0, "mae_baseline_pct": 12.0,
-      "history_n": 0, "model_learned": False, "pred_n": 0, "pred_pool": [], "comp_pool": [],
+      "history_n": 0, "model_learned": False, "pred_n": 40, "comp_pool": [],
+      # accuracy_for()가 층별 오차를 내려면 실제 표본이 필요하다 — 빈 리스트면
+      # 추천 게이트가 "오차를 모르면 추천하지 않는다"로 막아 픽스처가 전부 빠진다.
+      "pred_pool": [{"err_pct": 8.0 + (i % 5), "maker": "현대", "model": "쏘나타",
+                     "fail_count": 1, "median_price": 40_000_000, "actual": 30_000_000}
+                    for i in range(40)],
       "won_total": 0}
 
 
@@ -34,7 +39,7 @@ def client(tmp_path, monkeypatch):
             "year": 2020, "sale_date": "2999-01-01", "status": "완료", "fail_count": 1}
     rows = [
         # 소매보다 싼 실사용 추천(유찰 대기지만 usepick으로 빠져야 함)
-        dict(base, id="U1_1", case_no="2026타경11", min_sale_price=20000000,
+        dict(base, id="U1_1", case_no="2026타경11", min_sale_price=16000000,
              appraisal_value=30000000, median_price=40000000,
              market_confidence_label="높음", judgment="유찰 대기"),
         # 순수 유찰 대기(비싸서 추천 아님)
@@ -72,8 +77,9 @@ def client(tmp_path, monkeypatch):
                          min_sale_price=10000000, appraisal_value=12000000,
                          median_price=13000000, market_confidence_label="낮음",
                          judgment="시세 신뢰도 낮음, 수동 검토"))
+        # 절감액이 층 오차를 넘어야 '실사용 추천'에 든다(5회차 유의성 게이트)
         rows.append(dict(base, id=f"UB{i}_1", case_no=f"2026타경7{i:03d}",
-                         min_sale_price=20000000, appraisal_value=30000000,
+                         min_sale_price=16000000, appraisal_value=30000000,
                          median_price=40000000, market_confidence_label="높음",
                          judgment="유찰 대기"))
     for r in rows:
