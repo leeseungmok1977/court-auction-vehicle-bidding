@@ -290,7 +290,7 @@ d.addEventListener('toggle',function(){try{localStorage.setItem('ncUsepickBasis'
            뭉갠다. 목록은 "들어가 볼지"를 거르는 화면이라 여기서 상태가 안 보이면
            좋은 물건을 그냥 넘긴다. 640이면 1.68배 — 카드 크기엔 충분하다.
            작은 3장 스트립(w-14=56px)은 320으로 충분하니 올리지 않는다. #}
-        <img src="{{ (v.thumb_urls or v.photo_urls)[0] }}{% if v.thumb_urls %}?w=640{% endif %}"
+        <img src="{{ (v.thumb_urls or v.photo_urls)[0] }}{% if v.thumb_urls %}?w=480{% endif %}"
              loading="lazy" decoding="async" alt=""
              class="absolute inset-0 w-full h-full object-cover"/>
         {% else %}<span class="material-symbols-outlined text-5xl">directions_car</span>{% endif %}
