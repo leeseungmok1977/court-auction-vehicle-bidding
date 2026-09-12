@@ -226,7 +226,13 @@
   .gloss-row .gloss .pop::before{display:none}   /* 기준이 행이라 꼬리 위치가 무의미 */
   .gloss-row.gloss-up .gloss .pop{top:auto;bottom:calc(100% + 7px)}   /* 화면 하단 범례용 */
   /* 큰글씨(어르신) 모드 — 루트 폰트 확대로 rem 기반 텍스트 일괄 확대(저시력·고령 접근성) */
-  html.nc-large{font-size:112.5%}
+  /* 112.5%(=+2px)는 접근성 모드라기엔 너무 작았다. 통상 130~150% 대비 미달(3회차 디자인 지적). */
+  :root{color-scheme:light}   /* 안드로이드 크롬 "어두운 테마 강제"의 자동 반전 방어 */
+  html.nc-large{font-size:125%}
+  /* px로 못 박힌 캡션은 확대돼도 그대로라, 확대가 오히려 큰 글자와의 대비만 벌린다.
+     큰글씨 모드에서만 10~11px 캡션을 rem 기준으로 끌어올린다. */
+  html.nc-large .text-\[10px\]{font-size:.75rem}
+  html.nc-large .text-\[11px\]{font-size:.8125rem}
   #largeToggle[aria-pressed="true"]{background:#2f5fe0;color:#fff}
 </style>
 <script>try{ if(sessionStorage.getItem("nc_splash")) document.documentElement.className += " splash-done"; }catch(e){}</script>
@@ -341,6 +347,10 @@
     <!-- 모바일: 검색 아이콘(목록의 검색으로) / 데스크톱: 전체 검색창 -->
     <a href="/vehicles" class="lg:hidden shrink-0 text-mut hover:text-txt p-1.5 rounded-md hover:bg-line/40 transition-colors" title="검색">
       <span class="material-symbols-outlined">search</span></a>
+    {# 사이드바에만 있던 '서비스 소개'·'개인정보처리방침'이 모바일에서 도달 불가였다 —
+       사이드바를 여는 버튼이 오버레이뿐이고 그건 열린 뒤에만 보였다(3회차 디자인 지적). #}
+    <label for="navToggle" class="lg:hidden shrink-0 text-mut hover:text-txt p-1.5 rounded-md hover:bg-line/40 transition-colors cursor-pointer" title="메뉴" aria-label="메뉴 열기">
+      <span class="material-symbols-outlined">menu</span></label>
     <form action="/vehicles" method="get" class="relative hidden lg:block w-72 shrink-0">
       <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-mut text-lg pointer-events-none">search</span>
       <input name="q" class="w-full bg-surface border border-line text-txt text-sm rounded-md py-2 pl-11 pr-4 focus:outline-none focus:border-primary placeholder:text-mut" placeholder="차명·제조사·사건번호·법원 검색…"/>

@@ -104,22 +104,24 @@
 <div class="bg-surface border border-line rounded-lg overflow-hidden">
   <div class="px-4 py-3 border-b border-line"><h3 class="text-sm font-semibold text-txt">최근 검증 사례 <span class="text-mut font-normal">— 예측과 실제 비교</span></h3></div>
   <div class="overflow-x-auto">
-    <table class="w-full text-sm min-w-[560px]">
+    {# min-w-[560px]는 390px에서 36~41%가 잘리고, 잘린 금액이 "13,689,00"처럼
+       여전히 그럴듯하게 읽힌다 — 명백히 깨진 것보다 나쁘다(3회차 디자인 지적). #}
+    <table class="w-full text-sm sm:min-w-[560px]">
       <thead class="text-xs text-mut border-b border-line"><tr>
         <th class="text-left py-2.5 px-4 font-medium">차량 · 사건</th>
         <th class="text-right py-2.5 px-3 font-medium">예측</th>
         <th class="text-right py-2.5 px-3 font-medium">실제 낙찰</th>
         <th class="text-right py-2.5 px-3 font-medium">오차</th>
-        <th class="text-right py-2.5 px-4 font-medium whitespace-nowrap">매각일</th>
+        <th class="hidden sm:table-cell text-right py-2.5 px-4 font-medium whitespace-nowrap">매각일</th>
       </tr></thead>
       <tbody class="divide-y divide-line">
         {% for p in recent %}
         <tr class="hover:bg-slate-50">
-          <td class="py-2.5 px-4"><span class="text-txt font-medium">{{ p.model|mdl }}</span>{% if p.year %} <span class="text-xs text-mut">{{ p.year }}년</span>{% endif %}<div class="text-[11px] text-mut font-mono">{{ p.case_no }}</div></td>
-          <td class="py-2.5 px-3 text-right font-mono text-mut tnum">{{ p.pred|won }}</td>
-          <td class="py-2.5 px-3 text-right font-mono text-txt font-semibold tnum">{{ p.actual|won }}</td>
+          <td class="py-2.5 px-2 sm:px-4 max-w-[7.5rem] sm:max-w-none"><span class="text-txt font-medium">{{ p.model|mdl }}</span>{% if p.year %} <span class="text-xs text-mut">{{ p.year }}년</span>{% endif %}<div class="text-[11px] text-mut font-mono">{{ p.case_no }}{% if p.sale_date %}<span class="sm:hidden"> · {{ p.sale_date }}</span>{% endif %}</div></td>
+          <td class="py-2.5 px-2 sm:px-3 text-right font-mono text-mut tnum text-xs sm:text-sm">{{ p.pred|won }}</td>
+          <td class="py-2.5 px-2 sm:px-3 text-right font-mono text-txt font-semibold tnum text-xs sm:text-sm">{{ p.actual|won }}</td>
           <td class="py-2.5 px-3 text-right font-mono tnum {{ 'text-emerald-600' if p.err_pct <= 20 else 'text-amber-600' }}">±{{ p.err_pct }}%</td>
-          <td class="py-2.5 px-4 text-right font-mono text-mut text-xs whitespace-nowrap">{{ p.sale_date or '—' }}</td>
+          <td class="hidden sm:table-cell py-2.5 px-4 text-right font-mono text-mut text-xs whitespace-nowrap">{{ p.sale_date or '—' }}</td>
         </tr>
         {% endfor %}
       </tbody>

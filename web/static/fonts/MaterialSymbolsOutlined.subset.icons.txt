@@ -34,6 +34,7 @@ info
 insights
 local_fire_department
 lock
+menu
 notifications
 notifications_active
 open_in_new
