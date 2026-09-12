@@ -347,10 +347,6 @@
     <!-- 모바일: 검색 아이콘(목록의 검색으로) / 데스크톱: 전체 검색창 -->
     <a href="/vehicles" class="lg:hidden shrink-0 text-mut hover:text-txt p-1.5 rounded-md hover:bg-line/40 transition-colors" title="검색">
       <span class="material-symbols-outlined">search</span></a>
-    {# 사이드바에만 있던 '서비스 소개'·'개인정보처리방침'이 모바일에서 도달 불가였다 —
-       사이드바를 여는 버튼이 오버레이뿐이고 그건 열린 뒤에만 보였다(3회차 디자인 지적). #}
-    <label for="navToggle" class="lg:hidden shrink-0 text-mut hover:text-txt p-1.5 rounded-md hover:bg-line/40 transition-colors cursor-pointer" title="메뉴" aria-label="메뉴 열기">
-      <span class="material-symbols-outlined">menu</span></label>
     <form action="/vehicles" method="get" class="relative hidden lg:block w-72 shrink-0">
       <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-mut text-lg pointer-events-none">search</span>
       <input name="q" class="w-full bg-surface border border-line text-txt text-sm rounded-md py-2 pl-11 pr-4 focus:outline-none focus:border-primary placeholder:text-mut" placeholder="차명·제조사·사건번호·법원 검색…"/>
@@ -358,6 +354,16 @@
   </header>
   <div id="appscroll" class="flex-1 overflow-y-auto custom-scrollbar p-4 pb-6 lg:p-8 space-y-6">
     {% block content %}{% endblock %}
+    {# 모바일 푸터 — '서비스 소개'·'개인정보처리방침'이 사이드바에만 있어 모바일에서
+       도달 불가였다(3회차 디자인 지적 5). 헤더에 버튼을 넣었더니 320~360px에서
+       헤더가 넘쳐(16~20px, 큰글씨 54~114px) 푸터로 바꿨다 — 온보딩 링크도 같이 놓는다. #}
+    <div class="lg:hidden pt-2 mt-2 border-t border-line text-xs text-mut flex flex-wrap items-center gap-x-3 gap-y-1">
+      <a href="/landing" class="text-primary hover:underline inline-flex items-center gap-1">
+        <span class="material-symbols-outlined text-sm leading-none">campaign</span>이 앱은 무엇인가요?</a>
+      <a href="/privacy" class="text-primary hover:underline">개인정보처리방침</a>
+      <a href="/accuracy" class="text-primary hover:underline">예측 적중률</a>
+      <span class="w-full text-[11px]">법원경매 분석 도구입니다 — 이 앱에서는 입찰할 수 없습니다.</span>
+    </div>
   </div>
   <!-- 하단 탭 바 (모바일 전용, flex 자식) — 고정 오버레이 대신 실제 하단 배치라 스크롤 영역이 탭 위에서 끝남
        → dvh/브라우저 동적 툴바와 겹쳐 페이지네이션이 잘리던 문제 방지. 데스크톱(lg)은 좌측 사이드바. -->
