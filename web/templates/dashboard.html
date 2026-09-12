@@ -152,15 +152,18 @@
         <div class="flex items-baseline gap-1"><span class="font-mono text-3xl font-extrabold text-[#0b142b] leading-none" id="kpi-ok">{{ lifecycle.review }}</span><span class="text-base text-[#0b142b]/70 font-semibold">대</span></div>
         <div class="text-[11px] text-[#0b142b]/70 mt-1.5 leading-snug font-medium">지금 가격이 적정 — 바로 검토</div>
       </a>
+      {# 실사용 추천 — 재판매 마진이 아니라 '소매보다 싼가'로 고른다.
+         기존 추천이 요구하는 손익분기는 소매 시세의 60% 선인데 실제 낙찰가율 중앙값은 74%라,
+         직접 탈 사람에겐 합리적인 물건이 통째로 '유찰 대기'에 묻혀 있었다(2026-09-12). #}
+      <a href="/vehicles?usepick=1" class="rounded-xl bg-emerald-400/95 p-3.5 block hover:bg-emerald-300 transition shadow-lg shadow-emerald-500/20">
+        <div class="inline-flex items-center gap-1.5 text-emerald-950 mb-1.5"><span class="material-symbols-outlined text-lg" style="font-variation-settings:'FILL' 1">directions_car</span><span class="text-xs font-extrabold">실사용 추천</span></div>
+        <div class="flex items-baseline gap-1"><span class="font-mono text-3xl font-extrabold text-[#0b142b] leading-none">{{ lifecycle.usepick }}</span><span class="text-base text-[#0b142b]/70 font-semibold">대</span></div>
+        <div class="text-[11px] text-[#0b142b]/70 mt-1.5 leading-snug font-medium">직접 탈 목적 — 소매보다 싸게</div>
+      </a>
       <a href="/vehicles?judgment=유찰 대기" class="rounded-xl bg-white/[0.07] border border-white/10 p-3.5 block hover:bg-white/[0.12] transition">
         <div class="flex items-center gap-1.5 text-amber-300 mb-1.5"><span class="material-symbols-outlined text-lg">hourglass_empty</span><span class="text-xs font-bold">유찰 대기 · 재경매</span></div>
         <div class="flex items-baseline gap-1"><span class="font-mono text-3xl font-extrabold text-white leading-none" id="kpi-wait">{{ lifecycle.wait }}</span><span class="text-base text-white/60 font-semibold">대</span></div>
         <div class="text-[11px] text-white/55 mt-1.5 leading-snug">안 팔려 최저가 더 내려갈 물건</div>
-      </a>
-      <a href="/vehicles?judgment=시세 신뢰도 낮음, 수동 검토" class="rounded-xl bg-white/[0.07] border border-white/10 p-3.5 block hover:bg-white/[0.12] transition">
-        <div class="flex items-center gap-1.5 text-sky-200 mb-1.5"><span class="material-symbols-outlined text-lg">search</span><span class="text-xs font-bold">신뢰도 낮음 · 검토</span></div>
-        <div class="flex items-baseline gap-1"><span class="font-mono text-3xl font-extrabold text-white leading-none">{{ lifecycle.lowconf }}</span><span class="text-base text-white/60 font-semibold">대</span></div>
-        <div class="text-[11px] text-white/55 mt-1.5 leading-snug">시세 표본 부족 — 수동 확인 필요</div>
       </a>
       <a href="/vehicles?result=낙찰&sort=sale_date" class="rounded-xl bg-white/[0.07] border border-white/10 p-3.5 block hover:bg-white/[0.12] transition">
         <div class="flex items-center gap-1.5 text-indigo-200 mb-1.5"><span class="material-symbols-outlined text-lg">gavel</span><span class="text-xs font-bold">낙찰 · 종결</span></div>
@@ -169,7 +172,9 @@
       </a>
     </div>
     <div class="relative flex items-center justify-between gap-2 mt-3 pt-3 border-t border-white/10 text-[11px]">
-      <span class="text-white/50">기타(보류·미분류) <b class="text-white/80">{{ lifecycle.other }}</b>대</span>
+      {# 신뢰도 낮음 + 기타를 한 줄로 묶는다(사용자 지시) — 카드 4칸은 판단 가능한 상태만 남긴다 #}
+      <a href="/vehicles?judgment=시세 신뢰도 낮음, 수동 검토" class="text-white/50 hover:text-white/80 hover:underline">
+        신뢰도 낮음 · 기타 <b class="text-white/80">{{ lifecycle.unclear }}</b>대</a>
       <a href="/vehicles?upcoming=30&sort=sale_date" class="inline-flex items-center gap-1 text-sky-200 hover:underline whitespace-nowrap">
         <span class="material-symbols-outlined text-[14px]">event_upcoming</span> 곧 열리는 경매 30일 <b id="kpi-upcoming">{{ lifecycle.upcoming30 }}</b>대 · 기일순 →</a>
     </div>

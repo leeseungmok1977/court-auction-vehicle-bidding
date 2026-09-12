@@ -345,6 +345,52 @@ def reconcile_won_judgment() -> int:
     return n
 
 
+# 실사용 구매자 기준 — '되팔아 남는가'가 아니라 '소매로 사는 것보다 싼가'.
+# 기존 '입찰 검토 가능'은 재판매 마진(upper_bid ≥ 최저매각가)을 요구해 매우 빡빡하다.
+# 실측(2026-09-12): 손익분기가 소매 시세의 **중앙값 60%**인데 실제 낙찰가율 중앙값은 74%다.
+# 시장이 거의 도달하지 못하는 선이라 1,320대 중 17대만 추천으로 남았다.
+# 직접 타려는 사람에겐 마진이 필요 없다. 소매 총비용보다 싸면 그만이다.
+USE_TAX_RATE = 0.07          # 취득세(비영업용 승용)
+USE_AUCTION_FEE = 500_000    # 경매 취득 부대비 — 이전등록 + 탁송
+USE_RETAIL_FEE = 300_000     # 소매 구매 부대비 — 이전등록
+USE_REPAIR_RESERVE = 500_000 # 경매차 정비 충당(성능점검·보증이 없으므로 보수적으로 잡는다)
+
+
+def personal_use_saving(v: dict, bt: Optional[dict] = None) -> Optional[int]:
+    """실사용 목적으로 경매가 소매보다 얼마나 싼가(원). 이득이 없으면 None.
+
+    비교 기준은 **예상 낙찰가**다. 최저매각가로 계산하면 '그 값에 낙찰될 때만' 성립하는
+    낙관적 수치가 되고, 무엇보다 예상낙찰가가 시세를 넘는 물건에 '비권장' 경고를 띄우면서
+    같은 물건을 추천 칸에 올리는 모순이 생긴다(2026-09-12 P0-3 수정과 정합).
+
+        경매 총비용 = 예상낙찰가 × (1+취득세) + 이전·탁송 + 정비충당
+        소매 총비용 = 소매 시세  × (1+취득세) + 이전등록
+    """
+    med = v.get("median_price")
+    if not med or v.get("market_confidence_label") == "낮음":
+        return None                      # 시세를 못 믿으면 비교 자체가 성립하지 않는다
+    if v.get("accident_grade") == "flood" or v.get("judgment") in ("종결", "입찰 보류"):
+        return None
+    exp = expected_for(v, bt if bt is not None else backtest_stats())
+    if not exp:
+        return None
+    auction = exp * (1 + USE_TAX_RATE) + USE_AUCTION_FEE + USE_REPAIR_RESERVE
+    retail = med * (1 + USE_TAX_RATE) + USE_RETAIL_FEE
+    gain = retail - auction
+    return int(round(gain)) if gain > 0 else None
+
+
+def is_personal_use_pick(v: dict, bt: Optional[dict] = None) -> bool:
+    """'실사용 추천' 칸에 들어갈 물건인가.
+
+    재판매 기준을 이미 통과한 물건('입찰 검토 가능')은 그쪽 칸이 가져가므로 제외한다
+    — 대시보드 칸이 서로 겹치지 않아야 합계가 총대수와 맞는다.
+    """
+    if v.get("judgment") == "입찰 검토 가능":
+        return False
+    return personal_use_saving(v, bt) is not None
+
+
 def lifecycle_partition() -> dict:
     """전체 물건을 **겹치지 않는 상태**로 분해(합=총대수) — 대시보드 KPI 정합용.
 
@@ -357,9 +403,21 @@ def lifecycle_partition() -> dict:
     review = len(db.list_vehicles(judgment="입찰 검토 가능", hide_incomplete=True))
     wait = len(db.list_vehicles(judgment="유찰 대기", hide_incomplete=True))
     lowconf = len(db.list_vehicles(judgment="시세 신뢰도 낮음, 수동 검토", hide_incomplete=True))
-    other = max(0, total - won - review - wait - lowconf)      # 보류·미분류·불완전 등 흡수(항상 합=total)
-    return {"total": total, "won": won, "review": review, "wait": wait, "lowconf": lowconf,
-            "other": other, "upcoming30": len(db.list_vehicles(upcoming_days=30, hide_incomplete=True))}
+    # 실사용 추천 — '유찰 대기'로 분류됐지만 소매보다 싸게 살 수 있는 물건을 건져낸다.
+    # 재판매 기준을 통과한 물건은 is_personal_use_pick가 제외하므로 review와 겹치지 않는다.
+    _bt = backtest_stats()
+    usepick_rows = [v for v in db.list_vehicles(upcoming_days=None, hide_incomplete=True)
+                    if is_personal_use_pick(v, _bt)]
+    usepick = len(usepick_rows)
+    wait_only = max(0, wait - sum(1 for v in usepick_rows if v.get("judgment") == "유찰 대기"))
+    lc_only = max(0, lowconf - sum(1 for v in usepick_rows
+                                   if v.get("judgment") == "시세 신뢰도 낮음, 수동 검토"))
+    other = max(0, total - won - review - usepick - wait_only - lc_only)
+    return {"total": total, "won": won, "review": review, "wait": wait_only, "lowconf": lc_only,
+            "usepick": usepick, "other": other,
+            # 신뢰도 낮음 + 기타를 한 줄로 묶어 보여주기 위한 합계(사용자 지시 2026-09-12)
+            "unclear": lc_only + other,
+            "upcoming30": len(db.list_vehicles(upcoming_days=30, hide_incomplete=True))}
 
 
 def _current_min_sale(history, fallback):

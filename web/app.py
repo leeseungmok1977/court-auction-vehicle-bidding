@@ -367,7 +367,7 @@ VEHICLES_PAGE_SIZE = 12
 def vehicles(request: Request, judgment: str = "", maker: str = "", q: str = "",
              sort: str = "recent", upcoming: str = "", result: str = "", status: str = "",
              cond: str = "", page: int = 1, date: str = "", court: str = "", promising: str = "",
-             segment: str = "", all: str = ""):
+             segment: str = "", all: str = "", usepick: str = ""):
     # upcoming은 str로 받아 빈값/오염값에 견고하게 파싱(폼 hidden 빈값·손편집 URL 대비)
     up = int(upcoming) if upcoming.strip().lstrip("-").isdigit() else 0
     if up < 0:
@@ -383,6 +383,9 @@ def vehicles(request: Request, judgment: str = "", maker: str = "", q: str = "",
     if segment:      # 차종 프리셋(상용·패밀리·SUV·세단·경차) — 모델명 근사 분류로 필터
         rows = [r for r in rows if service.vehicle_segment(r) == segment]
     _bt = service.backtest_stats()
+    if usepick == "1":   # 실사용 추천 — 되팔이 마진이 아니라 '소매보다 싼가'로 거른다
+        rows = [r for r in rows if service.is_personal_use_pick(r, _bt)]
+        rows.sort(key=lambda r: -(service.personal_use_saving(r, _bt) or 0))
     disc = _bt.get("discount_median")
     mae = _bt.get("mae_pct")
     # 예상낙찰가 계산은 비용이 있으므로 '예상낙찰가순' 정렬처럼 전체가 필요할 때만 전 행 계산,
