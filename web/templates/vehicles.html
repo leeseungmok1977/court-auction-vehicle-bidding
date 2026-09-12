@@ -166,11 +166,14 @@ d.addEventListener('toggle',function(){try{localStorage.setItem('ncUsepickBasis'
               {% if v.photo_urls %}
               {# 썸네일: 행 높이는 좌측 텍스트가 결정, 배경이미지 div가 그 높이에 stretch(replaced img의 크기폭주 회피). 폭은 좌측 여백을 채움 #}
               <div class="hidden xl:flex gap-1 shrink-0 items-stretch">
-                {% for u in v.photo_urls[:3] %}
-                <div data-photos='{{ v.photo_urls|tojson }}' data-idx="{{ loop.index0 }}" onclick="openRowLB(this)"
-                     role="img" aria-label="차량 사진" title="클릭하여 전체 사진 보기"
-                     class="w-14 min-[1800px]:w-20 min-h-[2.75rem] max-h-20 rounded border border-line cursor-pointer hover:border-primary transition-colors bg-center bg-cover bg-no-repeat bg-slate-100"
-                     style="background-image:url('{{ u }}')"></div>
+                {# background-image는 loading="lazy"가 안 먹어 12장 전부 즉시 내려받는다.
+                   3G에서 목록 한 화면이 2.5MB·50초였고 그중 81%가 사진이었다(4회차 품질 실측).
+                   축소본(/thumb, WebP 320px) + lazy img로 바꾼다. #}
+                {% for u in (v.thumb_urls or v.photo_urls)[:3] %}
+                <img src="{{ u }}" loading="lazy" decoding="async" alt="차량 사진"
+                     data-photos='{{ v.photo_urls|tojson }}' data-idx="{{ loop.index0 }}" onclick="openRowLB(this)"
+                     title="클릭하여 전체 사진 보기"
+                     class="w-14 min-[1800px]:w-20 min-h-[2.75rem] max-h-20 object-cover rounded border border-line cursor-pointer hover:border-primary transition-colors bg-slate-100"/>
                 {% endfor %}
               </div>
               {% endif %}
@@ -233,9 +236,11 @@ d.addEventListener('toggle',function(){try{localStorage.setItem('ncUsepickBasis'
     {% set confcol = 'text-emerald-600' if v.market_confidence_label=='높음' else 'text-amber-600' if v.market_confidence_label=='보통' else 'text-rose-500' %}
     {% set confbar = 'bg-emerald-500' if v.market_confidence_label=='높음' else 'bg-amber-500' if v.market_confidence_label=='보통' else 'bg-rose-500' %}
     <a href="/vehicle/{{ v.id }}" class="block hover:bg-slate-50 transition-colors">
-      <div class="relative w-full h-40 bg-slate-100 {% if v.photo_urls %}bg-center bg-cover bg-no-repeat{% else %}flex items-center justify-center text-mut/30{% endif %}"
-           {% if v.photo_urls %}style="background-image:url('{{ v.photo_urls[0] }}')"{% endif %}>
-        {% if not v.photo_urls %}<span class="material-symbols-outlined text-5xl">directions_car</span>{% endif %}
+      <div class="relative w-full h-40 bg-slate-100 {% if not v.photo_urls %}flex items-center justify-center text-mut/30{% endif %}">
+        {% if v.photo_urls %}
+        <img src="{{ (v.thumb_urls or v.photo_urls)[0] }}" loading="lazy" decoding="async" alt=""
+             class="absolute inset-0 w-full h-full object-cover"/>
+        {% else %}<span class="material-symbols-outlined text-5xl">directions_car</span>{% endif %}
         <div class="absolute top-2 left-2 flex flex-wrap gap-1">
           {% if show_dday %}<span class="text-[10px] font-bold px-2 py-0.5 rounded-full text-white {{ 'bg-rose-500' if v.dday <= 1 else 'bg-primary' }}">{{ 'D-DAY' if v.dday == 0 else 'D-' ~ v.dday }} 입찰</span>{% endif %}
           {% if v.fail_count and v.fail_count > 0 %}<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-orange-500/90 text-white">유찰 {{ v.fail_count }}회</span>{% endif %}

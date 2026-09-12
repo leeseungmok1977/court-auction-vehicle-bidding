@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import os
+import pathlib
 import sys
 from pathlib import Path
 from typing import Optional
@@ -432,6 +433,8 @@ def vehicles(request: Request, judgment: str = "", maker: str = "", q: str = "",
             order = [n for n in (r.get("photo_order") or []) if n in avail]  # 비전 분류 순서 우선
             names = (order + sorted(n for n in avail if n not in order))[:12]
             r["photo_urls"] = [f"/photo/{fk}/{n}" for n in names]
+            # 목록은 축소본을 쓴다(원본은 라이트박스에서만)
+            r["thumb_urls"] = [f"/thumb/{fk}/{n}" for n in names]
         else:
             r["photo_urls"] = []
         r["photo_lot_mixed"] = r["id"] in mlot   # 동일사건 다물건 → 사진 혼재 가능
@@ -798,6 +801,54 @@ def vehicle_appraisal(vid: str):
   <div class="warn">법원경매정보 &rarr; <b>자동차&middot;중기검색</b>에서 위 <b>법원&middot;사건번호</b>로 조회하시면 원본 감정평가서&middot;현황조사서를 열람할 수 있습니다.</div>
 </div></body></html>""".replace("__COURT__", court).replace("__CASE__", case).replace("__COURT_URL__", court_url)
     return HTMLResponse(page)
+
+
+# 목록 썸네일 캐시 — 원본 .gif를 그대로 48슬롯에 붙이면 3G에서 목록 한 화면이
+# 2.5MB·50초다(4회차 품질 실측: 사진이 81%). 폭 320px WebP로 줄여 디스크에 캐시한다.
+_THUMB_W = 320
+_THUMB_DIR = DATA_DIR / "_thumbs"
+
+
+def _thumb_path(safe_vid: str, safe: str) -> "pathlib.Path":
+    return _THUMB_DIR / safe_vid / (safe.rsplit(".", 1)[0] + f".w{_THUMB_W}.webp")
+
+
+def _make_thumb(src, dst) -> bool:
+    """원본 → WebP 썸네일. 실패하면 False(호출부가 원본으로 폴백한다)."""
+    try:
+        from PIL import Image
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        with Image.open(src) as im:
+            im = im.convert("RGB")
+            if im.width > _THUMB_W:
+                im = im.resize((_THUMB_W, max(1, round(im.height * _THUMB_W / im.width))),
+                               Image.LANCZOS)
+            im.save(dst, "WEBP", quality=78, method=4)
+        return True
+    except Exception:  # noqa: BLE001 — 썸네일 실패가 목록을 죽이면 안 된다
+        return False
+
+
+@app.get("/thumb/{vid}/{filename}")
+def thumb(vid: str, filename: str):
+    """목록용 축소 이미지. 없으면 만들고, 못 만들면 원본으로 폴백."""
+    try:
+        safe_vid, safe = os.path.basename(vid), os.path.basename(filename)
+        if "\x00" in safe_vid or "\x00" in safe:
+            raise ValueError("null byte")
+        src = (DATA_DIR / safe_vid / "photos" / safe).resolve()
+        root = (DATA_DIR / safe_vid / "photos").resolve()
+        if not (root in src.parents and src.exists() and src.is_file()):
+            raise ValueError("not found")
+        dst = _thumb_path(safe_vid, safe)
+        if not dst.exists() or dst.stat().st_mtime < src.stat().st_mtime:
+            if not _make_thumb(src, dst):
+                return FileResponse(str(src))
+        return FileResponse(str(dst), media_type="image/webp",
+                            headers={"Cache-Control": "public, max-age=604800"})
+    except (ValueError, OSError):
+        pass
+    return JSONResponse({"error": "not found"}, status_code=404)
 
 
 @app.get("/photo/{vid}/{filename}")
