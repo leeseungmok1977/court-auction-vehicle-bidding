@@ -166,3 +166,27 @@ def test_admin_still_sees_platform_source(branch_client):
     """관리자 화면에서는 출처가 보여야 한다 — 위 테스트가 관리자 기능까지 지우지 않았는지 확인."""
     r = branch_client.get("/vehicle/LOWC_1", headers=_TUNNEL)
     assert r.status_code == 200 and "엔카" in r.text
+
+
+# ── '확인하지 못한 것'을 초록으로 칠하지 않는다 (5회차 미조치) ──────
+def test_unverified_history_is_never_green():
+    """'이력 미확인'에 초록 chip.ok 를 붙이면 안 된다.
+
+    리포트 §차량 상태의 사고·침수 행이 STOP이 아니면 무조건 `chip ok`(초록)였다.
+    보험이력이 실제로 있는 물건은 1,320건 중 **25건뿐**이고, 나머지 1,295건(98%)이
+    초록 칩에 '이력 미확인'이라고 적혀 나갔다. 확인하지 못한 것을 확인해서
+    괜찮은 것처럼 읽히게 만드는 것은 이 앱에서 가장 하면 안 되는 오독이다.
+
+    초록은 `v.insurance_history`가 **실제로 내용이 있을 때만**. 미확인은 앰버.
+    """
+    import pathlib
+    import re
+    src = pathlib.Path("web/templates/report.html").read_text(encoding="utf-8")
+    m = re.search(r'<span class="chip \{\{([^}]+)\}\}">\{\{[^}]*이력 미확인', src, re.S)
+    assert m, "사고·침수 행의 칩 표현식을 찾지 못했다"
+    expr = m.group(1)
+    assert "insurance_history" in expr, (
+        "칩 색이 이력 유무를 보지 않는다 — 이력이 없어도 초록이 된다: " + expr.strip())
+    # 초록('ok')은 이력이 있을 때만 나올 수 있어야 한다
+    assert re.search(r"'ok'\s+if\s+v\.insurance_history", expr), (
+        "초록이 이력 유무와 무관하게 걸린다: " + expr.strip())

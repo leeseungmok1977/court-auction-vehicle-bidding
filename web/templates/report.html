@@ -707,7 +707,10 @@ document.addEventListener('click', function(e){
         <tbody>
           <tr><td>권리·저당</td><td>저당권·압류 말소 여부(<b>자동차등록원부</b> 갑·을구) · 정비/보관업자 <b>유치권</b>(수리비·보관료) — 아래 06 총 취득원가에 <b>반영돼 있지 않음</b></td><td class="c"><span class="chip warn">원부 확인</span></td></tr>
           <tr><td>보관료·견인비</td><td>낙찰 후 인도까지의 보관료는 낙찰자 부담이 될 수 있음 — 보관장소에 금액 문의</td><td class="c"><span class="chip warn">사전 문의</span></td></tr>
-          <tr><td>사고·침수</td><td>{{ v|accv }}{% if v.accident_hits %} — {{ v.accident_hits|join(', ') }}{% endif %} · 골격 손상 여부 현장 확인</td><td class="c"><span class="chip {{ 'risk' if report.stop_active else 'ok' }}">{{ 'STOP 대상' if report.stop_active else ('이력상 양호' if v.insurance_history else '이력 미확인') }}</span></td></tr>
+          <tr><td>사고·침수</td><td>{{ v|accv }}{% if v.accident_hits %} — {{ v.accident_hits|join(', ') }}{% endif %} · 골격 손상 여부 현장 확인</td>{# '이력 미확인'에 초록 ok 칩을 달면 확인하지 못한 것을 확인해서 괜찮은 것처럼
+             읽힌다. 이 앱에서 가장 하면 안 되는 종류의 오독이다 — 초록은 이력이 실제로
+             있고 양호할 때만. 미확인은 앰버다. (5회차 미조치) #}
+          <td class="c"><span class="chip {{ 'risk' if report.stop_active else ('ok' if v.insurance_history else 'warn') }}">{{ 'STOP 대상' if report.stop_active else ('이력상 양호' if v.insurance_history else '이력 미확인') }}</span></td></tr>
           <tr><td>기관·하체</td><td>시동·누유·변속·하체 부식 — 매각기일 전 보관장소 확인</td><td class="c"><span class="chip warn">현장확인</span></td></tr>
           <tr><td>상태·옵션·정비</td><td>정비 필요 범위(타이어·소모품)에 따라 정비비 변동 → 06·08 반영{% if asum and (asum.condition.major or asum.condition.poor or asum.condition.minor) %} · <span class="{{ 'neg' if asum.condition.major or asum.condition.poor else 'neu' }}">감정 요항에 외관·상태 손상 언급</span>{% endif %}</td><td class="c"><span class="chip {{ 'risk' if asum and (asum.condition.major or asum.condition.poor) else 'warn' }}">현장확인</span></td></tr>
           {% if asum and asum.inspection %}<tr><td>자동차검사 유효기간</td><td class="num">{{ asum.inspection.valid_to }}{% if asum.inspection.expired %} · <span class="neg">경과(재검사 필요)</span>{% elif asum.inspection.days_left is not none %} · D{{ asum.inspection.days_left }}{% endif %} <span style="color:var(--ink-faint);font-family:var(--sans)">— 감정 요항 기준</span></td><td class="c"><span class="chip {{ 'risk' if asum.inspection.expired else 'ok' }}">{{ '재검사 필요' if asum.inspection.expired else '유효' }}</span></td></tr>{% endif %}
