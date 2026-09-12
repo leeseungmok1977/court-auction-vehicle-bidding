@@ -249,7 +249,8 @@
 
 <!-- 임박 매각기일 알림 (D-3) -->
 {% if alerts %}
-<div id="alerts" class="bg-surface border border-amber-200 rounded-lg p-5">
+{# 320px에서 p-5(좌우 40px)면 내부 행이 컨테이너를 11px 넘는다 — 좁은 폭에선 패딩을 줄인다 #}
+<div id="alerts" class="bg-surface border border-amber-200 rounded-lg p-3 min-[360px]:p-5">
   <div class="flex items-center gap-2 mb-3">
     <span class="nc-ring material-symbols-outlined text-amber-600 shrink-0">notifications_active</span>
     <h3 class="text-lg font-semibold min-w-0 truncate">임박 매각기일 <span class="text-mut text-sm font-normal hidden sm:inline">— 3일 이내 · 검토가능 물건</span></h3>
@@ -268,8 +269,8 @@
           <span class="text-xs font-bold shrink-0 px-2 py-0.5 rounded-full {{ 'bg-rose-100 text-rose-700' if v.dday<=1 else 'bg-amber-100 text-amber-700' }}">{{ 'D-DAY' if v.dday==0 else 'D-' ~ v.dday }}</span>
         </div>
         <div class="text-xs text-mut font-mono mt-0.5 truncate">{{ v.sale_date }} · {{ (v.court or '')|replace('지방법원','지법') }}</div>
-        <div class="flex items-end justify-between mt-1.5">
-          <span class="text-[11px] text-mut">예상낙찰가</span>
+        <div class="flex flex-wrap items-end justify-between gap-x-2 mt-1.5">
+          <span class="text-[11px] text-mut shrink-0">예상낙찰가</span>
           <span class="font-mono font-bold text-sm text-txt">{{ v.expected_win|won if v.expected_win else '—' }}</span>
         </div>
       </div>
