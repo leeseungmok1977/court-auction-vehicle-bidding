@@ -42,6 +42,12 @@ html.ms-pending .material-symbols-outlined { visibility: hidden; }
   white-space: nowrap; direction: ltr; -webkit-font-feature-settings: 'liga';
   font-variation-settings: 'FILL' 0, 'wght' 400, 'opsz' 24; vertical-align: middle; }
 
+/* hidden 속성이 항상 이기게 한다.
+   Tailwind preflight의 [hidden]{display:none}은 유틸리티 .flex/.grid와 특이도가 같은데
+   유틸리티가 뒤에 와서 이긴다. 그래서 JS로 el.hidden=true 를 걸어도 요소가 계속 보였다.
+   실제 증상: 즐겨찾기 0건인데 하단 탭에 앰버 '0' 배지가 상시 노출(2026-09-12 패널 지적). */
+[hidden] { display: none !important; }
+
 /* 스크롤바(라이트) */
 .custom-scrollbar::-webkit-scrollbar { width: 10px; height: 10px; }
 .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }

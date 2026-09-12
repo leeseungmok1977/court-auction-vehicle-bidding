@@ -23,7 +23,11 @@ from fastapi.templating import Jinja2Templates  # noqa: E402
 from web import db, service, brands, auth  # noqa: E402
 from src.collect import kcar  # noqa: E402
 
-app = FastAPI(title="법원경매 차량 입찰가 산정")
+# docs/redoc/openapi는 기본 경로에서 끈다 — 공개 도메인에 관리자 쓰기 엔드포인트 목록
+# (/run·/reanalyze·/daily/run-now 등)과 파라미터 스키마를 통째로 노출할 이유가 없다.
+# 관리자(SSH 터널)용으로는 아래에서 _require_admin을 건 동일 경로를 다시 연다.
+app = FastAPI(title="법원경매 차량 입찰가 산정",
+              docs_url=None, redoc_url=None, openapi_url=None)
 
 BASE = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(BASE / "templates"))
@@ -74,6 +78,21 @@ def _require_admin(request: Request) -> None:
     from fastapi import HTTPException
     if not is_admin(request):
         raise HTTPException(status_code=404)
+
+
+@app.get("/openapi.json", include_in_schema=False)
+def _admin_openapi(request: Request):
+    """관리자 전용 OpenAPI 스키마. 공개 도메인에서는 404."""
+    _require_admin(request)
+    return JSONResponse(app.openapi())
+
+
+@app.get("/docs", include_in_schema=False)
+def _admin_docs(request: Request):
+    """관리자 전용 Swagger UI. 공개 도메인에서는 404."""
+    _require_admin(request)
+    from fastapi.openapi.docs import get_swagger_ui_html
+    return get_swagger_ui_html(openapi_url="/openapi.json", title="내차GET API")
 
 
 @app.get("/admin", include_in_schema=False)
@@ -434,19 +453,24 @@ def vehicles(request: Request, judgment: str = "", maker: str = "", q: str = "",
         "range_start": start + 1 if total else 0,
         "range_end": start + len(page_rows),
     })
-    resp.set_cookie("last_list", _cur_url(request), max_age=86400)
+    resp.set_cookie("last_list", _cur_url(request), max_age=86400, secure=True, samesite="lax")
     return resp
 
 
 @app.get("/api/vehicles/count")
 def vehicles_count(judgment: str = "", maker: str = "", q: str = "", result: str = "",
                    status: str = "", cond: str = "", upcoming: str = "", date: str = "",
-                   court: str = "", segment: str = ""):
-    """저장한 검색의 '새 매물' 감지용 — 동일 필터의 현재 건수만 반환(JSON). 외부 데이터 없음."""
+                   court: str = "", segment: str = "", all: str = ""):
+    """저장한 검색의 '새 매물' 감지용 — 동일 필터의 현재 건수만 반환(JSON). 외부 데이터 없음.
+
+    ⚠️ `/vehicles`와 **같은 모수**를 써야 한다. 예전엔 hide_incomplete를 넘기지 않아
+    "현재 1,320건"이라고 알린 뒤 눌러 들어가면 1,167건이 나왔다(2026-09-12 패널 지적).
+    """
     up = int(upcoming) if upcoming.strip().lstrip("-").isdigit() else 0
     rows = db.list_vehicles(judgment=judgment or None, maker=maker or None, q=q or None,
                             result=result or None, status=status or None, cond=cond or None,
-                            upcoming_days=(up or None), date=date or None, court=court or None)
+                            upcoming_days=(up or None), date=date or None, court=court or None,
+                            hide_incomplete=(all != "1"))
     if segment:
         rows = [r for r in rows if service.vehicle_segment(r) == segment]
     return {"total": len(rows)}
@@ -787,7 +811,7 @@ def watchlist(request: Request, sort: str = "sale_date", ids: Optional[str] = No
     if ids is None:                       # 아직 클라이언트가 ID 미전달 → 하이드레이트
         resp = templates.TemplateResponse("watchlist.html", {
             "request": request, "hydrate": True, "sort": sort, "rows": [], "ids_csv": ""})
-        resp.set_cookie("last_list", _cur_url(request), max_age=86400)
+        resp.set_cookie("last_list", _cur_url(request), max_age=86400, secure=True, samesite="lax")
         return resp
     id_list, _seen = [], set()             # 순서 보존 + 중복 제거 + 남용 방지 상한
     for s in ids.split(","):
@@ -821,7 +845,7 @@ def watchlist(request: Request, sort: str = "sale_date", ids: Optional[str] = No
     resp = templates.TemplateResponse("watchlist.html", {
         "request": request, "rows": rows, "sort": sort, "today": today.isoformat(),
         "mae": bt.get("mae_pct"), "hydrate": False, "ids_csv": ",".join(id_list)})
-    resp.set_cookie("last_list", _cur_url(request), max_age=86400)
+    resp.set_cookie("last_list", _cur_url(request), max_age=86400, secure=True, samesite="lax")
     return resp
 
 
@@ -894,11 +918,17 @@ def _db_running(run: dict | None) -> bool:
 
 
 @app.get("/run/status")
-def run_status():
+def run_status(request: Request):
     counts = db.counts_by_judgment()
     run = db.latest_run()
+    running = service.is_running() or _db_running(run)
+    # 공개 응답은 화면이 실제로 쓰는 것만 준다. 유휴 상태의 지난 런 기록(실행 시각·소요·건수)은
+    # 운영 지표라 공개할 이유가 없고, 수집 주기를 그대로 알려주는 셈이 된다.
+    # UI(base.html poll)는 running이 false면 run/카운트를 읽지 않으므로 동작에 지장이 없다.
+    if not is_admin(request) and not running:
+        return {"running": False}
     return {
-        "running": service.is_running() or _db_running(run),
+        "running": running,
         "run": run,
         "total": db.total_vehicles(),
         "upcoming": db.upcoming_count(30),
