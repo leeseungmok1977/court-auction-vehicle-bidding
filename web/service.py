@@ -2203,6 +2203,10 @@ def backtest_stats() -> dict:
         if prem_all:
             gpm = st.median(prem_all)
             out["min_premium_median"] = round(gpm, 3)
+            # 낙찰 확률을 **실측 분포에서** 계산하기 위한 원자료. 예전엔 화면에
+            # ~25%/~50%/~75%를 리터럴로 박아두고 "실측 근사"라고 적었다 —
+            # 서버는 확률을 계산조차 하지 않았다(4회차 품질 P0).
+            out["min_premium_pool"] = sorted(round(x, 4) for x in prem_all)
             if len(prem_all) >= 4:
                 pq = st.quantiles(prem_all, n=4)
                 out["min_premium_p25"], out["min_premium_p75"] = round(pq[0], 3), round(pq[2], 3)
@@ -2463,6 +2467,21 @@ def expected_for(v: dict, bt: dict) -> Optional[int]:
     return expected_winning(med, discount_for(bt, v.get("fail_count"), _model_key(v)))
 
 
+def win_probability(v: dict, bid: Optional[int], bt: Optional[dict] = None) -> Optional[int]:
+    """이 금액을 써냈을 때 낙찰될 확률(%) — 실측 분포에서 계산한다.
+
+    과거 낙찰의 (낙찰가 ÷ 최저매각가) 분포에서, 내 배수 이하로 낙찰된 비율이
+    곧 "이 금액이면 이겼을 비율"이다. 표본이 부족하면 **None**을 돌려주고 화면은
+    확률을 표시하지 않는다 — 지어낸 숫자를 실측이라고 적지 않는다."""
+    bt = bt if bt is not None else backtest_stats()
+    pool = bt.get("min_premium_pool") or []
+    mn = v.get("min_sale_price") or 0
+    if not bid or not mn or len(pool) < 30:
+        return None
+    r = bid / mn
+    return round(sum(1 for x in pool if x <= r) / len(pool) * 100)
+
+
 def expected_band(v: dict, bt: dict) -> Optional[dict]:
     """예상 낙찰가 중심값 + 밴드(보수/균형/공격)를 **하나의 기준**으로 산출.
 
@@ -2593,6 +2612,11 @@ def bid_state(v: dict, bt: Optional[dict] = None, config: Optional[dict] = None)
     if not exp or not med or v.get("market_confidence_label") == "낮음":
         return out("lowconf", "시세 신뢰도 낮음 — 판정 보류", "wait")
     if not (floor and floor <= exp):
+        # ⚠ 예전엔 여기서 바로 반환해 손익분기를 아예 보지 않았다. 그래서 최저가가
+        # 상한선을 62% 넘는 물건이 2% 넘는 물건(blocked)보다 **약한 경고**를 받았다
+        # (4회차 품질 P0: wait 111건 중 107건이 floor > 상한선, 그중 88건은 다음 기일도 초과).
+        if mb and floor > mb:
+            return out("blocked", "이번 회차 입찰 부적합", "stop")
         return out("wait", "추가 유찰 대기", "wait")
     # 최저매각가조차 손익분기를 넘으면 **써낼 수 있는 모든 금액이 손해**다.
     # 이 경우가 exp > med보다 강한 신호라 먼저 판정한다.

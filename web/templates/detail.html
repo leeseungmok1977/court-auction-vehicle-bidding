@@ -337,12 +337,14 @@
     {% if next_min %}<span class="block mt-1">다음 기일 예상 최저가는 <b>{{ next_min.price|won }}원</b>입니다.</span>{% endif %}
   </div>
   {% else %}
-  <p class="text-sm text-mut mb-4">세 값 모두 <b>위 예상낙찰가와 같은 기준</b>(최저매각가 × 유찰 프리미엄)이며, <b class="text-primary">균형 = 상단 예상낙찰가</b>입니다. 낙찰 확률은 동급 낙찰가 분포상 <b>해당 입찰가 이하로 낙찰된 비율</b>(실측 근사). 높게 쓸수록 낙찰 가능성↑·차익↓.{% if _mb %} <b class="text-txt">입찰 상한선 {{ _mb|won }}원</b>을 넘는 칸은 금액을 제시하지 않습니다.{% endif %}</p>
+  <p class="text-sm text-mut mb-4">세 값 모두 <b>위 예상낙찰가와 같은 기준</b>(최저매각가 × 유찰 프리미엄)이며, <b class="text-primary">균형 = 상단 예상낙찰가</b>입니다.{% if expected.p_mid is not none %} 낙찰 확률은 과거 낙찰 {{ backtest.pred_n or '' }}건의 <b>낙찰가÷최저매각가 분포</b>에서 이 금액 이하로 낙찰된 비율입니다(실측).{% else %} <b class="text-txt">표본이 부족해 낙찰 확률은 표시하지 않습니다.</b>{% endif %} 높게 쓸수록 낙찰 가능성↑·차익↓.{% if _mb %} <b class="text-txt">입찰 상한선 {{ _mb|won }}원</b>을 넘는 칸은 금액을 제시하지 않습니다.{% endif %}</p>
   <div class="grid grid-cols-3 gap-1.5 sm:gap-2 tabular-nums">
+    {# 소프트캡이 상단을 자르면 공격=균형이 되는데 확률만 달랐다(727건 중 265건) —
+       같은 금액에 다른 확률을 붙이는 자기모순이었다. 실측 확률은 같은 금액에 같은 값을 준다. #}
     {% for lab, val, prob, cls in [
-        ('보수적 · 수익형', expected.lo, '~25%', 'emerald'),
-        ('균형 · 예상', expected.price, '~50%', 'primary'),
-        ('공격적 · 낙찰형', expected.hi, '~75%', 'amber')] %}
+        ('보수적 · 수익형', expected.lo, expected.p_lo, 'emerald'),
+        ('균형 · 예상', expected.price, expected.p_mid, 'primary'),
+        ('공격적 · 낙찰형', expected.hi, expected.p_hi, 'amber')] %}
     {% set _over = _mb and val > _mb %}
     <div class="rounded-xl px-1.5 py-2 sm:p-3 text-center {{ 'border border-line bg-slate-50' if _over else ('border-2 border-primary bg-primary/5' if cls=='primary' else 'border border-line') }}">
       <div class="text-[11px] font-semibold mb-1 {{ 'text-mut' if _over else ('text-primary' if cls=='primary' else 'text-'+cls+'-700') }}">{{ lab }}</div>
@@ -351,7 +353,8 @@
       <div class="text-[10px] text-rose-700 mt-1 leading-tight">상한선 초과<br>제시하지 않음</div>
       {% else %}
       <div class="font-mono text-[clamp(10px,3.3vw,16px)] font-bold whitespace-nowrap {{ 'text-primary' if cls=='primary' else 'text-txt' }}">{{ val|won }}</div>
-      <div class="text-[11px] text-mut mt-1">낙찰 확률 <b class="{{ 'text-primary' if cls=='primary' else 'text-txt' }}">{{ prob }}</b></div>
+      {% if prob is not none %}<div class="text-[11px] text-mut mt-1">낙찰 확률 <b class="{{ 'text-primary' if cls=='primary' else 'text-txt' }}">{{ prob }}%</b></div>
+      {% else %}<div class="text-[11px] text-mut mt-1">확률 미산출</div>{% endif %}
       {% endif %}
     </div>
     {% endfor %}

@@ -636,6 +636,11 @@ def vehicle_detail(request: Request, vid: str, cc: str = "", an: str = ""):
                     "mae": (service.accuracy_for(v, bt) or {}).get("mae"),
                     "acc": service.accuracy_for(v, bt), "source": source,
                     "comp_n": _cd[1] if _cd else 0,
+                    # 낙찰 확률 — 실측 (낙찰가÷최저가) 분포에서 계산. 표본 부족이면 None이고
+                    # 화면은 확률을 표시하지 않는다(하드코딩 ~25/50/75% 폐기, 4회차 품질 P0).
+                    "p_lo": service.win_probability(v, _band.get("lo"), bt) if _band else None,
+                    "p_mid": service.win_probability(v, _band.get("price"), bt) if _band else None,
+                    "p_hi": service.win_probability(v, _band.get("hi"), bt) if _band else None,
                     "comp_used": _used_comps,          # 실제로 산정에 쓰였는가
                     "comp_ratio": _cd[0] if _cd else None}
     dist = service.price_distribution(

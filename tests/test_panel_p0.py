@@ -17,6 +17,22 @@ from starlette.testclient import TestClient
 
 from web import service
 
+# ── 백테스트 통계 고정 ────────────────────────────────────────────
+# 주입하지 않으면 plain_verdict → bid_state → backtest_stats() 가 **운영 DB**를 읽는다.
+# 4회차 품질 감사: 그 상태에서 이 파일의 회귀 가드 7건이 데이터에 따라 깨지거나
+# 조용히 통과했다. 회귀 가드의 실행 여부가 그날 PC의 데이터에 달려 있으면 가드가 아니다.
+BT = {"discount_median": 0.74, "mae_pct": 9.2, "sample": 172, "within10_pct": 62,
+      "within20_pct": 96, "pred_n": 135,
+      "min_premium_median": 1.13, "min_premium_by_fail": {"0": 1.20, "1": 1.13, "2+": 1.06},
+      "min_premium_p25": 1.05, "min_premium_p75": 1.22,
+      "min_premium_pool": [round(1.00 + i * 0.004, 4) for i in range(60)]}
+
+
+@pytest.fixture(autouse=True)
+def _fixed_backtest(monkeypatch):
+    monkeypatch.setattr(service, "backtest_stats", lambda *a, **k: BT)
+
+
 
 # ── P0-2 사고 이력 근거 ──────────────────────────────────────
 @pytest.mark.parametrize("v,expected", [

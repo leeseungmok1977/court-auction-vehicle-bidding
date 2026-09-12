@@ -119,12 +119,39 @@ def test_report_shows_the_max_bid(client):
 # '다음 기일에는 얼마부터 시작하나'인데 그게 없다."
 # 외부 자료를 쓰지 않고 **우리 기일내역**에서 실측한다 — 622건 관측, 0.70(83%)/0.80(16%).
 
-def test_reduction_rates_are_measured_not_invented():
+def test_reduction_rates_are_measured_not_invented(tmp_path, monkeypatch):
+    """저감률은 기일내역에서 실측한다 — 표본이 부족한 법원은 값을 주장하지 않는다.
+
+    ⚠ 예전엔 운영 DB를 그대로 읽었다. 그러면 결과가 그날 데이터에 달려 있고,
+    빈 DB(CI·새 클론)에서는 통째로 깨진다(4회차 품질 지적 3). 데이터를 직접 만든다."""
+    from web import db
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "red.db")
+    monkeypatch.setattr(service, "_reduction_cache", {"key": None, "data": None})
+    db.init_db()
+    base = {"maker": "현대", "model": "쏘나타", "item_no": "1", "sale_date": "2999-01-01"}
+
+    def hist(*prices):
+        return [{"ymd": f"2026-0{i+1}-01", "lws_price": p} for i, p in enumerate(prices)]
+
+    for i in range(6):        # 수원 = 0.7 로 일정
+        db.upsert_vehicle(dict(base, id=f"S{i}_1", folder_key=f"S{i}_1",
+                               case_no=f"2026타경1{i:03d}", court="수원지방법원",
+                               dxdy_history=hist(10_000_000, 7_000_000, 4_900_000)))
+    for i in range(6):        # 서울남부 = 0.8 로 일정
+        db.upsert_vehicle(dict(base, id=f"N{i}_1", folder_key=f"N{i}_1",
+                               case_no=f"2026타경2{i:03d}", court="서울남부지방법원",
+                               dxdy_history=hist(10_000_000, 8_000_000)))
+    for i in range(3):        # 표본 부족 법원 — by_court에 들어가면 안 된다
+        db.upsert_vehicle(dict(base, id=f"X{i}_1", folder_key=f"X{i}_1",
+                               case_no=f"2026타경3{i:03d}", court="표본부족지원",
+                               dxdy_history=hist(10_000_000, 7_000_000)))
     r = service.court_reduction_rates()
-    assert r["n"] > 100, "표본이 이 정도는 돼야 법원별로 나눌 수 있다"
-    assert r["global"] in (0.7, 0.8), f"실측 저감배율이 예상 밖: {r['global']}"
+    assert r["global"] == 0.7 and r["n"] >= 15
+    assert r["by_court"]["수원지방법원"]["ratio"] == 0.7
+    assert r["by_court"]["서울남부지방법원"]["ratio"] == 0.8
+    assert "표본부족지원" not in r["by_court"], "표본 3건으로 법원값을 주장하면 안 된다"
     for court, info in r["by_court"].items():
-        assert info["n"] >= 5, f"{court}: 표본 {info['n']}건으로 법원값을 주장하면 안 된다"
+        assert info["n"] >= service._REDUCTION_MIN_N
         assert 0.5 <= info["ratio"] <= 0.95
 
 
@@ -269,15 +296,26 @@ def test_strata_never_reports_a_number_without_enough_samples():
             assert r["mae"] is not None
 
 
-def test_accuracy_for_picks_the_worse_stratum():
-    """낙관적인 층을 고르면 안 된다 — 불리한 쪽을 택한다."""
-    rows = {(r["group"], r["label"]): r for r in service.accuracy_strata()}
-    car = v(fail_count=5, maker="BMW", model="520d")           # 수입 + 유찰 3회 이상
-    got = service.accuracy_for(car)
-    cands = [rows.get(("제조사", "수입")), rows.get(("유찰횟수", "유찰 3회 이상"))]
-    cands = [c for c in cands if c and c["mae"] is not None]
-    if cands and got:
-        assert got["mae"] == max(c["mae"] for c in cands)
+def test_accuracy_for_picks_the_worse_stratum(monkeypatch):
+    """낙관적인 층을 고르면 안 된다 — 불리한 쪽을 택한다.
+
+    ⚠ 예전엔 `if cands and got:` 안에서만 단언해, 운영 DB의 수입차 표본이 8건 밑으로
+    떨어지면 **어서션을 하나도 실행하지 않고 통과**했다. 그 상태에서 max()를 min()으로
+    바꿔도 초록불이었다 — 이 테스트가 막으라고 만들어진 결함이 정확히 그것이다
+    (4회차 품질 지적 3). 층 데이터를 테스트가 직접 만든다."""
+    strata = [
+        {"group": "제조사", "label": "수입", "n": 40, "mae": 10.4, "within10": 54},
+        {"group": "제조사", "label": "국산", "n": 98, "mae": 8.7, "within10": 64},
+        {"group": "유찰횟수", "label": "유찰 3회 이상", "n": 17, "mae": 12.8, "within10": 41},
+        {"group": "유찰횟수", "label": "유찰 0~1회", "n": 59, "mae": 8.0, "within10": 71},
+    ]
+    monkeypatch.setattr(service, "accuracy_strata", lambda *a, **k: strata)
+    got = service.accuracy_for(v(fail_count=5, maker="BMW", model="520d"))
+    assert got is not None, "층이 둘 다 있는데 값을 못 냈다"
+    assert got["mae"] == 12.8, f"불리한 층(12.8)이 아니라 {got['mae']}를 골랐다"
+    # 유리한 층만 있는 경우에도 그 값을 쓴다
+    got2 = service.accuracy_for(v(fail_count=0, maker="현대", model="그랜저"))
+    assert got2["mae"] == 8.7
 
 
 def test_domestic_detection_handles_real_maker_strings():
