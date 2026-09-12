@@ -131,3 +131,43 @@ def test_failed_vehicle_retries_after_backoff():
     ]
     got = [x["id"] for x in service.newcar_pool(rows, cutoff="2026-08-13")]
     assert got == ["old"]
+
+
+# ── ⑤ 연식 하한·국산 우선 (사용자 지시 2026-09-12) ──────────────
+def test_year_floor_2010():
+    """2010년 이전 차량은 출시가를 모으지 않는다 — 가격표가 부실하고 실익이 낮다."""
+    rows = [v("쏘나타", id="old", year=2009), v("쏘나타", id="edge", year=2010),
+            v("쏘나타", id="new", year=2021)]
+    got = {x["id"] for x in service.newcar_pool(rows, cutoff="2026-08-13")}
+    assert got == {"edge", "new"}, "2010년은 포함(이상), 2009년은 제외"
+
+
+@pytest.mark.parametrize("maker,model", [
+    ("(주)기아자동차", "카니발"), ("현대자동차(주)", "포터Ⅱ"), ("기아", "K7"),
+    ("르노삼성자동차", "SM3 Z.E."), ("쌍용", "코란도"), ("KG모빌리티", "토레스"),
+    ("한국지엠", "스파크"), ("쉐보레", "트래버스"), ("현대", "G80"), ("", "제네시스 G90"),
+])
+def test_domestic_detected(maker, model):
+    assert service.newcar_is_domestic({"maker": maker, "model": model}) is True
+
+
+@pytest.mark.parametrize("maker,model", [
+    ("BMW", "520d"), ("메르세데스벤츠", "E220 d"), ("랜드로버", "디스커버리 스포츠"),
+    ("포르쉐", "718 카이맨 S"), ("아우디", "Q5 2.0 TDI quattro"),
+])
+def test_import_not_domestic(maker, model):
+    assert service.newcar_is_domestic({"maker": maker, "model": model}) is False
+
+
+def test_pool_order_recommended_then_domestic_then_imminent():
+    rows = [
+        v("520d",   id="imp_rec",  maker="BMW",  judgment="입찰 검토 가능", sale_date="2026-09-14"),
+        v("K7",     id="dom_rec",  maker="기아", judgment="입찰 검토 가능", sale_date="2026-09-20"),
+        v("E220 d", id="imp_norm", maker="벤츠", judgment="유찰 대기",      sale_date="2026-09-15"),
+        v("쏘나타",  id="dom_norm", maker="현대", judgment="유찰 대기",      sale_date="2026-09-25"),
+    ]
+    order = [x["id"] for x in service.newcar_pool(rows, cutoff="2026-08-13")]
+    # 추천이 최우선(16건뿐이라 첫 런에 끝난다), 추천 안에서 국산 먼저
+    assert order[:2] == ["dom_rec", "imp_rec"]
+    # 나머지에서도 국산이 먼저 — 매각일이 더 늦어도 앞선다
+    assert order[2:] == ["dom_norm", "imp_norm"]

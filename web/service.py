@@ -719,6 +719,24 @@ NEWCAR_DAILY_CAP = 2400
 NEWCAR_SKIP_WORDS = ("덤프트럭", "굴착기", "지게차", "공기압축기", "콘크리트펌프", "펌프카",
                      "탱크로리", "고소작업", "크레인", "트랙터", "로더", "믹서", "살수차",
                      "청소차", "소방차", "사다리차", "트레일러", "특장", "재단")
+# 수집 하한 연식(사용자 지시 2026-09-12) — 2010년 이전 차량은 출시가를 모으지 않는다.
+# 오래된 차일수록 보배드림 가격표가 부실하고, 잔존가치 축의 실익도 낮다.
+NEWCAR_MIN_YEAR = 2010
+# 국산 5사 먼저(사용자 지시 2026-09-12) — 가격표가 충실해 매칭 성공률이 높고 물건 수도 많다.
+# 제네시스는 현대 산하, 쉐보레·한국지엠은 대우 후신이라 같은 갈래로 본다.
+NEWCAR_DOMESTIC_WORDS = ("현대", "HYUNDAI", "제네시스", "GENESIS",
+                         "기아", "KIA",
+                         "쌍용", "SSANGYONG", "KG모빌리티", "KGM",
+                         "대우", "DAEWOO", "쉐보레", "CHEVROLET", "한국지엠",
+                         "르노", "RENAULT", "삼성")
+
+
+def newcar_is_domestic(v: dict) -> bool:
+    """국산 5사(현대·기아·쌍용·대우·르노) 계열인가 — 우선순위 판단용."""
+    t = ((v.get("maker") or "") + " " + (v.get("model") or "")).replace(" ", "").upper()
+    return any(w.upper() in t for w in NEWCAR_DOMESTIC_WORDS)
+
+
 # 반대로 반드시 남길 경상용(실제 매칭 성공 사례 있음 — 포터2 일렉트릭 4,060~4,274만원)
 NEWCAR_KEEP_WORDS = ("포터", "봉고", "마이티", "렉스턴")
 # 제작사명+톤수로 적힌 개조 화물차(예: 대우25톤카고트럭·한중4톤카고)는 가격표가 없다.
@@ -747,7 +765,10 @@ def newcar_pool(vehicles: list, cutoff: str, vehicle_ids: Optional[list] = None)
     **추천 17건 중 출시가 확보가 0건**이었다 — 홈에서 가장 먼저 보이는 화면의 잔존가치 축이
     전부 '미산출'로 떴다. 같은 예산으로 순서만 바꿔 체감 커버리지를 올린다.
 
-    순서: ① 추천(입찰 검토 가능) → ② 매각기일 임박 → ③ id.
+    순서: ① 추천(입찰 검토 가능) → ② 국산 5사 → ③ 매각기일 임박 → ④ id.
+    추천을 국산보다 앞에 두는 이유: 추천은 16건뿐이라 첫 런에서 끝나고, 그 뒤로는 국산 우선이
+    실제로 지배한다. 홈에 먼저 보이는 화면을 먼저 채우는 편이 체감 효과가 크다.
+    연식 하한(2010) 미만은 대상에서 제외한다.
     이미 `newcar_min`이 있는 물건은 **영구 제외** — 당시 출시가는 과거 값이라 변하지 않는다.
     (이전에는 30일마다 성공 건까지 재조회해 예산을 갉아먹었다.)
     vehicle_ids로 특정 물건을 콕 집은 경우(관리자 수동)는 제외 규칙을 적용하지 않는다.
@@ -757,6 +778,8 @@ def newcar_pool(vehicles: list, cutoff: str, vehicle_ids: Optional[list] = None)
     for v in vehicles:
         if not v.get("year"):
             continue
+        if int(v["year"]) < NEWCAR_MIN_YEAR:
+            continue          # 2010년 이전은 수집 대상 아님(가격표 부실·실익 낮음)
         if manual and v["id"] not in vehicle_ids:
             continue
         if v.get("newcar_min") is not None:
@@ -767,6 +790,7 @@ def newcar_pool(vehicles: list, cutoff: str, vehicle_ids: Optional[list] = None)
             continue
         picked.append(v)
     picked.sort(key=lambda v: (0 if v.get("judgment") == "입찰 검토 가능" else 1,
+                               0 if newcar_is_domestic(v) else 1,
                                v.get("sale_date") or "9999-12-31", v.get("id") or ""))
     return picked
 
