@@ -380,13 +380,20 @@ def personal_use_saving(v: dict, bt: Optional[dict] = None) -> Optional[int]:
     return int(round(gain)) if gain > 0 else None
 
 
-def is_personal_use_pick(v: dict, bt: Optional[dict] = None) -> bool:
+def is_personal_use_pick(v: dict, bt: Optional[dict] = None, today=None) -> bool:
     """'실사용 추천' 칸에 들어갈 물건인가.
 
     재판매 기준을 이미 통과한 물건('입찰 검토 가능')은 그쪽 칸이 가져가므로 제외한다
     — 대시보드 칸이 서로 겹치지 않아야 합계가 총대수와 맞는다.
+
+    ⚠ **매각기일이 지난 물건은 추천하지 않는다.** 낙찰결과가 아직 안 붙어 '유찰 대기'로
+    남아 있는 지난 물건이 섞이면 입찰할 수 없는 차를 권하게 된다
+    (2026-09-12 실측: 140대 중 58대가 8월 기일이었다).
     """
     if v.get("judgment") == "입찰 검토 가능":
+        return False
+    d = (today or date.today()).isoformat()
+    if (v.get("sale_date") or "") < d:
         return False
     return personal_use_saving(v, bt) is not None
 

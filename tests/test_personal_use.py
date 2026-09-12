@@ -78,3 +78,16 @@ def test_cost_model_constants_present():
     assert service.USE_REPAIR_RESERVE > 0, "경매차는 성능점검·보증이 없어 정비 충당이 필요하다"
     # 경매 쪽 부대비가 소매보다 커야 정직하다(탁송·정비가 추가로 든다)
     assert service.USE_AUCTION_FEE + service.USE_REPAIR_RESERVE > service.USE_RETAIL_FEE
+
+
+def test_past_sale_date_is_never_recommended():
+    """매각기일이 지난 물건은 입찰할 수 없다.
+
+    낙찰결과가 아직 안 붙어 '유찰 대기'로 남아 있는 지난 물건이 섞이면
+    입찰 불가한 차를 권하게 된다(2026-09-12 실측: 140대 중 58대가 8월 기일이었다).
+    """
+    import datetime
+    today = datetime.date(2026, 9, 12)
+    assert service.is_personal_use_pick(v(sale_date="2026-08-20"), BT, today=today) is False
+    assert service.is_personal_use_pick(v(sale_date="2026-09-30"), BT, today=today) is True
+    assert service.is_personal_use_pick(v(sale_date=None), BT, today=today) is False
