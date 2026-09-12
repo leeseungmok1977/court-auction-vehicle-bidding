@@ -37,7 +37,10 @@
 
 /* 전역: 라이트 캔버스 · 딥네이비 잉크 · ss01 스타일셋(브랜드 시그니처) */
 html, body { background: #f6f9fc; }
-body { font-family: "Pretendard", "PretendardFull", "Malgun Gothic", sans-serif; color: #0d253d;
+/* ⚠ 이모지를 PretendardFull **앞에** 둔다. 이모지는 어느 Pretendard에도 없어서,
+   빼두면 브라우저가 이모지 하나 때문에 원본 765KB를 받아본 뒤 시스템 폰트로 간다
+   (실측: 홈에서 서브셋 4종 + 원본 Regular 765KB가 함께 내려왔다). */
+body { font-family: "Pretendard", "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "PretendardFull", "Malgun Gothic", sans-serif; color: #0d253d;
   font-feature-settings: "ss01"; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
 
 /* 디스플레이 타이포: thin(300) + 음수 트래킹 (Stripe 시그니처) */

@@ -32,7 +32,10 @@ module.exports = {
         magenta: "#f96bee",
       },
       fontFamily: {
-        sans: ["Pretendard", "PretendardFull", "Malgun Gothic", "sans-serif"],
+        // 이모지는 어느 Pretendard에도 없다 — PretendardFull 앞에 두지 않으면
+        // 이모지 하나 때문에 원본 765KB를 받아본다(3회차 실측).
+        sans: ["Pretendard", "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji",
+               "PretendardFull", "Malgun Gothic", "sans-serif"],
         mono: ["JetBrains Mono", "monospace"],
       },
       boxShadow: {
