@@ -2035,6 +2035,12 @@ def backfill_map_ocr(limit: Optional[int] = None, redo: bool = False) -> dict:
         if not maps:
             out["skipped"] += 1
             continue
+        # ⚠ 한 번 시도한 물건은 다시 돌리지 않는다. OCR은 장당 12초라 실패분
+        #   640건을 재실행마다 다시 읽으면 3시간이 통째로 낭비된다(실측).
+        #   결과가 아니라 **시도했다는 사실**을 남겨야 증분 실행이 싸진다.
+        if not redo and (v.get("map_ocr_at") or ""):
+            out["skipped"] += 1
+            continue
         fk = v.get("folder_key") or v.get("id")
         got = None
         for name in maps:
@@ -2048,6 +2054,7 @@ def backfill_map_ocr(limit: Optional[int] = None, redo: bool = False) -> dict:
                 break
             if r["label"]:
                 got = got or r
+        db.update_fields(v["id"], map_ocr_at=_now())
         if got and got["addr"]:
             # 구 단위 근사는 그렇게 적어야 한다 — 번지까지 있는 값과 섞으면
             # 사용자가 정밀도를 오해한다.

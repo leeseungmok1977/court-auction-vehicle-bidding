@@ -201,7 +201,7 @@ def init_db() -> None:
                     #   storage_src : court(법원 상세) | text(감정서 본문)
                     #                 | map_ocr(지도에 인쇄된 주소) | map_parcel(지적도 대조)
                     #   storage_conf: 확정 | 추정
-                    "storage_src", "storage_conf", "map_photos"):
+                    "storage_src", "storage_conf", "map_photos", "map_ocr_at"):
             if col not in cols:
                 conn.execute(f"ALTER TABLE vehicles ADD COLUMN {col} TEXT")
         if "winning_price" not in cols:
@@ -341,7 +341,7 @@ _LISTING_KEEP = {
     "newcar_min", "newcar_max", "newcar_n", "newcar_model", "newcar_release", "newcar_checked_at", "newcar_basis_year",
     "auction_result", "winning_price", "dxdy_history", "result_checked_at", "result_source",
     # 보관장소는 상세·감정서·지도에서 나온 파생값이다. 목록 갱신이 건드리면 안 된다.
-    "storage_addr", "storage_src", "storage_conf", "map_photos",
+    "storage_addr", "storage_src", "storage_conf", "map_photos", "map_ocr_at",
 }
 
 

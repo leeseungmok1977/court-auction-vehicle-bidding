@@ -362,3 +362,24 @@ def test_known_gu_vocabulary_includes_two_character_districts():
     import re
     pat = re.compile(r"[가-힣]{1,5}(?:시|군|구)")
     assert "남구" in pat.findall("광주광역시 남구 봉선동")
+
+
+def test_ocr_does_not_retry_a_vehicle_it_already_attempted(one, monkeypatch):
+    """OCR은 장당 12초다 — 실패분을 재실행마다 다시 읽으면 3시간이 낭비된다.
+
+    결과가 아니라 **시도했다는 사실**을 남겨야 증분 실행이 싸진다.
+    """
+    (one / "photos").mkdir()
+    (one / "photos" / "m.png").write_bytes(b"x")
+    db.update_fields("V1", map_photos=["m.png"])
+    monkeypatch.setattr(service, "known_gu_names", lambda: {"남구"})
+    calls = []
+    monkeypatch.setattr("src.vision.map_ocr.read_storage_label",
+                        lambda *a, **k: calls.append(1) or
+                        {"label": False, "addr": "", "level": "", "why": "x"})
+    service.backfill_map_ocr()
+    assert len(calls) == 1 and db.get_vehicle("V1")["map_ocr_at"]
+    service.backfill_map_ocr()                    # 두 번째 실행
+    assert len(calls) == 1, "이미 시도한 물건을 또 읽었다"
+    service.backfill_map_ocr(redo=True)           # 강제 재시도는 다시 읽는다
+    assert len(calls) == 2
