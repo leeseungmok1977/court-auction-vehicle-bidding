@@ -69,9 +69,9 @@ body{background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:
 .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:24px 26px}
 .verdict{border:1px solid var(--line-strong);border-top:3px solid var(--cobalt)}
 /* 결론이 부정이면 카드 상단 바도 로즈. 파란 바만 두면 판정이 바뀌어도 카드가 같아 보인다. */
-.verdict.stop{border-top-color:var(--red)}
+.verdict.is-stop{border-top-color:var(--red)}
 /* stop 화면에서 초록 CONFIDENCE 배지가 "좋은 물건"으로 오독된다 — 분석 신뢰도일 뿐이다. */
-.masthead.stop .badge b{color:#C9D4E8}
+.masthead.is-stop .badge b{color:#C9D4E8}
 .vgrid{display:grid;grid-template-columns:auto 1fr;gap:28px;align-items:start}
 .v-label{font-size:12px;color:var(--ink-soft);font-weight:600;margin-bottom:6px}
 .v-band{font-family:var(--mono);font-weight:700;font-size:clamp(24px,4.5vw,32px);color:var(--cobalt);letter-spacing:-.02em;white-space:nowrap}
@@ -128,6 +128,8 @@ table, thead, tbody, tr, th, td { word-break: keep-all; overflow-wrap: break-wor
 .proc{margin:16px 0 0;padding-left:20px}
 .proc li{font-size:13px;line-height:1.6;color:var(--ink-soft);margin-bottom:9px}
 .proc li b{color:var(--ink)}
+/* ⚠ STOP RULE 박스 전용. 판정 톤 클래스와 이름이 겹치면 .card 전체가 가로 배치된다
+   — 실제로 §01이 3열로 무너져 육각형이 화면 밖으로 나갔다(4회차 디자인 P0). */
 .stop{margin-top:20px;display:flex;gap:12px;align-items:flex-start;border-radius:10px;padding:13px 16px}
 .stop.on{background:var(--red-tint);border:1px solid #F2C8C8}.stop.off{background:#F4F6F9;border:1px solid var(--line)}
 .stop .tg{flex:none;font-family:var(--mono);font-size:13px;font-weight:700;letter-spacing:.08em;color:#fff;padding:4px 9px;border-radius:5px;margin-top:1px}
@@ -148,7 +150,7 @@ table, thead, tbody, tr, th, td { word-break: keep-all; overflow-wrap: break-wor
 .sp-conn{flex:1 1 auto;width:1px;min-height:6px;background:var(--line-strong);margin-top:2px}
 .sp-pin.acc .sp-conn{background:var(--cobalt);width:1.5px}
 .sp-blabel{position:absolute;bottom:-30px;left:50%;transform:translateX(-50%);font-size:12px;font-weight:700;color:var(--cobalt);white-space:nowrap;text-align:center}
-.sp-blabel.stop{color:var(--red)}.sp-blabel.caution{color:var(--amber)}.sp-blabel.ok{color:var(--green)}
+.sp-blabel.is-stop{color:var(--red)}.sp-blabel.is-caution{color:var(--amber)}.sp-blabel.is-ok{color:var(--green)}
 .sp-foot{margin-top:42px;font-size:11.5px;color:var(--ink-faint)}
 .confw{display:grid;grid-template-columns:180px 1fr;gap:28px;align-items:start}
 .cscore{text-align:center;padding:16px 8px;border:1px solid var(--line);border-radius:12px;background:#FAFBFD}
@@ -315,7 +317,7 @@ document.addEventListener('click', function(e){
 
   <!-- 마스트헤드 -->
   {% set _tone0 = (bidst.tone if bidst else 'wait') %}
-  <header class="masthead{{ ' stop' if _tone0 == 'stop' }}">
+  <header class="masthead{{ ' is-stop' if _tone0 == 'stop' }}">
     <div class="mh-top">
       <div class="brand"><div class="brand-mark">A</div>
         <div><div class="brand-name">차량경매 분석 리포트</div><div class="brand-sub">Court Auction Vehicle Intelligence</div></div></div>
@@ -345,7 +347,7 @@ document.addEventListener('click', function(e){
   <!-- 01 핵심 결론 -->
   <section class="section">
     <div class="sec-head" id="sec01"><span class="sec-no">01</span><h2>핵심 결론</h2><span class="sec-note">결론 먼저, 근거는 이하 참조</span></div>
-    <div class="card verdict{{ ' stop' if _tone == 'stop' }}">
+    <div class="card verdict{{ ' is-stop' if _tone == 'stop' }}">
       {% if verdict and verdict.text %}<div class="vsum{{ ' vsum-stop' if _tone == 'stop' }}"><b>한줄 판정</b> · {{ verdict.text }}</div>{% endif %}
       <div class="vgrid">
         <div>
@@ -444,7 +446,7 @@ document.addEventListener('click', function(e){
             <div class="sp-pin" style="left:{{ (med/gmax*100)|round(1) }}%"><span class="sp-sp"></span><span class="pl"><span class="lf">시세중앙값</span><span class="la">시세</span></span><span class="pv num">{{ (med/10000)|round|int }}</span><i class="sp-conn"></i></div>
           </div>
           <div class="sp-track"><div class="sp-fill" style="left:{{ (floor/gmax*100)|round(1) }}%;width:{{ ((exp-floor)/gmax*100)|round(1) if exp>floor else 0.5 }}%"></div></div>
-          <div class="sp-blabel {{ _tone }}" style="left:{{ (((floor+exp)/2)/gmax*100)|round(1) }}%">{{ bidst.label if bidst else '유찰 대기 구간' }}</div>
+          <div class="sp-blabel is-{{ _tone }}" style="left:{{ (((floor+exp)/2)/gmax*100)|round(1) }}%">{{ bidst.label if bidst else '유찰 대기 구간' }}</div>
         </div>
         <div class="sp-foot">예상낙찰가는 과거 낙찰 실측(낙찰가/시세 분포)에 유찰횟수를 반영한 중심 추정치이며, 밴드는 분위수 기반 불확실 구간입니다(산출: 10).</div>
       </div>
