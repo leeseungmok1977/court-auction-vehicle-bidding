@@ -94,7 +94,7 @@ body {
    (2026-09-12 디자인 검수 적발: 리포트 총취득원가 표에서 마지막 줄 11px = 한 글자).
    대신 `overflow-wrap: anywhere` 를 쓴다. break-word 와 달리 min-content 계산에 반영돼
    셀 최소폭이 '가장 긴 어절'만큼 부풀지 않으므로 가로 스크롤이 늘지 않는다. */
-table, thead, tbody, tr, th, td { word-break: keep-all; overflow-wrap: anywhere; }
+table, thead, tbody, tr, th, td { word-break: keep-all; overflow-wrap: break-word; }
 
 /* 상단 고정 바 — 툴바(상세로·인쇄)와 섹션 점프칩을 함께 붙여 둔다.
    11화면짜리 문서라 스크롤을 내리면 돌아갈 방법이 사라졌다(2026-09-12 사용자 요청). */
@@ -162,6 +162,11 @@ table, thead, tbody, tr, th, td { word-break: keep-all; overflow-wrap: anywhere;
 .legend{margin-top:16px;padding-top:12px;border-top:1px dashed var(--line);display:flex;gap:16px;flex-wrap:wrap;font-size:11px;color:var(--ink-soft)}
 .legend span{display:flex;align-items:center;gap:6px}
 table{width:100%;border-collapse:collapse;font-size:13px}
+/* 좁은 화면에서 표를 억지로 우겨넣으면 셀이 한 글자씩 세로로 쪼개진다
+   (2026-09-12 실측: 360px 총취득원가 표에서 '성격' 열이 추/정, 세/율/확/정으로 갈림).
+   .tscroll 안에 있으므로 최소 너비를 줘 **눌리는 대신 그 안에서만 가로 스크롤**하게 한다.
+   문서 전체가 넘치는 게 아니라 표 컨테이너 안에서만 움직이므로 페이지 레이아웃은 안전하다. */
+@media (max-width:560px){ .tscroll > table{ min-width:430px } }
 thead th{text-align:left;font-size:11px;font-weight:600;color:var(--ink-soft);padding:0 10px 9px;border-bottom:1.5px solid var(--line-strong);white-space:nowrap}
 tbody td{padding:10px;border-bottom:1px solid var(--line);vertical-align:top}
 tbody tr:last-child td{border-bottom:none}
