@@ -95,7 +95,7 @@
           'bg-emerald-50 text-emerald-700 border border-emerald-200' if v.accident_grade=='none'
           else 'bg-amber-50 text-amber-700 border border-amber-200' if v.accident_grade=='minor'
           else 'bg-rose-50 text-rose-600 border border-rose-200' if v.accident_grade in ('accident','flood')
-          else 'bg-slate-100 text-mut border border-line' }}">{{ v.accident_grade|acc }}</span>
+          else 'bg-slate-100 text-mut border border-line' }}">{{ v|accv }}</span>
       {% if v.accident_hits %}<span class="text-mut text-xs ml-1">{{ v.accident_hits|join(', ') }}</span>{% endif %}</dd>
     {% if v.insurance_history %}
     <dt class="text-mut">보험이력</dt>

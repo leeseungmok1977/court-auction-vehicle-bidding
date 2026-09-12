@@ -210,6 +210,8 @@ templates.env.filters["won"] = _won
 templates.env.filters["bcls"] = _bcls
 templates.env.filters["jshort"] = _jshort
 templates.env.filters["acc"] = _acc
+# 물건 단위 사고판정 — 근거 없는 'none'을 '무사고'로 단정하지 않는다(service.accident_label).
+templates.env.filters["accv"] = service.accident_label
 templates.env.filters["mdl"] = _mdl
 templates.env.filters["sstat"] = _sstat
 templates.env.globals["car_name"] = _car_name   # 제조사+차명 중복 제거 결합(‘BMW BMW …’ 방지)

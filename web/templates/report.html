@@ -208,6 +208,9 @@ details.raw summary{cursor:pointer;font-size:12px;color:var(--cobalt);font-weigh
 
   {% if report %}
   {% set opp = floor and floor <= exp %}
+  {# 예상낙찰가가 소매 시세를 넘으면 최저가가 낮아도 '검토 가능'이 아니다 —
+     같은 차를 소매에서 더 싸게 사고, 취득세·이전비를 더하면 격차가 더 벌어진다. #}
+  {% set over_market = med and exp and exp > med %}
   {% set thin_margin = upper and exp and exp > upper %}
   <!-- 01 핵심 결론 -->
   <section class="section">
@@ -221,8 +224,11 @@ details.raw summary{cursor:pointer;font-size:12px;color:var(--cobalt);font-weigh
           <div class="v-sub">중심값 <b class="num">{{ exp|won }}원</b> · 재판매 상한가 <b class="num">{{ upper|won }}원</b></div>
         </div>
         <ul class="vpts">
-          <li>현 최저매각가 <b class="num">{{ floor|won }}원</b>은 예상낙찰가 {{ '이하 — 지금 입찰 검토 가능' if opp else '초과 — 추가 유찰 대기 권장' }}</li>
-          <li>소매 시세중앙값 <b class="num">{{ med|won }}원</b> 대비 예상낙찰가는 약 <b>{{ ((report.discount or 0)*100)|round|int }}%</b> {% if v.fail_count %}(유찰 {{ v.fail_count }}회 반영){% endif %}</li>
+          <li>현 최저매각가 <b class="num">{{ floor|won }}원</b>은 예상낙찰가 {% if not opp %}초과 — 추가 유찰 대기 권장{% elif over_market %}이하이지만, <b style="color:var(--amber)">예상낙찰가가 소매 시세를 넘어 입찰을 권하지 않습니다</b>{% else %}이하 — 지금 입찰 검토 가능{% endif %}</li>
+          {# 2026-09-12 수정: 여기 있던 report.discount는 **이 물건이 아니라 모집단 중앙값**이었다.
+     "예상낙찰가는 약 73%"로 표시되는데 실제 이 물건은 105%인 사례가 3/3 재현됐다.
+     이 물건 값(exp/med)을 쓰고, 모집단 통계는 별도 라벨로 분리한다. #}
+          <li>소매 시세중앙값 <b class="num">{{ med|won }}원</b> 대비 이 물건의 예상낙찰가는 <b{% if over_market %} style="color:var(--amber)"{% endif %}>{{ ('약 ' ~ ((exp/med*100)|round|int) ~ '%') if (med and exp) else '미산출' }}</b>{% if over_market %} <b style="color:var(--amber)">(시세 초과)</b>{% endif %}{% if report.discount %} · 동급 실낙찰 평균은 {{ (report.discount*100)|round|int }}%{% endif %} {% if v.fail_count %}(유찰 {{ v.fail_count }}회 반영){% endif %}</li>
           {% if thin_margin %}<li style="color:var(--amber)"><b style="color:var(--amber)">재판매 부적합 신호</b> — 예상낙찰가가 마진 확보선(<b class="num">{{ upper|won }}원</b>)을 초과. 이전·수리·명도비를 빼면 <b>재판매 차익은 어렵고 실사용 목적</b>에 적합</li>
           {% else %}<li>재판매 목적이면 마진 확보선 <b class="num">{{ upper|won }}원</b> 이하가 기준 (목표마진 {{ report.target_margin|won }}원)</li>{% endif %}
           <li>본 결론의 신뢰도 <b>{{ conf }}/100</b> — 미확정 요소는 현장확인(상태·정비비)뿐이며 결과에 따라 밴드가 조정될 수 있음(09)</li>
@@ -276,7 +282,7 @@ details.raw summary{cursor:pointer;font-size:12px;color:var(--cobalt);font-weigh
             <div class="sp-pin" style="left:{{ (med/gmax*100)|round(1) }}%"><span class="sp-sp"></span><span class="pl"><span class="lf">시세중앙값</span><span class="la">시세</span></span><span class="pv num">{{ (med/10000)|round|int }}</span><i class="sp-conn"></i></div>
           </div>
           <div class="sp-track"><div class="sp-fill" style="left:{{ (floor/gmax*100)|round(1) }}%;width:{{ ((exp-floor)/gmax*100)|round(1) if exp>floor else 0.5 }}%"></div></div>
-          <div class="sp-blabel" style="left:{{ (((floor+exp)/2)/gmax*100)|round(1) }}%">{{ '실사용 적합 · 재판매 마진 낮음' if thin_margin else '지금 입찰 가능' if opp else '유찰 대기 구간' }}</div>
+          <div class="sp-blabel" style="left:{{ (((floor+exp)/2)/gmax*100)|round(1) }}%">{{ '시세 초과 — 입찰 비권장' if over_market else '실사용 적합 · 재판매 마진 낮음' if thin_margin else '지금 입찰 가능' if opp else '유찰 대기 구간' }}</div>
         </div>
         <div class="sp-foot">예상낙찰가는 과거 낙찰 실측(낙찰가/시세 분포)에 유찰횟수를 반영한 중심 추정치이며, 밴드는 분위수 기반 불확실 구간입니다(산출: 10).</div>
       </div>
@@ -345,7 +351,7 @@ details.raw summary{cursor:pointer;font-size:12px;color:var(--cobalt);font-weigh
         <div class="kv"><dt>{{ ui.gloss('감정가', '법원이 감정평가사를 통해 매긴 차량 가치예요. 최저매각가와 낙찰가율의 기준이 됩니다.') }}</dt><dd class="num">{{ v.appraisal_value|won }}원 {% if v.appraisal_value %}<span class="tag confirmed">확정</span>{% endif %}</dd></div>
         <div class="kv"><dt>{{ ui.gloss('최저매각가', '이번 기일에 이 금액 이상 써내야 입찰돼요. 유찰될 때마다 보통 20~30%씩 내려갑니다.') }}</dt><dd class="num">{{ v.min_sale_price|won }}원{% if v.appraisal_value and v.min_sale_price %} ({{ (100*v.min_sale_price/v.appraisal_value)|round|int }}%){% endif %}</dd></div>
         <div class="kv"><dt>유찰횟수</dt><dd class="num">{{ v.fail_count if v.fail_count is not none else '—' }}회</dd></div>
-        <div class="kv"><dt>사고판정</dt><dd>{{ v.accident_grade|acc }}{% if v.accident_hits %} <span class="chip warn">{{ v.accident_hits|join(', ') }}</span>{% endif %}</dd></div>
+        <div class="kv"><dt>사고판정</dt><dd>{{ v|accv }}{% if v.accident_hits %} <span class="chip warn">{{ v.accident_hits|join(', ') }}</span>{% endif %}</dd></div>
         {% if v.sale_place %}<div class="kv"><dt>매각장소</dt><dd style="font-size:12px">{% if v.court %}{{ v.court }} {% endif %}{{ v.sale_place }}{% if v.sale_time %} · {{ v.sale_time }} 입찰{% endif %}</dd></div>{% endif %}
         <div class="kv"><dt>차량 보관장소</dt><dd style="font-size:12px">{% if v.storage_addr %}{{ v.storage_addr }}{% else %}법원 미표시{% endif %}</dd></div>
         {% if is_admin(request) %}<div class="kv"><dt>목록상 주소</dt><dd style="font-size:12px">{{ v.location or '—' }}{% if v.location %} <span style="color:#94a3b8">(대개 채무자 주소 — 차량 위치 아닐 수 있음)</span>{% endif %}</dd></div>{% endif %}
@@ -523,7 +529,7 @@ details.raw summary{cursor:pointer;font-size:12px;color:var(--cobalt);font-weigh
         <thead><tr><th>항목</th><th>내용</th><th class="c">상태</th></tr></thead>
         <tbody>
           <tr><td>권리·저당</td><td>인수 부담 권리(별도 등기부·문건 확인 필요)</td><td class="c"><span class="chip warn">현장확인</span></td></tr>
-          <tr><td>사고·침수</td><td>{{ v.accident_grade|acc }}{% if v.accident_hits %} — {{ v.accident_hits|join(', ') }}{% endif %} · 골격 손상 여부 현장 확인</td><td class="c"><span class="chip {{ 'risk' if report.stop_active else 'ok' }}">{{ 'STOP 대상' if report.stop_active else '이력상 양호' }}</span></td></tr>
+          <tr><td>사고·침수</td><td>{{ v|accv }}{% if v.accident_hits %} — {{ v.accident_hits|join(', ') }}{% endif %} · 골격 손상 여부 현장 확인</td><td class="c"><span class="chip {{ 'risk' if report.stop_active else 'ok' }}">{{ 'STOP 대상' if report.stop_active else ('이력상 양호' if v.insurance_history else '이력 미확인') }}</span></td></tr>
           <tr><td>기관·하체</td><td>시동·누유·변속·하체 부식 — 매각기일 전 보관장소 확인</td><td class="c"><span class="chip warn">현장확인</span></td></tr>
           <tr><td>상태·옵션·정비</td><td>정비 필요 범위(타이어·소모품)에 따라 정비비 변동 → 06·08 반영{% if asum and (asum.condition.major or asum.condition.poor or asum.condition.minor) %} · <span class="{{ 'neg' if asum.condition.major or asum.condition.poor else 'neu' }}">감정 요항에 외관·상태 손상 언급</span>{% endif %}</td><td class="c"><span class="chip {{ 'risk' if asum and (asum.condition.major or asum.condition.poor) else 'warn' }}">현장확인</span></td></tr>
           {% if asum and asum.inspection %}<tr><td>자동차검사 유효기간</td><td class="num">{{ asum.inspection.valid_to }}{% if asum.inspection.expired %} · <span class="neg">경과(재검사 필요)</span>{% elif asum.inspection.days_left is not none %} · D{{ asum.inspection.days_left }}{% endif %} <span style="color:var(--ink-faint);font-family:var(--sans)">— 감정 요항 기준</span></td><td class="c"><span class="chip {{ 'risk' if asum.inspection.expired else 'ok' }}">{{ '재검사 필요' if asum.inspection.expired else '유효' }}</span></td></tr>{% endif %}

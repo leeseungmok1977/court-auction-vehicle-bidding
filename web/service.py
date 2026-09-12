@@ -565,6 +565,31 @@ def _hx_pt(i: int, frac: float):
             round(_HX_C + _HX_R * frac * math.sin(ang), 1))
 
 
+ACCIDENT_LABELS = {"none": "무사고", "minor": "단순수리", "accident": "사고", "flood": "침수의심"}
+
+
+def accident_evidence(v: dict) -> bool:
+    """사고 이력을 **실제로 조회한 근거**가 있는가.
+
+    감정평가서에 사고 문구가 없다는 것과 '사고가 없다'는 것은 전혀 다르다. 파서는 키워드를
+    못 찾으면 등급을 'none'으로 두는데 이건 조회 결과가 아니라 **자료 없음**이다.
+    보험사고이력 카운트가 파싱된 경우에만(0건이라고 적혀 있어도 '조회했다'는 뜻) 이력을
+    확인했다고 말할 수 있다 — 데이터 신뢰도 패널의 90/60 기준과 같은 근거를 쓴다.
+
+    2026-09-12 전문가 패널 지적: 자료 없음이 '무사고 + 육각형 100점'으로 승격되고 있었고,
+    같은 리포트의 신뢰도 패널은 같은 항목을 '60점·추정'이라 말해 한 화면에서 모순됐다.
+    """
+    return bool(v.get("insurance_history")) or bool(v.get("accident_hits"))
+
+
+def accident_label(v: dict) -> str:
+    """화면에 쓸 사고판정 문구. 근거 없는 'none'은 단정하지 않고 '이력 미확인'."""
+    g = v.get("accident_grade")
+    if g == "none" and not accident_evidence(v):
+        return "이력 미확인"
+    return ACCIDENT_LABELS.get(g, g or "—")
+
+
 def hexagon_scores(v: dict, today=None, include_private: bool = False, newcar_ok=None) -> dict:
     """리포트 '종합 프로필' 육각형 — 6축 0~100 점수 + SVG 좌표.
 
@@ -613,7 +638,10 @@ def hexagon_scores(v: dict, today=None, include_private: bool = False, newcar_ok
 
     # 3) 사고·상태
     ag = v.get("accident_grade")
-    if ag in ("none", "accident", "flood"):
+    if ag == "none" and not accident_evidence(v):
+        # 근거 없는 '무사고'에 만점을 주지 않는다 — 잔존가치 축과 같은 미산출 원칙.
+        axes.append({"key": "cond", "name": "사고·상태", "score": None, "note": "사고 이력 미확인"})
+    elif ag in ("none", "accident", "flood"):
         sc = {"none": 100, "accident": 45, "flood": 0}[ag]
         parts = [{"none": "사고 이력 없음", "accident": "사고 이력 있음", "flood": "침수/전손 이력"}[ag]]
         cl = v.get("condition_level")
@@ -2085,7 +2113,16 @@ def plain_verdict(v: dict, expected: Optional[dict]) -> Optional[dict]:
     if not (floor and floor <= exp):
         return {"tone": "wait",
                 "text": f"지금 최저가 {won(floor)}은 예상 낙찰가 {won(exp)}보다 높습니다. 아직 비싸니 추가 유찰을 기다리는 게 좋습니다."}
-    # 여기부터 floor ≤ exp — '지금 입찰 검토 가능' 구간
+    # 여기부터 floor ≤ exp — 최저가는 낮지만, 그것만으로 '검토 가능'은 아니다.
+    # 예상낙찰가가 소매 시세를 넘으면 같은 차를 소매에서 더 싸게 산다. 취득세·이전비를 더하면
+    # 격차가 더 벌어지므로 실사용 목적이라도 입찰을 권하지 않는다.
+    # (2026-09-12 전문가 패널 3인 합의 지적 — 이전에는 exp > med여도 "큰 차이가 없어 …
+    #  직접 타실 목적이면 검토할 만합니다"로 안내했다.)
+    if med and exp > med:
+        over = round((exp - med) / med * 100)
+        return {"tone": "caution",
+                "text": f"예상 낙찰가 {won(exp)}이 소매 시세 {won(med)}보다 약 {over}% 높습니다. "
+                        f"취득세·이전비까지 더하면 소매 구매가 유리해 입찰을 권하지 않습니다."}
     gap = round((med - exp) / med * 100) if med > exp else 0   # 소매 시세 대비 예상낙찰가 할인율(=소매 차익 %와 동일)
     gap_txt = f"소매 시세보다 약 {gap}% 낮지만" if gap >= 3 else "소매 시세와 큰 차이가 없어"
     head = f"지금 {won(floor)}에 입찰할 수 있고 예상 낙찰가는 {won(exp)}입니다."

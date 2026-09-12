@@ -14,6 +14,9 @@ def _v(**kw):
     base = {"min_sale_price": 8_000_000, "median_price": 12_000_000, "appraisal_value": 15_000_000,
             "market_confidence": 78, "market_confidence_label": "높음", "market_platform": "encar",
             "accident_grade": "none", "condition_level": "unknown", "inspection_to": "2027-03-01",
+            # 2026-09-12부터 사고 축은 **이력을 실제로 조회한 근거**가 있어야 점수가 매겨진다.
+            # 0건이라도 카운트가 파싱됐다는 건 '조회했다'는 뜻이다(service.accident_evidence).
+            "insurance_history": {"내차피해": 0},
             "year": 2020, "mileage_km": 90_000, "encar_total": 1_000,
             "newcar_min": 3_000, "newcar_max": 4_000}          # 출시가 범위(만원) → 중간 3,500만원
     base.update(kw)
@@ -63,6 +66,22 @@ def test_condition_axis_penalties():
     c = _score(_hx(_v(condition_level="poor", inspection_to="2026-01-01")), "cond")
     assert c["score"] == 65 and "검사 만료" in c["note"] and "상태 미흡" in c["note"]
     assert _score(_hx(_v(accident_grade=None)), "cond")["score"] is None
+
+
+def test_condition_axis_needs_evidence_not_just_absence_of_keywords():
+    """감정서에 사고 문구가 없다는 것과 '사고가 없다'는 것은 다르다.
+
+    2026-09-12 전문가 패널 지적: 자료 없음이 '무사고 + 사고축 100점'으로 승격되고 있었고,
+    같은 리포트의 신뢰도 패널은 같은 항목을 '60점·추정'이라 말해 한 화면에서 모순됐다.
+    """
+    no_src = _hx(_v(insurance_history=None))
+    assert _score(no_src, "cond")["score"] is None, "근거 없이 사고축에 점수를 매겼다"
+    assert "미확인" in _score(no_src, "cond")["note"]
+    assert service.accident_label(_v(insurance_history=None)) == "이력 미확인"
+
+    with_src = _hx(_v())
+    assert _score(with_src, "cond")["score"] == 100
+    assert service.accident_label(_v()) == "무사고"
 
 
 def test_mileage_scale():
