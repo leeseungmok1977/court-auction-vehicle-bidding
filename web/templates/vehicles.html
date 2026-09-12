@@ -96,14 +96,26 @@
 </div>
 
 {% if usepick %}
-<div class="text-[11px] text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+{# 배너가 9줄이면 첫 물건 카드가 화면 밖으로 밀린다(디자인 검수 2026-09-12).
+   1문단만 기본 노출하고, 계산 가정은 접어 둔다. 접힘 상태는 기기에 기억. #}
+<div class="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
   <b>실사용 추천</b> — 예상 낙찰가로 낙찰받아도 <b>소매로 사는 것보다 총비용이 싼</b> 물건입니다.
-  취득세·이전·탁송·정비 충당까지 포함해 비교했고, 절감액이 큰 순으로 보여줍니다.
-  <span class="block mt-1 text-emerald-900">계산은 <b>불리한 쪽으로</b> 잡습니다 — 사고 이력을 확인하지 못한 차는 사고차로 가정하고,
-  검사 만료·상태 불량은 정비 충당을 더 잡습니다. 시동·운행 불가 물건과 시세가 감정가와 크게
-  어긋나는 물건은 아예 제외합니다. 실제 이력이 확인되면 절감액은 늘어날 수 있습니다.</span>
-  되팔아 남기는 기준은 <a href="/vehicles?judgment=입찰 검토 가능&sort=expected" class="underline">지금 입찰 추천</a>을 보세요.
+  절감액이 큰 순으로 보여줍니다.
+  <a href="/vehicles?judgment=입찰 검토 가능&sort=expected" class="underline whitespace-nowrap">되팔이 기준 보기</a>
+  <details id="usepickBasis" class="mt-1.5 border-t border-emerald-200/70 pt-1.5">
+    <summary class="cursor-pointer list-none text-mut hover:text-txt select-none inline-flex items-center gap-0.5">
+      <span class="material-symbols-outlined text-[14px] leading-none">expand_more</span>계산 기준 보기</summary>
+    <div class="mt-1 text-mut leading-relaxed">
+      <span class="font-semibold text-txt">보수적 계산</span> — 취득세·이전·탁송에 <b>상태별 정비 충당</b>을 더해 비교합니다.
+      사고 이력을 확인하지 못한 차는 <b>사고차로 가정</b>하고, 검사 만료·상태 불량은 충당을 더 잡습니다.
+      시동·운행 불가 물건과 시세가 감정가와 크게 어긋나는 물건은 제외합니다.
+      실제 이력이 확인되면 절감액은 늘어날 수 있습니다.
+    </div>
+  </details>
 </div>
+<script>(function(){var d=document.getElementById('usepickBasis');if(!d)return;
+try{if(localStorage.getItem('ncUsepickBasis')==='1')d.open=true;}catch(e){}
+d.addEventListener('toggle',function(){try{localStorage.setItem('ncUsepickBasis',d.open?'1':'0');}catch(e){}});})();</script>
 {% endif %}
 
 <!-- 테이블 (데스크톱 lg+) / 카드 (모바일) -->
