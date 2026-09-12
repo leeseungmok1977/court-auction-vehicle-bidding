@@ -143,7 +143,8 @@ table, thead, tbody, tr, th, td { word-break: keep-all; overflow-wrap: break-wor
 .sp-pin.acc .pv{color:var(--cobalt)}
 .sp-conn{flex:1 1 auto;width:1px;min-height:6px;background:var(--line-strong);margin-top:2px}
 .sp-pin.acc .sp-conn{background:var(--cobalt);width:1.5px}
-.sp-blabel{position:absolute;bottom:-30px;left:50%;transform:translateX(-50%);font-size:10px;font-weight:700;color:var(--cobalt);white-space:nowrap;text-align:center}
+.sp-blabel{position:absolute;bottom:-30px;left:50%;transform:translateX(-50%);font-size:12px;font-weight:700;color:var(--cobalt);white-space:nowrap;text-align:center}
+.sp-blabel.stop{color:var(--red)}.sp-blabel.caution{color:var(--amber)}.sp-blabel.ok{color:var(--green)}
 .sp-foot{margin-top:42px;font-size:11.5px;color:var(--ink-faint)}
 .confw{display:grid;grid-template-columns:180px 1fr;gap:28px;align-items:start}
 .cscore{text-align:center;padding:16px 8px;border:1px solid var(--line);border-radius:12px;background:#FAFBFD}
@@ -220,6 +221,8 @@ pre.body{white-space:pre-wrap;font-family:var(--sans);font-size:12.5px;color:var
 .disc b{color:var(--ink)}
 .foot{margin-top:22px;display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;font-family:var(--mono);font-size:10.5px;color:var(--ink-faint)}
 .vsum{margin-bottom:18px;padding:13px 16px;border-radius:10px;background:var(--cobalt-tint);border:1px solid #CBD9F6;font-size:13.5px;color:var(--ink);line-height:1.55}.vsum b{color:var(--cobalt-deep)}
+/* 결론이 부정일 때 로즈. 예전엔 톤 클래스가 없어 blocked와 usepick 판정 박스가 픽셀 동일했다. */
+.vsum-stop{background:#FDECEE;border-color:#F3B8BD;border-left:3px solid var(--red)}.vsum-stop b{color:var(--red)}
 .vstats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;margin-top:18px;padding-top:16px;border-top:1px dashed var(--line)}
 .vstat{text-align:center;padding:12px 8px;background:#FAFBFD;border:1px solid var(--line);border-radius:10px}
 .vstat .n{font-family:var(--mono);font-size:22px;font-weight:700;color:var(--cobalt);line-height:1.1}
@@ -327,33 +330,48 @@ document.addEventListener('click', function(e){
   </header>
 
   {% if report %}
-  {% set opp = floor and floor <= exp %}
-  {# 예상낙찰가가 소매 시세를 넘으면 최저가가 낮아도 '검토 가능'이 아니다 —
-     같은 차를 소매에서 더 싸게 사고, 취득세·이전비를 더하면 격차가 더 벌어진다. #}
-  {% set over_market = med and exp and exp > med %}
+  {# 판정은 service.bid_state() 한 곳에서만 한다. 예전엔 여기서 opp를 따로 계산해
+     상세와 갈렸다 — 3회차에 상세만 고치고 리포트에 남겨두면 P0 재발 예약이었다. #}
+  {% set _st = (bidst.state if bidst else 'wait') %}
+  {% set _tone = (bidst.tone if bidst else 'wait') %}
+  {% set opp = _st in ('resale', 'usepick') %}
+  {% set over_market = _st in ('over_market', 'blocked') %}
   {% set thin_margin = upper and exp and exp > upper %}
   <!-- 01 핵심 결론 -->
   <section class="section">
     <div class="sec-head" id="sec01"><span class="sec-no">01</span><h2>핵심 결론</h2><span class="sec-note">결론 먼저, 근거는 이하 참조</span></div>
     <div class="card verdict">
-      {% if verdict and verdict.text %}<div class="vsum"><b>한줄 판정</b> · {{ verdict.text }}</div>{% endif %}
+      {% if verdict and verdict.text %}<div class="vsum{{ ' vsum-stop' if _tone == 'stop' }}"><b>한줄 판정</b> · {{ verdict.text }}</div>{% endif %}
       <div class="vgrid">
         <div>
+          {# 같은 자리·같은 크기의 큰 숫자가 상태에 따라 뜻이 정반대였다 —
+             blocked/over_market이면 예상 낙찰가는 '절대 써서는 안 되는 금액'이고
+             usepick이면 '써도 되는 금액'이다. 경고 상태에서는 순서를 바꿔
+             **입찰 상한선을 1순위 숫자로** 올리고 예상 낙찰가를 참고로 내린다(3회차 검수). #}
+          {% set _danger = _tone == 'stop' or (max_bid and exp and exp > max_bid) %}
+          {% if max_bid and _danger %}
+          <div class="v-label">입찰 상한선 <span style="font-weight:400">— 여기까지만 유효</span></div>
+          <div class="v-band num" style="color:var(--red)">{{ (max_bid/10000)|round|int }}<small> 만원</small></div>
+          <div class="v-sub">이 값을 넘겨 낙찰받으면 <b>소매로 사는 편이 쌉니다</b>. 취득세·이전·탁송·상태별 정비 충당 포함,
+            사고 이력을 확인하지 못한 차는 사고차로 가정한 보수적 금액입니다.</div>
+          <div class="v-label" style="margin-top:14px">예상 낙찰가 <span style="font-weight:400">— 참고(분위수 밴드{% if backtest.within10_pct %} · 실측 ±10% 적중 {{ backtest.within10_pct|round|int }}%{% endif %})</span></div>
+          <div class="v-sub" style="font-size:15px"><b class="num">{% if report.lo and report.hi %}{{ (report.lo/10000)|round|int }} ~ {{ (report.hi/10000)|round|int }}{% else %}{{ (exp/10000)|round|int }}{% endif %} 만원</b>
+            · 중심값 {{ exp|won }}원 · 재판매 상한가 {% if upper %}{{ upper|won }}원{% else %}미산출{% endif %}
+            {% if exp and exp > max_bid %}<b style="color:var(--red)">— 예상 경쟁가가 이미 상한선을 넘습니다.</b>{% endif %}</div>
+          {% else %}
           <div class="v-label">예상 낙찰가 <span style="font-weight:400">— 분위수 밴드{% if backtest.within10_pct %} · 실측 ±10% 적중 {{ backtest.within10_pct|round|int }}%{% endif %}</span></div>
           <div class="v-band num">{% if report.lo and report.hi %}{{ (report.lo/10000)|round|int }} <small>~</small> {{ (report.hi/10000)|round|int }}{% else %}{{ (exp/10000)|round|int }}{% endif %}<small> 만원</small></div>
           <div class="v-sub">중심값 <b class="num">{{ exp|won }}원</b> · 재판매 상한가 {% if upper %}<b class="num">{{ upper|won }}원</b>{% else %}<b>미산출</b>{% endif %}</div>
           {% if max_bid %}
-          {# 예상낙찰가는 '얼마에 팔릴까'의 추정일 뿐이다. 경매장에서 실제로 필요한 값은
-             '얼마까지 써도 되는가'다 — 경매 전문가 1·2회차 연속 지적. #}
           <div class="v-label" style="margin-top:14px">입찰 상한선 <span style="font-weight:400">— 직접 탈 목적 손익분기</span></div>
-          <div class="v-band num" style="color:{{ 'var(--amber)' if exp and exp > max_bid else 'var(--ink)' }}">{{ (max_bid/10000)|round|int }}<small> 만원</small></div>
+          <div class="v-band num" style="color:var(--ink)">{{ (max_bid/10000)|round|int }}<small> 만원</small></div>
           <div class="v-sub">이 값을 넘겨 낙찰받으면 <b>소매로 사는 편이 쌉니다</b>. 취득세·이전·탁송·상태별 정비 충당 포함,
-            사고 이력을 확인하지 못한 차는 사고차로 가정한 보수적 금액입니다.
-            {% if exp and exp > max_bid %}<b style="color:var(--amber)">예상 경쟁가({{ exp|won }}원)가 이미 이 선을 넘어 낙찰 가능성은 낮습니다.</b>{% endif %}</div>
+            사고 이력을 확인하지 못한 차는 사고차로 가정한 보수적 금액입니다.</div>
+          {% endif %}
           {% endif %}
         </div>
         <ul class="vpts">
-          <li>현 최저매각가 <b class="num">{{ floor|won }}원</b>은 예상낙찰가 {% if not opp %}초과 — 추가 유찰 대기 권장{% elif over_market %}이하이지만, <b style="color:var(--amber)">예상낙찰가가 소매 시세를 넘어 입찰을 권하지 않습니다</b>{% else %}이하 — 지금 입찰 검토 가능{% endif %}</li>
+          <li>현 최저매각가 <b class="num">{{ floor|won }}원</b> — {% if _st == 'blocked' %}<b style="color:var(--red)">이미 입찰 상한선을 넘습니다. 이번 회차는 입찰 부적합</b>{% elif _st == 'over_market' %}<b style="color:var(--red)">예상낙찰가가 소매 시세를 넘어 입찰을 권하지 않습니다</b>{% elif _st == 'wait' %}예상낙찰가 초과 — 추가 유찰 대기 권장{% elif opp %}예상낙찰가 이하 — 지금 입찰 검토 가능{% else %}시세 신뢰도가 낮아 판정을 보류합니다{% endif %}</li>
           {# 2026-09-12 수정: 여기 있던 report.discount는 **이 물건이 아니라 모집단 중앙값**이었다.
      "예상낙찰가는 약 73%"로 표시되는데 실제 이 물건은 105%인 사례가 3/3 재현됐다.
      이 물건 값(exp/med)을 쓰고, 모집단 통계는 별도 라벨로 분리한다. #}
@@ -415,7 +433,7 @@ document.addEventListener('click', function(e){
             <div class="sp-pin" style="left:{{ (med/gmax*100)|round(1) }}%"><span class="sp-sp"></span><span class="pl"><span class="lf">시세중앙값</span><span class="la">시세</span></span><span class="pv num">{{ (med/10000)|round|int }}</span><i class="sp-conn"></i></div>
           </div>
           <div class="sp-track"><div class="sp-fill" style="left:{{ (floor/gmax*100)|round(1) }}%;width:{{ ((exp-floor)/gmax*100)|round(1) if exp>floor else 0.5 }}%"></div></div>
-          <div class="sp-blabel" style="left:{{ (((floor+exp)/2)/gmax*100)|round(1) }}%">{{ '시세 초과 — 입찰 비권장' if over_market else '실사용 적합 · 재판매 마진 낮음' if thin_margin else '지금 입찰 가능' if opp else '유찰 대기 구간' }}</div>
+          <div class="sp-blabel {{ _tone }}" style="left:{{ (((floor+exp)/2)/gmax*100)|round(1) }}%">{{ bidst.label if bidst else '유찰 대기 구간' }}</div>
         </div>
         <div class="sp-foot">예상낙찰가는 과거 낙찰 실측(낙찰가/시세 분포)에 유찰횟수를 반영한 중심 추정치이며, 밴드는 분위수 기반 불확실 구간입니다(산출: 10).</div>
       </div>

@@ -16,6 +16,7 @@ chevron_right
 dashboard
 description
 directions_car
+do_not_disturb_on
 donut_small
 error
 event
