@@ -87,6 +87,9 @@ body{background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:
    버튼 묶음과 섹션칩이 좌우로 나란히 붙는다(2026-09-12 실측으로 발견). */
 .rtop-btns{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
 .rtop .btn{padding:7px 14px}
+/* 좁은 화면에서는 눌리지도 않는 '보관·구매 준비 중'을 고정 바에서 뺀다.
+   두 줄로 접히면서 고정 바가 142px(화면의 17%)를 상시 차지했다. 데스크톱은 한 줄이라 그대로 둔다. */
+@media (max-width:520px){ .rtop .btn-soon{display:none} }
 .secnav{display:flex;gap:6px;overflow-x:auto;padding:8px 0;
   -webkit-overflow-scrolling:touch;scrollbar-width:none}
 .secnav::-webkit-scrollbar{display:none}
@@ -247,7 +250,7 @@ document.addEventListener('click', function(e){
   <div class="rtop-btns">
     <a href="/vehicle/{{ v.id }}" class="btn" onclick="return _reportBack(event)"><span class="material-symbols-outlined" style="font-size:18px">arrow_back</span> 상세로</a>
     <button onclick="window.print()" class="btn pri"><span class="material-symbols-outlined" style="font-size:18px">print</span> 인쇄 / PDF 저장</button>
-    <span class="btn" style="opacity:.5;cursor:not-allowed;gap:6px" title="곧 제공 — 리포트를 계정에 보관하고 건당 구매(현재 무료·인쇄로 저장하세요)" aria-disabled="true"><span class="material-symbols-outlined" style="font-size:18px">bookmark_add</span> 보관·구매 <span style="font-size:10px;background:var(--line);color:var(--ink-soft);padding:1px 6px;border-radius:99px">준비 중</span></span>
+    <span class="btn btn-soon" style="opacity:.5;cursor:not-allowed;gap:6px" title="곧 제공 — 리포트를 계정에 보관하고 건당 구매(현재 무료·인쇄로 저장하세요)" aria-disabled="true"><span class="material-symbols-outlined" style="font-size:18px">bookmark_add</span> 보관·구매 <span style="font-size:10px;background:var(--line);color:var(--ink-soft);padding:1px 6px;border-radius:99px">준비 중</span></span>
   </div>
 
   <nav class="secnav" aria-label="섹션 바로가기">
