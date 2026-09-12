@@ -53,8 +53,12 @@
       <span class="material-symbols-outlined text-base">filter_list</span> 적용</button></span>
     {# 칩들은 좁은 폭에서 두 줄을 먹는다 — 한 줄 가로 스크롤로 묶어 한 줄만 쓴다.
        숨기는 것이 아니라 밀어서 전부 볼 수 있다. #}
+    {# 잘린 위치가 카드 경계와 겹치면 스크롤 여지가 아니라 조판 사고로 보인다.
+       우측 페이드 마스크로 "오른쪽에 더 있다"를 알린다. #}
     <div class="flex items-center gap-2 w-full overflow-x-auto custom-scrollbar
-                [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:contents sm:overflow-visible">
+                [scrollbar-width:none] [&::-webkit-scrollbar]:hidden
+                [mask-image:linear-gradient(to_right,#000_calc(100%-16px),transparent)]
+                sm:contents sm:overflow-visible sm:[mask-image:none]">
     <button type="button" onclick="ncSaveSearch()" class="btn-ghost text-sm whitespace-nowrap shrink-0" title="현재 검색 조건을 저장 — 즐겨찾기 탭에서 새 매물을 확인합니다">
       <span aria-hidden="true">🔖</span> 검색 저장</button>
     {% if usepick %}<a href="/vehicles" class="text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full px-3 py-1 inline-flex items-center gap-1" title="실사용 추천 해제"><span class="material-symbols-outlined text-[13px] leading-none">directions_car</span>실사용 추천 ✕</a>{% endif %}
@@ -82,14 +86,18 @@
     {% if promising %}{# 집계 카드 '검토 추천'에서 진입 — 신뢰도 높음+오매칭 제외 큐레이션. 클릭 시 전체 보기 #}
     <a href="/vehicles?judgment=입찰 검토 가능&sort=expected" class="text-xs bg-amber-50 text-amber-700 border border-amber-200 rounded-full px-3 py-1 flex items-center gap-1" title="신뢰도 높음 + 오매칭 제외한 검토 추천만. 클릭하면 전체 검토가능을 봅니다.">🎯 검토 추천 ✕</a>
     {% endif %}
+    {# 좁은 폭에서 '총 N건'이 한 줄(약 40px)을 통째로 먹는다 — 첫 화면이 19%뿐인
+       320px에서는 비싼 자리다. 칩 줄 끝에 붙여 자기 줄을 없앤다. #}
+    <span class="text-sm text-mut ml-auto pl-2 whitespace-nowrap shrink-0">총 <b class="text-txt">{{ total }}</b>건</span>
     </div>
-    <span class="text-sm text-mut ml-auto whitespace-nowrap">총 <b class="text-txt">{{ total }}</b>건</span>
   </form>
 </div>
 
 <!-- 차종 프리셋 필터(모델명 기준 근사 분류) — 상용·패밀리 등 수요자별 빠른 탐색 -->
 <div class="flex items-center gap-1.5 text-xs px-1 overflow-x-auto
-            [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:flex-wrap sm:overflow-visible">
+            [scrollbar-width:none] [&::-webkit-scrollbar]:hidden
+            [mask-image:linear-gradient(to_right,#000_calc(100%-16px),transparent)]
+            sm:flex-wrap sm:overflow-visible sm:[mask-image:none]">
   <span class="text-mut font-medium mr-0.5 shrink-0">차종</span>
   <a href="/vehicles{% if qs_no_segment %}?{{ qs_no_segment }}{% endif %}"
      class="px-2.5 py-1 rounded-full border whitespace-nowrap shrink-0 {{ 'bg-primary text-white border-primary' if not segment else 'border-line text-mut hover:text-txt hover:bg-slate-50' }}">전체</a>

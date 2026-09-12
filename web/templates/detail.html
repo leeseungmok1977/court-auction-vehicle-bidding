@@ -761,7 +761,9 @@
         <div class="text-lg font-semibold text-txt whitespace-nowrap"><span class="font-mono tnum">{{ v.upper_bid|won }}</span><span class="text-sm font-normal text-mut ml-0.5">원</span></div>
         <div class="text-xs text-mut mt-2 px-4 leading-relaxed">
           현재 최저매각가 <b class="text-txt">{{ v.min_sale_price|won }}원</b>이 재판매 손익분기가보다 높습니다.
-          최저가가 <b class="text-amber-700">{{ wait.target|won }}원 이하</b>로 내려오면 재판매도 검토 가능.<br>
+          {# 컨테이너만 로즈로 바꾸고 안의 강조색을 앰버로 두면 카드 하나가 두 색
+             체계를 동시에 쓴다 — 분홍 배경 위에 주황 글자가 뜬다. 같이 전환한다. #}
+          최저가가 <b class="{{ 'text-rose-700' if _blk else 'text-amber-700' }}">{{ wait.target|won }}원 이하</b>로 내려오면 재판매도 검토 가능.<br>
           통상 회차당 20~30% 저감 →
           <b class="text-txt">약 {% if wait.rounds_fast == wait.rounds_slow %}{{ wait.rounds_fast }}{% else %}{{ wait.rounds_fast }}~{{ wait.rounds_slow }}{% endif %}회</b> 추가 유찰 예상.
         </div>
