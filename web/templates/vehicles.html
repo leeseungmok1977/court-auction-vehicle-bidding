@@ -153,7 +153,7 @@ d.addEventListener('toggle',function(){try{localStorage.setItem('ncUsepickBasis'
             <div class="flex items-stretch justify-between gap-3">
               <div class="min-w-0 self-center">
                 <a href="/vehicle/{{ v.id }}" class="text-primary font-semibold hover:underline block leading-tight" style="word-break:keep-all">{{ v.model|mdl }}</a>
-                <div class="text-xs text-mut mt-0.5 font-mono" style="word-break:keep-all">{{ v.case_no }} · {{ (v.court or '—')|replace('지방법원','지법') }}{% if v.year %} · {{ v.year }}년{% endif %}{% if v.mileage_km %} · {{ v.mileage_km|won }}km{% endif %}</div>
+                <div class="text-xs text-mut mt-0.5" style="word-break:keep-all">{{ v.case_no }} · {{ (v.court or '—')|replace('지방법원','지법') }}{% if v.year %} · {{ v.year }}년{% endif %}{% if v.mileage_km %} · {{ v.mileage_km|won }}km{% endif %}</div>
                 {% if (v.fail_count and v.fail_count > 0) or (v.inspection_to and v.inspection_to < today) or v.condition_level in ('fair','poor') or v.photo_lot_mixed %}
                 <div class="flex flex-wrap gap-1 mt-1">
                   {% if v.fail_count and v.fail_count > 0 %}<span class="text-[10px] px-1.5 py-0.5 rounded bg-orange-50 text-orange-700 border border-orange-200 font-medium whitespace-nowrap" title="유찰 횟수 — 많을수록 저가">유찰 {{ v.fail_count }}회</span>{% endif %}
@@ -258,7 +258,7 @@ d.addEventListener('toggle',function(){try{localStorage.setItem('ncUsepickBasis'
       </div>
       <div class="px-4 py-3">
         <div class="font-semibold text-primary leading-tight" style="word-break:keep-all">{{ v.model|mdl }} <span data-fav-star data-vid="{{ v.id }}" class="text-amber-500" hidden>★</span></div>
-        <div class="text-xs text-mut font-mono mt-0.5" style="word-break:keep-all">{{ v.case_no }} · {{ (v.court or '—')|replace('지방법원','지법') }}{% if v.inspection_to and v.inspection_to < today %} · <span class="text-rose-600">검사경과</span>{% endif %}</div>
+        <div class="text-xs text-mut mt-0.5" style="word-break:keep-all">{{ v.case_no }} · {{ (v.court or '—')|replace('지방법원','지법') }}{% if v.inspection_to and v.inspection_to < today %} · <span class="text-rose-600">검사경과</span>{% endif %}</div>
         <div class="flex items-end justify-between gap-2 mt-2.5">
           <div>
             <div class="text-[10px] text-mut">최저입찰가{% if v.appr_pct %} <span class="text-mut">· 감정 {{ v.appr_pct }}%</span>{% endif %}</div>

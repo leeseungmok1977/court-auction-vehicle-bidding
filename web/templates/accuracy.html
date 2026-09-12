@@ -148,7 +148,7 @@
       <tbody class="divide-y divide-line">
         {% for p in recent %}
         <tr class="hover:bg-slate-50">
-          <td class="py-2.5 px-2 sm:px-4 max-w-[6.5rem] sm:max-w-none"><span class="text-txt font-medium">{{ p.model|mdl }}</span>{% if p.year %} <span class="text-xs text-mut">{{ p.year }}년</span>{% endif %}<div class="text-[11px] text-mut font-mono">{{ p.case_no }}{% if p.sale_date %}<span class="sm:hidden"> · {{ p.sale_date }}</span>{% endif %}</div></td>
+          <td class="py-2.5 px-2 sm:px-4 max-w-[6.5rem] sm:max-w-none"><span class="text-txt font-medium">{{ p.model|mdl }}</span>{% if p.year %} <span class="text-xs text-mut">{{ p.year }}년</span>{% endif %}<div class="text-[11px] text-mut">{{ p.case_no }}{% if p.sale_date %}<span class="sm:hidden"> · {{ p.sale_date }}</span>{% endif %}</div></td>
           <td class="py-2.5 px-2 sm:px-3 text-right font-mono text-mut tnum text-xs sm:text-sm"><span class="sm:hidden">{{ (p.pred/10000)|round|int }}만</span><span class="hidden sm:inline">{{ p.pred|won }}</span></td>
           <td class="py-2.5 px-2 sm:px-3 text-right font-mono text-txt font-semibold tnum text-xs sm:text-sm"><span class="sm:hidden">{{ (p.actual/10000)|round|int }}만</span><span class="hidden sm:inline">{{ p.actual|won }}</span></td>
           <td class="py-2.5 px-2 sm:px-3 text-right font-mono tnum text-xs sm:text-sm {{ 'text-emerald-600' if p.err_pct <= 20 else 'text-amber-600' }}">±{{ p.err_pct }}%</td>

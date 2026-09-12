@@ -121,3 +121,53 @@ def test_probability_branch_is_actually_rendered(client):
     4회차에 바로 이 분기가 렌더된 적이 없어 프로덕션 500이 나갔다."""
     html = client.get("/vehicle/usepick_1", headers=_PUB).text
     assert "낙찰 확률" in html, "확률 분기가 렌더되지 않아 500을 못 잡는다"
+
+
+# ── 한글에 monospace를 걸지 않는다 (5회차 디자인 P0) ──────────────
+# JetBrains Mono에는 한글 글리프가 없다. 한글이 들어간 요소에 mono를 걸면
+# 글자마다 폴백이 일어나 "소 매 로  사 는  편 이  쌉 니 다"로 자간이 벌어진다.
+# 큰글씨 모드에서 가장 심했다 — 접근성 옵션이 접근성을 떨어뜨렸다.
+# CSS 계산값은 브라우저가 필요하므로, 여기서는 **템플릿 소스**에서 잡는다.
+import pathlib
+import re as _re
+
+_TPL = pathlib.Path(__file__).resolve().parents[1] / "web" / "templates"
+_HANGUL = _re.compile(r"[가-힣]")
+
+
+# 한글을 담을 수 있는 변수들 — 런타임에 mono 안으로 들어가면 자간이 벌어진다
+_HANGUL_VARS = ("case_no", "court", "model", "maker", "judgment", "sale_place",
+                "storage_addr", "label")
+_MONO_TAG = _re.compile(r"<(\w+)([^>]*?(?:font-mono|var\(--mono\))[^>]*?)>", _re.S)
+_JINJA = _re.compile(r"\{\{.*?\}\}|\{%.*?%\}", _re.S)
+
+
+def _mono_elements_with_hangul(path: pathlib.Path):
+    """mono가 걸린 **그 요소 안**에 한글(리터럴 또는 한글 변수)이 있는지.
+
+    요소 밖의 한글까지 세면 오탐이 쏟아진다(숫자 옆 '건'·'원' 라벨 등).
+    여는 태그부터 다음 태그 시작까지의 직계 텍스트만 본다.
+    """
+    src = path.read_text(encoding="utf-8")
+    bad = []
+    for m in _MONO_TAG.finditer(src):
+        inner = src[m.end():].split("<", 1)[0]
+        line = src[:m.start()].count(chr(10)) + 1
+        literal = _JINJA.sub("", inner)
+        if _HANGUL.search(literal):
+            bad.append((line, "리터럴 한글: " + literal.strip()[:40]))
+            continue
+        for var in _HANGUL_VARS:
+            if _re.search(r"\{\{[^}]*\b" + var + r"\b", inner):
+                bad.append((line, "한글 변수 " + var))
+                break
+    return bad
+
+def test_case_number_is_not_monospaced():
+    """사건번호는 '2026타경'이라 한글이 섞인다 — mono면 '2026타 경 30903'이 된다."""
+    for f in sorted(_TPL.glob("*.html")):
+        for i, line in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
+            if "case_no" not in line:
+                continue
+            if "font-mono" in line:
+                raise AssertionError(f"{f.name}:{i} 사건번호에 font-mono가 걸렸다")

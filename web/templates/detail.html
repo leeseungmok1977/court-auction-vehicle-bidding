@@ -305,7 +305,7 @@
       <tbody>
       {% for c in comps_won %}
         <tr class="border-b border-line/50">
-          <td class="py-1 pr-3 text-mut font-mono">{{ c.case_no or '—' }}</td>
+          <td class="py-1 pr-3 text-mut">{{ c.case_no or '—' }}</td>
           <td class="py-1 text-right">{{ c.year or '—' }}</td>
           <td class="py-1 text-right tnum">{% if c.mileage_km %}{{ (c.mileage_km/10000)|round(1) }}만km{% else %}—{% endif %}</td>
           <td class="py-1 text-right tnum text-mut">{{ (c.median_price/10000)|round|int }}만</td>

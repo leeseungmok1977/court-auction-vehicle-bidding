@@ -45,6 +45,8 @@
 body{background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased;font-feature-settings:"ss01"}
 .page{max-width:880px;margin:0 auto;padding:24px 20px 64px}
 .num{font-family:var(--mono);font-feature-settings:"tnum";letter-spacing:-.01em;white-space:nowrap}
+/* 사건번호처럼 한글이 섞인 값은 mono를 쓰면 "2026타 경 30903"이 된다. */
+.num.mixed{font-family:var(--sans);letter-spacing:normal}
 .tscroll{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%}
 .no-print{margin-bottom:18px;display:flex;justify-content:flex-end;gap:8px}
 .btn{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:8px 16px;font-size:13px;font-weight:600;border:1px solid var(--line);background:#fff;color:var(--ink);cursor:pointer;text-decoration:none}
@@ -76,7 +78,13 @@ body{background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:
 .v-label{font-size:12px;color:var(--ink-soft);font-weight:600;margin-bottom:6px}
 .v-band{font-family:var(--mono);font-weight:700;font-size:clamp(24px,4.5vw,32px);color:var(--cobalt);letter-spacing:-.02em;white-space:nowrap}
 .v-band small{font-size:.5em;color:var(--ink-soft);font-weight:500}
-.v-sub{margin-top:8px;font-size:12.5px;color:var(--ink-soft)}.v-sub b{font-family:var(--mono);color:var(--ink)}
+.v-sub{margin-top:8px;font-size:12.5px;color:var(--ink-soft)}
+/* ⚠ 예전엔 `.v-sub b`에 mono를 걸었다. JetBrains Mono에는 한글 글리프가 없어
+   "소매로 사는 편이 쌉니다" 같은 강조 문장이 글자마다 폴백하며 자간이 벌어졌다
+   ("소 매 로  사 는  편 이  쌉 니 다"). 큰글씨 모드에서 가장 심했다 — 접근성 옵션이
+   접근성을 떨어뜨린 셈이다(5회차 디자인 P0). mono는 **숫자 노드(.num)에만** 건다. */
+.v-sub b{color:var(--ink)}
+.v-sub b.num{font-family:var(--mono)}
 .vpts{border-left:1px solid var(--line);padding-left:26px;list-style:none}
 .vpts li{position:relative;padding-left:15px;font-size:13.2px;color:var(--ink-soft);line-height:1.55}.vpts li+li{margin-top:9px}
 .vpts li::before{content:"";position:absolute;left:0;top:8px;width:6px;height:6px;border-radius:2px;background:var(--cobalt)}
@@ -329,7 +337,7 @@ document.addEventListener('click', function(e){
     <div class="mh-eyebrow">차량 경매 분석 리포트 · {{ v.court }} · {{ now }}</div>
     <div class="mh-title">{{ v.year or '' }} {{ car_name(v.maker, v.model) }}</div>
     <dl class="mh-meta">
-      <div><dt>사건번호</dt><dd class="num">{{ v.case_no }}</dd></div>
+      <div><dt>사건번호</dt><dd class="num mixed">{{ v.case_no }}</dd></div>
       <div><dt>관할 법원</dt><dd>{{ v.court or '—' }}</dd></div>
       <div><dt>매각기일</dt><dd class="num">{{ v.sale_date or '—' }}</dd></div>
       <div><dt>발행일</dt><dd class="num">{{ now }}</dd></div>
@@ -569,7 +577,7 @@ document.addEventListener('click', function(e){
         <tbody>
         {% for c in comps_won %}
           <tr>
-            <td class="num" style="font-size:12px">{{ c.case_no or '—' }}</td>
+            <td class="num mixed" style="font-size:12px">{{ c.case_no or '—' }}</td>
             <td class="c num">{{ c.year or '—' }}</td>
             <td class="r num">{{ c.mileage_km|won }}</td>
             <td class="r num">{{ c.median_price|won }}</td>

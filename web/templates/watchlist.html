@@ -61,7 +61,7 @@
         <tr class="even:bg-slate-50 hover:bg-slate-50 transition-colors">
           <td class="py-2.5 px-4">
             <a href="/vehicle/{{ v.id }}" class="text-primary font-medium hover:underline" style="word-break:keep-all">{{ v.model|mdl }}</a>
-            <div class="text-xs text-mut font-mono">{{ v.case_no }}{% if v.year %} · {{ v.year }}년{% endif %}</div>
+            <div class="text-xs text-mut">{{ v.case_no }}{% if v.year %} · {{ v.year }}년{% endif %}</div>
           </td>
           <td class="py-2.5 px-4 text-center">{% if v.judgment %}<span class="inline-flex px-2 py-0.5 rounded text-xs font-medium {{ v.judgment|bcls }}">{{ v.judgment|jshort }}</span>{% endif %}</td>
           <td class="py-2.5 px-4 font-mono text-mut whitespace-nowrap">{{ v.sale_date or '—' }} {{ dday_badge(v.dday) }}</td>
@@ -87,7 +87,7 @@
         <span class="font-semibold text-primary truncate" style="word-break:keep-all">{{ v.model|mdl }} <span class="text-xs text-mut font-normal">{{ v.year or '' }}</span></span>
         <div class="flex items-center gap-1.5 shrink-0">{{ dday_badge(v.dday) }}{% if v.judgment %}<span class="inline-flex px-2 py-0.5 rounded text-xs font-medium whitespace-nowrap {{ v.judgment|bcls }}">{{ v.judgment|jshort }}</span>{% endif %}</div>
       </div>
-      <div class="text-xs text-mut font-mono mt-0.5">{{ v.case_no }}{% if v.sale_date %} · {{ v.sale_date }}{% endif %}</div>
+      <div class="text-xs text-mut mt-0.5">{{ v.case_no }}{% if v.sale_date %} · {{ v.sale_date }}{% endif %}</div>
       <div class="grid grid-cols-3 gap-2 mt-2 text-right tabular-nums">
         <div><div class="text-[10px] text-mut">최저매각가</div><div class="font-mono text-sm {{ 'text-rose-600' if overfloor else 'text-mut' }}">{{ v.min_sale_price|won }}</div></div>
         <div class="rounded-md bg-primary/5 px-1.5 py-0.5"><div class="text-[10px] text-primary">예상낙찰가</div><div class="font-mono text-sm font-bold text-txt">{{ v.expected_win|won if v.expected_win else '—' }}</div></div>
