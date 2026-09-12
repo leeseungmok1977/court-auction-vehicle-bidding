@@ -67,5 +67,9 @@ def test_report_toolbar_is_sticky():
     m = re.search(r"\.rtop\{([^}]*)\}", REPORT)
     assert m and "position:sticky" in m.group(1), "상단 바가 고정되지 않는다"
     assert 'class="rtop no-print"' in REPORT
-    assert re.search(r"\.sec-head\[id\]\{scroll-margin-top:\d+px\}", REPORT), \
-        "고정 바에 제목이 가리지 않도록 하는 scroll-margin이 없다"
+    # 앵커 여백은 고정값이면 안 된다 — 칩이 2줄로 접히는 폭(320·360px)에서 바가 138px가 되어
+    # 점프 후 섹션 제목이 26px 가렸다. 바의 실높이를 재서 --rtop-h 로 넣는다.
+    assert "scroll-margin-top:var(--rtop-h" in REPORT, "앵커 여백이 고정 바 높이에 연동돼 있지 않다"
+    assert "_syncRtopH" in REPORT, "고정 바 실높이를 재는 스크립트가 없다"
+    for ev in ("resize", "orientationchange"):
+        assert ev in REPORT, f"{ev} 시 앵커 여백 재계산이 없다"
