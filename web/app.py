@@ -262,7 +262,9 @@ def _startup():
 def dashboard(request: Request):
     counts = db.counts_by_judgment()
     run = db.latest_run()
-    total = db.total_vehicles()
+    # 헤더 "총 N대 모니터링" — 목록과 같은 모수여야 한다. COUNT(*)를 쓰면 1320이라 띄우고
+    # 눌러 들어가면 1167이 나온다(2026-09-12 2회차 패널 앱품질 지적 3).
+    total = service.lifecycle_partition()["total"]
     # 유망 물건: '높음' 신뢰도 + 오매칭 아님만(median/min 과대 배제) → 예상낙찰가 여유 순.
     # (신뢰 낮은/오매칭 의심 물건이 큰 여유로 상단을 독점하지 않도록 — 실측 신뢰 최우선)
     _bt = service.backtest_stats()

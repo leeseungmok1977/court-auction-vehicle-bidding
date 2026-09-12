@@ -13,9 +13,15 @@ import re
 import pytest
 from starlette.testclient import TestClient
 
+# 대시보드 템플릿이 참조하는 키까지 채운다(실제 backtest_stats() 반환 키 기준).
 BT = {"discount_median": 0.74, "mae_pct": 9.2, "sample": 172,
       "min_premium_median": 1.13, "min_premium_by_fail": {"0": 1.20, "1": 1.13, "2+": 1.06},
-      "min_premium_p25": 1.05, "min_premium_p75": 1.22}
+      "min_premium_p25": 1.05, "min_premium_p75": 1.22,
+      "discount_p25": 0.62, "discount_p75": 0.86, "discount_by_fail": {}, "discount_by_model": {},
+      "upper_hit_rate": None, "upper_n": 0, "within10_pct": 62, "within20_pct": 96,
+      "actual_mae_pct": None, "actual_sample": 0, "mae_baseline_pct": 12.0,
+      "history_n": 0, "model_learned": False, "pred_n": 0, "pred_pool": [], "comp_pool": [],
+      "won_total": 0}
 
 
 @pytest.fixture
@@ -107,3 +113,16 @@ def test_count_api_agrees_with_the_list(client):
                       ("/vehicles?usepick=1", "/api/vehicles/count?usepick=1"),
                       ("/vehicles", "/api/vehicles/count")):
         assert client.get(api, headers=_PUBLIC).json()["total"] == _list_count(client, href), api
+
+
+def test_dashboard_header_number_matches_the_list(client):
+    """대시보드 헤더에 렌더된 숫자 자체를 읽어 목록과 대조한다.
+
+    lifecycle_partition()만 고치고 대시보드 라우트의 별도 total 변수를 안 고쳐
+    화면에는 그대로 1320이 남아 있었다 — 측정이 아니라 **스크린샷을 눈으로 보고** 발견했다.
+    그래서 이 테스트는 함수 반환값이 아니라 렌더된 HTML을 본다."""
+    import re
+    html = client.get("/", headers=_PUBLIC).text
+    m = re.search(r"총\s*<b[^>]*>([\d,]+)</b>\s*대\s*모니터링", html)
+    assert m, "헤더 총계를 못 찾음"
+    assert int(m.group(1).replace(",", "")) == _list_count(client, "/vehicles")
