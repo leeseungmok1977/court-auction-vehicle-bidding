@@ -244,8 +244,16 @@ d.addEventListener('toggle',function(){try{localStorage.setItem('ncUsepickBasis'
     {% set lowconf = v.market_confidence_label=='낮음' %}
     {% set show_dday = v.dday is not none and v.dday >= 0 and not closed %}
     {% set awaiting = v.sale_date and today and v.sale_date < today and v.auction_result not in ('낙찰','종결') and v.judgment != '종결' %}
-    {% set confcol = 'text-emerald-600' if v.market_confidence_label=='높음' else 'text-amber-600' if v.market_confidence_label=='보통' else 'text-rose-500' %}
-    {% set confbar = 'bg-emerald-500' if v.market_confidence_label=='높음' else 'bg-amber-500' if v.market_confidence_label=='보통' else 'bg-rose-500' %}
+    {# '높음'을 초록으로 쓰면 차에 대한 좋은 소식으로 읽힌다 — 신뢰도가 높다는 건
+       추정값을 믿을 만하다는 뜻이지 사도 된다는 뜻이 아니다. 다만 '낮음'은 이
+       숫자를 믿지 말라는 진짜 경고이므로 로즈를 유지한다. #}
+    {% set confcol = 'text-txt' if v.market_confidence_label=='높음' else 'text-mut' if v.market_confidence_label=='보통' else 'text-rose-500' %}
+    {# 신뢰도는 **판정이 아니다.** 초록/앰버/로즈는 이 화면에서 '사도 되나'를 뜻하는데,
+       그걸 신뢰도에 쓰니 "이번 회차 입찰 부적합"(작은 로즈 칩)보다 전폭 초록 바가
+       강하게 읽혔다 — 카드가 자기 판정을 스스로 뒤집는다(5회차 디자인 미조치).
+       신뢰도는 한 방향으로 커지는 양이므로 **단일 색조의 농담**으로 그린다.
+       의미색(초록·앰버·로즈)은 판정 칩 전용으로 남긴다. #}
+    {% set confbar = 'bg-slate-500' if v.market_confidence_label=='높음' else 'bg-slate-400' if v.market_confidence_label=='보통' else 'bg-slate-300' %}
     <a href="/vehicle/{{ v.id }}" class="block hover:bg-slate-50 transition-colors">
       <div class="relative w-full h-40 bg-slate-100 {% if not v.photo_urls %}flex items-center justify-center text-mut/30{% endif %}">
         {% if v.photo_urls %}

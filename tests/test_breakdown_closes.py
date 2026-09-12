@@ -136,3 +136,21 @@ def test_list_legend_is_collapsed_by_default():
     assert " open" not in m.group(1), "범례가 기본 펼침이면 첫 카드가 폴드 밖으로 밀린다"
     # 접힘 상태를 기억하지 않으면 매번 다시 접혀 오히려 성가시다
     assert "ncListLegend" in src, "접힘 상태를 기기에 기억하지 않는다"
+
+
+def test_confidence_bar_does_not_use_verdict_colors():
+    """신뢰도 막대에 의미색(초록·앰버)을 쓰지 않는다.
+
+    목록 카드에서 "이번 회차 입찰 부적합"은 작은 로즈 칩인데 신뢰도 바는
+    전폭 emerald-500이라, 카드에서 가장 강한 색이 판정을 뒤집고 있었다.
+    신뢰도는 판정이 아니라 한 방향으로 커지는 양이므로 단일 색조의 농담으로
+    그리고, 의미색은 판정 칩 전용으로 남긴다.
+    """
+    import pathlib
+    import re
+    src = pathlib.Path("web/templates/vehicles.html").read_text(encoding="utf-8")
+    m = re.search(r"\{%\s*set confbar\s*=\s*(.+?)%\}", src, re.S)
+    assert m, "confbar 정의를 찾지 못했다"
+    expr = m.group(1)
+    for bad in ("emerald", "amber", "rose", "green", "red"):
+        assert bad not in expr, f"신뢰도 막대에 의미색 '{bad}' 이 남아 있다: {expr.strip()}"
