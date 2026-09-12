@@ -40,10 +40,22 @@ LABEL_RE = re.compile(r"보\s*관\s*장\s*소")
 
 _SIDO = (r"(?:서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|충북|충남|전북|전남|"
          r"경북|경남|제주)(?:특별자치시|특별자치도|특별시|광역시|도)?")
+# ⚠ 시·도와 시·군·구 사이에 **공백을 요구**한다. 안 그러면 '광주광역시'가
+#   '광주'(시도) + '광역시'(구?)로 쪼개져 엉뚱한 토큰을 지명으로 검증하게 된다.
+# ⚠ {1,5} 이다 — {2,6} 으로 쓰면 접미사와 합쳐 최소 3글자를 요구해
+#   남구·북구·동구·서구·중구 같은 **2글자 구를 통째로 놓친다**(실측에서 걸렸다).
 ADDR_RE = re.compile(
-    r"((?:" + _SIDO + r"\s*)?"
-    r"([가-힣]{2,6}(?:시|군|구))(?:\s*[가-힣]{2,6}(?:시|군|구|읍|면))*"
+    r"((?:" + _SIDO + r"\s+)?"
+    r"([가-힣]{1,5}(?:시|군|구))(?:\s*[가-힣]{1,5}(?:시|군|구|읍|면))*"
     r"\s*[가-힣0-9]{1,12}(?:로|길|동|리|가)\s*[0-9]+(?:\s*-\s*[0-9]+)?(?:\s*번지)?)")
+
+# 전체 주소가 안 잡히는 흔한 이유는 OCR이 **동 이름만** 뭉개는 것이다.
+#   실측: "보관장소 | & Mk 광주광역시 남구 SUS 124-3 송원주차장"
+#   → 시·도와 구는 멀쩡한데 동이 'SUS'로 깨져 전체 정규식이 실패한다.
+# 그럴 때 시·군·구까지만이라도 쓰는 편이 '확인되지 않음'보다 훨씬 낫다.
+# 단, 이건 **구 단위 근사**이므로 화면에 그렇게 적어야 한다.
+ADDR_COARSE_RE = re.compile(
+    r"(" + _SIDO + r"\s+([가-힣]{1,5}(?:시|군|구))(?:\s+[가-힣]{1,5}(?:시|군|구))?)")
 
 _PASSES = ((2, 11), (1, 6))      # (배율, PSM) — 서로 다른 것을 잡는다
 _TIMEOUT = 120
@@ -81,7 +93,7 @@ def parse_label(text: str, known_gu: Optional[set] = None) -> dict:
     `known_gu` 를 주면 시·군·구 이름이 실제로 존재하는지 대조한다 — OCR이 지명을
     통째로 지어내는 것을 막는다. 앱이 이미 가진 주소들로 만들면 외부 요청이 없다.
     """
-    out = {"label": False, "addr": "", "why": ""}
+    out = {"label": False, "addr": "", "level": "", "why": ""}
     if not text:
         out["why"] = "인식된 글자 없음"
         return out
@@ -91,25 +103,41 @@ def parse_label(text: str, known_gu: Optional[set] = None) -> dict:
         return out
     out["label"] = True
     near = text[m.start():m.start() + 110]     # 라벨 주변만 본다
+
     a = ADDR_RE.search(near)
-    if not a:
-        out["why"] = "라벨은 있으나 시·군·구가 없는 주소"
+    if a:
+        gu = a.group(2)
+        if known_gu and gu not in known_gu:
+            out["why"] = f"'{gu}' 는 아는 시·군·구가 아님"
+            return out
+        out["addr"] = re.sub(r"\s*-\s*", "-", " ".join(a.group(1).split()))
+        out["level"] = "full"
         return out
-    addr, gu = " ".join(a.group(1).split()), a.group(2)
-    if known_gu and gu not in known_gu:
-        out["why"] = f"'{gu}' 는 아는 시·군·구가 아님"
+
+    # 동 이름만 깨진 경우 — 시·군·구까지만이라도 쓴다(구 단위 근사)
+    c = ADDR_COARSE_RE.search(near)
+    if c:
+        gu = c.group(2)
+        if known_gu and gu not in known_gu:
+            out["why"] = f"'{gu}' 는 아는 시·군·구가 아님"
+            return out
+        out["addr"] = " ".join(c.group(1).split())
+        out["level"] = "coarse"
         return out
-    out["addr"] = re.sub(r"\s*-\s*", "-", addr)
+
+    out["why"] = "라벨은 있으나 주소를 못 읽음"
     return out
 
 
 def read_storage_label(path: str, known_gu: Optional[set] = None) -> dict:
     """지도 한 장에서 보관장소 주소를 읽는다. 두 조합을 모두 돌려 합친다."""
-    best = {"label": False, "addr": "", "why": "읽지 못함"}
+    best = {"label": False, "addr": "", "level": "", "why": "읽지 못함"}
     for scale, psm in _PASSES:
         got = parse_label(_tesseract(path, scale, psm), known_gu)
-        if got["addr"]:
+        if got.get("level") == "full":      # 전체 주소면 즉시 채택
             return got
-        if got["label"] and not best["label"]:
+        if got["addr"] and not best["addr"]:
+            best = got                      # 구 단위 근사는 보관해 두고 다음 조합도 본다
+        elif got["label"] and not best["label"]:
             best = got
     return best

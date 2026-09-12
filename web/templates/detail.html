@@ -112,7 +112,7 @@
                        'map_ocr': '지도 표기', 'map_parcel': '지도 대조'} %}
       {%- if v.storage_src %} <span class="text-[10px] px-1.5 py-0.5 rounded-full align-middle whitespace-nowrap
         {{ 'bg-slate-100 text-mut' if v.storage_src in ('court', 'text') else 'bg-amber-100 text-amber-800' }}"
-        title="{{ '원문 그대로입니다.' if v.storage_src in ('court','text') else '지도 이미지에서 읽은 값이라 사진과 대조해 확인하세요.' }}">{{ _ssrc.get(v.storage_src, v.storage_src) }}{% if v.storage_conf == '추정' %} · 추정{% endif %}</span>{% endif %}
+        title="{{ '원문 그대로입니다.' if v.storage_src in ('court','text') else '지도 이미지에서 읽은 값이라 사진과 대조해 확인하세요.' }}">{{ _ssrc.get(v.storage_src, v.storage_src) }}{% if v.storage_conf %} · {{ v.storage_conf }}{% endif %}</span>{% endif %}
     {%- elif map_idx %}
       {# 주소는 없지만 법원이 지도를 사진으로 붙여 놓은 경우 — 주소 없는 물건 655건이
          여기 해당한다. '확인되지 않음'만 띄우면 화면에 이미 있는 위치를 못 찾는다. #}

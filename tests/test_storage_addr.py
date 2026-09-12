@@ -310,8 +310,55 @@ def test_ocr_result_is_marked_as_an_estimate(one, monkeypatch):
     db.update_fields("V1", map_photos=["m.png"])
     monkeypatch.setattr(service, "known_gu_names", lambda: {"덕진구"})
     monkeypatch.setattr("src.vision.map_ocr.read_storage_label",
-                        lambda *a, **k: {"label": True, "addr": "전주시 덕진구 덕진동1가 1420"})
+                        lambda *a, **k: {"label": True, "level": "full",
+                                         "addr": "전주시 덕진구 덕진동1가 1420"})
     out = service.backfill_map_ocr()
     v = db.get_vehicle("V1")
     assert out["found"] == 1
     assert v["storage_src"] == "map_ocr" and v["storage_conf"] == "추정"
+
+
+def test_coarse_result_says_it_is_only_district_level(one, monkeypatch):
+    """동 이름이 깨져 구까지만 읽은 값은 그렇게 적어야 한다.
+
+    실측: "보관장소 | & Mk 광주광역시 남구 SUS 124-3 송원주차장" — 시·도와 구는
+    멀쩡한데 동이 'SUS'로 깨졌다. 번지까지 있는 값과 같은 표기를 쓰면 정밀도를
+    오해한다.
+    """
+    (one / "photos").mkdir()
+    (one / "photos" / "m.png").write_bytes(b"x")
+    db.update_fields("V1", map_photos=["m.png"])
+    monkeypatch.setattr(service, "known_gu_names", lambda: {"남구"})
+    monkeypatch.setattr("src.vision.map_ocr.read_storage_label",
+                        lambda *a, **k: {"label": True, "level": "coarse",
+                                         "addr": "광주광역시 남구"})
+    out = service.backfill_map_ocr()
+    v = db.get_vehicle("V1")
+    assert out["found"] == 1 and out["coarse"] == 1
+    assert v["storage_conf"] == "구 단위 추정"
+
+
+def test_parse_falls_back_to_district_when_dong_is_garbled():
+    got = parse_label("보관장소 | & Mk 광주광역시 남구 SUS 124-3 송원주차장", {"남구"})
+    assert got["addr"] == "광주광역시 남구" and got["level"] == "coarse"
+
+
+def test_two_character_district_names_are_matched():
+    """남구·북구·동구·서구·중구는 2글자다.
+
+    `[가-힣]{2,6}(?:시|군|구)` 로 쓰면 접미사와 합쳐 최소 3글자를 요구해 이들을
+    통째로 놓친다. 실측에서 광주광역시 남구가 이 이유로 버려졌다.
+    """
+    for text, gu, expect in [
+        ("보관장소 광주광역시 남구 SUS 124-3", {"남구"}, "광주광역시 남구"),
+        ("보관장소 부산광역시 북구 화명동 12-3", {"북구"}, "부산광역시 북구 화명동 12-3"),
+        ("보관장소 대구광역시 중구 동산동 5", {"중구"}, "대구광역시 중구 동산동 5"),
+    ]:
+        assert parse_label(text, gu)["addr"] == expect, text
+
+
+def test_known_gu_vocabulary_includes_two_character_districts():
+    """대조표에도 2글자 구가 들어가야 한다 — 아니면 제대로 읽고도 버린다."""
+    import re
+    pat = re.compile(r"[가-힣]{1,5}(?:시|군|구)")
+    assert "남구" in pat.findall("광주광역시 남구 봉선동")

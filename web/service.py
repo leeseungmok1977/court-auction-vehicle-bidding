@@ -2000,7 +2000,9 @@ def known_gu_names() -> set:
     뽑는다. C.4상 외부 요청이 없고, 실제로 다루는 지역만 담긴다.
     """
     import re as _re
-    pat = _re.compile(r"[가-힣]{2,6}(?:시|군|구)")
+    # {1,5} — {2,6} 이면 남구·북구·중구 같은 2글자 구가 대조표에 안 들어가
+    # OCR이 제대로 읽어도 "아는 지명이 아님"으로 버려진다.
+    pat = _re.compile(r"[가-힣]{1,5}(?:시|군|구)")
     out = set()
     for v in db.list_vehicles(hide_incomplete=False):
         for field in ("storage_addr", "location", "court"):
@@ -2023,7 +2025,7 @@ def backfill_map_ocr(limit: Optional[int] = None, redo: bool = False) -> dict:
     from src.vision.map_ocr import read_storage_label
 
     gu = known_gu_names()
-    out = {"tried": 0, "found": 0, "label_only": 0, "no_label": 0, "skipped": 0}
+    out = {"tried": 0, "found": 0, "coarse": 0, "label_only": 0, "no_label": 0, "skipped": 0}
     for v in db.list_vehicles(hide_incomplete=False):
         if (v.get("storage_addr") or "").strip() and not (
                 redo and v.get("storage_src") == "map_ocr"):
@@ -2047,9 +2049,13 @@ def backfill_map_ocr(limit: Optional[int] = None, redo: bool = False) -> dict:
             if r["label"]:
                 got = got or r
         if got and got["addr"]:
+            # 구 단위 근사는 그렇게 적어야 한다 — 번지까지 있는 값과 섞으면
+            # 사용자가 정밀도를 오해한다.
+            conf = "추정" if got.get("level") == "full" else "구 단위 추정"
             db.update_fields(v["id"], storage_addr=got["addr"],
-                             storage_src="map_ocr", storage_conf="추정")
+                             storage_src="map_ocr", storage_conf=conf)
             out["found"] += 1
+            out["coarse"] = out.get("coarse", 0) + (0 if got.get("level") == "full" else 1)
         elif got and got["label"]:
             out["label_only"] += 1
         else:
