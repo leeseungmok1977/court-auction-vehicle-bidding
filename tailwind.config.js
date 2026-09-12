@@ -36,7 +36,10 @@ module.exports = {
         // 이모지 하나 때문에 원본 765KB를 받아본다(3회차 실측).
         sans: ["Pretendard", "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji",
                "PretendardFull", "Malgun Gothic", "sans-serif"],
-        mono: ["JetBrains Mono", "monospace"],
+        // JetBrains Mono에는 한글 글리프가 없다. 숫자용 mono를 한글이 섞인 자리에
+        // 쓰면 글자마다 OS 폰트로 폴백해 자간이 벌어진다("광 주 지 법").
+        // 스택에 Pretendard를 넣어 한글은 본문과 같은 서체로 떨어지게 한다.
+        mono: ["JetBrains Mono", "Pretendard", "PretendardFull", "Malgun Gothic", "monospace"],
       },
       boxShadow: {
         card: "0 1px 3px rgba(0,55,112,0.08)",
