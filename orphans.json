@@ -1,0 +1,218 @@
+[
+ {
+  "page": "홈",
+  "w": 19,
+  "lines": 2,
+  "txt": "지금 가격이 적정 — 바로 검토",
+  "sel": "div.relative.grid > a.rounded-xl.bg-amber-400 > div.text-[11px].text-[#0b142b]/70",
+  "wb": "normal"
+ },
+ {
+  "page": "홈",
+  "w": 10,
+  "lines": 2,
+  "txt": "유찰 대기 · 재경매",
+  "sel": "a.rounded-xl.bg-white/[0.07] > div.flex.items-center > span.text-xs.font-bold",
+  "wb": "normal"
+ },
+ {
+  "page": "홈",
+  "w": 19,
+  "lines": 2,
+  "txt": "안 팔려 최저가 더 내려갈 물건",
+  "sel": "div.relative.grid > a.rounded-xl.bg-white/[0.07] > div.text-[11px].text-white/55",
+  "wb": "normal"
+ },
+ {
+  "page": "홈",
+  "w": 10,
+  "lines": 2,
+  "txt": "신뢰도 낮음 · 검토",
+  "sel": "a.rounded-xl.bg-white/[0.07] > div.flex.items-center > span.text-xs.font-bold",
+  "wb": "normal"
+ },
+ {
+  "page": "목록",
+  "w": 54,
+  "lines": 2,
+  "txt": "지금 가격이 적정해 바로 입찰을 검토할 수 있는 물건이에요.",
+  "sel": "div.gloss-row.gloss-up > span.gloss.font-bold > span.pop",
+  "wb": "keep-all"
+ },
+ {
+  "page": "목록",
+  "w": 67,
+  "lines": 2,
+  "txt": "이미 매각이 끝났거나(종결) 아직 분석 전(미분석)인 물건이에요.",
+  "sel": "div.gloss-row.gloss-up > span.gloss.font-bold > span.pop",
+  "wb": "keep-all"
+ },
+ {
+  "page": "상세",
+  "w": 29,
+  "lines": 2,
+  "txt": "통상 최저매각가의 10%",
+  "sel": "li.flex.gap-3 > div > b",
+  "wb": "keep-all"
+ },
+ {
+  "page": "상세",
+  "w": 21,
+  "lines": 2,
+  "txt": "11,283,000원 이하",
+  "sel": "div.text-center.bg-amber-50 > div.text-xs.text-mut > b.text-amber-700",
+  "wb": "keep-all"
+ },
+ {
+  "page": "상세",
+  "w": 29,
+  "lines": 2,
+  "txt": "— 소매 시세에서 되팔이 비용 차감(참고)",
+  "sel": "div.bg-surface.border > div.text-xs.text-mut > span.text-mut",
+  "wb": "keep-all"
+ },
+ {
+  "page": "리포트",
+  "w": 48,
+  "lines": 3,
+  "txt": "예상낙찰가는 과거 낙찰 실측(낙찰가/시세 분포)에 유찰횟수를 반영한 중심",
+  "sel": "div.card.verdict > div.spectrum > div.sp-foot",
+  "wb": "keep-all"
+ },
+ {
+  "page": "리포트",
+  "w": 45,
+  "lines": 2,
+  "txt": "법원 제공 자료 요약 · 감정평가서 원본 별도",
+  "sel": "section.section > div.sec-head > span.sec-note",
+  "wb": "normal"
+ },
+ {
+  "page": "리포트",
+  "w": 34,
+  "lines": 2,
+  "txt": "— 같은 차종·유사 연식/주행의 과거 법원 낙찰",
+  "sel": "div.card > div.v-label > span",
+  "wb": "normal"
+ },
+ {
+  "page": "리포트",
+  "w": 56,
+  "lines": 3,
+  "txt": "취득세는 낙찰가에 연동되어 낙찰가별로 재계산됩니다(07). 개인 실사용이",
+  "sel": "section.section > div.card > p.note",
+  "wb": "keep-all"
+ },
+ {
+  "page": "리포트",
+  "w": 59,
+  "lines": 2,
+  "txt": "시동·누유·변속·하체 부식 — 매각기일 전 보관장소 확인",
+  "sel": "tbody > tr > td",
+  "wb": "normal"
+ },
+ {
+  "page": "리포트",
+  "w": 28,
+  "lines": 2,
+  "txt": "유찰이 시장 할인을 이미 반영 · 유찰 1회",
+  "sel": "div.logic > div.ld > small",
+  "wb": "normal"
+ },
+ {
+  "page": "리포트",
+  "w": 10,
+  "lines": 2,
+  "txt": "이 값 이하로 낙찰 시 목표마진 확보",
+  "sel": "div.logic > div.ld > small",
+  "wb": "normal"
+ },
+ {
+  "page": "홈",
+  "w": 19,
+  "lines": 2,
+  "txt": "시세 표본 부족 — 수동 확인 필요",
+  "sel": "div.relative.grid > a.rounded-xl.bg-white/[0.07] > div.text-[11px].text-white/55",
+  "wb": "normal"
+ },
+ {
+  "page": "홈",
+  "w": 23,
+  "lines": 2,
+  "txt": "이미 끝난 물건 · 낙찰가율 74%",
+  "sel": "div.relative.grid > a.rounded-xl.bg-white/[0.07] > div.text-[11px].text-white/55",
+  "wb": "normal"
+ },
+ {
+  "page": "홈",
+  "w": 44,
+  "lines": 2,
+  "txt": "예상 낙찰가(최저가 기반 · 실측 오차 ±9%)",
+  "sel": "div.bg-surface.border > div.mt-3.text-xs > b.text-txt",
+  "wb": "normal"
+ },
+ {
+  "page": "적중률",
+  "w": 10,
+  "lines": 2,
+  "txt": "10건 중 약 10건이 오차 ±20% 안",
+  "sel": "div.grid.grid-cols-2 > div.bg-surface.border > div.text-[11px].text-mut",
+  "wb": "keep-all"
+ },
+ {
+  "page": "상세",
+  "w": 24,
+  "lines": 2,
+  "txt": "해당 입찰가 이하로 낙찰된 비율",
+  "sel": "div.bg-surface.border > p.text-sm.text-mut > b",
+  "wb": "keep-all"
+ },
+ {
+  "page": "리포트",
+  "w": 21,
+  "lines": 2,
+  "txt": "예상낙찰가 18,100,000원 기준",
+  "sel": "section.section > div.sec-head > span.sec-note",
+  "wb": "normal"
+ },
+ {
+  "page": "리포트",
+  "w": 16,
+  "lines": 3,
+  "txt": "이전 30만 + 탁송 20만(고정)",
+  "sel": "tbody > tr > td",
+  "wb": "normal"
+ },
+ {
+  "page": "리포트",
+  "w": 11,
+  "lines": 3,
+  "txt": "미확인 결함 대비 현금 충당",
+  "sel": "tbody > tr > td",
+  "wb": "normal"
+ },
+ {
+  "page": "리포트",
+  "w": 38,
+  "lines": 2,
+  "txt": "재판매가 17,300,000원(시세중앙값) 기준",
+  "sel": "section.section > div.sec-head > span.sec-note",
+  "wb": "normal"
+ },
+ {
+  "page": "리포트",
+  "w": 21,
+  "lines": 2,
+  "txt": "낙찰가 18,100,000원 고정",
+  "sel": "section.section > div.sec-head > span.sec-note",
+  "wb": "normal"
+ },
+ {
+  "page": "리포트",
+  "w": 38,
+  "lines": 2,
+  "txt": "발행 2026-09-12 14:44 · 유효기간 매각기일까지 · CONF",
+  "sel": "div.page > footer.foot > span",
+  "wb": "normal"
+ }
+]

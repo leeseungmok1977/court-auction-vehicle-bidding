@@ -107,8 +107,10 @@
 {# 낙찰 이후 절차 & 예상 비용 — 경매 초보용 안내(교육 콘텐츠 · 외부 데이터 없음). 기본 접힘. #}
 <details class="bg-surface border border-line rounded-lg overflow-hidden">
   <summary class="flex items-center justify-between gap-2 px-5 py-3.5 cursor-pointer select-none list-none">
-    <span class="flex items-center gap-2 font-semibold text-txt"><span class="material-symbols-outlined text-primary text-xl">flag</span>낙찰받으면? — 이후 절차·예상 비용 안내</span>
-    <span class="text-xs text-mut inline-flex items-center gap-0.5">펼치기<span class="material-symbols-outlined text-base">expand_more</span></span>
+    {# flex 안의 제목은 min-w-0 이 없으면 줄어들지 못해 어절이 깨진다. '펼치기'는 짧은 고정
+       라벨이라 shrink-0 + nowrap 으로 지켜 2줄로 접히지 않게 한다. #}
+    <span class="flex items-center gap-2 font-semibold text-txt min-w-0"><span class="material-symbols-outlined text-primary text-xl shrink-0">flag</span><span class="min-w-0">낙찰받으면? — 이후 절차·예상 비용 안내</span></span>
+    <span class="text-xs text-mut inline-flex items-center gap-0.5 shrink-0 whitespace-nowrap">펼치기<span class="material-symbols-outlined text-base">expand_more</span></span>
   </summary>
   <div class="px-5 pb-5 pt-0 space-y-4 text-sm">
     {% if allin %}

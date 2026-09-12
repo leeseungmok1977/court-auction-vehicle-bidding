@@ -54,11 +54,12 @@ html.ms-pending .material-symbols-outlined { visibility: hidden; }
    가로로 넘친다. 실측(360px) — 전역 적용 시 새 오버플로 121건, 표 예외를 둬도 121건,
    산문 한정은 **0건**이면서 고아 줄 16→10건으로 줄었다.
    수치·표·버튼 라벨은 건드리지 않는다. */
-p, li, blockquote,
-.note, .sp-foot, .disc, .text-mut {
-  word-break: keep-all;
-  overflow-wrap: break-word;   /* 끊을 수 없는 긴 문자열이 영역을 뚫는 것만 방지 */
+body {
+  word-break: keep-all;          /* 상속 — 한글 어절이 중간에서 갈리지 않게 */
+  overflow-wrap: break-word;     /* 끊을 수 없는 긴 문자열이 영역을 뚫는 것만 방지 */
 }
+/* 표는 예외 — 셀이 최소폭을 잃으면 가로 스크롤이 길어진다 */
+table, thead, tbody, tr, th, td { word-break: normal; }
 
 /* 스크롤바(라이트) */
 .custom-scrollbar::-webkit-scrollbar { width: 10px; height: 10px; }
