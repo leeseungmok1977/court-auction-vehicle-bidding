@@ -341,7 +341,7 @@ document.addEventListener('click', function(e){
         <div>
           <div class="v-label">예상 낙찰가 <span style="font-weight:400">— 분위수 밴드{% if backtest.within10_pct %} · 실측 ±10% 적중 {{ backtest.within10_pct|round|int }}%{% endif %}</span></div>
           <div class="v-band num">{% if report.lo and report.hi %}{{ (report.lo/10000)|round|int }} <small>~</small> {{ (report.hi/10000)|round|int }}{% else %}{{ (exp/10000)|round|int }}{% endif %}<small> 만원</small></div>
-          <div class="v-sub">중심값 <b class="num">{{ exp|won }}원</b> · 재판매 상한가 <b class="num">{{ upper|won }}원</b></div>
+          <div class="v-sub">중심값 <b class="num">{{ exp|won }}원</b> · 재판매 상한가 {% if upper %}<b class="num">{{ upper|won }}원</b>{% else %}<b>미산출</b>{% endif %}</div>
           {% if max_bid %}
           {# 예상낙찰가는 '얼마에 팔릴까'의 추정일 뿐이다. 경매장에서 실제로 필요한 값은
              '얼마까지 써도 되는가'다 — 경매 전문가 1·2회차 연속 지적. #}
@@ -358,8 +358,11 @@ document.addEventListener('click', function(e){
      "예상낙찰가는 약 73%"로 표시되는데 실제 이 물건은 105%인 사례가 3/3 재현됐다.
      이 물건 값(exp/med)을 쓰고, 모집단 통계는 별도 라벨로 분리한다. #}
           <li>소매 시세중앙값 <b class="num">{{ med|won }}원</b> 대비 이 물건의 예상낙찰가는 <b{% if over_market %} style="color:var(--amber)"{% endif %}>{{ ('약 ' ~ ((exp/med*100)|round|int) ~ '%') if (med and exp) else '미산출' }}</b>{% if over_market %} <b style="color:var(--amber)">(시세 초과)</b>{% endif %}{% if report.discount %} · 동급 실낙찰 평균은 {{ (report.discount*100)|round|int }}%{% endif %} {% if v.fail_count %}(유찰 {{ v.fail_count }}회 반영){% endif %}</li>
-          {% if thin_margin %}<li style="color:var(--amber)"><b style="color:var(--amber)">재판매 부적합 신호</b> — 예상낙찰가가 마진 확보선(<b class="num">{{ upper|won }}원</b>)을 초과. 이전·수리·명도비를 빼면 <b>재판매 차익은 어렵고 실사용 목적</b>에 적합</li>
+          {# 상한가가 미산출이면 "0원 이하로 써라"는 불가능한 지시가 된다 — 육각형 미산출 규칙과 동일하게 문장 자체를 생략(3회차 품질 지적 5). #}
+          {% if not upper %}{# 미산출 — 재판매 기준선 문장 없음 #}
+          {% elif thin_margin %}<li style="color:var(--amber)"><b style="color:var(--amber)">재판매 부적합 신호</b> — 예상낙찰가가 마진 확보선(<b class="num">{{ upper|won }}원</b>)을 초과해 <b>되팔이 차익은 어렵습니다</b>{% if bidst and bidst.state in ('resale','usepick') %} — 직접 타실 목적이면 검토할 만합니다{% endif %}</li>
           {% else %}<li>재판매 목적이면 마진 확보선 <b class="num">{{ upper|won }}원</b> 이하가 기준 (목표마진 {{ report.target_margin|won }}원)</li>{% endif %}
+          {% if next_min %}<li>이번 기일에 유찰되면 <b>다음 기일 예상 최저가는 <span class="num">{{ next_min.price|won }}원</span></b>({{ ((1-next_min.ratio)*100)|round|int }}% 저감{% if next_min.basis == 'court' %} · 이 법원 실측 {{ next_min.court_n }}회{% if next_min.share and next_min.share < 0.85 %} 중 {{ (next_min.share*100)|round|int }}%{% endif %}{% else %} · 전국 기준(이 법원 표본 부족){% endif %})</li>{% endif %}
           <li>본 결론의 신뢰도 <b>{{ conf }}/100</b> — 미확정 요소는 현장확인(상태·정비비)뿐이며 결과에 따라 밴드가 조정될 수 있음(09)</li>
         </ul>
       </div>

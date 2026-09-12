@@ -601,14 +601,20 @@ def vehicle_detail(request: Request, vid: str, cc: str = "", an: str = ""):
     comps = service.comparable_sales(v, bt)
     # 예상낙찰가 + 밴드(보수/균형/공격)를 **단일 소스**로 산출 → 상단 카드·추천 전략·코멘트 계산식 일치
     _band = service.expected_band(v, bt)
-    source = f"유사 낙찰 {_cd[1]}건 참고" if _cd else None
+    # ⚠ comps는 **최저매각가가 없을 때만** 산정에 쓰인다(service.expected_for 폴백 경로).
+    # 예전엔 comparable_discount가 값을 내기만 하면 "산정에 반영" 라벨이 붙어, 최저가가 있는
+    # 대부분의 물건에서 **검증 가능한 거짓**을 화면에 찍고 있었다(3회차 경매 지적 2).
+    _used_comps = bool(_cd) and not (_band and (_band.get("basis") or {}).get("kind") == "min_premium")
+    source = (f"유사 낙찰 {_cd[1]}건 참고" if _used_comps else None) if _cd else None
     expected = None
     if _band:
         expected = {"price": _band["price"], "lo": _band["lo"], "hi": _band["hi"],
                     "premium": _band.get("premium"), "basis": _band.get("basis") or {},
                     "discount": disc, "sample": bt.get("sample"),
                     "mae": bt.get("mae_pct"), "source": source,
-                    "comp_n": _cd[1] if _cd else 0}
+                    "comp_n": _cd[1] if _cd else 0,
+                    "comp_used": _used_comps,          # 실제로 산정에 쓰였는가
+                    "comp_ratio": _cd[0] if _cd else None}
     dist = service.price_distribution(
         v, expected["price"] if expected else None, bt.get("mae_pct"))
     # 감정 요항 구조화(색상·연료·검사유효기간·옵션·상태) + 상태 반영 비용
@@ -621,7 +627,9 @@ def vehicle_detail(request: Request, vid: str, cc: str = "", an: str = ""):
     # ── 엔카 원자료 격리(M01): 파생값은 원본 v로 먼저 계산, 컨텍스트엔 비관리자용 사본 ──
     _adm = is_admin(request)
     eff_med = service.effective_median(v)                 # 소매 시세(유지) — 원본으로 계산
-    verdict = service.plain_verdict(v, expected)
+    # 판정 단일 소스 — 상세와 리포트가 같은 결론을 말하게 한다(3회차 패널 4인 합의 지적).
+    _bidst = service.bid_state(v, bt, _cfg)
+    verdict = service.plain_verdict(v, expected, _bidst)
     can_an = service.can_analyze(v)
     return templates.TemplateResponse("detail.html", {
         "request": request, "v": service.public_view(v, _adm), "photos": photos, "appraisal": appraisal,
@@ -637,6 +645,9 @@ def vehicle_detail(request: Request, vid: str, cc: str = "", an: str = ""):
         "allin": service.allin_estimate(expected["price"] if expected else None, _cfg),
         # 다음 기일 예상 최저가 — '이번 회차를 건너뛸까'를 판단할 유일한 숫자
         "next_min": service.next_min_sale(v),
+        # 판정 단일 소스 — 상세·리포트가 서로 다른 말을 하지 않도록 같은 값을 쓴다
+        "bidst": _bidst,
+        "use": service.personal_use_detail(v, bt, _cfg),
     })
 
 
@@ -678,7 +689,8 @@ def vehicle_report(request: Request, vid: str):
     from src.parse.appraisal import condition_adjustment
     cond = condition_adjustment(appraisal, config) if appraisal else None
     asum = cond.get("parsed") if cond else None
-    verdict = service.plain_verdict(v, expected)          # 원본 v로 계산(화면값과 일치)
+    _bidst = service.bid_state(v, bt, config)             # 판정 단일 소스(상세·리포트 공용)
+    verdict = service.plain_verdict(v, expected, _bidst)  # 판정은 하지 않고 문장만 만든다
     dist = service.price_distribution(
         v, expected["price"] if expected else None, bt.get("mae_pct"))
     _adm = is_admin(request)
@@ -694,8 +706,9 @@ def vehicle_report(request: Request, vid: str):
         "eff_median": service.effective_median(v),
         # 실사용 손익분기 상한선 — "얼마까지 써도 되는가". 경매 전문가가 1·2회차 연속
         # 지적한 항목으로, 예상낙찰가(예측)보다 실제로 더 중요한 값이다.
-        "max_bid": service.personal_use_max_bid(v, bt, config),
+        "max_bid": _bidst.get("max_bid"),
         "next_min": service.next_min_sale(v),
+        "bidst": _bidst,          # 판정 단일 소스 — 상세와 같은 값
         "comp_min_n": service.COMP_MIN_N, "comp_ratio_med": comp_ratio_med,
         # 01 종합 프로필(6축, 미산출=None; 매물건수는 관리자만, 잔존가치는 출시가 공개 규칙과 동일 게이트)
         "hexa": service.hexagon_scores(v, include_private=_adm,

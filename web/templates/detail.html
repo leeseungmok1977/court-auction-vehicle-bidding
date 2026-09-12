@@ -83,7 +83,8 @@
     {% if next_min %}
     <dt class="text-mut">{{ ui.gloss('다음 기일 예상 최저가', '이번 기일에 유찰되면 다음 기일은 이 금액부터 시작합니다. 법원마다 저감 비율이 달라(대부분 30%, 일부 20%) 우리 기일내역 실측값으로 계산했습니다.') }}</dt>
     <dd class="font-mono text-txt tnum">{{ next_min.price|won }} 원
-      <span class="text-mut text-xs font-sans not-italic">· {{ ((1-next_min.ratio)*100)|round|int }}% 저감{% if next_min.basis == 'court' %} · 이 법원 실측 {{ next_min.court_n }}회{% else %} · 전국 기준(이 법원 표본 부족){% endif %}</span></dd>
+      <span class="text-mut text-xs font-sans not-italic">· {{ ((1-next_min.ratio)*100)|round|int }}% 저감{% if next_min.basis == 'court' %} · 이 법원 {{ next_min.court_n }}회 중 {{ ((next_min.share or 1)*100)|round|int }}%{% else %} · 전국 기준(이 법원 표본 부족){% endif %}</span>
+      {% if next_min.alt_price %}<div class="text-[11px] text-amber-700 font-sans not-italic mt-0.5">이 법원은 저감률이 일정하지 않습니다 — 다른 경우 <b>{{ next_min.alt_price|won }}원</b>이 될 수 있습니다.</div>{% endif %}</dd>
     {% endif %}
     <dt class="text-mut">{{ ui.gloss('매각 일시', '이 날짜·시각에 법원에서 입찰(기일입찰)이 열려요. 정해진 매각 장소에서 직접 또는 대리인이 입찰합니다.') }}</dt>
     {% set awaiting = v.sale_date and today and v.sale_date < today and v.auction_result not in ('낙찰','종결') and v.judgment != '종결' %}
@@ -188,7 +189,11 @@
 {# ── 한눈 요약 히어로: "이 물건에 얼마 쓸지"를 30초 안에 (판정·예상낙찰가·지금입찰가능·신뢰도+게이지) ── #}
 {% if v.median_price is not none and expected and expected.price %}
 {% set closed = v.auction_result == '낙찰' or v.judgment == '종결' %}
-{% set opp = v.min_sale_price and v.min_sale_price <= expected.price %}
+{# opp는 '최저가 ≤ 예상낙찰가'만 봐서 시세를 무시했다 — 시세보다 비싼 차에도 초록 체크가
+   켜져 리포트의 '입찰을 권하지 않습니다'와 정면으로 모순됐다(3회차 패널 4인 지적).
+   판정은 service.bid_state() 한 곳에서만 한다. #}
+{% set opp = bidst and bidst.state in ('resale', 'usepick') %}
+{% set bid_ok = opp %}
 {% set lowconf = v.market_confidence_label == '낮음' %}
 {% set cl = v.market_confidence_label %}
 {% set cbg = 'bg-emerald-50 text-emerald-700 border-emerald-200' if cl=='높음' else 'bg-amber-50 text-amber-700 border-amber-200' if cl=='보통' else 'bg-rose-50 text-rose-700 border-rose-200' %}
@@ -233,22 +238,32 @@
   <div class="relative mt-4">
     <div class="relative h-2 rounded-full bg-white/10">
       <div class="absolute top-0 left-0 h-2 rounded-full bg-white/15" style="width:{{ p_med }}%"></div>
-      <div class="absolute top-0 h-2 rounded-full {{ 'bg-emerald-400' if opp else 'bg-amber-400' }}" style="left:{{ [p_min,p_exp]|min }}%; width:{{ (p_exp-p_min)|abs|round(1) }}%"></div>
+      <div class="absolute top-0 h-2 rounded-full {{ {'ok':'bg-emerald-400','caution':'bg-amber-400','stop':'bg-rose-400','wait':'bg-white/40'}[bidst.tone if bidst else 'wait'] }}" style="left:{{ [p_min,p_exp]|min }}%; width:{{ (p_exp-p_min)|abs|round(1) }}%"></div>
       <div class="absolute -top-1 w-0.5 h-4 bg-white" style="left:{{ p_min }}%"></div>
       <div class="absolute -top-1 w-1 h-4 rounded bg-amber-300" style="left:calc({{ p_exp }}% - 2px)"></div>
     </div>
     <div class="flex justify-between items-baseline text-[11px] mt-2 gap-2" style="word-break:keep-all">
       <span class="text-white/55 whitespace-nowrap">최저 {{ (v.min_sale_price/10000)|round|int }}만</span>
-      <span class="{{ 'text-emerald-300' if opp else 'text-amber-300' }} font-semibold text-center leading-tight">{{ '✓ 지금 입찰 검토 가능' if opp else '↑ 추가 유찰 대기' }}</span>
+      {% set _tone = (bidst.tone if bidst else 'wait') %}
+      <span class="{{ {'ok':'text-emerald-300','caution':'text-amber-300','stop':'text-rose-300','wait':'text-white/70'}[_tone] }} font-semibold text-center leading-tight">{{ {'ok':'✓ ','caution':'⚠ ','stop':'✕ ','wait':'↑ '}[_tone] }}{{ bidst.label if bidst else '추가 유찰 대기' }}</span>
       <span class="text-white/55 whitespace-nowrap">시세 {{ (mkt/10000)|round|int }}만</span>
     </div>
+  </div>
+  {% endif %}
+  {# 입찰 상한선 — '얼마에 팔릴까'가 아니라 '얼마까지 써도 되나'. 시세 초과 물건에서도
+     반드시 보여야 하므로 소매 차익 패널 밖, 예측 카드 안에 둔다(3회차 지적). #}
+  {% if bidst and bidst.max_bid %}
+  <div class="relative mt-4 pt-3 border-t border-white/10 flex items-baseline gap-2 flex-wrap">
+    <span class="text-[11px] text-white/70">{{ ui.gloss('입찰 상한선', '이 금액을 넘겨 낙찰받으면 같은 차를 소매에서 사는 편이 쌉니다. 취득세·이전·탁송·상태별 정비 충당을 포함하고, 사고 이력을 확인하지 못한 차는 사고차로 가정한 보수적 금액입니다.', q=false) }}</span>
+    <span class="font-mono text-lg font-extrabold {{ 'text-rose-300' if bidst.state in ('blocked','over_market') else 'text-emerald-300' }} tnum">{{ bidst.max_bid|won }}<span class="text-xs font-normal text-white/55"> 원까지</span></span>
+    {% if bidst.state == 'blocked' %}<span class="text-[11px] text-rose-300">현 최저매각가가 이미 초과</span>{% endif %}
   </div>
   {% endif %}
   {% if expected.basis %}
   {% set b = expected.basis %}
   <div class="relative mt-4 pt-3 border-t border-white/10 text-[11px] text-white/55 leading-relaxed" style="word-break:keep-all">
     <span class="text-white/75 font-semibold">산정 기준</span> ·
-    {% if b.kind == 'min_premium' %}최저매각가 <b class="text-white/85 tnum">{{ (b.min_sale_price/10000)|round|int }}만</b> × 유찰 {{ b.fail_count }}회 낙찰 프리미엄 <b class="text-amber-300">×{{ b.premium }}</b>{% else %}소매 시세 <b class="text-white/85 tnum">{% if b.median %}{{ (b.median/10000)|round|int }}만{% else %}—{% endif %}</b> × 경매 할인율 <b class="text-amber-300">×{{ b.discount }}</b>{% endif %}{% if expected.comp_n %} · 동급 낙찰 {{ expected.comp_n }}건 반영{% endif %}{% if expected.mae %} · 실측 오차 ±{{ expected.mae|round|int }}%{% endif %}
+    {% if b.kind == 'min_premium' %}최저매각가 <b class="text-white/85 tnum">{{ (b.min_sale_price/10000)|round|int }}만</b> × 유찰 {{ b.fail_count }}회 낙찰 프리미엄 <b class="text-amber-300">×{{ b.premium }}</b>{% else %}소매 시세 <b class="text-white/85 tnum">{% if b.median %}{{ (b.median/10000)|round|int }}만{% else %}—{% endif %}</b> × 경매 할인율 <b class="text-amber-300">×{{ b.discount }}</b>{% endif %}{% if expected.comp_n %} · 동급 낙찰 {{ expected.comp_n }}건{{ ' 반영' if expected.comp_used else '은 참고용(미반영)' }}{% endif %}{% if expected.mae %} · 실측 오차 ±{{ expected.mae|round|int }}%{% endif %}
   </div>
   {% endif %}
 </div>
@@ -266,7 +281,7 @@
   {% if comps_won %}
   <div class="mt-4 pt-4 border-t border-line">
     <div class="text-xs text-mut mb-2">유사 낙찰 사례 <span class="text-mut">— 같은 차종·유사 연식/주행의 과거 실제 낙찰
-      {% if expected and expected.source %}(예상낙찰가 산정에 반영){% else %}(표본 부족으로 참고용 — 산정엔 모델·전역 할인율 사용){% endif %}</span></div>
+      {% if expected and expected.comp_used %}(예상낙찰가 산정에 반영){% elif expected and expected.comp_n %}(<b class="text-txt">산정에는 미반영</b> — 최저매각가×유찰 프리미엄으로 계산했습니다){% else %}(표본 부족으로 참고용 — 산정엔 모델·전역 할인율 사용){% endif %}</span></div>
     <div class="overflow-x-auto custom-scrollbar"><table class="w-full text-xs whitespace-nowrap">
       <thead><tr class="text-mut border-b border-line">
         <th class="text-left py-1 font-medium pr-3">사건</th>
@@ -336,12 +351,20 @@
     <span class="material-symbols-outlined text-mut">arrow_forward</span>
     <div><div class="text-[11px] text-primary">AI 예상 낙찰가</div><div class="font-mono text-base font-bold text-primary">{{ expected.price|won }}</div></div>
     <div class="ml-auto text-right">
-      <div class="text-[11px] text-mut">예상 절감</div>
-      <div class="font-mono text-xl font-extrabold text-emerald-600">{{ (eff_median - expected.price)|won }}<span class="text-xs font-normal text-mut"> 원</span></div>
-      <span class="text-[11px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-bold">−{{ ((eff_median - expected.price)/eff_median*100)|round|int }}%</span>
+      {# 예전엔 '시세 − 예상낙찰가'를 그대로 큰 초록 숫자로 썼다. 취득세·사고감가·정비충당이
+         전부 빠진 값이라 목록 배지의 최대 3.8배였다(3회차 중고차 지적). 같은 소스를 쓴다. #}
+      <div class="text-[11px] text-mut">예상 절감 <span class="text-[10px]">(총비용 기준)</span></div>
+      {% if use and use.saving %}
+      <div class="font-mono text-xl font-extrabold text-emerald-600">{{ use.saving|won }}<span class="text-xs font-normal text-mut"> 원</span></div>
+      <span class="text-[11px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-bold">−{{ (use.saving/eff_median*100)|round|int }}%</span>
+      {% else %}
+      <div class="font-mono text-xl font-extrabold text-mut">—</div>
+      <span class="text-[11px] text-mut">소매보다 싸지 않음</span>
+      {% endif %}
     </div>
   </div>
-  <p class="text-[11px] text-mut mt-3">※ 낙찰 시 이전비·수리비·명도비 등 추가비용을 반영해 실질 차익을 판단하세요.</p>
+  <p class="text-[11px] text-mut mt-3">※ 절감액은 취득세·이전·탁송·상태별 정비 충당을 반영한 값입니다. 사고 이력을 확인하지 못한 차는 사고차로 가정합니다.
+    {% if eff_median and expected and expected.price %}(단순 시세차 {{ (eff_median - expected.price)|won }}원 — 비용 반영 전){% endif %}</p>
 </div>
 {% endif %}
 
@@ -613,7 +636,7 @@
         </div>
         <div class="text-[11px] text-mut mt-2 leading-relaxed">
           유찰로 내려간 <b class="text-txt">최저매각가</b>가 시장 할인을 이미 반영 → 동급 <b>낙찰가/최저가 프리미엄</b>(유찰 많을수록↑)만 곱합니다(시세보다 안정적).
-          {% if expected.comp_n %}동급 낙찰 {{ expected.comp_n }}건 반영 · {% endif %}{% if expected.mae %}실측 오차 ±{{ expected.mae|round|int }}%. {% endif %}보수·균형·공격 3단은 위 <b>추천 입찰 전략</b> 참고.
+          {% if expected.comp_n %}동급 낙찰 {{ expected.comp_n }}건은 <b class="text-txt">참고용</b>(이 경로에선 미반영) · {% endif %}{% if expected.mae %}실측 오차 ±{{ expected.mae|round|int }}%. {% endif %}보수·균형·공격 3단은 위 <b>추천 입찰 전략</b> 참고.
         </div>
       </div>
       {% endif %}
@@ -656,8 +679,10 @@
           통상 회차당 20~30% 저감 →
           <b class="text-txt">약 {% if wait.rounds_fast == wait.rounds_slow %}{{ wait.rounds_fast }}{% else %}{{ wait.rounds_fast }}~{{ wait.rounds_slow }}{% endif %}회</b> 추가 유찰 예상.
         </div>
-        {% if expected and expected.price and v.min_sale_price and v.min_sale_price <= expected.price %}
-        <div class="text-xs text-emerald-700 mt-2 px-4">✓ 일반 매수 목적이면 현재 최저매각가가 예상낙찰가({{ expected.price|won }}원) 이하라 <b>지금도 검토 가능</b>합니다.</div>
+        {% if bidst and bidst.state in ('resale', 'usepick') %}
+        <div class="text-xs text-emerald-700 mt-2 px-4">✓ 일반 매수 목적이면 현재 최저매각가가 예상낙찰가({{ expected.price|won }}원) 이하라 <b>지금도 검토 가능</b>합니다.{% if bidst.max_bid %} 다만 <b>{{ bidst.max_bid|won }}원</b>을 넘기면 소매가 유리합니다.{% endif %}</div>
+        {% elif bidst and bidst.state == 'blocked' %}
+        <div class="text-xs text-rose-700 mt-2 px-4">✕ 최저매각가({{ bidst.floor|won }}원)가 이미 실사용 손익분기(<b>{{ bidst.max_bid|won }}원</b>)를 넘어 <b>이번 회차는 어떤 금액을 써도 손해</b>입니다.</div>
         {% endif %}
       </div>
       {% elif v.upper_bid is none or v.upper_bid <= 0 %}

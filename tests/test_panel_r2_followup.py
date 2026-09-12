@@ -180,3 +180,28 @@ def test_malformed_case_numbers_are_hidden_from_public_list(tmp_path, monkeypatc
     # 관리자용 전체 조회(hide_incomplete=False)에서는 여전히 보여야 한다 — 데이터가 사라지면 못 고친다
     all_ids = {v["id"] for v in db.list_vehicles(hide_incomplete=False)}
     assert {"DUP_1", "MRG_1"} <= all_ids
+
+
+# ── 감정서 표기 변형 (3회차 중고차 지적 3) ──────────────────────
+# 실측(로컬 1,305건): 스크레치류 32건 · "양호치 못함" 6건 · 회손 1건.
+# 미탐은 언제나 충당 과소 → 상한선 과대 → 사용자가 더 많이 쓰게 된다.
+@pytest.mark.parametrize("text,level", [
+    ("전면 범퍼, 펜더 회손된 상태 및 외부에 다소의 흠집이 있는 상태로서 관리상태는 양호치 못함.", "poor"),
+    ("일부 부분적인 스크레치 등이 관찰되나 전반적으로 양호함.", "fair"),
+    ("좌측 전면에 일부 스크레치가 목측되었으나.", "fair"),
+    ("차량 외부에 스크래치 등이 있으니 참고바람.", "fair"),
+    ("관리상태 양호하지 못함.", "poor"),
+    ("외관 상태 보통임.", "unknown"),
+])
+def test_appraisal_parser_handles_real_world_spellings(text, level):
+    from src.parse.appraisal import parse_appraisal
+    assert parse_appraisal(text)["condition"]["level"] == level, text
+
+
+def test_condition_costs_actually_change_the_reserve():
+    """표기를 잡아도 비용에 안 붙으면 의미가 없다 — 끝까지 연결되는지 본다."""
+    from src.parse.appraisal import condition_adjustment
+    cfg = service.load_config()
+    poor = condition_adjustment("범퍼 회손, 관리상태 양호치 못함.", cfg)
+    assert poor["add"] >= cfg["condition_costs"]["poor"]
+    assert "관리·외관 불량" in poor["flags"]

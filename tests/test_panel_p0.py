@@ -66,18 +66,50 @@ def _v(med, floor=None, upper=11_283_000):
             "upper_bid": upper, "market_confidence_label": "높음", "fail_count": 1}
 
 
+# 문구가 아니라 **불변식**을 검사한다. 3회차에 판정이 bid_state 단일 소스로 바뀌면서
+# 같은 물건이 더 강한 'blocked'(최저가조차 손익분기 초과 → "입찰하지 마세요")를 받게 됐다.
+# 문구를 박아두면 판정이 강해질 때마다 테스트가 깨지고, 약해질 때는 안 깨진다 — 방향이 반대다.
+_REFUSALS = ("권하지 않습니다", "입찰하지 마세요", "까지만 유효", "기다리는 게 좋습니다")
+
+
+def _assert_refuses(r):
+    assert r["tone"] in ("caution", "stop"), f"경고 톤이 아님: {r['tone']}"
+    assert any(k in r["text"] for k in _REFUSALS), f"거절 문구가 없음: {r['text']}"
+    for bad in ("검토할 만합니다", "노려볼 만합니다", "검토 가능"):
+        assert bad not in r["text"], f"거절해야 하는데 권유 문구가 있음: {bad}"
+
+
 def test_verdict_refuses_when_expected_above_retail():
-    r = service.plain_verdict(_v(17_300_000, 16_000_000), {"price": 18_100_000})
-    assert r["tone"] == "caution"
-    assert "권하지 않습니다" in r["text"]
-    assert "검토할 만합니다" not in r["text"]
+    _assert_refuses(service.plain_verdict(_v(17_300_000, 16_000_000), {"price": 18_100_000}))
 
 
 @pytest.mark.parametrize("exp,med", [(17_300_001, 17_300_000), (34_200_000, 32_500_000),
                                      (12_000_000, 10_895_000), (8_700_000, 8_300_000)])
 def test_verdict_over_market_variants(exp, med):
-    r = service.plain_verdict(_v(med, min(exp, med) - 100_000), {"price": exp})
-    assert r["tone"] == "caution" and "소매 구매가 유리" in r["text"]
+    _assert_refuses(service.plain_verdict(_v(med, min(exp, med) - 100_000), {"price": exp}))
+
+
+def test_verdict_blocks_when_floor_already_exceeds_breakeven():
+    """최저매각가조차 실사용 손익분기를 넘으면 **써낼 수 있는 모든 금액이 손해**다.
+
+    3회차 경매 지적: "낙찰 가능성이 낮다"고만 쓰면 초보자는 '더 쓰면 되겠네'로 읽는다.
+    실제 사실은 정반대 — 어떤 금액을 써도 진다."""
+    v = _v(17_300_000, 16_000_000)
+    st = service.bid_state(v)
+    assert st["state"] == "blocked" and st["tone"] == "stop"
+    r = service.plain_verdict(v, {"price": 18_100_000}, st)
+    assert "입찰하지 마세요" in r["text"]
+
+
+def test_never_recommends_and_refuses_at_the_same_time():
+    """같은 판정문에 거절과 권유가 함께 나오면 안 된다(3회차 품질 지적: 46건 중 28건)."""
+    for med, floor, exp in [(17_300_000, 16_000_000, 18_100_000),
+                            (16_600_000, 14_000_000, 16_600_000),
+                            (40_000_000, 28_000_000, 31_600_000)]:
+        r = service.plain_verdict(_v(med, floor), {"price": exp})
+        refuses = any(k in r["text"] for k in _REFUSALS)
+        recommends = any(k in r["text"] for k in ("검토할 만합니다", "노려볼 만합니다"))
+        assert not (refuses and recommends), f"거절+권유 동시 출현: {r['text']}"
 
 
 def test_verdict_still_recommends_when_below_retail():
