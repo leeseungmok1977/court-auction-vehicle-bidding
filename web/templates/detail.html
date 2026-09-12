@@ -103,7 +103,17 @@
     <dt class="text-mut">매각 장소</dt><dd class="not-italic">{% if v.court %}<b class="text-txt">{{ v.court }}</b> {% endif %}{{ v.sale_place }}</dd>
     {% endif %}
     <dt class="text-mut">차량 보관장소</dt>
-    <dd>{% if v.storage_addr %}{{ v.storage_addr }}{% else %}<span class="text-mut">법원 미표시 <span class="text-mut text-xs">— 감정평가서·현장 확인</span></span>{% endif %}</dd>
+    {# 보관장소는 소스가 여럿이고 서로 어긋날 수 있다(법원 상세 / 감정서 본문 /
+       지도). 어디서 온 값인지 함께 내지 않으면 사용자가 무엇을 믿을지 모른다.
+       '법원 미표시'도 사실과 달랐다 — 법원이 안 준 게 아니라 우리가 안 채웠던
+       경우가 대부분이었다(수집 JSON 163건이 DB에 0건이었다). #}
+    <dd>{% if v.storage_addr %}{{ v.storage_addr }}
+      {%- set _ssrc = {'court': '법원 상세', 'text': '감정평가서 본문',
+                       'map_ocr': '지도 표기', 'map_parcel': '지도 대조'} %}
+      {%- if v.storage_src %} <span class="text-[10px] px-1.5 py-0.5 rounded-full align-middle whitespace-nowrap
+        {{ 'bg-slate-100 text-mut' if v.storage_src in ('court', 'text') else 'bg-amber-100 text-amber-800' }}"
+        title="{{ '원문 그대로입니다.' if v.storage_src in ('court','text') else '지도 이미지에서 읽은 값이라 사진과 대조해 확인하세요.' }}">{{ _ssrc.get(v.storage_src, v.storage_src) }}{% if v.storage_conf == '추정' %} · 추정{% endif %}</span>{% endif %}
+    {%- else %}<span class="text-mut">확인되지 않음 <span class="text-mut text-xs">— 사진의 위치도·현장 확인</span></span>{% endif %}</dd>
     {% if is_admin(request) %}{# 목록상 주소는 대개 채무자 주소(개인정보) → 관리자만 표시 #}
     <dt class="text-mut">목록상 주소</dt>
     <dd>{{ v.location or '—' }}{% if v.location %}<span class="block text-mut text-xs mt-0.5">※ 법원 목록 표시주소(대개 <b>채무자 주소</b>) — 차량 실제 위치와 다를 수 있음</span>{% endif %}</dd>

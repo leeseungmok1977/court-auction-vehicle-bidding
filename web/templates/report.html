@@ -530,7 +530,9 @@ document.addEventListener('click', function(e){
         <div class="kv"><dt>유찰횟수</dt><dd class="num">{{ v.fail_count if v.fail_count is not none else '—' }}회</dd></div>
         <div class="kv"><dt>사고판정</dt><dd>{{ v|accv }}{% if v.accident_hits %} <span class="chip warn">{{ v.accident_hits|join(', ') }}</span>{% endif %}</dd></div>
         {% if v.sale_place %}<div class="kv"><dt>매각장소</dt><dd style="font-size:12px">{% if v.court %}{{ v.court }} {% endif %}{{ v.sale_place }}{% if v.sale_time %} · {{ v.sale_time }} 입찰{% endif %}</dd></div>{% endif %}
-        <div class="kv"><dt>차량 보관장소</dt><dd style="font-size:12px">{% if v.storage_addr %}{{ v.storage_addr }}{% else %}법원 미표시{% endif %}</dd></div>
+        {# 출처를 함께 낸다 — 소스가 셋이라 어긋날 수 있다. '법원 미표시'는 사실과
+            달랐다(법원이 안 준 게 아니라 우리가 안 채웠던 경우가 대부분). #}
+        <div class="kv"><dt>차량 보관장소</dt><dd style="font-size:12px">{% if v.storage_addr %}{{ v.storage_addr }}{% set _ss = {'court':'법원 상세','text':'감정평가서 본문','map_ocr':'지도 표기','map_parcel':'지도 대조'} %}{% if v.storage_src %} <span class="tag {{ 'verified' if v.storage_src in ('court','text') else 'estimated' }}">{{ _ss.get(v.storage_src, v.storage_src) }}</span>{% endif %}{% else %}확인되지 않음 — 사진의 위치도·현장 확인{% endif %}</dd></div>
         {% if is_admin(request) %}<div class="kv"><dt>목록상 주소</dt><dd style="font-size:12px">{{ v.location or '—' }}{% if v.location %} <span style="color:#94a3b8">(대개 채무자 주소 — 차량 위치 아닐 수 있음)</span>{% endif %}</dd></div>{% endif %}
         <div class="kv"><dt>결과</dt><dd>{% if v.auction_result=='낙찰' %}낙찰 {{ v.winning_price|won }}원{% else %}{{ v.auction_result or '진행 예정' }}{% endif %}</dd></div>
       </dl>

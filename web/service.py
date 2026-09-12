@@ -1993,6 +1993,70 @@ def reapply_appraisal_guard() -> dict:
     return {"checked": checked, "fixed": fixed}
 
 
+def backfill_storage_addr() -> dict:
+    """차량 보관장소를 이미 받아 둔 파일에서 채운다(무네트워크).
+
+    보관장소는 **차량이 실제로 있는 곳**이고, `location`(목록의 채무자 주소)과 다르다.
+    실측(1,320건): DB에 0건인데 수집 JSON에는 163건이 들어 있었다. 기능이 2026-09-06에
+    들어왔는데 상세 분석은 그 전(8-23)에 끝나서, 백필이 한 번도 돌지 않은 것이다.
+    재분석은 물건마다 외부 요청이라 C.4 상한에 걸린다 — 저장된 파일만 다시 읽는다.
+
+    두 소스를 쓰고, **어느 쪽에서 왔는지 기록한다**(화면에 출처를 함께 내기 위함):
+      court : 법원 상세 응답(`storgPlcRdnmAddr`)을 파싱해 저장해 둔 `data/<key>/*.json`
+      text  : 감정평가서 본문 `data/<key>/appraisal.txt`에서 추출
+    법원 제공값을 우선한다 — 원문 그대로이고 도로명이라 지오코딩도 쉽다.
+
+    ⚠ 이미 값이 있는 행은 덮지 않는다. 빈 값으로 덮는 일도 없다.
+    """
+    import json as _json
+    import os
+    from src.parse.detail_parser import _storage_from_text
+
+    out = {"checked": 0, "from_court": 0, "from_text": 0, "already": 0, "none": 0}
+    for v in db.list_vehicles(hide_incomplete=False):
+        out["checked"] += 1
+        if (v.get("storage_addr") or "").strip():
+            out["already"] += 1
+            continue
+        fk = v.get("folder_key") or v.get("id")
+        folder = os.path.join("data", fk)
+        if not os.path.isdir(folder):
+            out["none"] += 1
+            continue
+
+        addr, src = "", ""
+        # 1) 법원 상세 응답에서 파싱해 둔 값
+        for name in sorted(os.listdir(folder)):
+            if not name.endswith(".json"):
+                continue
+            try:
+                with open(os.path.join(folder, name), encoding="utf-8") as fh:
+                    d = _json.load(fh)
+            except (OSError, ValueError):
+                continue
+            if isinstance(d, dict) and str(d.get("storage_addr") or "").strip():
+                addr, src = str(d["storage_addr"]).strip(), "court"
+                break
+        # 2) 없으면 감정평가서 본문
+        if not addr:
+            fp = os.path.join(folder, "appraisal.txt")
+            if os.path.exists(fp):
+                try:
+                    with open(fp, encoding="utf-8") as fh:
+                        addr = _storage_from_text(fh.read())
+                except OSError:
+                    addr = ""
+                if addr:
+                    src = "text"
+
+        if addr:
+            db.update_fields(v["id"], storage_addr=addr, storage_src=src)
+            out["from_court" if src == "court" else "from_text"] += 1
+        else:
+            out["none"] += 1
+    return out
+
+
 def backfill_multilot_mileage() -> dict:
     """다물건 사건의 주행거리를 저장된 감정서에서 **기호별로** 재도출한다(무네트워크).
 
