@@ -252,3 +252,66 @@ def test_detail_points_to_the_map_photo_when_address_is_missing(client):
     html = client.get("/vehicle/S1").text
     assert "위치도" in html and "3번" in html, "지도 사진 안내가 없다"
     assert "확인되지 않음" not in html
+
+
+# ── 지도 OCR (4단계) — 파싱·채택 규칙 ────────────────────────────
+from src.vision.map_ocr import parse_label  # noqa: E402
+
+# 검증 대상은 주소의 **첫 시·군·구**(도시)다 — 그것이 동명이동을 가르는 축이다.
+# known_gu_names() 는 앱이 가진 주소에서 모든 시·군·구 토큰을 뽑으므로
+# 실제로는 '전주시'와 '덕진구'가 모두 들어 있다.
+GU = {"전주시", "덕진구", "안양시", "동안구", "창원시", "성산구", "서울특별시", "강서구"}
+
+
+def test_ocr_accepts_a_full_address_next_to_the_label():
+    """서버 실측에서 실제로 나온 OCR 결과."""
+    got = parse_label("보관장소 55 uel 1456, ae 2 전주시 덕진구 덕진동1가 1420 호 시", GU)
+    assert got["addr"] == "전주시 덕진구 덕진동1가 1420"
+
+
+def test_ocr_rejects_a_partial_address_without_a_city():
+    """'호계동 1101번지'는 안양·포항·양산에 다 있다 — 도시가 없으면 채택 못 한다."""
+    got = parse_label("보관장소(호계동 1101번지) eee a ee", GU)
+    assert got["label"] is True and got["addr"] == ""
+
+
+def test_ocr_rejects_an_invented_district_name():
+    """OCR이 지명을 지어내면 걸러야 한다 — 없는 구는 채택하지 않는다."""
+    got = parse_label("보관장소 서울특별시 없는구 어딘가동 1", GU)
+    assert got["addr"] == "" and "아는 시·군·구가 아님" in got["why"]
+
+
+def test_ocr_ignores_maps_without_the_storage_label():
+    """'본건'만 있는 지도는 채무자 주소일 수 있다 — 보관장소로 쓰지 않는다.
+
+    실측 2024타경51422: '본건' 지도는 동문동을 가리키는데 법원이 준 보관장소는
+    율지8로 52였다. 라벨을 안 가리면 틀린 주소를 낸다.
+    """
+    got = parse_label("본건 서울특별시 강서구 마곡동 1045", GU)
+    assert got["label"] is False and got["addr"] == ""
+
+
+def test_ocr_backfill_never_overwrites_a_court_value(one, monkeypatch):
+    db.update_fields("V1", storage_addr="경기도 수원시 팔달구 매산로 1",
+                     storage_src="court", map_photos=["m.png"])
+    called = []
+    monkeypatch.setattr("src.vision.map_ocr.read_storage_label",
+                        lambda *a, **k: called.append(1) or {"label": True, "addr": "다른 주소"})
+    out = service.backfill_map_ocr()
+    assert not called, "이미 값이 있는데 OCR을 돌렸다"
+    assert out["skipped"] >= 1
+    assert db.get_vehicle("V1")["storage_addr"].endswith("매산로 1")
+
+
+def test_ocr_result_is_marked_as_an_estimate(one, monkeypatch):
+    """OCR은 숫자를 틀린다 — 확정으로 표기하면 안 된다."""
+    (one / "photos").mkdir()
+    (one / "photos" / "m.png").write_bytes(b"x")
+    db.update_fields("V1", map_photos=["m.png"])
+    monkeypatch.setattr(service, "known_gu_names", lambda: {"덕진구"})
+    monkeypatch.setattr("src.vision.map_ocr.read_storage_label",
+                        lambda *a, **k: {"label": True, "addr": "전주시 덕진구 덕진동1가 1420"})
+    out = service.backfill_map_ocr()
+    v = db.get_vehicle("V1")
+    assert out["found"] == 1
+    assert v["storage_src"] == "map_ocr" and v["storage_conf"] == "추정"

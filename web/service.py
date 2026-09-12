@@ -1993,6 +1993,72 @@ def reapply_appraisal_guard() -> dict:
     return {"checked": checked, "fixed": fixed}
 
 
+def known_gu_names() -> set:
+    """앱이 이미 아는 시·군·구 이름 — OCR이 지명을 지어내는 것을 막는 대조표.
+
+    외부 목록을 받지 않고 우리가 가진 주소(법원 상세·감정서·물건 소재지)에서
+    뽑는다. C.4상 외부 요청이 없고, 실제로 다루는 지역만 담긴다.
+    """
+    import re as _re
+    pat = _re.compile(r"[가-힣]{2,6}(?:시|군|구)")
+    out = set()
+    for v in db.list_vehicles(hide_incomplete=False):
+        for field in ("storage_addr", "location", "court"):
+            val = v.get(field)
+            if val:
+                out.update(pat.findall(str(val)))
+    return out
+
+
+def backfill_map_ocr(limit: Optional[int] = None, redo: bool = False) -> dict:
+    """지도에 인쇄된 보관장소 라벨을 읽어 채운다(무네트워크, 배치).
+
+    ⚠ 느리다 — 서버 실측 장당 12~22초(2코어). 1,300장이면 5시간대다.
+    요청 경로에서 돌리지 말고 백그라운드 배치로만 쓴다.
+
+    법원 상세·감정서 본문에서 온 값은 덮지 않는다. OCR 값은 `storage_conf='추정'`
+    으로 남겨 화면에 '지도 표기'로 구분해 낸다.
+    """
+    import os
+    from src.vision.map_ocr import read_storage_label
+
+    gu = known_gu_names()
+    out = {"tried": 0, "found": 0, "label_only": 0, "no_label": 0, "skipped": 0}
+    for v in db.list_vehicles(hide_incomplete=False):
+        if (v.get("storage_addr") or "").strip() and not (
+                redo and v.get("storage_src") == "map_ocr"):
+            out["skipped"] += 1
+            continue
+        maps = v.get("map_photos") or []
+        if not maps:
+            out["skipped"] += 1
+            continue
+        fk = v.get("folder_key") or v.get("id")
+        got = None
+        for name in maps:
+            p = os.path.join("data", fk, "photos", name)
+            if not os.path.exists(p):
+                continue
+            out["tried"] += 1
+            r = read_storage_label(p, gu)
+            if r["addr"]:
+                got = r
+                break
+            if r["label"]:
+                got = got or r
+        if got and got["addr"]:
+            db.update_fields(v["id"], storage_addr=got["addr"],
+                             storage_src="map_ocr", storage_conf="추정")
+            out["found"] += 1
+        elif got and got["label"]:
+            out["label_only"] += 1
+        else:
+            out["no_label"] += 1
+        if limit and out["tried"] >= limit:
+            break
+    return out
+
+
 def backfill_map_photos(force: bool = False) -> dict:
     """사진 중 '지도(지적도·위치도)'가 어느 것인지 표시해 둔다(무네트워크).
 
