@@ -2,16 +2,31 @@
 @tailwind components;
 @tailwind utilities;
 
-/* 한글+라틴 통합 웹폰트 self-host (오프라인 안전). Stripe 시그니처=thin(300) 디스플레이 */
+/* 한글+라틴 웹폰트 self-host (오프라인 안전). Stripe 시그니처=thin(300) 디스플레이
+   ⚠ 2단 구성이다. 5종 합계 3.88MB → 서브셋 347KB(9%)로 줄이되 커버리지는 잃지 않는다.
+   ① "Pretendard" = 앱이 실제 쓰는 1,034자 서브셋 (scripts/subset_pretendard.py)
+   ② "PretendardFull" = 원본 전체. **폰트 스택의 다음 자리**에 두면 브라우저가
+      서브셋에 없는 글자를 만났을 때만 내려받는다 → 두부(□)도 폰트 섞임도 없다.
+   3G 콜드로드에서 본문 폰트 적용까지 41초 걸리던 문제(3회차 품질 지적) 대응. */
 @font-face { font-family: "Pretendard"; font-weight: 300; font-display: swap;
-  src: url("/static/fonts/Pretendard-Light.woff2") format("woff2"); }
+  src: url("/static/fonts/Pretendard-Light.subset.woff2") format("woff2"); }
 @font-face { font-family: "Pretendard"; font-weight: 400; font-display: swap;
-  src: url("/static/fonts/Pretendard-Regular.woff2") format("woff2"); }
+  src: url("/static/fonts/Pretendard-Regular.subset.woff2") format("woff2"); }
 @font-face { font-family: "Pretendard"; font-weight: 500; font-display: swap;
-  src: url("/static/fonts/Pretendard-Medium.woff2") format("woff2"); }
+  src: url("/static/fonts/Pretendard-Medium.subset.woff2") format("woff2"); }
 @font-face { font-family: "Pretendard"; font-weight: 600; font-display: swap;
-  src: url("/static/fonts/Pretendard-SemiBold.woff2") format("woff2"); }
+  src: url("/static/fonts/Pretendard-SemiBold.subset.woff2") format("woff2"); }
 @font-face { font-family: "Pretendard"; font-weight: 700; font-display: swap;
+  src: url("/static/fonts/Pretendard-Bold.subset.woff2") format("woff2"); }
+@font-face { font-family: "PretendardFull"; font-weight: 300; font-display: swap;
+  src: url("/static/fonts/Pretendard-Light.woff2") format("woff2"); }
+@font-face { font-family: "PretendardFull"; font-weight: 400; font-display: swap;
+  src: url("/static/fonts/Pretendard-Regular.woff2") format("woff2"); }
+@font-face { font-family: "PretendardFull"; font-weight: 500; font-display: swap;
+  src: url("/static/fonts/Pretendard-Medium.woff2") format("woff2"); }
+@font-face { font-family: "PretendardFull"; font-weight: 600; font-display: swap;
+  src: url("/static/fonts/Pretendard-SemiBold.woff2") format("woff2"); }
+@font-face { font-family: "PretendardFull"; font-weight: 700; font-display: swap;
   src: url("/static/fonts/Pretendard-Bold.woff2") format("woff2"); }
 @font-face { font-family: "JetBrains Mono"; font-weight: 400; font-display: swap;
   src: url("/static/fonts/JetBrainsMono-400.woff2") format("woff2"); }
@@ -22,7 +37,7 @@
 
 /* 전역: 라이트 캔버스 · 딥네이비 잉크 · ss01 스타일셋(브랜드 시그니처) */
 html, body { background: #f6f9fc; }
-body { font-family: "Pretendard", "Malgun Gothic", sans-serif; color: #0d253d;
+body { font-family: "Pretendard", "PretendardFull", "Malgun Gothic", sans-serif; color: #0d253d;
   font-feature-settings: "ss01"; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
 
 /* 디스플레이 타이포: thin(300) + 음수 트래킹 (Stripe 시그니처) */

@@ -32,7 +32,7 @@ module.exports = {
         magenta: "#f96bee",
       },
       fontFamily: {
-        sans: ["Pretendard", "Malgun Gothic", "sans-serif"],
+        sans: ["Pretendard", "PretendardFull", "Malgun Gothic", "sans-serif"],
         mono: ["JetBrains Mono", "monospace"],
       },
       boxShadow: {
