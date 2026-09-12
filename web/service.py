@@ -2585,6 +2585,11 @@ def bid_state(v: dict, bt: Optional[dict] = None, config: Optional[dict] = None)
         return out("blocked", "침수·전손 의심 — 입찰 보류", "stop")
     if v.get("runnable") == "no":
         return out("lowconf", "시동·운행 불가 — 판정 보류", "stop")
+    # 매각기일이 지났는데 결과가 안 붙은 물건은 **입찰할 수 없다**. 판정에 기일 조건이
+    # 없어서 "실사용이면 이득"(초록)이 붙던 물건이 49건 있었다(목록 추천은 17건).
+    _sd = str(v.get("sale_date") or "")[:10]
+    if len(_sd) == 10 and _sd < date.today().isoformat():
+        return out("wait", "지난 기일 — 다음 기일 공고 대기", "wait")
     if not exp or not med or v.get("market_confidence_label") == "낮음":
         return out("lowconf", "시세 신뢰도 낮음 — 판정 보류", "wait")
     if not (floor and floor <= exp):
