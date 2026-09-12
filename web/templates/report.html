@@ -85,14 +85,14 @@ body{background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:
   margin:-24px -20px 8px;padding:8px 20px 0;border-bottom:1px solid var(--line)}
 /* ⚠ .no-print 가 display:flex 라서 .rtop 에 display:block 을 명시하지 않으면
    버튼 묶음과 섹션칩이 좌우로 나란히 붙는다(2026-09-12 실측으로 발견). */
-.rtop-btns{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+.rtop-btns{display:flex;justify-content:flex-start;gap:8px;flex-wrap:wrap}
 .rtop .btn{padding:7px 14px}
 /* 좁은 화면에서는 눌리지도 않는 '보관·구매 준비 중'을 고정 바에서 뺀다.
    두 줄로 접히면서 고정 바가 142px(화면의 17%)를 상시 차지했다. 데스크톱은 한 줄이라 그대로 둔다. */
 @media (max-width:520px){ .rtop .btn-soon{display:none} }
-.secnav{display:flex;gap:6px;overflow-x:auto;padding:8px 0;
-  -webkit-overflow-scrolling:touch;scrollbar-width:none}
-.secnav::-webkit-scrollbar{display:none}
+/* 가로 스크롤을 쓰면 마지막 칩이 잘린 채 보이고 스크롤 가능하다는 힌트도 없다
+   (2026-09-12 사용자 제보). 줄바꿈으로 바꿔 화면 밖으로 나가는 요소를 아예 없앤다. */
+.secnav{display:flex;flex-wrap:wrap;gap:6px;padding:8px 0}
 /* 고정 바 높이만큼 여유를 둬 점프 시 제목이 가리지 않게 한다 */
 .sec-head[id]{scroll-margin-top:104px}
 .secnav a{flex:none;font-size:12px;font-weight:700;color:var(--ink-soft);text-decoration:none;
@@ -255,8 +255,8 @@ document.addEventListener('click', function(e){
 
   <nav class="secnav" aria-label="섹션 바로가기">
     <a href="#sec01">결론</a><a href="#sec02">신뢰도</a><a href="#sec05">시세비교</a>
-    <a href="#sec06">총 취득원가</a><a href="#sec09" class="warn">⚠ 리스크·현장확인</a>
-    <a href="#sec12" class="warn">낙찰 전후 절차</a>
+    <a href="#sec06">취득원가</a><a href="#sec09" class="warn">⚠ 리스크</a>
+    <a href="#sec12" class="warn">낙찰 절차</a>
   </nav>
   </div>
 
