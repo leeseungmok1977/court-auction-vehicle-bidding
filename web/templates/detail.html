@@ -617,8 +617,8 @@
       {% elif v.median_price is none %}
       <div class="text-center bg-sky-50 border border-sky-200 rounded-lg py-4 mb-4">
         <div class="text-xs text-sky-700 mb-1 font-semibold">시세 정보 없음 — 수동 확인 필요</div>
-        <div class="text-sm text-mut px-4">수입·상용/특수차 등 엔카 자동 동급이 없어 시세를 계산하지 못했습니다.
-          상세(주행거리·사진·사고이력)는 확보되었으니, 엔카에서 직접 시세를 확인하세요.</div>
+        <div class="text-sm text-mut px-4">수입·상용/특수차 등 자동 동급 매칭이 되지 않아 시세를 계산하지 못했습니다.
+          상세(주행거리·사진·사고이력)는 확보되었으니, 중고차 시세를 직접 확인하세요.</div>
       </div>
       {% elif v.judgment == '입찰 보류' %}
       <div class="text-center bg-rose-50 border border-rose-200 rounded-lg py-4 mb-4">
@@ -637,7 +637,7 @@
       <div class="text-center bg-sky-50 border border-sky-200 rounded-lg py-4 mb-4">
         <div class="text-xs text-sky-700 mb-1 font-semibold">🔎 시세 신뢰도 낮음 — 수동 검토 필요</div>
         <div class="text-sm text-mut px-4">{% if reasons %}사유: <b class="text-txt">{{ reasons|join(', ') }}</b>. {% endif %}시세를 신뢰하기 어렵습니다.
-          아래 산정값은 참고용이며, 엔카에서 직접 시세를 확인하세요.</div>
+          아래 산정값은 참고용이며, 중고차 시세를 직접 확인하세요.</div>
       </div>
       {% elif wait %}
       <div class="text-center bg-amber-50 border border-amber-200 rounded-lg py-4 mb-4">

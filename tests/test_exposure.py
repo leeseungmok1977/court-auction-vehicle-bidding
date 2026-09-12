@@ -112,3 +112,57 @@ def test_xff_beats_loopback_host(app_client):
     c = app_client
     r = c.get("/vehicle/T1_1", headers={"host": "127.0.0.1", "x-forwarded-for": "203.0.113.7"})
     assert "ZZLEAKZZ" not in r.text
+
+
+# ── 플랫폼 출처명 격리 ────────────────────────────────────────────────
+# 2026-09-12 2회차 패널: 공개 상세에 "엔카"가 그대로 찍히고 있었다. 위 테스트가 못 잡은 이유는
+# 픽스처가 '분석 완료·시세 있음' 물건 하나뿐이라 시세 없음/신뢰도 낮음 분기가 렌더된 적이 없어서다.
+# 금칙어와 함께 **그 분기를 실제로 렌더시키는 픽스처**를 넣는다.
+_PLATFORM_TOKENS = ("엔카", "케이카", "SK엔카", "보배드림")
+
+
+@pytest.fixture
+def branch_client(tmp_path, monkeypatch):
+    """시세 없음 / 신뢰도 낮음 / 입찰 보류 — 안내 배너 분기를 각각 렌더시키는 픽스처."""
+    from web import db
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "b.db")
+    db.init_db()
+    base = {"court": "수원지방법원", "maker": "현대", "model": "쏘나타", "year": 2020,
+            "min_sale_price": 10000000, "appraisal_value": 15000000, "fail_count": 1,
+            "sale_date": "2999-01-01", "status": "완료", "item_no": "1"}
+    db.upsert_vehicle({**base, "id": "NOMED_1", "folder_key": "NOMED_1", "case_no": "2026타경2",
+                       "median_price": None, "judgment": "시세 정보 없음"})
+    db.upsert_vehicle({**base, "id": "LOWC_1", "folder_key": "LOWC_1", "case_no": "2026타경3",
+                       "median_price": 13000000, "market_confidence": 31,
+                       "market_confidence_label": "낮음", "sample_count": 3,
+                       "market_vs_appraisal": 2.4, "match_label": "트림 미확인",
+                       "judgment": "시세 신뢰도 낮음, 수동 검토"})
+    db.upsert_vehicle({**base, "id": "FLOOD_1", "folder_key": "FLOOD_1", "case_no": "2026타경4",
+                       "median_price": 13000000, "accident_grade": "flood",
+                       "judgment": "입찰 보류"})
+    import web.app as A
+    return TestClient(A.app)
+
+
+@pytest.mark.parametrize("vid", ["NOMED_1", "LOWC_1", "FLOOD_1"])
+def test_no_platform_name_in_public_detail(branch_client, vid):
+    """어떤 분기에서도 공개 응답에 시세 플랫폼 이름이 나오면 안 된다(권리자·계약 조건)."""
+    for p in (f"/vehicle/{vid}", f"/vehicle/{vid}/report"):
+        r = branch_client.get(p, headers=_PUBLIC)
+        assert r.status_code == 200, p
+        for tok in _PLATFORM_TOKENS:
+            assert tok not in r.text, f"플랫폼 출처명 '{tok}' 공개 노출: {p}"
+
+
+def test_no_platform_name_in_public_list(branch_client):
+    for p in ("/vehicles", "/vehicles?all=1", "/"):
+        r = branch_client.get(p, headers=_PUBLIC)
+        assert r.status_code == 200, p
+        for tok in _PLATFORM_TOKENS:
+            assert tok not in r.text, f"플랫폼 출처명 '{tok}' 공개 노출: {p}"
+
+
+def test_admin_still_sees_platform_source(branch_client):
+    """관리자 화면에서는 출처가 보여야 한다 — 위 테스트가 관리자 기능까지 지우지 않았는지 확인."""
+    r = branch_client.get("/vehicle/LOWC_1", headers=_TUNNEL)
+    assert r.status_code == 200 and "엔카" in r.text
