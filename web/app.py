@@ -601,6 +601,13 @@ def vehicle_detail(request: Request, vid: str, cc: str = "", an: str = ""):
         avail = {p.name for p in pdir.iterdir() if p.is_file()}
         order = [n for n in (v.get("photo_order") or []) if n in avail]  # 비전 분류 순서 우선
         photos = order + sorted(n for n in avail if n not in order)
+    # 법원이 보관장소를 주소 대신 지도로만 주는 경우가 많다(주소 없는 물건 655건에
+    # 지도가 붙어 있다). 주소가 없다고 '확인되지 않음'만 띄우면, 정작 그 위치가
+    # 화면에 이미 있는데 사용자는 모른다 — 표시 순서상 몇 번인지 알려준다.
+    _maps = [n for n in (v.get("map_photos") or []) if n in photos]
+    map_idx = (photos.index(_maps[0]) + 1) if _maps else None
+    map_n = len(_maps)
+
     appraisal = ""
     afile = DATA_DIR / (v.get("folder_key") or vid) / "appraisal.txt"
     if afile.exists():
@@ -665,6 +672,7 @@ def vehicle_detail(request: Request, vid: str, cc: str = "", an: str = ""):
     can_an = service.can_analyze(v)
     return templates.TemplateResponse("detail.html", {
         "request": request, "v": service.public_view(v, _adm), "photos": photos, "appraisal": appraisal,
+        "map_idx": map_idx, "map_n": map_n,
         "asum": asum, "cond": cond, "today": _date.today().isoformat(),
         "can_analyze": can_an, "running": service.is_running(),
         "wait": wait, "back_url": back_url, "expected": expected,
@@ -712,6 +720,13 @@ def vehicle_report(request: Request, vid: str):
         avail = {p.name for p in pdir.iterdir() if p.is_file()}
         order = [n for n in (v.get("photo_order") or []) if n in avail]
         photos = order + sorted(n for n in avail if n not in order)
+    # 법원이 보관장소를 주소 대신 지도로만 주는 경우가 많다(주소 없는 물건 655건에
+    # 지도가 붙어 있다). 주소가 없다고 '확인되지 않음'만 띄우면, 정작 그 위치가
+    # 화면에 이미 있는데 사용자는 모른다 — 표시 순서상 몇 번인지 알려준다.
+    _maps = [n for n in (v.get("map_photos") or []) if n in photos]
+    map_idx = (photos.index(_maps[0]) + 1) if _maps else None
+    map_n = len(_maps)
+
     # 유사 낙찰 실적(같은 차종 과거 법원 실낙찰 — 엔카 원자료 아님, 공개 가능).
     # 표시용은 같은 차종을 넓게(연식±3·주행±50%) 유사도순으로 — 실낙찰 근거를 풍부히 보이기 위함.
     # (예상낙찰가 개별 보정에 쓰는 comparable_discount의 엄격 매칭[연식±1·주행±30%]은 그대로 유지)
@@ -732,7 +747,8 @@ def vehicle_report(request: Request, vid: str):
     return templates.TemplateResponse("report.html", {
         "request": request, "v": service.public_view(v, _adm), "expected": expected, "appraisal": appraisal,
         "report": _report, "backtest": bt, "dist": dist if _adm else None,
-        "photos": photos, "comps_won": comps_won, "asum": asum, "verdict": verdict,
+        "photos": photos, "map_idx": map_idx, "map_n": map_n,
+        "comps_won": comps_won, "asum": asum, "verdict": verdict,
         # 리포트의 판정·비율은 상세·산정과 **같은 시세**를 써야 한다. plain_verdict/report_data는
         # 이미 effective_median(엔카+케이카 블렌드)을 쓰는데 템플릿만 원본 median_price를 써서
         # 같은 물건에 "11% 싸다"(상세)와 "시세 초과·비권장"(리포트)이 동시에 나왔다

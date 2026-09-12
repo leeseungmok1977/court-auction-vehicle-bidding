@@ -196,3 +196,59 @@ def test_source_lookup_does_not_guess_when_files_disagree(one):
     out = service.backfill_storage_addr()
     assert out["src_filled"] == 0
     assert not (db.get_vehicle("V1")["storage_src"] or "")
+
+
+# ── 지도 사진 검출 (3단계) ──────────────────────────────────────
+def _synth(path, kind):
+    """지도/차량 사진을 흉내 낸 합성 이미지. 실제 판정 특징을 재현한다."""
+    import numpy as np
+    from PIL import Image
+    rng = np.random.default_rng(0)
+    if kind == "map":
+        # 밝은 파스텔 몇 색으로 칠하고 얇은 선만 긋는다
+        a = np.full((200, 200, 3), 245, dtype=np.uint8)
+        a[20:90, 20:120] = (222, 235, 214)
+        a[110:180, 60:190] = (238, 226, 214)
+        a[:, 98:101] = (150, 150, 150)
+        a[95:98, :] = (150, 150, 150)
+    else:
+        # 사진: 질감·그림자로 색이 넓게 퍼지고 엣지가 강하다
+        a = rng.integers(0, 255, (200, 200, 3), dtype=np.uint8)
+    Image.fromarray(a).save(path)
+
+
+def test_map_detector_separates_maps_from_photos(tmp_path):
+    from src.vision.map_photo import is_map_photo
+    m, c = tmp_path / "m.png", tmp_path / "c.png"
+    _synth(m, "map")
+    _synth(c, "car")
+    assert is_map_photo(str(m)) is True, "지도를 못 잡는다"
+    assert is_map_photo(str(c)) is False, "사진을 지도로 잡는다"
+
+
+def test_map_detector_survives_a_broken_file(tmp_path):
+    """깨진 파일 한 장이 수집·백필을 멈추면 안 된다."""
+    from src.vision.map_photo import is_map_photo
+    bad = tmp_path / "x.gif"
+    bad.write_bytes(b"not an image")
+    assert is_map_photo(str(bad)) is False
+
+
+def test_detail_points_to_the_map_photo_when_address_is_missing(client):
+    """주소가 없어도 지도가 붙어 있으면 몇 번 사진인지 알려준다.
+
+    실측: 주소 없는 물건 중 655건에 지도 사진이 있다. '확인되지 않음'만 띄우면
+    화면에 이미 있는 위치를 사용자가 못 찾는다.
+    """
+    import web.app as A
+    db.update_fields("S1", storage_addr=None, storage_src=None)
+    pdir = A.DATA_DIR / "S1" / "photos"
+    pdir.mkdir(parents=True, exist_ok=True)
+    for name in ("a.png", "b.png"):
+        _synth(pdir / name, "car")
+    _synth(pdir / "c.png", "map")
+    db.update_fields("S1", map_photos=["c.png"])
+
+    html = client.get("/vehicle/S1").text
+    assert "위치도" in html and "3번" in html, "지도 사진 안내가 없다"
+    assert "확인되지 않음" not in html

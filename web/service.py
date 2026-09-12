@@ -1993,6 +1993,34 @@ def reapply_appraisal_guard() -> dict:
     return {"checked": checked, "fixed": fixed}
 
 
+def backfill_map_photos(force: bool = False) -> dict:
+    """사진 중 '지도(지적도·위치도)'가 어느 것인지 표시해 둔다(무네트워크).
+
+    법원은 보관장소를 주소 대신 **지도 이미지로만** 주는 경우가 많다. 주소가 없다고
+    '확인되지 않음'만 띄우면, 정작 화면에 그 위치가 이미 붙어 있는데 사용자는 모른다.
+    최소한 "몇 번 사진이 위치도"인지는 알려줄 수 있다.
+    """
+    import os
+    from src.vision.map_photo import detect_map_photos
+
+    out = {"checked": 0, "with_map": 0, "maps": 0, "skipped": 0}
+    for v in db.list_vehicles(hide_incomplete=False):
+        out["checked"] += 1
+        if not force and v.get("map_photos") is not None:
+            out["skipped"] += 1
+            continue
+        fk = v.get("folder_key") or v.get("id")
+        folder = os.path.join("data", fk)
+        if not os.path.isdir(folder):
+            continue
+        found = detect_map_photos(folder)
+        db.update_fields(v["id"], map_photos=found)
+        if found:
+            out["with_map"] += 1
+            out["maps"] += len(found)
+    return out
+
+
 def _storage_src_of(folder_key: str, addr: str) -> str:
     """이미 저장된 보관장소가 어느 파일에서 온 값인지 되짚는다(무네트워크).
 

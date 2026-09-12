@@ -113,7 +113,13 @@
       {%- if v.storage_src %} <span class="text-[10px] px-1.5 py-0.5 rounded-full align-middle whitespace-nowrap
         {{ 'bg-slate-100 text-mut' if v.storage_src in ('court', 'text') else 'bg-amber-100 text-amber-800' }}"
         title="{{ '원문 그대로입니다.' if v.storage_src in ('court','text') else '지도 이미지에서 읽은 값이라 사진과 대조해 확인하세요.' }}">{{ _ssrc.get(v.storage_src, v.storage_src) }}{% if v.storage_conf == '추정' %} · 추정{% endif %}</span>{% endif %}
-    {%- else %}<span class="text-mut">확인되지 않음 <span class="text-mut text-xs">— 사진의 위치도·현장 확인</span></span>{% endif %}</dd>
+    {%- elif map_idx %}
+      {# 주소는 없지만 법원이 지도를 사진으로 붙여 놓은 경우 — 주소 없는 물건 655건이
+         여기 해당한다. '확인되지 않음'만 띄우면 화면에 이미 있는 위치를 못 찾는다. #}
+      <a href="#" onclick="openLB({{ map_idx - 1 }});return false"
+         class="text-primary underline underline-offset-2 whitespace-nowrap">위치도 {{ map_idx }}번 사진에서 보기</a>
+      <span class="text-mut text-xs">— 법원이 주소 대신 지도로 제공{% if map_n > 1 %} · 총 {{ map_n }}장{% endif %}</span>
+    {%- else %}<span class="text-mut">확인되지 않음 <span class="text-mut text-xs">— 현장 확인 필요</span></span>{% endif %}</dd>
     {% if is_admin(request) %}{# 목록상 주소는 대개 채무자 주소(개인정보) → 관리자만 표시 #}
     <dt class="text-mut">목록상 주소</dt>
     <dd>{{ v.location or '—' }}{% if v.location %}<span class="block text-mut text-xs mt-0.5">※ 법원 목록 표시주소(대개 <b>채무자 주소</b>) — 차량 실제 위치와 다를 수 있음</span>{% endif %}</dd>
