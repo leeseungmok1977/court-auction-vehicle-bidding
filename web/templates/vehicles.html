@@ -101,15 +101,18 @@
 <div class="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
   <b>실사용 추천</b> — 예상 낙찰가로 낙찰받아도 <b>소매로 사는 것보다 총비용이 싼</b> 물건입니다.
   절감액이 큰 순으로 보여줍니다.
-  <a href="/vehicles?judgment=입찰 검토 가능&sort=expected" class="underline whitespace-nowrap">되팔이 기준 보기</a>
+  {# 핵심 고지는 접지 않는다 — 절감액이 '사고차 가정'으로 나온 값이라는 사실은
+     이 숫자를 읽는 데 반드시 필요하다. 나머지 계산 근거만 접는다. #}
+  <span class="block mt-1 text-mut">사고 이력을 확인하지 못한 차는 <b class="text-txt">사고차로 가정</b>한 보수적 금액입니다.
+  <a href="/vehicles?judgment=입찰 검토 가능&sort=expected" class="underline whitespace-nowrap">되팔이 기준 보기</a></span>
   <details id="usepickBasis" class="mt-1.5 border-t border-emerald-200/70 pt-1.5">
     <summary class="cursor-pointer list-none text-mut hover:text-txt select-none inline-flex items-center gap-0.5">
       <span class="material-symbols-outlined text-[14px] leading-none">expand_more</span>계산 기준 보기</summary>
     <div class="mt-1 text-mut leading-relaxed">
-      <span class="font-semibold text-txt">보수적 계산</span> — 취득세·이전·탁송에 <b>상태별 정비 충당</b>을 더해 비교합니다.
-      사고 이력을 확인하지 못한 차는 <b>사고차로 가정</b>하고, 검사 만료·상태 불량은 충당을 더 잡습니다.
-      시동·운행 불가 물건과 시세가 감정가와 크게 어긋나는 물건은 제외합니다.
-      실제 이력이 확인되면 절감액은 늘어날 수 있습니다.
+      <span class="font-semibold text-txt">보수적 계산</span> — 취득세·이전·탁송에 <b>상태별 정비 충당</b>을 더해
+      소매 총비용과 비교합니다. 검사 만료·상태 불량은 충당을 더 잡고, 사고 감가는 소매 시세 쪽에서 뺍니다.
+      시동·운행 불가 물건과 시세가 감정가와 크게 어긋나는 물건은 추천에서 제외합니다.
+      실제 이력이 무사고로 확인되면 절감액은 늘어납니다 — 줄어드는 쪽으로는 놀라지 않게 잡았습니다.
     </div>
   </details>
 </div>
