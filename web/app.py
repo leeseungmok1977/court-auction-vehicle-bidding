@@ -385,7 +385,9 @@ def vehicles(request: Request, judgment: str = "", maker: str = "", q: str = "",
     _bt = service.backtest_stats()
     if usepick == "1":   # 실사용 추천 — 되팔이 마진이 아니라 '소매보다 싼가'로 거른다
         rows = [r for r in rows if service.is_personal_use_pick(r, _bt)]
-        rows.sort(key=lambda r: -(service.personal_use_saving(r, _bt) or 0))
+        for r in rows:   # 추천 근거(소매 대비 절감액)를 화면에 보여주기 위해 행에 싣는다
+            r["use_saving"] = service.personal_use_saving(r, _bt)
+        rows.sort(key=lambda r: -(r.get("use_saving") or 0))
     disc = _bt.get("discount_median")
     mae = _bt.get("mae_pct")
     # 예상낙찰가 계산은 비용이 있으므로 '예상낙찰가순' 정렬처럼 전체가 필요할 때만 전 행 계산,
@@ -448,6 +450,7 @@ def vehicles(request: Request, judgment: str = "", maker: str = "", q: str = "",
         "q": q, "sort": sort, "upcoming": up, "result": result, "status": status,
         "cond": cond, "date": date, "court": court, "promising": promising,
         "segment": segment, "segment_presets": [(k, lbl) for k, lbl, _ in service.VEHICLE_SEGMENTS],
+        "usepick": usepick == "1",
         "judgments": JUDGMENTS, "makers": db.distinct_makers(),
         "today": _date.today().isoformat(), "mae": mae,
         "total": total, "page": page, "total_pages": total_pages,

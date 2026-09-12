@@ -15,7 +15,8 @@
       {% for m in makers %}<option value="{{ m }}" {% if m==maker %}selected{% endif %}>{{ m }}</option>{% endfor %}
     </select>
     <select name="sort" aria-label="정렬 기준" class="inp py-1.5">
-      <option value="recent" {% if sort=='recent' %}selected{% endif %}>최근 등록순</option>
+      {% if usepick %}<option value="" selected>절감액 큰 순</option>{% endif %}
+      <option value="recent" {% if sort=='recent' and not usepick %}selected{% endif %}>최근 등록순</option>
       <option value="sale_date" {% if sort=='sale_date' %}selected{% endif %}>매각기일순</option>
       <option value="expected" {% if sort=='expected' %}selected{% endif %}>예상낙찰가 높은순</option>
       <option value="upper_bid" {% if sort=='upper_bid' %}selected{% endif %}>상한가 높은순</option>
@@ -36,6 +37,7 @@
       <span class="material-symbols-outlined text-base">filter_list</span> 적용</button>
     <button type="button" onclick="ncSaveSearch()" class="btn-ghost text-sm flex items-center gap-1" title="현재 검색 조건을 저장 — 즐겨찾기 탭에서 새 매물을 확인합니다">
       <span aria-hidden="true">🔖</span> 검색 저장</button>
+    {% if usepick %}<a href="/vehicles" class="text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full px-3 py-1 inline-flex items-center gap-1" title="실사용 추천 해제"><span class="material-symbols-outlined text-[13px] leading-none">directions_car</span>실사용 추천 ✕</a>{% endif %}
     {% if result %}<a href="/vehicles" class="text-xs bg-sky-50 text-sky-700 border border-sky-200 rounded-full px-3 py-1">결과={{ result }} ✕</a>{% endif %}
     {% if date %}<a href="/vehicles" class="text-xs bg-primary/10 text-primary border border-primary/20 rounded-full px-3 py-1 inline-flex items-center gap-1" title="날짜 필터 해제"><span class="material-symbols-outlined text-[13px] leading-none">event</span>{{ date }} 매각 ✕</a>{% endif %}
     {% if court %}<a href="/courts" class="text-xs bg-primary/10 text-primary border border-primary/20 rounded-full px-3 py-1 inline-flex items-center gap-1" title="법원 선택으로"><span class="material-symbols-outlined text-[13px] leading-none">gavel</span>{% if ',' in court %}법원 {{ court.split(',')|length }}곳{% else %}{{ court|replace('지방법원','지법') }}{% endif %} ✕</a>{% endif %}
@@ -87,6 +89,14 @@
   <span class="text-mut pl-3 -indent-3">·&nbsp;목록의 <span class="text-rose-600/70 font-bold">*</span> = 시세 신뢰도 낮음(참고용) · <span class="font-bold">↑</span> = 최저가 &gt; 예상낙찰가 (유찰 더 필요)</span>
   <span class="text-mut ml-0 lg:ml-auto">미분석 = 대시보드 <b class="text-txt">[시세 분석]</b> 또는 물건 클릭</span>
 </div>
+
+{% if usepick %}
+<div class="text-[11px] text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+  <b>실사용 추천</b> — 예상 낙찰가로 낙찰받아도 <b>소매로 사는 것보다 총비용이 싼</b> 물건입니다.
+  취득세·이전·탁송·정비 충당까지 포함해 비교했고, 절감액이 큰 순으로 보여줍니다.
+  되팔아 남기는 기준은 <a href="/vehicles?judgment=입찰 검토 가능&sort=expected" class="underline">지금 입찰 추천</a>을 보세요.
+</div>
+{% endif %}
 
 <!-- 테이블 (데스크톱 lg+) / 카드 (모바일) -->
 <div id="listResults">
@@ -228,6 +238,7 @@
           </div>
           <div class="text-right">
             <div class="text-[10px] text-primary">AI 예상 낙찰가</div>
+            {% if v.use_saving %}<div class="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5 inline-block mt-0.5" title="소매로 사는 총비용과 비교한 절감액(취득세·이전·탁송·정비 충당 포함)">소매보다 −{{ (v.use_saving/10000)|round|int }}만</div>{% endif %}
             <div class="font-mono text-lg font-bold tnum {{ 'text-mut' if closed else 'text-mut' if (lowconf or exp_far) else 'text-primary' }}">{{ v.expected_win|won if v.expected_win else '—' }}{% if v.expected_win and not closed and lowconf %}<span class="text-rose-500 text-[11px] align-top">*</span>{% elif v.expected_win and not closed and exp_far %}<span class="text-mut text-[11px] align-top">↑</span>{% endif %}</div>
           </div>
         </div>
