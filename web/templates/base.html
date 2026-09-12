@@ -40,11 +40,27 @@
 <link rel="icon" type="image/png" sizes="32x32" href="/static/icons/favicon-32.png"/>
 <link rel="icon" type="image/png" sizes="16x16" href="/static/icons/favicon-16.png"/>
 <!-- 폰트 프리로드 — 아이콘/본문 폰트 늦은 로드로 인한 레이아웃 이동(CLS) 방지(트레이스: MaterialSymbols 리플로우) -->
-<link rel="preload" as="font" type="font/woff2" href="/static/fonts/MaterialSymbolsOutlined.woff2" crossorigin/>
+<link rel="preload" as="font" type="font/woff2" href="/static/fonts/MaterialSymbolsOutlined.subset.woff2" crossorigin/>
 <link rel="preload" as="font" type="font/woff2" href="/static/fonts/Pretendard-Regular.woff2" crossorigin/>
 <link rel="preload" as="font" type="font/woff2" href="/static/fonts/Pretendard-Bold.woff2" crossorigin/>
 <!-- 정적 빌드 CSS + self-host 폰트 (CDN 의존 제거 — 오프라인 안전·FOUC 제거) -->
 <link rel="stylesheet" href="/static/app.css?v={{ css_v }}"/>
+<!-- 아이콘 폰트 가드 — 폰트가 늦거나 실패하면 리거처 이름이 글자로 드러난다
+     (2026-09-12 실기기: 'local_fire_department', 'homedirections_carcalendar_month'가 그대로 노출).
+     font-display:block의 차단 구간은 약 3초뿐이라 느린 회선에서 글자가 새어 나온다.
+     첫 페인트 전에 ms-pending을 붙여 감춰 두고, 폰트가 실제로 로드되면 드러낸다.
+     끝내 실패하면 계속 감춘 채 둔다 — 탭 라벨·aria-label이 있으므로 깨진 글자보다 낫다.
+     JS 미지원/미실행이면 ms-pending이 안 붙어 기존 동작 그대로. -->
+<script>
+  (function(){
+    var de = document.documentElement, F = document.fonts;
+    if (!F || !F.load) return;                       // 구형 브라우저는 손대지 않음
+    de.classList.add('ms-pending');
+    F.load('24px "Material Symbols Outlined"', 'home').then(function(fs){
+      if (fs && fs.length) { de.classList.remove('ms-pending'); de.classList.add('ms-ready'); }
+    });
+  })();
+</script>
 <!-- 앱 셸 높이를 '실제 보이는 뷰포트'(visualViewport)에 바인딩 — 모바일 주소창 표시/숨김에도
      하단 탭이 항상 화면 안 바닥에 고정(100dvh가 툴바 애니메이션을 쫓다 깜빡이는 문제 방지).
      JS 전/미지원 시 CSS 폴백(var 미설정 → 100dvh → h-screen 100vh). -->

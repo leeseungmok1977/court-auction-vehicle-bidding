@@ -18,7 +18,7 @@
 @font-face { font-family: "JetBrains Mono"; font-weight: 500; font-display: swap;
   src: url("/static/fonts/JetBrainsMono-500.woff2") format("woff2"); }
 @font-face { font-family: "Material Symbols Outlined"; font-style: normal; font-weight: 100 700;
-  font-display: block; src: url("/static/fonts/MaterialSymbolsOutlined.woff2") format("woff2"); }
+  font-display: block; src: url("/static/fonts/MaterialSymbolsOutlined.subset.woff2") format("woff2"); }
 
 /* 전역: 라이트 캔버스 · 딥네이비 잉크 · ss01 스타일셋(브랜드 시그니처) */
 html, body { background: #f6f9fc; }
@@ -31,6 +31,11 @@ body { font-family: "Pretendard", "Malgun Gothic", sans-serif; color: #0d253d;
 /* 돈·수치 셀: 타뷸러 피겨(tnum) — 금융 데이터 시그니처 */
 .tnum { font-feature-settings: "tnum"; }
 .font-mono { font-feature-settings: "tnum"; }
+
+/* 아이콘 폰트 미로드 시 리거처 이름(local_fire_department 등)이 글자로 새는 것 차단.
+   base.html의 head 스크립트가 ms-pending을 붙였다가 폰트 로드 후 떼어낸다.
+   visibility라서 자리(레이아웃)는 유지되어 CLS가 생기지 않는다. */
+html.ms-pending .material-symbols-outlined { visibility: hidden; }
 
 .material-symbols-outlined { font-family: "Material Symbols Outlined"; font-weight: normal; font-style: normal;
   font-size: 24px; line-height: 1; letter-spacing: normal; text-transform: none; display: inline-block;
