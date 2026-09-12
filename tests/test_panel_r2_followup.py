@@ -205,3 +205,52 @@ def test_condition_costs_actually_change_the_reserve():
     poor = condition_adjustment("범퍼 회손, 관리상태 양호치 못함.", cfg)
     assert poor["add"] >= cfg["condition_costs"]["poor"]
     assert "관리·외관 불량" in poor["flags"]
+
+
+# ── 사고 건수별 감가 · 정비 충당 비례 하한 (3회차 중고차 지적 2) ──
+# "사고 11회 A6와 사고 1회 차의 감가가 같다", "포르쉐 718과 카니발의 정비 충당이 같다".
+# ⚠ 감가 표는 실측이 아니라 가정이다 — 자사 낙찰 표본은 층당 n=1~7이라 보정 근거가 못 됐다.
+#    테스트는 '값이 얼마인가'가 아니라 **순서와 방향**을 지킨다(표를 바꿔도 안 깨진다).
+
+def _ins(own=0, opp=0):
+    return {"own_damage": own, "opp_damage": opp, "owner_changes": 1}
+
+
+def test_accident_rate_increases_with_hit_count():
+    cfg = service.load_config()
+    rates = [service.use_accident_rate(
+        v(accident_grade="accident", insurance_history=_ins(own=n)), cfg)[0]
+        for n in (1, 3, 5, 12)]
+    assert rates == sorted(rates), f"건수가 늘수록 감가가 커져야 한다: {rates}"
+    assert rates[0] < rates[-1], "1회와 12회의 감가가 같으면 안 된다"
+
+
+def test_accident_count_uses_both_own_and_opposite_damage():
+    assert service.accident_hit_count(v(insurance_history=_ins(own=2, opp=3))) == 5
+    # 이력을 확보하지 못하면 0이 아니라 '모른다' — 0으로 치면 근거 없는 무사고가 된다
+    assert service.accident_hit_count(v()) is None
+    assert service.accident_hit_count(v(insurance_history={"owner_changes": 2})) is None
+
+
+def test_unknown_history_still_assumes_accident():
+    """건수별 표를 넣어도 '이력 미확인 → 사고 가정' 규칙은 유지돼야 한다."""
+    rate, assumed = service.use_accident_rate(v(accident_grade="none"))
+    assert assumed is True and rate > 0
+
+
+def test_repair_reserve_scales_with_vehicle_value():
+    """정액만 쓰면 고가차의 충당이 낙찰가의 1%대가 된다."""
+    cheap = service.use_repair_reserve(v(median_price=5_000_000, photo_count=3))
+    dear = service.use_repair_reserve(v(median_price=90_000_000, photo_count=3))
+    assert dear > cheap * 3, f"고가차 충당이 비례해 오르지 않는다: {cheap} vs {dear}"
+    # 저가차에서는 정액 하한이 유지된다(비례만 쓰면 충당이 거의 사라진다)
+    assert cheap >= service.USE_REPAIR_BASE
+
+
+def test_graded_rate_makes_max_bid_more_conservative_for_multi_accident():
+    """감가가 커지면 상한선은 반드시 내려간다 — 방향이 뒤집히면 안 된다."""
+    one = service.personal_use_max_bid(
+        v(accident_grade="accident", insurance_history=_ins(own=1)), BT)
+    many = service.personal_use_max_bid(
+        v(accident_grade="accident", insurance_history=_ins(own=12)), BT)
+    assert one and many and many < one

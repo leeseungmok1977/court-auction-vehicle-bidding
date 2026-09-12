@@ -375,7 +375,49 @@ def use_repair_reserve(v: dict, config: Optional[dict] = None) -> int:
         add += int(costs.get("inspection_expired", 0))
     if not v.get("photo_count"):
         add += int(costs.get("no_photos", 0))
+    # 정액만 쓰면 포르쉐 718과 2015년식 카니발의 충당이 같아진다(3회차 중고차 지적).
+    # 고가차는 부품·공임이 비례해 오르므로 차량가의 일정 비율을 **하한**으로 둔다.
+    cfg = config or load_config()
+    rate = float(cfg.get("use_repair_min_rate") or 0)
+    base_price = v.get("median_price") or v.get("min_sale_price") or 0
+    if rate and base_price:
+        add = max(add, int(round(base_price * rate / 10_000) * 10_000))
     return add
+
+
+def accident_hit_count(v: dict) -> Optional[int]:
+    """확인된 사고 건수(내차피해 + 상대차피해). 이력을 확보하지 못했으면 None.
+
+    보험이력 JSON의 own_damage/opp_damage가 정본이다. 이 값이 없으면 '0건'이 아니라
+    '모른다' — 0으로 치면 근거 없는 무사고가 된다(1회차 P0와 같은 함정)."""
+    ih = v.get("insurance_history")
+    if isinstance(ih, str):
+        try:
+            ih = json.loads(ih)
+        except Exception:  # noqa: BLE001
+            return None
+    if not isinstance(ih, dict) or ("own_damage" not in ih and "opp_damage" not in ih):
+        return None
+    try:
+        return int(ih.get("own_damage") or 0) + int(ih.get("opp_damage") or 0)
+    except (TypeError, ValueError):
+        return None
+
+
+def accident_rate_for_hits(hits: Optional[int], config: Optional[dict] = None) -> Optional[float]:
+    """사고 건수 → 감가율. 표가 없거나 건수를 모르면 None(호출부가 기존 단일값으로 폴백)."""
+    if hits is None:
+        return None
+    tbl = (config or load_config()).get("accident_depreciation_by_hits") or []
+    if not tbl:
+        return None
+    if hits <= 0:
+        return 0.0
+    for row in tbl:
+        mx = row.get("max_hits")
+        if mx is None or hits <= int(mx):
+            return float(row.get("rate") or 0)
+    return float(tbl[-1].get("rate") or 0)
 
 
 def use_accident_rate(v: dict, config: Optional[dict] = None) -> tuple:
@@ -386,9 +428,14 @@ def use_accident_rate(v: dict, config: Optional[dict] = None) -> tuple:
     — 경매는 취소가 안 되므로 불리한 쪽으로 가정한다(실측: 추천 82건 중 근거 있는 무사고 0건).
 
     반환: (감가율, 가정으로 적용했는지)"""
-    rates = (config or load_config()).get("accident_depreciation_rate", {}) or {}
+    cfg = config or load_config()
+    rates = cfg.get("accident_depreciation_rate", {}) or {}
     ag = v.get("accident_grade")
     if ag in ("accident", "minor", "flood"):
+        # 건수를 알면 건수별 감가를 쓴다 — 단일 15%면 사고 11회와 1회가 같아진다.
+        graded = accident_rate_for_hits(accident_hit_count(v), cfg)
+        if graded is not None and ag == "accident":
+            return graded, False
         return float(rates.get(ag, 0) or 0), False
     if ag == "none" and accident_evidence(v):
         return float(rates.get("none", 0) or 0), False
@@ -467,6 +514,7 @@ def personal_use_detail(v: dict, bt: Optional[dict] = None,
     med = effective_median(v) or v.get("median_price") or 0
     return {"saving": saving, "reserve": use_repair_reserve(v, cfg),
             "accident_rate": rate, "accident_assumed": assumed,
+            "accident_hits": accident_hit_count(v),
             "max_bid": personal_use_max_bid(v, bt, cfg),
             "comp": int(round(med * (1 - rate)))}
 

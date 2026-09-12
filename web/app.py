@@ -709,6 +709,7 @@ def vehicle_report(request: Request, vid: str):
         "max_bid": _bidst.get("max_bid"),
         "next_min": service.next_min_sale(v),
         "bidst": _bidst,          # 판정 단일 소스 — 상세와 같은 값
+        "use": service.personal_use_detail(v, bt, config),
         "comp_min_n": service.COMP_MIN_N, "comp_ratio_med": comp_ratio_med,
         # 01 종합 프로필(6축, 미산출=None; 매물건수는 관리자만, 잔존가치는 출시가 공개 규칙과 동일 게이트)
         "hexa": service.hexagon_scores(v, include_private=_adm,

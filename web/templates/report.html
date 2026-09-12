@@ -358,7 +358,10 @@ document.addEventListener('click', function(e){
           <div class="v-label">입찰 상한선 <span style="font-weight:400">— 여기까지만 유효</span></div>
           <div class="v-band num" style="color:var(--red)">{{ (max_bid/10000)|round|int }}<small> 만원</small></div>
           <div class="v-sub">이 값을 넘겨 낙찰받으면 <b>소매로 사는 편이 쌉니다</b>. 취득세·이전·탁송·상태별 정비 충당 포함,
-            사고 이력을 확인하지 못한 차는 사고차로 가정한 보수적 금액입니다.</div>
+            {% if use %}사고 감가 <b>{{ (use.accident_rate*100)|round|int }}%</b>
+            {%- if use.accident_assumed %}(이력 미확인 — 사고차로 가정)
+            {%- elif use.accident_hits is not none %}(확인된 사고 {{ use.accident_hits }}건 기준 · 업계 통용 범위 기반 <b>가정</b>이며 실측값이 아닙니다)
+            {%- endif %} · 정비 충당 <b>{{ use.reserve|won }}원</b>{% endif %}</div>
           <div class="v-label" style="margin-top:14px">예상 낙찰가 <span style="font-weight:400">— 참고(분위수 밴드{% if backtest.within10_pct %} · 실측 ±10% 적중 {{ backtest.within10_pct|round|int }}%{% endif %})</span></div>
           <div class="v-sub" style="font-size:15px"><b class="num">{% if report.lo and report.hi %}{{ (report.lo/10000)|round|int }} ~ {{ (report.hi/10000)|round|int }}{% else %}{{ (exp/10000)|round|int }}{% endif %} 만원</b>
             · 중심값 {{ exp|won }}원 · 재판매 상한가 {% if upper %}{{ upper|won }}원{% else %}미산출{% endif %}
@@ -371,7 +374,10 @@ document.addEventListener('click', function(e){
           <div class="v-label" style="margin-top:14px">입찰 상한선 <span style="font-weight:400">— 직접 탈 목적 손익분기</span></div>
           <div class="v-band num" style="color:var(--ink)">{{ (max_bid/10000)|round|int }}<small> 만원</small></div>
           <div class="v-sub">이 값을 넘겨 낙찰받으면 <b>소매로 사는 편이 쌉니다</b>. 취득세·이전·탁송·상태별 정비 충당 포함,
-            사고 이력을 확인하지 못한 차는 사고차로 가정한 보수적 금액입니다.</div>
+            {% if use %}사고 감가 <b>{{ (use.accident_rate*100)|round|int }}%</b>
+            {%- if use.accident_assumed %}(이력 미확인 — 사고차로 가정)
+            {%- elif use.accident_hits is not none %}(확인된 사고 {{ use.accident_hits }}건 기준 · 업계 통용 범위 기반 <b>가정</b>이며 실측값이 아닙니다)
+            {%- endif %} · 정비 충당 <b>{{ use.reserve|won }}원</b>{% endif %}</div>
           {% endif %}
           {% endif %}
         </div>
