@@ -48,6 +48,18 @@ html.ms-pending .material-symbols-outlined { visibility: hidden; }
    실제 증상: 즐겨찾기 0건인데 하단 탭에 앰버 '0' 배지가 상시 노출(2026-09-12 패널 지적). */
 [hidden] { display: none !important; }
 
+/* 한글 어절 파괴 방지 — **산문에만** 건다 (2026-09-12 실측 후 결정).
+   한글은 어절 중간에서 끊기면 '재경매'가 '재경/매'처럼 갈라져 한 글자만 다음 줄로 떨어진다.
+   ⚠ 전역(*)에 걸면 안 된다: 표·칩·KPI 카드처럼 폭이 빠듯한 요소가 최소폭을 잃어
+   가로로 넘친다. 실측(360px) — 전역 적용 시 새 오버플로 121건, 표 예외를 둬도 121건,
+   산문 한정은 **0건**이면서 고아 줄 16→10건으로 줄었다.
+   수치·표·버튼 라벨은 건드리지 않는다. */
+p, li, blockquote,
+.note, .sp-foot, .disc, .text-mut {
+  word-break: keep-all;
+  overflow-wrap: break-word;   /* 끊을 수 없는 긴 문자열이 영역을 뚫는 것만 방지 */
+}
+
 /* 스크롤바(라이트) */
 .custom-scrollbar::-webkit-scrollbar { width: 10px; height: 10px; }
 .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }

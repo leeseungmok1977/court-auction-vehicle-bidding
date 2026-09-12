@@ -79,6 +79,18 @@ body{background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:
 .vpts b{color:var(--ink)}
 /* 섹션 점프 바 — 리포트는 9,600px(=11화면)짜리 문서인데 고정 요소가 하나도 없어
    가장 중요한 STOP RULE·리스크 항목까지 도달률이 사실상 0이었다(2026-09-12 패널 지적). */
+/* 한글 어절 파괴 방지 — **산문에만** 건다 (2026-09-12 실측 후 결정).
+   한글은 어절 중간에서 끊기면 '재경매'가 '재경/매'처럼 갈라져 한 글자만 다음 줄로 떨어진다.
+   ⚠ 전역(*)에 걸면 안 된다: 표·칩·KPI 카드처럼 폭이 빠듯한 요소가 최소폭을 잃어
+   가로로 넘친다. 실측(360px) — 전역 적용 시 새 오버플로 121건, 표 예외를 둬도 121건,
+   산문 한정은 **0건**이면서 고아 줄 16→10건으로 줄었다.
+   수치·표·버튼 라벨은 건드리지 않는다. */
+p, li, blockquote,
+.note, .sp-foot, .disc, .text-mut {
+  word-break: keep-all;
+  overflow-wrap: break-word;   /* 끊을 수 없는 긴 문자열이 영역을 뚫는 것만 방지 */
+}
+
 /* 상단 고정 바 — 툴바(상세로·인쇄)와 섹션 점프칩을 함께 붙여 둔다.
    11화면짜리 문서라 스크롤을 내리면 돌아갈 방법이 사라졌다(2026-09-12 사용자 요청). */
 .rtop{display:block;position:sticky;top:0;z-index:40;background:var(--paper);
