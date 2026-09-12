@@ -51,7 +51,10 @@
 {# 대표사진 히어로(법차식) — 차량을 먼저 인식. 화살표로 클릭 없이 인라인 넘김, 클릭 시 큰 갤러리 #}
 {% if photos %}
 <div class="relative rounded-lg overflow-hidden border border-line">
-  <img id="heroImg" src="/thumb/{{ v.folder_key or v.id }}/{{ photos[0] }}" loading="lazy" alt="{{ v.model|mdl }}"
+  {# 히어로는 full-bleed라 320px을 쓰면 폰에서 3배 확대다 — 800을 쓴다.
+     그리고 이 이미지가 LCP 요소이므로 lazy가 아니라 eager+high여야 한다. #}
+  <img id="heroImg" src="/thumb/{{ v.folder_key or v.id }}/{{ photos[0] }}?w=800"
+       loading="eager" fetchpriority="high" decoding="async" alt="{{ v.model|mdl }}"
        onclick="openLB(heroIdx)" title="크게 보기"
        class="w-full h-44 sm:h-56 object-cover cursor-pointer hover:brightness-95 transition">
   {% if photos|length > 1 %}
@@ -656,35 +659,42 @@
         <div class="text-xs text-primary font-semibold mb-2 flex items-center gap-1">
           <span class="material-symbols-outlined text-[16px]">function</span> 예상 낙찰가(균형) 산정식 — 추천 입찰 전략과 동일 기준
         </div>
+        {# 과정과 결론을 색이 아니라 **구조**로 가른다. 360px에서 이 줄의 안쪽 폭은
+           256px뿐이라 전부 인라인으로 두면 4~5줄로 감기고, 그 끝 어딘가에 결론이
+           파묻힌다. 위 줄은 과정만, 결론은 아래 자기 줄에 둔다. (5회차 디자인) #}
         <div class="flex items-center flex-wrap gap-x-2 gap-y-1 text-sm" style="word-break:keep-all">
           <span class="text-mut whitespace-nowrap">최저매각가</span>
           <b class="font-mono tnum text-txt">{{ b.min_sale_price|won }}</b>
           <span class="text-mut">×</span>
           <span class="text-mut whitespace-nowrap">유찰 {{ b.fail_count }}회 낙찰 프리미엄</span>
-          <b class="font-mono text-primary">×{{ b.premium }}</b>
+          {# 프라이머리(#533afd)는 CTA·링크·포커스 전용이다(tailwind.config.js).
+             중간항까지 프라이머리면 한 박스에 셋이 되어 결론이 이기지 못한다. #}
+          <b class="font-mono text-txt">×{{ b.premium }}</b>
           <span class="text-mut">=</span>
           {% if b.capped %}
           {# 캡이 걸리면 1×2가 결과와 안 맞는다. 리포트 §10은 캡 2줄을 이미 내는데
-             상세만 빠져 있어, 물건 29%가 틀린 곱셈을 인쇄했다(5회차 품질 P0). #}
-          <b class="font-mono tnum text-mut">{{ b.raw|won }}</b>
-          <span class="text-mut">→ 시세×1.10 상한</span>
-          {% if expected.price == b.cap %}
-          {# 상한이 그대로 결과다. 여기서 캡 값과 최종값을 따로 찍으면 같은 숫자가
-             나란히 두 번 나와 "왜 두 번?"이 된다 — 한 번만, 최종값으로 찍는다. #}
-          <b class="font-mono tnum text-primary text-base">{{ expected.price|won }}원</b>
-          {% else %}
+             상세만 빠져 있어, 물건 11%가 틀린 곱셈을 인쇄했다(5회차 품질 P0). #}
+          <b class="font-mono tnum text-txt">{{ b.raw|won }}</b>
+          {# '상한/상한선'은 사용자가 지켜야 할 금액선(입찰 상한선·재판매 산정 상한가)
+             전용이다. 여기 것은 모델 내부의 절단 규칙이라 같은 단어를 쓰면
+             "그럼 이게 내 상한선인가?"로 읽힌다. 용어를 갈라놓는다. #}
+          <span class="text-mut whitespace-nowrap">→ 소매시세 110%에서 절단</span>
+          {% if expected.price != b.cap %}
           <b class="font-mono tnum text-txt">{{ b.cap|won }}</b>
-          <span class="text-mut">→ 최저매각가 하한</span>
-          <b class="font-mono tnum text-primary text-base">{{ expected.price|won }}원</b>
+          <span class="text-mut whitespace-nowrap">→ 최저매각가 하한</span>
           {% endif %}
-          {% else %}
-          <b class="font-mono tnum text-primary text-base">{{ expected.price|won }}원</b>
           {% endif %}
         </div>
-        {% if b.capped %}
-        <div class="text-[11px] text-amber-700 mt-1.5 leading-relaxed">최저매각가 × 프리미엄이 소매 시세의 1.10배를 넘어 상한을 적용했습니다{% if expected.price > b.cap %}. 다만 그 상한이 최저매각가보다 낮아, 써낼 수 없는 금액이 되지 않도록 최저매각가를 하한으로 뒀습니다{% endif %}.</div>
-        {% endif %}
+        <div class="flex items-baseline justify-between gap-3 mt-2 pt-2 border-t border-primary/20">
+          <span class="text-xs text-mut whitespace-nowrap">예상 낙찰가(균형)</span>
+          <b class="font-mono tnum text-txt text-xl">{{ expected.price|won }}<span class="text-sm font-normal text-mut ml-0.5">원</span></b>
+        </div>
+        {# 이 문단은 경고가 아니라 "왜 이 숫자인지"의 각주다. 앰버는 이 화면에서
+           예외 없이 주의 신호(외관 손상·검사 경과·신뢰도 보통)로 쓰이므로,
+           같은 색을 쓰면 148건 전부에 없는 경고를 붙이는 셈이 된다. #}
         <div class="text-[11px] text-mut mt-2 leading-relaxed">
+          {% if b.capped %}최저매각가 × 프리미엄이 <b class="text-txt">소매 시세의 1.10배</b>를 넘어 그 지점에서 잘랐습니다{% if expected.price > b.cap %}. 다만 그 절단선이 최저매각가보다 낮아, 써낼 수 없는 금액이 되지 않도록 최저매각가를 하한으로 뒀습니다{% endif %}.
+          {% endif %}
           유찰로 내려간 <b class="text-txt">최저매각가</b>가 시장 할인을 이미 반영 → 동급 <b>낙찰가/최저가 프리미엄</b>(유찰 많을수록↑)만 곱합니다(시세보다 안정적).
           {% if expected.comp_n %}동급 낙찰 {{ expected.comp_n }}건은 <b class="text-txt">참고용</b>(이 경로에선 미반영) · {% endif %}{% if expected.mae %}실측 오차 ±{{ expected.mae|round|int }}%. {% endif %}보수·균형·공격 3단은 위 <b>추천 입찰 전략</b> 참고.
         </div>
@@ -832,13 +842,16 @@
 {% if photos %}
 <script>
 const LB_BASE = "/photo/" + {{ (v.folder_key or v.id) | tojson }} + "/";
+// 히어로는 800px 썸네일을 쓴다. 여기서 LB_BASE(원본)를 쓰면 화살표로 한 장만
+// 넘겨도 최적화가 통째로 무효가 된다 — 라이트박스(확대)만 원본이다.
+const HERO_BASE = "/thumb/" + {{ (v.folder_key or v.id) | tojson }} + "/";
 const LB_FILES = {{ photos | tojson }};
 let lbIdx = 0;
 // 인라인 히어로 캐러셀 — 클릭 없이 화살표로 넘김, 라이트박스와 인덱스 동기화
 let heroIdx = 0;
 function heroShow(){
   const img = document.getElementById('heroImg'); if(!img) return;
-  img.src = LB_BASE + LB_FILES[heroIdx];
+  img.src = HERO_BASE + LB_FILES[heroIdx] + "?w=800";
   const c = document.getElementById('heroCount'); if(c) c.textContent = (heroIdx + 1);
 }
 function heroNav(d){ heroIdx = (heroIdx + d + LB_FILES.length) % LB_FILES.length; heroShow(); }

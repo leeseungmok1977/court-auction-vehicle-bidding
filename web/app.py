@@ -806,15 +806,20 @@ def vehicle_appraisal(vid: str):
 
 # 목록 썸네일 캐시 — 원본 .gif를 그대로 48슬롯에 붙이면 3G에서 목록 한 화면이
 # 2.5MB·50초다(4회차 품질 실측: 사진이 81%). 폭 320px WebP로 줄여 디스크에 캐시한다.
-_THUMB_W = 320
+# 폭은 하나가 아니다. 320은 목록 카드·사진 스트립용이고, 상세 히어로는
+# full-bleed라 360px 폰(DPR 3)에서 필요 픽셀이 ~984px다 — 320을 거기 쓰면
+# 가로 3배 확대라 번호판·그릴 격자가 뭉갠다. 이 앱에서 사진은 장식이 아니라
+# 감정평가서가 말하지 않은 상태를 보는 유일한 창이므로, 히어로는 800을 쓴다.
+_THUMB_W = 320                      # 기본(목록·스트립)
+_THUMB_WIDTHS = (320, 800)          # 허용 폭 — 임의 폭 요청으로 디스크를 채우지 못하게
 _THUMB_DIR = DATA_DIR / "_thumbs"
 
 
-def _thumb_path(safe_vid: str, safe: str) -> "pathlib.Path":
-    return _THUMB_DIR / safe_vid / (safe.rsplit(".", 1)[0] + f".w{_THUMB_W}.webp")
+def _thumb_path(safe_vid: str, safe: str, w: int = _THUMB_W) -> "pathlib.Path":
+    return _THUMB_DIR / safe_vid / (safe.rsplit(".", 1)[0] + f".w{w}.webp")
 
 
-def _make_thumb(src, dst) -> bool:
+def _make_thumb(src, dst, w: int = _THUMB_W) -> bool:
     """원본 → WebP 썸네일. 실패하면 False(호출부가 원본으로 폴백한다).
 
     ⚠ **임시파일에 쓰고 os.replace로 원자 교체한다.** 서빙 경로에 직접 쓰면,
@@ -830,8 +835,8 @@ def _make_thumb(src, dst) -> bool:
         dst.parent.mkdir(parents=True, exist_ok=True)
         with Image.open(src) as im:
             im = im.convert("RGB")
-            if im.width > _THUMB_W:
-                im = im.resize((_THUMB_W, max(1, round(im.height * _THUMB_W / im.width))),
+            if im.width > w:
+                im = im.resize((w, max(1, round(im.height * w / im.width))),
                                Image.LANCZOS)
             fd, tmp = tempfile.mkstemp(dir=str(dst.parent), suffix=".tmp")
             _os.close(fd)
@@ -852,8 +857,14 @@ def _make_thumb(src, dst) -> bool:
 
 
 @app.get("/thumb/{vid}/{filename}")
-def thumb(vid: str, filename: str):
-    """목록용 축소 이미지. 없으면 만들고, 못 만들면 원본으로 폴백."""
+def thumb(vid: str, filename: str, w: int = _THUMB_W):
+    """축소 이미지. 없으면 만들고, 못 만들면 원본으로 폴백.
+
+    `?w=800`은 상세 히어로 전용이다. 허용 목록 밖의 폭은 조용히 기본값으로
+    떨어뜨린다 — 임의 폭을 받으면 요청 하나마다 파일이 하나씩 쌓인다.
+    """
+    if w not in _THUMB_WIDTHS:
+        w = _THUMB_W
     try:
         safe_vid, safe = os.path.basename(vid), os.path.basename(filename)
         if "\x00" in safe_vid or "\x00" in safe:
@@ -862,10 +873,10 @@ def thumb(vid: str, filename: str):
         root = (DATA_DIR / safe_vid / "photos").resolve()
         if not (root in src.parents and src.exists() and src.is_file()):
             raise ValueError("not found")
-        dst = _thumb_path(safe_vid, safe)
+        dst = _thumb_path(safe_vid, safe, w)
         _st = dst.stat() if dst.exists() else None
         if _st is None or _st.st_size == 0 or _st.st_mtime < src.stat().st_mtime:
-            if not _make_thumb(src, dst):
+            if not _make_thumb(src, dst, w):
                 # 폴백에는 장기 캐시를 붙이지 않는다 — 다음 요청에 다시 시도해야 한다
                 return FileResponse(str(src), headers={"Cache-Control": "no-store"})
         return FileResponse(str(dst), media_type="image/webp",

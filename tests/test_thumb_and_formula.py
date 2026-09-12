@@ -69,10 +69,20 @@ def test_capped_vehicle_shows_the_cap_step(capped_client, path):
     4회차엔 리포트에만 넣어, 상세는 `90,000,000 × 1.102 = 83,000,000`처럼
     검산하면 틀리는 곱셈을 인쇄했다(물건 29%).
     """
+    from web import db
+    b = service.expected_band(db.get_vehicle("CAP_1"), BT)
     html = capped_client.get(path, headers=_PUB).text
-    assert "소프트캡" in html or "상한" in html, f"{path}: 캡 공시가 없다"
-    assert "캡 적용 전" in html or "시세×1.10" in html or "시세 × 1.10" in html, (
-        f"{path}: 캡 전후 값이 없어 화면 숫자만으로 검산이 닫히지 않는다")
+
+    # 문구가 아니라 **숫자**로 검사한다. 앞서 이 테스트가 "시세×1.10"이라는
+    # 표현을 박아둔 탓에, 용어를 '소매시세 110%에서 절단'으로 고치자 공시가
+    # 멀쩡히 있는데도 실패했다. 검사할 것은 표현이 아니라 검산이 닫히는가다.
+    assert f'{b["basis"]["raw"]:,}' in html, (
+        f"{path}: 절단 전 원값이 없어 최저매각가×프리미엄을 검산할 수 없다")
+    assert f'{b["basis"]["cap"]:,}' in html or f'{b["price"]:,}' in html, (
+        f"{path}: 절단 후 값이 없다")
+    # 왜 값이 바뀌었는지 설명이 있어야 한다 (표현은 자유롭게 바뀔 수 있으므로 느슨하게)
+    assert ("절단" in html or "잘랐" in html or "상한" in html), (
+        f"{path}: 값이 바뀐 이유가 화면에 없다")
 
 
 def test_printed_multiplication_closes(capped_client):
