@@ -167,6 +167,19 @@ def _won(v):
     return f"{int(v):,}" if isinstance(v, (int, float)) else "—"
 
 
+_TONE_CLS = {
+    "ok": "bg-emerald-50 text-emerald-700 border border-emerald-200",
+    "caution": "bg-amber-50 text-amber-700 border border-amber-200",
+    "stop": "bg-rose-50 text-rose-700 border border-rose-200",
+    "wait": "bg-slate-100 text-slate-600 border border-slate-200",
+}
+
+
+def _tcls(tone):
+    """판정 톤 → 칩 색. 레거시 judgment 문자열 대신 bid_state의 톤을 쓴다."""
+    return _TONE_CLS.get(tone, _TONE_CLS["wait"])
+
+
 def _bcls(j):
     # Stripe 라이트: 연한 배경(-50) + 진한 텍스트(-700) + 연한 보더(-200)
     return {
@@ -227,6 +240,7 @@ def _sstat(s):
 
 templates.env.filters["won"] = _won
 templates.env.filters["bcls"] = _bcls
+templates.env.filters["tcls"] = _tcls
 templates.env.filters["jshort"] = _jshort
 templates.env.filters["acc"] = _acc
 # 물건 단위 사고판정 — 근거 없는 'none'을 '무사고'로 단정하지 않는다(service.accident_label).
@@ -443,6 +457,10 @@ def vehicles(request: Request, judgment: str = "", maker: str = "", q: str = "",
     _tdy_d = _date.today()
     for r in page_rows:      # 표시용 판정 보정(지난기일 검토가능→유찰대기, 낙찰→종결) — 신뢰
         r["judgment"] = _display_judgment(r, _tdy)
+        # 목록 카드 칩도 상세·리포트와 **같은 판정**을 말해야 한다. 예전엔 레거시
+        # judgment 문자열이라, 상세에서 "이번 회차 입찰 부적합"인 차가 목록에서는
+        # 앰버 "유찰 대기"로 보였다(4회차 디자인·경매 P0).
+        r["bidst"] = service.bid_state(r, _bt)
         sd = r.get("sale_date")           # D-day(남은 일수) — 법차식 카운트다운 배지
         try:
             r["dday"] = (_date.fromisoformat(sd) - _tdy_d).days if sd else None

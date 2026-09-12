@@ -177,7 +177,7 @@ d.addEventListener('toggle',function(){try{localStorage.setItem('ncUsepickBasis'
             </div>
           </td>
           <td class="py-2.5 px-3 text-center">
-            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium whitespace-nowrap {{ v.judgment|bcls }}" title="{{ v.status or '' }}">{{ v.judgment|jshort if v.judgment else v.status|sstat }}</span>
+            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium whitespace-nowrap {{ (v.bidst.tone if v.bidst else '')|tcls }}" title="{{ v.judgment or v.status or '' }}">{{ v.bidst.label if v.bidst else (v.judgment|jshort if v.judgment else v.status|sstat) }}</span>
           </td>
           {% set over_mkt = v.min_sale_price and v.median_price and v.min_sale_price > v.median_price %}
           {% set over_bid = v.min_sale_price and v.upper_bid and v.min_sale_price > v.upper_bid %}
@@ -240,7 +240,7 @@ d.addEventListener('toggle',function(){try{localStorage.setItem('ncUsepickBasis'
           {% if show_dday %}<span class="text-[10px] font-bold px-2 py-0.5 rounded-full text-white {{ 'bg-rose-500' if v.dday <= 1 else 'bg-primary' }}">{{ 'D-DAY' if v.dday == 0 else 'D-' ~ v.dday }} 입찰</span>{% endif %}
           {% if v.fail_count and v.fail_count > 0 %}<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-orange-500/90 text-white">유찰 {{ v.fail_count }}회</span>{% endif %}
         </div>
-        <span class="absolute top-2 right-2 text-[10px] font-semibold px-2 py-0.5 rounded-full {{ v.judgment|bcls }}">{{ v.judgment|jshort if v.judgment else v.status|sstat }}</span>
+        <span class="absolute top-2 right-2 text-[10px] font-semibold px-2 py-0.5 rounded-full {{ (v.bidst.tone if v.bidst else '')|tcls }}">{{ v.bidst.label if v.bidst else (v.judgment|jshort if v.judgment else v.status|sstat) }}</span>
         <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent px-3 pt-6 pb-2 flex items-end justify-between">
           <div class="flex items-center gap-1.5 text-[11px] text-white font-medium">
             {% if v.year %}<span class="bg-white/25 rounded px-1.5 py-0.5">{{ v.year }}년식</span>{% endif %}

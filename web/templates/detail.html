@@ -215,7 +215,7 @@
   <div class="relative flex flex-wrap items-end gap-x-8 gap-y-4">
     <div>
       <div class="text-xs text-white/55 mb-1">판정</div>
-      <span class="inline-flex items-center px-2.5 py-1 rounded text-sm font-semibold {{ v.judgment|bcls }}">{{ v.judgment|jshort if v.judgment else '—' }}</span>
+      <span class="inline-flex items-center px-2.5 py-1 rounded text-sm font-semibold {{ (bidst.tone if bidst else '')|tcls }}">{{ bidst.label if bidst else (v.judgment|jshort if v.judgment else '—') }}</span>
       {% if closed %}<span class="text-xs text-white/50 ml-2">매각 종료(참고용)</span>{% endif %}
     </div>
     <div>

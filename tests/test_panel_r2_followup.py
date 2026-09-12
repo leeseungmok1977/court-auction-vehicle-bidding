@@ -286,3 +286,90 @@ def test_domestic_detection_handles_real_maker_strings():
                               ("BMW", "520d", False), ("메르세데스벤츠코리아", "E220 d", False),
                               ("마세라티", "르반떼", False)]:
         assert service.is_domestic_maker({"maker": maker, "model": model}) is dom, maker
+
+
+# ── 4회차 P0: 판정과 출력 숫자가 어긋나지 않는다 ─────────────────
+# 3인이 각각 지적: 빨간 "입찰하지 마세요" 바로 아래에 초록 금액 3개 +"낙찰 확률 ~75%".
+
+@pytest.fixture
+def bidclient(tmp_path, monkeypatch):
+    from web import db
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "b4.db")
+    monkeypatch.setattr(service, "backtest_stats", lambda *a, **k: BT)
+    db.init_db()
+    base = {"court": "수원지방법원", "maker": "현대", "model": "쏘나타", "year": 2020,
+            "item_no": "1", "sale_date": "2999-01-01", "status": "완료",
+            "fail_count": 1, "market_confidence_label": "높음", "market_confidence": 78}
+    # blocked: 최저매각가가 손익분기를 넘는다
+    db.upsert_vehicle(dict(base, id="BLK_1", folder_key="BLK_1", case_no="2026타경701",
+                           min_sale_price=16_000_000, appraisal_value=20_000_000,
+                           median_price=16_600_000, judgment="유찰 대기"))
+    # flood: 침수의심
+    db.upsert_vehicle(dict(base, id="FLD_1", folder_key="FLD_1", case_no="2026타경702",
+                           min_sale_price=9_000_000, appraisal_value=12_000_000,
+                           median_price=13_000_000, accident_grade="flood",
+                           judgment="입찰 보류"))
+    # 정상 usepick
+    db.upsert_vehicle(dict(base, id="OK_1", folder_key="OK_1", case_no="2026타경703",
+                           min_sale_price=28_000_000, appraisal_value=30_000_000,
+                           median_price=40_000_000, judgment="유찰 대기"))
+    import web.app as A
+    return TestClient(A.app)
+
+
+_PUB = {"x-forwarded-for": "203.0.113.7"}
+
+
+@pytest.mark.parametrize("vid", ["BLK_1", "FLD_1"])
+def test_no_bid_amounts_offered_when_we_say_do_not_bid(bidclient, vid):
+    html = bidclient.get(f"/vehicle/{vid}", headers=_PUB).text
+    assert "입찰가를 제시하지 않습니다" in html, "차단 문구가 없다"
+    assert "낙찰 확률" not in html, "입찰하지 말라면서 낙찰 확률을 제시하고 있다"
+
+
+def test_normal_vehicle_still_gets_strategy(bidclient):
+    """정상 물건까지 막으면 제품이 죽는다."""
+    html = bidclient.get("/vehicle/OK_1", headers=_PUB).text
+    assert "낙찰 확률" in html and "입찰가를 제시하지 않습니다" not in html
+
+
+def test_flood_never_says_wait_for_cheaper(bidclient):
+    """침수차에 '아직 비싸니 기다리세요'는 '싸지면 사라'로 읽힌다."""
+    from web import db
+    st = service.bid_state(db.get_vehicle("FLD_1"), BT)
+    assert st["state"] == "blocked" and st["tone"] == "stop"
+    r = service.plain_verdict(db.get_vehicle("FLD_1"), {"price": 9_000_000}, st)
+    assert "기다리는 게 좋습니다" not in r["text"] and "입찰하지 마세요" in r["text"]
+
+
+def test_state_never_green_without_a_breakeven():
+    """상한선을 못 구했으면 초록불을 켜지 않는다."""
+    st = service.bid_state(v(market_confidence_label="높음", runnable="no",
+                             sale_date="2999-01-01"), BT)
+    assert st["tone"] != "ok"
+
+
+def test_past_sale_date_is_not_a_recommendation():
+    st = service.bid_state(v(sale_date="2020-01-01"), BT)
+    assert st["state"] == "wait" and st["tone"] != "ok"
+
+
+def test_list_chip_uses_the_same_verdict_as_detail(bidclient):
+    """목록 칩과 상세 판정이 같은 말을 해야 한다."""
+    import re
+    from web import db
+    lst = bidclient.get("/vehicles", headers=_PUB).text
+    for vid in ("BLK_1", "OK_1"):
+        label = service.bid_state(db.get_vehicle(vid), BT)["label"]
+        assert label in lst, f"{vid}: 목록에 판정 '{label}'이 없다"
+
+
+def test_resale_breakeven_uses_the_same_accident_rate(bidclient):
+    """재판매 손익분기와 실사용 상한선이 서로 다른 사고 감가를 쓰면 안 된다."""
+    from src.bidcalc.calculator import BidInput
+    car = v(accident_grade="none")            # 이력 미확인 → 사고 가정
+    bi = BidInput(median_price=car["median_price"], min_sale_price=car["min_sale_price"],
+                  sample_count=10, accident_grade="none")
+    service.apply_accident_rate(bi, car)
+    assert bi.accident_rate == service.use_accident_rate(car)[0]
+    assert "무사고" not in bi.accident_label, "근거 없이 무사고라고 쓰면 안 된다"
