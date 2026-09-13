@@ -239,10 +239,13 @@
   </div>
   {% endif %}
   <div class="relative flex flex-wrap items-end gap-x-8 gap-y-4">
-    <div>
+    {# min-w-0/max-w-full: 갈래 배지가 두 줄로 접힐 때 이 칸이 히어로 안폭보다 9px 넓어졌다(320px 큰글씨 실측) #}
+    <div class="min-w-0 max-w-full">
       <div class="text-xs text-white/55 mb-1">판정</div>
       <span class="inline-flex items-center px-2.5 py-1 rounded text-sm font-semibold {{ (bidst.tone if bidst else '')|tcls }}">{{ bidst.label if bidst else (v.judgment|jshort if v.judgment else '—') }}</span>
       {% if closed %}<span class="text-xs text-white/50 ml-2">매각 종료(참고용)</span>{% endif %}
+      {# 실사용 갈래 — 홈 카드·목록 태그와 같은 문구. cheap 은 '얼마까지'를 같이 말한다 #}
+      {% if use_tier %}<div class="mt-1.5 max-w-full"><span class="inline-flex flex-wrap items-center gap-1 max-w-full px-2 py-0.5 rounded-full text-xs font-bold {{ 'bg-emerald-400/20 text-emerald-200 border border-emerald-300/40' if use_tier.tier == 'now' else 'bg-amber-400/20 text-amber-200 border border-amber-300/40' }}"><span class="material-symbols-outlined text-[14px]">directions_car</span>{% set _ul, _ut = use_tier.label.rsplit(' ', 1) %}{{ _ul }} <span class="whitespace-nowrap">{{ _ut }}{% if use_tier.tier == 'cheap' %} · {{ '{:,}'.format((use_tier.max_bid/10000)|round|int) }}만원까지{% elif use_tier.saving %} · 소매보다 −{{ '{:,}'.format((use_tier.saving/10000)|round|int) }}만원{% endif %}</span></span></div>{% endif %}
     </div>
     <div>
       <div class="text-xs text-amber-300 mb-0.5" style="word-break:keep-all"><span class="whitespace-nowrap">AI 예상낙찰가</span> <span class="text-white/50 font-normal">실입찰{% if expected.mae %} ±{{ expected.mae|round|int }}%{% elif v.fail_count %} · 유찰 {{ v.fail_count }}회 반영{% endif %}</span></div>

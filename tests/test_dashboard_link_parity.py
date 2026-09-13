@@ -42,6 +42,10 @@ def client(tmp_path, monkeypatch):
         dict(base, id="U1_1", case_no="2026타경11", min_sale_price=16000000,
              appraisal_value=30000000, median_price=40000000,
              market_confidence_label="높음", judgment="유찰 대기"),
+        # '싸게 낙찰되면 이득'(2026-09-13 두 번째 갈래) — 카드 소계·링크 건수가 같아야 한다
+        dict(base, id="C1_1", case_no="2026타경19", min_sale_price=28000000,
+             appraisal_value=38000000, median_price=40000000,
+             market_confidence_label="높음", judgment="유찰 대기"),
         # 순수 유찰 대기(비싸서 추천 아님)
         dict(base, id="W1_1", case_no="2026타경12", min_sale_price=39000000,
              appraisal_value=40000000, median_price=40000000,
@@ -112,6 +116,8 @@ def test_partition_sums_to_total(client):
 
 @pytest.mark.parametrize("key,href", [
     ("usepick", "/vehicles?usepick=1"),
+    ("usepick_now", "/vehicles?usepick=now"),
+    ("usepick_cheap", "/vehicles?usepick=cheap"),
     ("wait", "/vehicles?bucket=wait"),
     ("lowconf", "/vehicles?bucket=lowconf"),
     ("other", "/vehicles?bucket=other"),
@@ -132,6 +138,7 @@ def test_count_api_agrees_with_the_list(client):
     """저장한 검색 알림이 쓰는 count API도 같은 모수를 써야 한다."""
     for href, api in (("/vehicles?bucket=wait", "/api/vehicles/count?bucket=wait"),
                       ("/vehicles?usepick=1", "/api/vehicles/count?usepick=1"),
+                      ("/vehicles?usepick=cheap", "/api/vehicles/count?usepick=cheap"),
                       ("/vehicles", "/api/vehicles/count")):
         assert client.get(api, headers=_PUBLIC).json()["total"] == _list_count(client, href), api
 

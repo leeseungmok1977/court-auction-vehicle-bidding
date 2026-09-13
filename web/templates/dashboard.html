@@ -167,10 +167,20 @@
       {# 앰버 솔리드를 이 패널의 **유일한 채움**으로 둔다. 초록은 이 앱에서 '좋은 상태'를
          뜻하는 상태색(신뢰도 점·검토가능 칩)이라 솔리드 필로 승격하면 의미가 오염되고,
          강조 카드가 둘이면 시선이 갈라진다 → 틴트+테두리로 한 단계 아래. (2026-09-12 검수) #}
+      {# 두 갈래를 **항상 같이** 보여준다(사용자 결정 2026-09-13): 큰 숫자만 있으면 "전부 지금 싸다"로 읽힌다.
+         문구는 service.USE_TIER_LABELS 하나에서 오고 목록 태그·상세 배지도 같은 말을 쓴다.
+         '유찰되면 후보'는 넣지 않는다 — 유찰되면 그때 이 칸이나 '지금 입찰 추천'으로 올라온다. #}
       <a href="/vehicles?usepick=1" class="rounded-xl bg-emerald-400/15 border border-emerald-300/40 p-3.5 block hover:bg-emerald-400/25 transition">
         <div class="inline-flex items-center gap-1.5 text-emerald-300 mb-1.5"><span class="material-symbols-outlined text-lg" style="font-variation-settings:'FILL' 1">directions_car</span><span class="text-xs font-extrabold">실사용 추천</span></div>
         <div class="flex items-baseline gap-1"><span class="font-mono text-3xl font-extrabold text-white leading-none">{{ lifecycle.usepick }}</span><span class="text-base text-white/60 font-semibold">대</span></div>
-        <div class="text-[11px] text-white/60 mt-1.5 leading-snug">직접 탈 목적 — 소매보다 싸게</div>
+        {# 라벨과 숫자를 좌우로 벌리면 320px(카드 안폭 90px)에서 라벨이 접히고 숫자가 카드 밖으로 나간다(실측).
+           한 구절로 이어 쓰면 접혀도 문장처럼 읽힌다 — "싸게 낙찰되면 / 이득 25대". #}
+        {# 숫자는 명사에서 떼지 않는다 — "싸게 낙찰되면 / 이득 25대"로 접히게 '이득 N대'를 한 덩어리로(검수). 문구는 USE_TIER_LABELS. #}
+        <div class="mt-1.5 space-y-0.5 text-[11px] leading-snug tabular-nums" style="word-break:keep-all">
+          {% for key, color in (('now', 'text-emerald-300'), ('cheap', 'text-amber-300')) %}{% set _l, _t = use_tier_labels[key].rsplit(' ', 1) %}
+          <div><span class="text-white/70">{{ _l }}</span> <span class="whitespace-nowrap"><span class="text-white/70">{{ _t }}</span> <b class="{{ color }}">{{ lifecycle['usepick_' ~ key] }}<span class="font-normal text-white/50">대</span></b></span></div>
+          {% endfor %}
+        </div>
       </a>
       <a href="/vehicles?bucket=wait" class="rounded-xl bg-white/[0.07] border border-white/10 p-3.5 block hover:bg-white/[0.12] transition">
         <div class="flex items-center gap-1.5 text-amber-300 mb-1.5"><span class="material-symbols-outlined text-lg">hourglass_empty</span><span class="text-xs font-bold">유찰 대기 · 재경매</span></div>

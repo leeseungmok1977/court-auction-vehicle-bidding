@@ -20,7 +20,7 @@
       {% for m in makers %}<option value="{{ m }}" {% if m==maker %}selected{% endif %}>{{ m }}</option>{% endfor %}
     </select>
     <select name="sort" aria-label="정렬 기준" class="inp py-1.5 min-w-0">
-      {% if usepick %}<option value="" selected>절감액 큰 순</option>{% endif %}
+      {% if usepick %}<option value="" selected>이득 큰 순</option>{% endif %}
       <option value="recent" {% if sort=='recent' and not usepick %}selected{% endif %}>최근 등록순</option>
       <option value="sale_date" {% if sort=='sale_date' %}selected{% endif %}>매각기일순</option>
       <option value="expected" {% if sort=='expected' %}selected{% endif %}>예상낙찰가 높은순</option>
@@ -48,7 +48,7 @@
     {% if cond %}<input type="hidden" name="cond" value="{{ cond }}">{% endif %}
     {# 폼 제출로 버킷·추천 필터가 조용히 풀리면 사용자가 다른 모수를 보게 된다 #}
     {% if bucket %}<input type="hidden" name="bucket" value="{{ bucket }}">{% endif %}
-    {% if usepick %}<input type="hidden" name="usepick" value="1">{% endif %}
+    {% if usepick %}<input type="hidden" name="usepick" value="{{ usepick_val }}">{% endif %}
     <span class="hidden sm:contents"><button class="btn-ghost text-sm">
       <span class="material-symbols-outlined text-base">filter_list</span> 적용</button></span>
     {# 칩들은 좁은 폭에서 두 줄을 먹는다 — 한 줄 가로 스크롤로 묶어 한 줄만 쓴다.
@@ -61,7 +61,7 @@
                 sm:contents sm:overflow-visible sm:[mask-image:none]">
     <button type="button" onclick="ncSaveSearch()" class="btn-ghost text-sm whitespace-nowrap shrink-0" title="현재 검색 조건을 저장 — 즐겨찾기 탭에서 새 매물을 확인합니다">
       <span aria-hidden="true">🔖</span> 검색 저장</button>
-    {% if usepick %}<a href="/vehicles" class="text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full px-3 py-1 inline-flex items-center gap-1" title="실사용 추천 해제"><span class="material-symbols-outlined text-[13px] leading-none">directions_car</span>실사용 추천 ✕</a>{% endif %}
+    {% if usepick %}<a href="/vehicles" class="text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full px-3 py-1 inline-flex items-center gap-1 whitespace-nowrap shrink-0" title="실사용 추천 해제"><span class="material-symbols-outlined text-[13px] leading-none">directions_car</span>실사용 추천{% if usepick_val in ('now', 'cheap') %} · {{ use_tier_labels[usepick_val] }}{% endif %} ✕</a>{% endif %}
     {% if bucket %}{% set _bkl = {'wait':'유찰 대기','lowconf':'신뢰도 낮음','other':'기타·미분석'} %}
     <a href="/vehicles{% if qs_no_bucket %}?{{ qs_no_bucket }}{% endif %}" class="text-xs bg-sky-50 text-sky-700 border border-sky-200 rounded-full px-3 py-1 inline-flex items-center gap-1" title="{{ _bkl.get(bucket, bucket) }} 필터 해제"><span class="material-symbols-outlined text-[13px] leading-none">filter_alt</span>{{ _bkl.get(bucket, bucket) }} {{ total }} ✕</a>{% endif %}
     {% if result %}<a href="/vehicles" class="text-xs bg-sky-50 text-sky-700 border border-sky-200 rounded-full px-3 py-1">결과={{ result }} ✕</a>{% endif %}
@@ -139,16 +139,30 @@ d.addEventListener('toggle',function(){try{localStorage.setItem('ncListLegend',d
 {# 배너가 9줄이면 첫 물건 카드가 화면 밖으로 밀린다(디자인 검수 2026-09-12).
    1문단만 기본 노출하고, 계산 가정은 접어 둔다. 접힘 상태는 기기에 기억. #}
 <div class="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
-  <b>실사용 추천</b> — 예상 낙찰가로 낙찰받아도 <b>소매로 사는 것보다 총비용이 싼</b> 물건입니다.
-  절감액이 큰 순으로 보여줍니다.
+  <b>실사용 추천</b> — 직접 탈 목적이면 <b>소매로 사는 것보다 총비용이 싼</b> 물건입니다.
+  {# 갈래 칩: 홈 카드의 두 줄과 같은 문구·같은 수. 링크는 다른 필터를 유지한 채 usepick 값만 바꾼다.
+     갈래 설명은 접어 둔다 — 펼쳐 두면 320~390px 에서 첫 물건 카드가 폴드 아래로 밀렸다(실측 681px > 640px).
+     칩의 낱말과 카드 태그("… · 3,360만원까지")가 뜻을 이미 말한다. #}
+  {% if use_counts %}
+  <div class="flex flex-wrap items-center gap-1.5 mt-1.5">
+    {% for key, lbl, n, on, off in [('1', '전체', use_counts.all, 'bg-emerald-700 text-white border-emerald-700', 'border-emerald-300 text-emerald-800 bg-white hover:bg-emerald-100'),
+                                    ('now', use_tier_labels.now, use_counts.now, 'bg-emerald-700 text-white border-emerald-700', 'border-emerald-300 text-emerald-800 bg-white hover:bg-emerald-100'),
+                                    ('cheap', use_tier_labels.cheap, use_counts.cheap, 'bg-amber-600 text-white border-amber-600', 'border-amber-300 text-amber-800 bg-white hover:bg-amber-100')] %}
+    <a href="/vehicles?usepick={{ key }}{% if qs_no_usepick %}&{{ qs_no_usepick }}{% endif %}"
+       class="px-2.5 py-1 rounded-full border whitespace-nowrap font-semibold {{ on if usepick_val == key else off }}">{{ lbl }} <span class="tabular-nums">{{ n }}대</span></a>
+    {% endfor %}
+  </div>
+  {% endif %}
   {# 핵심 고지는 접지 않는다 — 절감액이 '사고차 가정'으로 나온 값이라는 사실은
      이 숫자를 읽는 데 반드시 필요하다. 나머지 계산 근거만 접는다. #}
   <span class="block mt-1 text-mut">사고 이력을 확인하지 못한 차는 <b class="text-txt">사고차로 가정</b>한 보수적 금액입니다.
   <a href="/vehicles?judgment=입찰 검토 가능&sort=expected" class="underline whitespace-nowrap">되팔이 기준 보기</a></span>
   <details id="usepickBasis" class="mt-1.5 border-t border-emerald-200/70 pt-1.5">
     <summary class="cursor-pointer list-none text-mut hover:text-txt select-none inline-flex items-center gap-0.5">
-      <span class="material-symbols-outlined text-[14px] leading-none">expand_more</span>계산 기준 보기</summary>
+      <span class="material-symbols-outlined text-[14px] leading-none">expand_more</span>두 갈래 뜻·계산 기준 보기</summary>
     <div class="mt-1 text-mut leading-relaxed">
+      <b class="text-emerald-700">{{ use_tier_labels.now }}</b> = 예상 낙찰가로 낙찰돼도 소매보다 쌈 ·
+      <b class="text-amber-700">{{ use_tier_labels.cheap }}</b> = 태그에 적힌 금액 이하로 낙찰될 때만 이득 — 예상 경쟁가는 그 위라 낙찰 가능성은 낮음.<br>
       <span class="font-semibold text-txt">보수적 계산</span> — 취득세·이전·탁송에 <b>상태별 정비 충당</b>을 더해
       소매 총비용과 비교합니다. 검사 만료·상태 불량은 충당을 더 잡고, 사고 감가는 소매 시세 쪽에서 뺍니다.
       시동·운행 불가 물건과 시세가 감정가와 크게 어긋나는 물건은 추천에서 제외합니다.
@@ -330,10 +344,15 @@ d.addEventListener('toggle',function(){try{localStorage.setItem('ncUsepickBasis'
           </div>
           <div class="text-right">
             <div class="text-[10px] text-primary">AI 예상 낙찰가</div>
-            {% if v.use_saving %}<div class="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5 inline-block mt-0.5" title="소매로 사는 총비용과 비교한 절감액. 취득세·이전·탁송·상태별 정비 충당을 포함하고, 사고 이력을 확인하지 못한 차는 사고차로 가정한 보수적 금액입니다.">소매보다 −{{ (v.use_saving/10000)|round|int }}만</div>{% endif %}
             <div class="font-mono text-lg font-bold tnum {{ 'text-mut' if closed else 'text-mut' if (lowconf or exp_far) else 'text-primary' }}">{{ v.expected_win|won if v.expected_win else '—' }}{% if v.expected_win and not closed and lowconf %}<span class="text-rose-500 text-[11px] align-top">*</span>{% elif v.expected_win and not closed and exp_far %}<span class="text-mut text-[11px] align-top">↑</span>{% endif %}</div>
           </div>
         </div>
+        {# 실사용 갈래 태그 — 홈 카드·상세와 같은 문구(service.USE_TIER_LABELS). 초록=지금, 주황=조건부(이 앱의 caution 색).
+           가격 칸 오른쪽에 넣었더니 320px 큰글씨에서 카드 밖으로 나갔다 → 가격 줄 아래 한 줄을 통째로 쓴다. #}
+        {# 10px 는 카드에서 가장 작은 글자였다(검수) — 새로 넣은 핵심 정보(얼마나 싼가/얼마까지)라 12px. 숫자는 명사에서 떼지 않는다. #}
+        {% if v.use_tier %}{% set _ul, _ut = v.use_tier.label.rsplit(' ', 1) %}{% endif %}
+        {% if v.use_tier and v.use_tier.tier == 'now' %}<div class="mt-2"><span class="inline-block max-w-full text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5" style="word-break:keep-all" title="예상 낙찰가로 낙찰돼도 소매로 사는 총비용보다 쌉니다. 취득세·이전·탁송·상태별 정비 충당을 포함하고, 사고 이력을 확인하지 못한 차는 사고차로 가정한 보수적 금액입니다.">{{ _ul }} <span class="whitespace-nowrap">{{ _ut }}{% if v.use_saving %} · 소매보다 −{{ '{:,}'.format((v.use_saving/10000)|round|int) }}만원{% endif %}</span></span></div>
+        {% elif v.use_tier and v.use_tier.tier == 'cheap' %}<div class="mt-2"><span class="inline-block max-w-full text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5" style="word-break:keep-all" title="{{ '{:,}'.format((v.use_tier.max_bid/10000)|round|int) }}만원 이하로 낙찰될 때만 소매보다 쌉니다. 예상 경쟁가는 그 위라 낙찰 가능성은 낮습니다.">{{ _ul }} <span class="whitespace-nowrap">{{ _ut }} · {{ '{:,}'.format((v.use_tier.max_bid/10000)|round|int) }}만원까지</span></span></div>{% endif %}
         {% if v.market_confidence and v.median_price is not none and not closed %}
         <div class="mt-2.5">
           <div class="flex justify-between text-[10px] mb-1">

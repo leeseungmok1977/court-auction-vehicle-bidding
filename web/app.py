@@ -313,6 +313,7 @@ def dashboard(request: Request):
         "upcoming": db.upcoming_count(30), "pending": db.pending_count(),
         "won": db.won_count(), "backtest": _bt, "review_summary": review_summary,
         "lifecycle": service.lifecycle_partition(),   # 겹치지 않는 상태 분해(합=총대수)
+        "use_tier_labels": service.USE_TIER_LABELS,   # 실사용 두 갈래 문구 — 목록·상세와 같은 곳에서
         "alerts": _pv(service.alert_items(3)),
         "top_makers": [dict(name=m, n=n, **brands.brand_asset(m)) for m, n in db.top_makers(8)],
         "daily_picks": daily_picks,
@@ -378,6 +379,8 @@ def daily_run_now(request: Request, within: int = Form(30), analyze: str = Form(
 
 
 VEHICLES_PAGE_SIZE = 12
+# ?usepick= 값: 1=두 갈래 전부 · now=지금 사면 이득 · cheap=싸게 낙찰되면 이득 (service.personal_use_tier)
+USEPICK_VALUES = ("1", "now", "cheap")
 
 
 @app.get("/vehicles", response_class=HTMLResponse)
@@ -402,11 +405,22 @@ def vehicles(request: Request, judgment: str = "", maker: str = "", q: str = "",
     _bt = service.backtest_stats()
     if bucket:       # 대시보드 카드 링크 — 카드 수와 목록 수가 정확히 같아야 한다
         rows = [r for r in rows if service.in_lifecycle_bucket(r, bucket, _bt)]
-    if usepick == "1":   # 실사용 추천 — 되팔이 마진이 아니라 '소매보다 싼가'로 거른다
-        rows = [r for r in rows if service.is_personal_use_pick(r, _bt)]
-        for r in rows:   # 추천 근거(소매 대비 절감액)를 화면에 보여주기 위해 행에 싣는다
-            r["use_saving"] = service.personal_use_saving(r, _bt)
-        rows.sort(key=lambda r: -(r.get("use_saving") or 0))
+    use_counts = None
+    if usepick in USEPICK_VALUES:   # 실사용 추천 — 되팔이 마진이 아니라 '소매보다 싼가'로 거른다(두 갈래)
+        tiered = []
+        for r in rows:
+            t = service.personal_use_tier(r, _bt)
+            if t:                # 갈래·근거(절감액/상한선)를 행에 실어 카드가 같은 문구를 쓰게 한다
+                r["use_tier"] = t
+                r["use_saving"] = t.get("saving")
+                tiered.append(r)
+        use_counts = {"all": len(tiered),
+                      "now": sum(1 for r in tiered if r["use_tier"]["tier"] == "now"),
+                      "cheap": sum(1 for r in tiered if r["use_tier"]["tier"] == "cheap")}
+        rows = [r for r in tiered if usepick == "1" or r["use_tier"]["tier"] == usepick]
+        # 지금 사면 이득(절감 큰 순) → 싸게 낙찰되면 이득(상한선까지 여유 큰 순)
+        rows.sort(key=lambda r: (0 if r["use_tier"]["tier"] == "now" else 1,
+                                 -(r.get("use_saving") or 0), -(r["use_tier"].get("room") or 0)))
     disc = _bt.get("discount_median")
     mae = _bt.get("mae_pct")
     # 예상낙찰가 계산은 비용이 있으므로 '예상낙찰가순' 정렬처럼 전체가 필요할 때만 전 행 계산,
@@ -455,6 +469,7 @@ def vehicles(request: Request, judgment: str = "", maker: str = "", q: str = "",
     qs_no_cond = _qs("cond")            # 상태 필터 토글용
     qs_no_segment = _qs("segment")      # 차종 프리셋 칩용
     qs_no_bucket = _qs("bucket")        # 버킷 해제 칩용
+    qs_no_usepick = _qs("usepick")      # 실사용 갈래 칩(전체/지금 사면/싸게 낙찰되면)용
     from datetime import date as _date
     _tdy = _date.today().isoformat()
     _tdy_d = _date.today()
@@ -478,7 +493,9 @@ def vehicles(request: Request, judgment: str = "", maker: str = "", q: str = "",
         "q": q, "sort": sort, "upcoming": up, "result": result, "status": status,
         "cond": cond, "date": date, "court": court, "promising": promising,
         "segment": segment, "segment_presets": [(k, lbl) for k, lbl, _ in service.VEHICLE_SEGMENTS],
-        "usepick": usepick == "1",
+        "usepick": usepick in USEPICK_VALUES, "usepick_val": usepick,
+        "use_counts": use_counts, "qs_no_usepick": qs_no_usepick,
+        "use_tier_labels": service.USE_TIER_LABELS,
         "judgments": JUDGMENTS, "makers": db.distinct_makers(),
         "today": _date.today().isoformat(), "mae": mae,
         "total": total, "page": page, "total_pages": total_pages,
@@ -509,12 +526,13 @@ def vehicles_count(judgment: str = "", maker: str = "", q: str = "", result: str
                             hide_incomplete=(all != "1"))
     if segment:
         rows = [r for r in rows if service.vehicle_segment(r) == segment]
-    if bucket or usepick == "1":     # /vehicles와 같은 필터를 타야 건수가 일치한다
+    if bucket or usepick in USEPICK_VALUES:     # /vehicles와 같은 필터를 타야 건수가 일치한다
         _bt = service.backtest_stats()
         if bucket:
             rows = [r for r in rows if service.in_lifecycle_bucket(r, bucket, _bt)]
-        if usepick == "1":
-            rows = [r for r in rows if service.is_personal_use_pick(r, _bt)]
+        if usepick in USEPICK_VALUES:
+            rows = [r for r in rows
+                    if (t := service.personal_use_tier(r, _bt)) and (usepick == "1" or t["tier"] == usepick)]
     return {"total": len(rows)}
 
 
@@ -693,6 +711,7 @@ def vehicle_detail(request: Request, vid: str, cc: str = "", an: str = ""):
         # 판정 단일 소스 — 상세·리포트가 서로 다른 말을 하지 않도록 같은 값을 쓴다
         "bidst": _bidst,
         "use": service.personal_use_detail(v, bt, _cfg),
+        "use_tier": service.personal_use_tier(v, bt),   # 홈·목록과 같은 갈래 문구(지금 사면 / 싸게 낙찰되면 이득)
     })
 
 

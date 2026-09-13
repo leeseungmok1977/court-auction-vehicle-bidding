@@ -611,6 +611,52 @@ def is_personal_use_pick(v: dict, bt: Optional[dict] = None, today=None) -> bool
     return personal_use_significant(v, bt)
 
 
+# 실사용 추천의 두 갈래 — 화면 문구는 세 화면(홈·목록·상세) 모두 여기서만 가져온다(이름이 갈리지 않게).
+USE_TIER_LABELS = {"now": "지금 사면 이득", "cheap": "싸게 낙찰되면 이득"}
+
+
+def personal_use_tier(v: dict, bt: Optional[dict] = None, today=None) -> Optional[dict]:
+    """'실사용 추천' 갈래 — 사용자 결정(2026-09-13): 두 갈래만, '유찰되면 후보'는 넣지 않는다.
+
+      now    지금 사면 이득      예상 경쟁가로 낙찰돼도 소매 총비용보다 싸고 그 폭이 오차보다 크다(is_personal_use_pick)
+      cheap  싸게 낙찰되면 이득  최저가 ≤ 실사용 손익분기 — **손익분기 이하로만 쓰면** 이득. 예상 경쟁가는 그 위일 수
+                                 있어 낙찰 가능성은 낮다. 최저가 근처에서 낙찰될 때의 이득이 오차보다 커야 한다
+                                 (오차 안이면 이득이라 부르지 않는다 — 5회차 패널 게이트를 갈래마다 똑같이 건다).
+
+    실사용 추천이 3~9대뿐이던 원인 조사(2026-09-13): 신건은 최저가=감정가(시세의 1.07배)라 구조적으로 못 들어오고,
+    '상한선 안에서 노려볼' 물건이 46대(유의 25대)나 '유찰 대기'에 묻혀 있었다. cheap 은 bid_state 가 이미
+    '예상 경쟁가가 상한선 초과'(caution) 또는 '실사용이면 이득'(오차 안)이라고 말하는 바로 그 물건들이다 —
+    판정은 bid_state 한 곳에서 하고, 여기서는 갈래만 정한다.
+    """
+    if v.get("judgment") == "입찰 검토 가능":
+        return None                                   # 그쪽 칸이 가져간다(칸이 겹치면 합계가 깨진다)
+    d = (today or date.today()).isoformat()
+    if (v.get("sale_date") or "") < d:
+        return None
+    bt = bt if bt is not None else backtest_stats()
+    if personal_use_significant(v, bt):
+        return {"tier": "now", "label": USE_TIER_LABELS["now"],
+                "saving": personal_use_saving(v, bt), "max_bid": personal_use_max_bid(v, bt)}
+    st = bid_state(v, bt)
+    if not st or st["state"] not in ("usepick", "over_market", "resale") or st["tone"] not in ("ok", "caution"):
+        return None                                   # 시세 초과·부적합·보류·기일 지남은 bid_state 가 이미 거른다
+    floor, mb, exp, med = st["floor"], st["max_bid"], st["exp"], st["med"]
+    if not (floor and mb and exp and med and floor <= mb):
+        return None
+    ap = v.get("appraisal_value") or 0
+    if ap and not (USE_APPRAISAL_LOW <= med / ap <= USE_APPRAISAL_HIGH):
+        return None                                   # 오매칭 의심 — now 와 같은 문턱
+    cfg = load_config()
+    rate, _ = use_accident_rate(v, cfg)
+    retail = med * (1 - rate) * (1 + USE_TAX_RATE) + USE_RETAIL_FEE
+    gain_floor = retail - (floor * (1 + USE_TAX_RATE) + USE_AUCTION_FEE + use_repair_reserve(v, cfg))
+    acc = accuracy_for(v, bt)
+    if not acc or not acc.get("mae") or gain_floor <= exp * acc["mae"] / 100.0:
+        return None                                   # 최저가로 낙찰돼도 이득이 오차 안 → 이득이라 부르지 않는다
+    return {"tier": "cheap", "label": USE_TIER_LABELS["cheap"], "max_bid": mb, "floor": floor,
+            "exp": exp, "saving_floor": int(round(gain_floor)), "room": mb - floor}
+
+
 # 대시보드 카드 ↔ 목록 필터를 **같은 함수**로 묶는다. 카드에서 usepick을 빼놓고 링크는
 # 안 빼서 "387대"를 눌렀더니 469건이 나오던 문제를 구조적으로 막는다
 # (2026-09-12 2회차 패널 앱품질 지적 3).
@@ -635,18 +681,24 @@ def lifecycle_bucket_of(v: dict, bt: Optional[dict] = None) -> str:
     뺄셈으로 '기타'를 유도하면 겹침·누락이 생겨 합계가 총대수와 안 맞는다. 판정 순서를
     한 곳에 못박아 **배타적이고 망라적**이게 만든다 — 어떤 물건도 두 칸에 들어가지 않고,
     어떤 물건도 어느 칸에도 안 들어가는 일이 없다."""
+    return _bucket_and_tier(v, bt)[0]
+
+
+def _bucket_and_tier(v: dict, bt: Optional[dict] = None) -> tuple:
+    """(버킷, 실사용 갈래 dict|None) — 카드 소계(지금 사면/싸게 낙찰되면)를 위해 갈래를 한 번만 계산한다."""
     if v.get("auction_result") == "낙찰":
-        return "won"
+        return "won", None
     j = v.get("judgment")
     if j == "입찰 검토 가능" and _review_biddable(v):
-        return "review"
-    if is_personal_use_pick(v, bt if bt is not None else backtest_stats()):
-        return "usepick"
+        return "review", None
+    tier = personal_use_tier(v, bt if bt is not None else backtest_stats())
+    if tier:                       # 두 갈래(now·cheap) 모두 이 칸 — '유찰 대기'에서 빠져 나온다
+        return "usepick", tier
     if j == "유찰 대기":
-        return "wait"
+        return "wait", None
     if j == "시세 신뢰도 낮음, 수동 검토":
-        return "lowconf"
-    return "other"
+        return "lowconf", None
+    return "other", None
 
 
 def in_lifecycle_bucket(v: dict, bucket: str, bt: Optional[dict] = None) -> bool:
@@ -667,12 +719,18 @@ def lifecycle_partition() -> dict:
     _bt = backtest_stats()
     _all = db.list_vehicles(hide_incomplete=True)
     n = {b: 0 for b in LIFECYCLE_BUCKETS}
+    tiers = {"now": 0, "cheap": 0}
     for v in _all:
-        n[lifecycle_bucket_of(v, _bt)] += 1
+        b, t = _bucket_and_tier(v, _bt)
+        n[b] += 1
+        if t:
+            tiers[t["tier"]] += 1
     total, won, review = len(_all), n["won"], n["review"]
     usepick, wait_only, lc_only, other = n["usepick"], n["wait"], n["lowconf"], n["other"]
     return {"total": total, "won": won, "review": review, "wait": wait_only, "lowconf": lc_only,
             "usepick": usepick, "other": other,
+            # 실사용 추천 소계 — 큰 숫자만 보면 '전부 지금 싸다'로 읽히므로 카드가 항상 같이 보여준다
+            "usepick_now": tiers["now"], "usepick_cheap": tiers["cheap"],
             # 신뢰도 낮음 + 기타를 한 줄로 묶어 보여주기 위한 합계(사용자 지시 2026-09-12)
             "unclear": lc_only + other,
             "upcoming30": len(db.list_vehicles(upcoming_days=30, hide_incomplete=True))}
