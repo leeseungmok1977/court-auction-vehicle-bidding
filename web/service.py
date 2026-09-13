@@ -3361,8 +3361,19 @@ def plain_verdict(v: dict, expected: Optional[dict],
     if st["state"] == "closed":
         return {"tone": "closed", "text": "이미 매각이 끝난 물건입니다 (참고용)."}
     if st["state"] == "lowconf":
+        # ⚠ 판정을 못 해도 **산술은 말할 수 있다.** 18인 패널 실측: 예상 낙찰가가
+        #   시세의 221%인 물건에 "참고용입니다"만 내보내, 초보가 그 221%를 혼자
+        #   해석해야 했다("결국 사라는 건지 말라는 건지 모르겠어요" 24세).
+        #   비율은 판단이 아니라 나눗셈이므로 신뢰도와 무관하게 낼 수 있다.
+        ratio = int(round(exp / med * 100)) if (exp and med) else None
+        tail = ""
+        if ratio and ratio >= 130:
+            tail = f" 지금 예상가는 **소매 시세의 {ratio}%** 로, 시세보다 비쌉니다."
+        elif ratio and ratio <= 70:
+            tail = f" 지금 예상가는 소매 시세의 {ratio}% 수준입니다."
         return {"tone": "caution",
-                "text": f"시세 신뢰도가 낮아 참고용입니다. 예상 낙찰가 {won(exp)}은 현장 확인 후 판단하세요."}
+                "text": (f"시세 신뢰도가 낮아 참고용입니다. 예상 낙찰가 {won(exp)}은 "
+                         f"현장 확인 후 판단하세요.{tail}")}
     if st["state"] == "wait":
         return {"tone": "wait",
                 "text": f"지금 최저가 {won(floor)}은 예상 낙찰가 {won(exp)}보다 높습니다. "
@@ -3682,7 +3693,12 @@ def _pick_dict(v: dict, bt: dict) -> dict:
     med = effective_median(v)
     d = public_view(dict(v), False)
     d["expected_win"] = exp
-    d["disc_pct"] = int(round((med - exp) / med * 100)) if (med and exp and med > exp) else None
+    # ⚠ 사지 말라고 판정한 물건에 "시세보다 −69% 싸다"를 붙이면 앱이 자기 말을
+    #   뒤집는다. 실측: 할인 배지가 붙은 229건 중 11건이 stop 판정이었다.
+    #   (wait 는 '기일 대기'라 값이 싼 것은 사실이므로 배지를 유지한다.)
+    _tone = (bid_state(v, bt) or {}).get("tone")
+    d["disc_pct"] = (int(round((med - exp) / med * 100))
+                     if (med and exp and med > exp and _tone != "stop") else None)
     d["photo_url"] = _pick_photo_url(v)
     try:
         d["dday"] = (datetime.date.fromisoformat(v["sale_date"]) - datetime.date.today()).days

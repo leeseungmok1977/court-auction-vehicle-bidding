@@ -226,3 +226,36 @@ def test_report_print_does_not_rely_on_background_graphics():
     pr = src[src.rindex("@media print{"):]
     assert ".masthead" in pr, "인쇄 시 마스트헤드 처리가 없다"
     assert "background:#fff" in pr.replace(" ", ""), "배경에 기대지 않는 처리가 없다"
+
+
+# ── 판정을 못 해도 산술은 말한다 (18인 패널 재평가) ────────────────
+def test_lowconf_verdict_still_states_the_price_ratio():
+    """신뢰도가 낮아도 '시세 대비 몇 %'는 말할 수 있다 — 판단이 아니라 나눗셈이다.
+
+    실측: 예상 낙찰가가 시세의 221%인 물건에 "참고용입니다"만 내보내, 초보가 그
+    221%를 혼자 해석해야 했다("결국 사라는 건지 말라는 건지 모르겠어요", 24세).
+    """
+    from web import service as S
+    st = {"state": "lowconf", "exp": 25_000_000, "med": 11_300_000,
+          "floor": 25_000_000, "upper": 7_000_000, "max_bid": None}
+    got = S.plain_verdict({}, {"price": 25_000_000}, st)
+    assert "221%" in got["text"], f"시세 대비 비율을 말하지 않는다: {got['text']}"
+    assert "비쌉니다" in got["text"]
+
+    # 정상 범위면 굳이 붙이지 않는다 (문장이 길어지기만 한다)
+    st2 = dict(st, exp=11_000_000)
+    assert "%" not in S.plain_verdict({}, {"price": 11_000_000}, st2)["text"]
+
+
+def test_stop_verdict_does_not_get_a_cheap_badge():
+    """사지 말라고 판정한 물건에 '시세보다 −69% 싸다'를 붙이면 자기 말을 뒤집는다.
+
+    실측: 할인 배지가 붙은 229건 중 11건이 stop 판정이었다.
+    ('기일 대기'는 값이 싼 것 자체는 사실이므로 배지를 유지한다.)
+    """
+    import inspect
+    from web import service as S
+    src = inspect.getsource(S)
+    i = src.index('d["disc_pct"]')
+    seg = src[max(0, i - 400):i + 200]
+    assert "bid_state" in seg and "stop" in seg, "배지가 판정을 보지 않는다"
