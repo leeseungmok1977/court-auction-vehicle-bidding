@@ -49,6 +49,7 @@
     {# 폼 제출로 버킷·추천 필터가 조용히 풀리면 사용자가 다른 모수를 보게 된다 #}
     {% if bucket %}<input type="hidden" name="bucket" value="{{ bucket }}">{% endif %}
     {% if usepick %}<input type="hidden" name="usepick" value="{{ usepick_val }}">{% endif %}
+    {% if picks %}<input type="hidden" name="picks" value="1">{% endif %}
     <span class="hidden sm:contents"><button class="btn-ghost text-sm">
       <span class="material-symbols-outlined text-base">filter_list</span> 적용</button></span>
     {# 칩들은 좁은 폭에서 두 줄을 먹는다 — 한 줄 가로 스크롤로 묶어 한 줄만 쓴다.
@@ -62,6 +63,7 @@
     <button type="button" onclick="ncSaveSearch()" class="btn-ghost text-sm whitespace-nowrap shrink-0" title="현재 검색 조건을 저장 — 즐겨찾기 탭에서 새 매물을 확인합니다">
       <span aria-hidden="true">🔖</span> 검색 저장</button>
     {% if usepick %}<a href="/vehicles" class="text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full px-3 py-1 inline-flex items-center gap-1 whitespace-nowrap shrink-0" title="실사용 추천 해제"><span class="material-symbols-outlined text-[13px] leading-none">directions_car</span>실사용 추천{% if usepick_val in ('now', 'cheap') %} · {{ use_tier_labels[usepick_val] }}{% endif %} ✕</a>{% endif %}
+    {% if picks %}<a href="/vehicles" class="text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full px-3 py-1 inline-flex items-center gap-1 whitespace-nowrap shrink-0" title="유망 물건 해제"><span class="material-symbols-outlined text-[13px] leading-none">check_circle</span>유망 물건 {{ total }} ✕</a>{% endif %}
     {% if bucket %}{% set _bkl = {'wait':'유찰 대기','lowconf':'신뢰도 낮음','other':'기타·미분석'} %}
     <a href="/vehicles{% if qs_no_bucket %}?{{ qs_no_bucket }}{% endif %}" class="text-xs bg-sky-50 text-sky-700 border border-sky-200 rounded-full px-3 py-1 inline-flex items-center gap-1" title="{{ _bkl.get(bucket, bucket) }} 필터 해제"><span class="material-symbols-outlined text-[13px] leading-none">filter_alt</span>{{ _bkl.get(bucket, bucket) }} {{ total }} ✕</a>{% endif %}
     {% if result %}<a href="/vehicles" class="text-xs bg-sky-50 text-sky-700 border border-sky-200 rounded-full px-3 py-1">결과={{ result }} ✕</a>{% endif %}
@@ -135,6 +137,12 @@
 try{if(localStorage.getItem('ncListLegend')==='1')d.open=true;}catch(e){}
 d.addEventListener('toggle',function(){try{localStorage.setItem('ncListLegend',d.open?'1':'0');}catch(e){}});})();</script>
 
+{% if picks %}
+{# 홈 '유망 물건 → 전체 보기'. 홈의 8대는 이 목록의 상위(오늘의 추천 제외) — 같은 함수(service.promising_rows). #}
+<div class="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2" style="word-break:keep-all">
+  <b>유망 물건</b> — {{ pick_subtitle[0] }}<b>{{ pick_subtitle[1] }}</b>{{ pick_subtitle[2] }} 보여줍니다. 홈의 8대는 이 목록의 상위(오늘의 추천 5대 제외)입니다.
+</div>
+{% endif %}
 {% if usepick %}
 {# 배너가 9줄이면 첫 물건 카드가 화면 밖으로 밀린다(디자인 검수 2026-09-12).
    1문단만 기본 노출하고, 계산 가정은 접어 둔다. 접힘 상태는 기기에 기억. #}
@@ -352,7 +360,9 @@ d.addEventListener('toggle',function(){try{localStorage.setItem('ncUsepickBasis'
            가격 칸 오른쪽에 넣었더니 320px 큰글씨에서 카드 밖으로 나갔다 → 가격 줄 아래 한 줄을 통째로 쓴다. #}
         {# 10px 는 카드에서 가장 작은 글자였다(검수) — 새로 넣은 핵심 정보(얼마나 싼가/얼마까지)라 12px. 숫자는 명사에서 떼지 않는다. #}
         {% if v.use_tier %}{% set _ul, _ut = v.use_tier.label.rsplit(' ', 1) %}{% endif %}
-        {% if v.use_tier and v.use_tier.tier == 'now' %}<div class="mt-2"><span class="inline-block max-w-full text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5" style="word-break:keep-all" title="예상 낙찰가로 낙찰돼도 소매로 사는 총비용보다 쌉니다. 취득세·이전·탁송·상태별 정비 충당을 포함하고, 사고 이력을 확인하지 못한 차는 사고차로 가정한 보수적 금액입니다.">{{ _ul }} <span class="whitespace-nowrap">{{ _ut }}{% if v.use_saving %} · 소매보다 −{{ '{:,}'.format((v.use_saving/10000)|round|int) }}만원{% endif %}</span></span></div>
+        {% if v.pick_label %}{# 유망 물건 목록: 갈래 + 시세 대비 절감률(홈 카드와 같은 문구·색) #}
+        <div class="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs" style="word-break:keep-all"><span class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded font-bold leading-tight {{ 'text-emerald-700 bg-emerald-50 border border-emerald-200' if v.pick_kind == 'now' else 'text-amber-800 bg-amber-50 border border-amber-200' }}"><span class="material-symbols-outlined text-[13px] leading-none">{{ pick_icons[v.pick_kind] }}</span>{{ v.pick_label }}</span><span class="text-mut">예상낙찰가 · 시세보다 <b class="text-txt tabular-nums">−{{ v.pick_disc }}%</b></span></div>
+        {% elif v.use_tier and v.use_tier.tier == 'now' %}<div class="mt-2"><span class="inline-block max-w-full text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5" style="word-break:keep-all" title="예상 낙찰가로 낙찰돼도 소매로 사는 총비용보다 쌉니다. 취득세·이전·탁송·상태별 정비 충당을 포함하고, 사고 이력을 확인하지 못한 차는 사고차로 가정한 보수적 금액입니다.">{{ _ul }} <span class="whitespace-nowrap">{{ _ut }}{% if v.use_saving %} · 소매보다 −{{ '{:,}'.format((v.use_saving/10000)|round|int) }}만원{% endif %}</span></span></div>
         {% elif v.use_tier and v.use_tier.tier == 'cheap' %}<div class="mt-2"><span class="inline-block max-w-full text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5" style="word-break:keep-all" title="{{ '{:,}'.format((v.use_tier.max_bid/10000)|round|int) }}만원 이하로 낙찰될 때만 소매보다 쌉니다. 예상 경쟁가는 그 위라 낙찰 가능성은 낮습니다.">{{ _ul }} <span class="whitespace-nowrap">{{ _ut }} · {{ '{:,}'.format((v.use_tier.max_bid/10000)|round|int) }}만원까지</span></span></div>{% endif %}
         {% if v.market_confidence and v.median_price is not none and not closed %}
         <div class="mt-2.5">

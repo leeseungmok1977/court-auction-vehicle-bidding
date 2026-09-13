@@ -176,6 +176,8 @@ p, dd, li { text-wrap: pretty; }
   /* 알약 띠의 px-1(4px) 만큼 바깥으로 흘려 1의 자리가 위·아래 행과 같은 세로선에 놓이게 — 정렬이 3행의 존재 이유다(검수) */
   .nc-pricegrid > .nc-price-hero { margin-inline: -.25rem; }
   .nc-pricegrid .nc-price { font-size: .875rem !important; }   /* rem 그대로 — 큰글씨·OS 확대를 따라 커진다 */
+  /* 3행에서는 좌우 숫자가 게이지의 축 라벨 노릇을 못 해 라벨 없는 맨 막대가 된다 → 3열일 때만 게이지(검수) */
+  .nc-gauge { display: none; }
 }
 
 /* 모션 저감 선호 — transform 모션만 제거, 색/투명도 전환은 유지(Emil) */

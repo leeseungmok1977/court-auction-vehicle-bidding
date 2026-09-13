@@ -3835,6 +3835,57 @@ def _promising(v: dict) -> bool:
     return True
 
 
+# 홈 '유망 물건' — 두 추천 칸(지금 입찰 추천 · 실사용 '지금 사면 이득')에서 근거가 가장 강한 물건. 문구는 카드와 같게.
+PICK_LABELS = {"resale": "되팔아도 남음", "now": USE_TIER_LABELS["now"]}
+# 유망 물건 설명 한 문장(홈 부제·목록 배너가 같은 문장을 쓴다). 카드에 실제로 보이는 낱말만 —
+# "절감률 × 신뢰도 순" 같은 독스트링 문장은 처음 보는 사람이 카드 어디에 있는지 모른다(디자인 검수).
+# (앞, 굵게, 뒤) 세 조각: 굵은 조각이 카드의 '시세보다 −N%'와 우상단 '신뢰 N'에 1:1로 대응한다.
+PICK_SUBTITLE = ("지금 입찰 추천·실사용 추천 가운데 ", "시세보다 많이 싸고 시세 신뢰도가 높은", " 차부터")
+PICK_ICONS = {"resale": "check_circle", "now": "directions_car"}   # 두 추천 카드와 같은 아이콘 — 연결은 색이 아니라 아이콘이 맡는다
+
+
+def promising_rows(bt: Optional[dict] = None, exclude_ids=(), limit: Optional[int] = None,
+                   within_days: Optional[int] = None) -> list:
+    """유망 물건 = 시세 신뢰도 '높음' + 오매칭 아님 + (재판매 검토가능 | 실사용 '지금 사면 이득'),
+    **시세 대비 절감률 × 시세 신뢰도** 순. 홈은 오늘의 추천 캐러셀에 있는 차를 빼고 상위 8, 목록(?picks=1)은 전부 —
+    홈의 8대는 항상 이 목록의 부분집합이다.
+
+    2026-09-14 실측: 예전 유망 물건은 '검토가능' 7대를 절감액(원) 순으로 보여줬는데 오늘의 추천 5대와 **100% 겹치고**,
+    절대액 정렬이라 고가차가 위로 갔고(아반떼 −40%가 카니발 −52% 위), 실사용 추천 46대와는 무관했다 — 라이프사이클(개수)·
+    오늘의 추천(하이라이트)과 다른 이 목록만의 일은 "왜 유망한가"를 세 숫자로 보여주는 것이다.
+    """
+    bt = bt if bt is not None else backtest_stats()
+    ex = set(exclude_ids or ())
+    out = []
+    # 기일 조건은 두 갈래 판정(_review_biddable · personal_use_tier)이 스스로 건다(오늘 이후만) —
+    # '지금 입찰 추천' 카드와 같은 모수여야 홈 8대 ⊂ 목록이 성립한다. within_days 는 선택.
+    for v in db.list_vehicles(upcoming_days=within_days, hide_incomplete=True):
+        if v["id"] in ex or not _promising(v):
+            continue
+        if v.get("auction_result") in ("낙찰", "종결") or v.get("status") in ("종결", "상세없음"):
+            continue
+        kind = None
+        if v.get("judgment") == "입찰 검토 가능" and _review_biddable(v):
+            kind = "resale"
+        else:
+            t = personal_use_tier(v, bt)
+            if t and t["tier"] == "now":
+                kind, v["use_tier"] = "now", t
+        if not kind:
+            continue
+        exp = expected_for(v, bt)
+        med = effective_median(v) or v.get("median_price")
+        if not exp or not med or exp >= med:
+            continue                                  # 시세보다 싸지 않으면 '유망'이라 부르지 않는다
+        disc = (med - exp) / med
+        v.update(expected_win=exp, pick_kind=kind, pick_label=PICK_LABELS[kind],
+                 pick_disc=int(round(disc * 100)),
+                 pick_score=disc * (v.get("market_confidence") or 0) / 100.0)
+        out.append(v)
+    out.sort(key=lambda v: (-v["pick_score"], v.get("sale_date") or "9999"))
+    return out[:limit] if limit else out
+
+
 def review_summary(bt: Optional[dict] = None) -> Optional[dict]:
     """검토 가능 물건의 예상낙찰가 집계(중심값·IQR·평균 신뢰도·MAE·시세대비 할인율).
     대시보드/달력 공용. bt를 넘기면 재계산 생략."""

@@ -304,13 +304,16 @@
 
 <!-- 유망 물건 (인사이트 우선) -->
 <div class="bg-surface border border-line rounded-lg p-5">
-  <div class="flex items-center justify-between mb-3">
+  <div class="flex items-center justify-between mb-1">
     <div class="flex items-center gap-2">
       <span class="material-symbols-outlined text-emerald-600">check_circle</span>
-      <h3 class="text-lg font-semibold whitespace-nowrap">유망 물건 <span class="text-mut text-sm font-normal hidden sm:inline">— 신뢰도 → 예상낙찰가 여유 큰 순</span></h3>
+      <h3 class="text-lg font-semibold whitespace-nowrap">유망 물건</h3>
     </div>
-    <a href="/vehicles?judgment=입찰 검토 가능&sort=expected" class="text-sm text-primary hover:underline whitespace-nowrap shrink-0">전체 보기 →</a>
+    <a href="/vehicles?picks=1" class="text-sm text-primary hover:underline whitespace-nowrap shrink-0">전체 보기 →</a>
   </div>
+  {# 이 목록만의 일: 두 추천 칸에서 '왜 유망한가'를 세 숫자로. 라이프사이클(개수)·오늘의 추천(하이라이트)과 겹치지 않게
+     캐러셀의 차는 빼고, 정렬 기준을 모바일에서도 적는다(전엔 sm 이상에서만 보여 순서를 알 수 없었다 — 2026-09-14). #}
+  <p class="text-xs text-mut mb-3" style="word-break:keep-all">{{ pick_subtitle[0] }}<b class="text-txt">{{ pick_subtitle[1] }}</b>{{ pick_subtitle[2] }} — 오늘의 추천 5대 제외</p>
   {% if candidates %}
   <div class="hidden lg:block overflow-x-auto custom-scrollbar">
     <table class="w-full text-sm min-w-[640px]">
@@ -321,18 +324,22 @@
         <th class="text-right py-2 font-medium" title="재판매 마진 차감 후 손익분기가 — 예상낙찰가보다 낮은 것이 정상">상한가 <span class="text-mut">재판매</span></th>
         <th class="text-right py-2 font-medium" title="최저매각가 × 유찰 프리미엄 기반 예상 낙찰가 — 일반 매수 실입찰 기준">예상낙찰가 <span class="text-mut">실입찰</span></th>
         <th class="text-right py-2 font-medium">시세중앙값</th>
+        <th class="text-right py-2 font-medium" title="(시세중앙값 − 예상낙찰가) ÷ 시세중앙값 — 정렬 기준(× 신뢰도)">시세 대비</th>
         <th class="text-center py-2 font-medium">시세 신뢰도</th></tr></thead>
       <tbody class="divide-y divide-line">
       {% for v in candidates %}
       {% set exp = v.expected_win %}
       <tr class="hover:bg-slate-50">
         <td class="py-2.5"><a href="/vehicle/{{ v.id }}" class="text-primary font-medium hover:underline">{{ v.model|mdl }}</a>
-          <span class="text-xs text-mut ml-1">{{ v.year or '—' }}</span></td>
+          <span class="text-xs text-mut ml-1">{{ v.year or '—' }}</span>
+          {# 갈래 태그 — 두 추천 칸과 같은 문구·같은 색(재판매=브랜드 앰버 틴트, 실사용=초록) #}
+          <span class="ml-1 inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded whitespace-nowrap {{ 'bg-emerald-50 text-emerald-700 border border-emerald-200' if v.pick_kind == 'now' else 'bg-amber-50 text-amber-800 border border-amber-200' }}"><span class="material-symbols-outlined text-[12px] leading-none">{{ pick_icons[v.pick_kind] }}</span>{{ v.pick_label }}</span></td>
         <td class="py-2.5 text-mut text-xs whitespace-nowrap hidden md:table-cell">{{ (v.court or '—')|replace('지방법원','지법') }}</td>
         <td class="py-2.5 text-right font-mono {{ 'text-rose-600' if exp and v.min_sale_price and v.min_sale_price > exp else '' }}">{{ v.min_sale_price|won }}</td>
         <td class="py-2.5 text-right font-mono text-mut">{{ v.upper_bid|won }}</td>
         <td class="py-2.5 text-right font-mono text-txt font-semibold">{{ exp|won if exp else '—' }}{{ ui.minigauge(v.min_sale_price, exp, v.median_price) }}</td>
         <td class="py-2.5 text-right font-mono text-mut">{{ v.median_price|won }}</td>
+        <td class="py-2.5 text-right font-mono font-semibold text-emerald-700">−{{ v.pick_disc }}%</td>
         <td class="py-2.5 text-center">
           {% if v.market_confidence_label %}
           {% set dot = 'bg-emerald-500' if v.market_confidence_label=='높음' else 'bg-amber-500' if v.market_confidence_label=='보통' else 'bg-rose-500' %}
@@ -352,7 +359,13 @@
     <a href="/vehicle/{{ v.id }}" class="block px-1 py-3 hover:bg-slate-50 transition-colors nc-pricegrid-host">
       <div class="flex items-center justify-between gap-2">
         <span class="font-semibold text-primary truncate" style="word-break:keep-all">{{ v.model|mdl }} <span class="text-xs text-mut font-normal">{{ v.year or '' }}</span></span>
-        {% if v.market_confidence_label %}<span class="inline-flex items-center gap-1 text-xs text-mut whitespace-nowrap shrink-0"><span class="w-1.5 h-1.5 rounded-full {{ dot }}"></span>{{ v.market_confidence_label }}</span>{% endif %}
+        {# '● 높음'은 이 목록에서 상수(높음만 통과)라 정보가 없다 — 정렬 2인자인 신뢰도 숫자를 보인다(검수) #}
+        {% if v.market_confidence %}<span class="inline-flex items-center gap-1 text-xs text-mut whitespace-nowrap shrink-0"><span class="w-1.5 h-1.5 rounded-full {{ dot }}"></span>신뢰 <b class="text-txt tabular-nums">{{ v.market_confidence }}</b></span>{% endif %}
+      </div>
+      {# 왜 유망한가 — 갈래 태그. 두 추천 카드와의 연결은 색이 아니라 **아이콘**(check_circle / directions_car)이 맡는다:
+         앰버 틴트는 이 앱에서 '조건부·주의'로도 쓰여 색만으로는 1위 카드가 3위 초록 카드보다 약해 보였다(검수). #}
+      <div class="mt-1 text-[11px]">
+        <span class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded font-bold whitespace-nowrap leading-tight {{ 'bg-emerald-50 text-emerald-700 border border-emerald-200' if v.pick_kind == 'now' else 'bg-amber-50 text-amber-800 border border-amber-200' }}"><span class="material-symbols-outlined text-[13px] leading-none">{{ pick_icons[v.pick_kind] }}</span>{{ v.pick_label }}</span>
       </div>
       {# 세 숫자는 반드시 한 줄에. 사용자 실기기(안드로이드 글자 크기 확대 = rem 확대)에서 가운데 칸이 1/3 폭에 갇혀
          '10,200,00 / 0'으로 접혔다. 가운데 칸은 내용 폭(auto), 양옆이 남는 폭을 나누고, 숫자 크기는 rem 과 화면 폭(vw) 중
@@ -361,15 +374,17 @@
          3열일 때 정렬은 왼쪽/가운데/오른쪽 — 아래 minigauge 의 왼끝(최저)·오른끝(시세)과 자리를 맞춘다(검수). #}
       <div class="nc-pricegrid grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] gap-2 mt-2 tabular-nums">
         <div class="text-left"><div class="text-[10px] text-mut">최저매각가</div><div class="nc-price font-mono text-mut whitespace-nowrap" style="font-size:min(.875rem,3.3vw)">{{ v.min_sale_price|won }}</div></div>
-        <div class="nc-price-hero text-center rounded-md bg-primary/5 px-1 py-0.5"><div class="text-[10px] text-primary">예상낙찰가</div><div class="nc-price font-mono font-bold text-txt whitespace-nowrap" style="font-size:min(.875rem,3.3vw)">{{ exp|won if exp else '—' }}</div></div>
+        {# 절감률은 기준(예상낙찰가 ÷ 시세)이 보이는 자리에 — 태그 줄에 두면 최저매각가 기준으로 읽어 숫자가 안 맞는다(검수) #}
+        <div class="nc-price-hero text-center rounded-md bg-primary/5 px-1 py-0.5"><div class="text-[10px] text-primary whitespace-nowrap">예상낙찰가 <span class="text-mut">· 시세보다</span> <b class="text-txt tabular-nums">−{{ v.pick_disc }}%</b></div><div class="nc-price font-mono font-bold text-txt whitespace-nowrap" style="font-size:min(.875rem,3.3vw)">{{ exp|won if exp else '—' }}</div></div>
         <div class="text-right"><div class="text-[10px] text-mut">시세중앙값</div><div class="nc-price font-mono text-mut whitespace-nowrap" style="font-size:min(.875rem,3.3vw)">{{ v.median_price|won }}</div></div>
       </div>
-      {{ ui.minigauge(v.min_sale_price, exp, v.median_price) }}
+      {# 게이지는 3열일 때만 — 3행(좁은 폭·큰글씨)에서는 좌우 숫자가 축 라벨 노릇을 못 해 라벨 없는 맨 막대가 된다(검수). CSS @container 에서 숨김 #}
+      <div class="nc-gauge">{{ ui.minigauge(v.min_sale_price, exp, v.median_price) }}</div>
     </a>
     {% endfor %}
   </div>
   {% else %}
-  <p class="text-sm text-mut">아직 검토 가능한 물건이 없습니다.{% if is_admin(request) %} 아래 <b class="text-txt">운영 도구 → 시세 분석</b>을 실행하면 채워집니다.{% else %} 매일 갱신 시 자동으로 채워집니다.{% endif %}</p>
+  <p class="text-sm text-mut">오늘의 추천 5대 외에 근거가 강한(시세 신뢰도 높음·시세보다 싼) 물건이 아직 없습니다.{% if is_admin(request) %} 아래 <b class="text-txt">운영 도구 → 시세 분석</b>을 실행하면 채워집니다.{% else %} 매일 갱신 시 자동으로 채워집니다.{% endif %}</p>
   {% endif %}
 </div>
 

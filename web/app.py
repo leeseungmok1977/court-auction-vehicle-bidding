@@ -284,31 +284,20 @@ def dashboard(request: Request):
     # (신뢰 낮은/오매칭 의심 물건이 큰 여유로 상단을 독점하지 않도록 — 실측 신뢰 최우선)
     _bt = service.backtest_stats()
     _disc = _bt.get("discount_median")
-
-    def _promising(v):
-        if v.get("market_confidence_label") != "높음":
-            return False
-        m, mn = v.get("median_price"), v.get("min_sale_price")
-        if m and mn and mn > 0 and m / mn > 3.5:   # 시세가 최저가의 3.5배 초과 → 오매칭/이상 의심
-            return False
-        return True
-
-    def _exp_margin(v):                       # 유망도 = 시세 대비 예상낙찰가 절감액(클수록 저가 매수)
-        exp = service.expected_for(v, _bt)
-        return (v.get("median_price") or 0) - (exp or v.get("upper_bid") or 0)
-    _cand = [v for v in db.list_vehicles(judgment="입찰 검토 가능") if _promising(v)]
-    candidates = sorted(_cand, key=_exp_margin, reverse=True)[:8]
-    for v in candidates:      # 유찰횟수 반영 예상낙찰가(대시보드 표시용)
-        v["expected_win"] = service.expected_for(v, _bt)
     # 상단 대표 밴드(달력 하단으로 이동) + 오늘의 추천 캐러셀(첫화면 상단, 매일 아침 갱신)
     review_summary = service.review_summary(_bt)
     daily_picks = service.get_daily_picks(5)
+    # 유망 물건 = 두 추천 칸(지금 입찰 추천 · 실사용 '지금 사면 이득')에서 근거가 가장 강한 상위 8 —
+    # 시세 대비 절감률 × 신뢰도 순, 캐러셀에 이미 있는 차는 제외(같은 차를 홈에서 두 번 보여주지 않는다).
+    # 예전엔 검토가능 7대를 절감액(원) 순으로 보여줘 오늘의 추천 5대와 100% 겹쳤다(2026-09-14).
+    candidates = service.promising_rows(_bt, exclude_ids={p["id"] for p in daily_picks}, limit=8)
     _adm = is_admin(request)
     _pv = lambda rows: rows if _adm else [service.public_view(r, False) for r in rows]  # noqa: E731
     return templates.TemplateResponse("dashboard.html", {
         "request": request, "counts": counts, "run": run, "total": total,
         "encar_health": service.encar_health_status(),   # 시세 수집 차단·지연 정직 고지
         "candidates": _pv(candidates), "running": service.is_running(),
+        "pick_labels": service.PICK_LABELS, "pick_icons": service.PICK_ICONS, "pick_subtitle": service.PICK_SUBTITLE,
         "judgments": JUDGMENTS, "settings": db.get_all_settings(),
         "upcoming": db.upcoming_count(30), "pending": db.pending_count(),
         "won": db.won_count(), "backtest": _bt, "review_summary": review_summary,
@@ -387,7 +376,7 @@ USEPICK_VALUES = ("1", "now", "cheap")
 def vehicles(request: Request, judgment: str = "", maker: str = "", q: str = "",
              sort: str = "recent", upcoming: str = "", result: str = "", status: str = "",
              cond: str = "", page: int = 1, date: str = "", court: str = "", promising: str = "",
-             segment: str = "", all: str = "", usepick: str = "", bucket: str = ""):
+             segment: str = "", all: str = "", usepick: str = "", bucket: str = "", picks: str = ""):
     # upcoming은 str로 받아 빈값/오염값에 견고하게 파싱(폼 hidden 빈값·손편집 URL 대비)
     up = int(upcoming) if upcoming.strip().lstrip("-").isdigit() else 0
     if up < 0:
@@ -421,6 +410,8 @@ def vehicles(request: Request, judgment: str = "", maker: str = "", q: str = "",
         # 지금 사면 이득(절감 큰 순) → 싸게 낙찰되면 이득(상한선까지 여유 큰 순)
         rows.sort(key=lambda r: (0 if r["use_tier"]["tier"] == "now" else 1,
                                  -(r.get("use_saving") or 0), -(r["use_tier"].get("room") or 0)))
+    if picks == "1":     # 홈 '유망 물건 → 전체 보기' — 두 추천 칸의 근거 순위 전체(홈의 8대 ⊂ 이 목록)
+        rows = service.promising_rows(_bt)
     disc = _bt.get("discount_median")
     mae = _bt.get("mae_pct")
     # 예상낙찰가 계산은 비용이 있으므로 '예상낙찰가순' 정렬처럼 전체가 필요할 때만 전 행 계산,
@@ -459,7 +450,7 @@ def vehicles(request: Request, judgment: str = "", maker: str = "", q: str = "",
     _filters = {"judgment": judgment, "maker": maker, "q": q, "sort": sort,
                 "upcoming": up or "", "result": result, "status": status, "cond": cond,
                 "date": date, "court": court, "promising": promising, "segment": segment,
-                "bucket": bucket, "usepick": usepick, "all": all}
+                "bucket": bucket, "usepick": usepick, "all": all, "picks": picks}
 
     def _qs(*drop: str) -> str:
         return urlencode({k: v for k, v in _filters.items() if v and k not in drop})
@@ -493,7 +484,8 @@ def vehicles(request: Request, judgment: str = "", maker: str = "", q: str = "",
         "q": q, "sort": sort, "upcoming": up, "result": result, "status": status,
         "cond": cond, "date": date, "court": court, "promising": promising,
         "segment": segment, "segment_presets": [(k, lbl) for k, lbl, _ in service.VEHICLE_SEGMENTS],
-        "usepick": usepick in USEPICK_VALUES, "usepick_val": usepick,
+        "usepick": usepick in USEPICK_VALUES, "usepick_val": usepick, "picks": picks == "1",
+        "pick_icons": service.PICK_ICONS, "pick_subtitle": service.PICK_SUBTITLE,
         "use_counts": use_counts, "qs_no_usepick": qs_no_usepick,
         "use_tier_labels": service.USE_TIER_LABELS,
         "judgments": JUDGMENTS, "makers": db.distinct_makers(),
@@ -513,7 +505,7 @@ def vehicles(request: Request, judgment: str = "", maker: str = "", q: str = "",
 def vehicles_count(judgment: str = "", maker: str = "", q: str = "", result: str = "",
                    status: str = "", cond: str = "", upcoming: str = "", date: str = "",
                    court: str = "", segment: str = "", all: str = "", bucket: str = "",
-                   usepick: str = ""):
+                   usepick: str = "", picks: str = ""):
     """저장한 검색의 '새 매물' 감지용 — 동일 필터의 현재 건수만 반환(JSON). 외부 데이터 없음.
 
     ⚠️ `/vehicles`와 **같은 모수**를 써야 한다. 예전엔 hide_incomplete를 넘기지 않아
@@ -533,6 +525,8 @@ def vehicles_count(judgment: str = "", maker: str = "", q: str = "", result: str
         if usepick in USEPICK_VALUES:
             rows = [r for r in rows
                     if (t := service.personal_use_tier(r, _bt)) and (usepick == "1" or t["tier"] == usepick)]
+    if picks == "1":                 # 유망 물건 전체 — /vehicles?picks=1 과 같은 함수
+        rows = service.promising_rows(service.backtest_stats())
     return {"total": len(rows)}
 
 
