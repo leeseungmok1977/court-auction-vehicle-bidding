@@ -375,7 +375,9 @@
       <div class="nc-pricegrid grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] gap-2 mt-2 tabular-nums">
         <div class="text-left"><div class="text-[10px] text-mut">최저매각가</div><div class="nc-price font-mono text-mut whitespace-nowrap" style="font-size:min(.875rem,3.3vw)">{{ v.min_sale_price|won }}</div></div>
         {# 절감률은 기준(예상낙찰가 ÷ 시세)이 보이는 자리에 — 태그 줄에 두면 최저매각가 기준으로 읽어 숫자가 안 맞는다(검수) #}
-        <div class="nc-price-hero text-center rounded-md bg-primary/5 px-1 py-0.5"><div class="text-[10px] text-primary whitespace-nowrap">예상낙찰가 <span class="text-mut">· 시세보다</span> <b class="text-txt tabular-nums">−{{ v.pick_disc }}%</b></div><div class="nc-price font-mono font-bold text-txt whitespace-nowrap" style="font-size:min(.875rem,3.3vw)">{{ exp|won if exp else '—' }}</div></div>
+        {# 라벨은 접혀도 된다(nowrap 금지): 큰글씨 320px 3행에서 라벨(15px) + 숫자가 카드 폭을 넘겨 숫자가 잘렸다(육안).
+           min-w-0 이라야 flex 안에서 라벨이 줄어들어 "예상낙찰가 · 시세보다 / −52%" 두 줄로 접히고 숫자는 제자리. #}
+        <div class="nc-price-hero text-center rounded-md bg-primary/5 px-1 py-0.5"><div class="text-[10px] text-primary min-w-0" style="word-break:keep-all">예상낙찰가 <span class="text-mut">· 시세보다</span> <b class="text-txt tabular-nums whitespace-nowrap">−{{ v.pick_disc }}%</b></div><div class="nc-price font-mono font-bold text-txt whitespace-nowrap" style="font-size:min(.875rem,3.3vw)">{{ exp|won if exp else '—' }}</div></div>
         <div class="text-right"><div class="text-[10px] text-mut">시세중앙값</div><div class="nc-price font-mono text-mut whitespace-nowrap" style="font-size:min(.875rem,3.3vw)">{{ v.median_price|won }}</div></div>
       </div>
       {# 게이지는 3열일 때만 — 3행(좁은 폭·큰글씨)에서는 좌우 숫자가 축 라벨 노릇을 못 해 라벨 없는 맨 막대가 된다(검수). CSS @container 에서 숨김 #}
