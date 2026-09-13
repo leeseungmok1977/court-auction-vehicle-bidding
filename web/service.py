@@ -2050,6 +2050,8 @@ def backfill_map_vision(limit: int = 20, delay: float = 6.0,
 
     gu = known_gu_names()
     csido = court_sido_map()
+    dbg = known_dong_by_gu()
+    pidx = trusted_place_index()
     out = {"tried": 0, "found": 0, "rejected": 0, "no_map": 0,
            "tokens_in": 0, "tokens_out": 0, "aborted": "", "why": {}}
     streak = 0
@@ -2080,7 +2082,7 @@ def backfill_map_vision(limit: int = 20, delay: float = 6.0,
             continue
         out["tokens_in"] += res.get("usage_in", 0)
         out["tokens_out"] += res.get("usage_out", 0)
-        got = MV.accept(res, gu, csido.get(v.get("court")))
+        got = MV.accept(res, gu, csido.get(v.get("court")), dbg, pidx)
         if got["addr"]:
             out["found"] += 1
             if not dry_run:
@@ -2118,6 +2120,62 @@ def court_sido_map(min_share: float = 0.05) -> dict:
         n = sum(c.values())
         out[court] = {k for k, m in c.items() if m / n >= min_share}
     return out
+
+
+def known_dong_by_gu() -> dict:
+    """(시·군·구 → 그 안에서 실제로 본 동/리/읍/면) 어휘. 비전 판독값은 **제외**한다.
+
+    ⚠ 이 어휘를 만들 때 비전 결과를 포함하면 순환이 된다. 실제로 그랬다 —
+      비전이 만들어 낸 '병설리'·'화이트동'이 어휘에 들어가 자기 자신을 통과시켰다.
+      검증용 어휘는 반드시 **검증 대상이 아닌 소스**로만 만든다.
+
+    비전 판독이 만들어 내는 오류는 그럴듯한 지명이라 시·군·구 대조만으로는 못 잡는다
+    ('안양시'도 실재하고 법원 시·도도 경기라 통과). 그 시·군·구에 그런 동이 있는지를
+    봐야 걸린다. 실측 8/8 정확:
+        남양주시 오남읍 O · 양주시 오남읍 X · 양주시 방성리 O · 양주시 병설리 X
+        미추홀구 학익동 O · 미추홀구 화이트동 X · 안양시 백석동 X · 마산합포구 구산면 O
+    """
+    import re as _re
+    from collections import defaultdict
+    gu = _re.compile(r"[가-힣]{1,5}(?:시|군|구)")
+    dong = _re.compile(r"[가-힣]{1,6}(?:동|리|읍|면)")
+    out = defaultdict(set)
+    for v in db.list_vehicles(hide_incomplete=False):
+        fields = [v.get("location")]
+        if v.get("storage_src") in ("court", "text"):
+            fields.append(v.get("storage_addr"))
+        for f in fields:
+            if not f:
+                continue
+            ds = dong.findall(str(f))
+            for g in gu.findall(str(f)):
+                out[g].update(ds)
+    return dict(out)
+
+
+def trusted_place_index() -> dict:
+    """신뢰 소스의 (번지 → 시·군·구), (시설명 → 시·군·구). 모순 검출용.
+
+    같은 '정석주차장 492-3' 이 한쪽은 양주시, 한쪽은 안양시로 나오면 하나는 틀렸다.
+    """
+    import re as _re
+    from collections import defaultdict
+    gu = _re.compile(r"[가-힣]{1,5}(?:시|군|구)")
+    bunji = _re.compile(r"\d{3,5}-\d{1,4}")   # 짧은 번호는 우연 충돌이 많다
+    facil = _re.compile(r"[가-힣]{2,8}(?:주차장|물류|모터스|정비|공업사|산업|센터)")
+    b, f = defaultdict(set), defaultdict(set)
+    for v in db.list_vehicles(hide_incomplete=False):
+        if v.get("storage_src") not in ("court", "text"):
+            continue
+        a = v.get("storage_addr") or ""
+        gs = set(gu.findall(a))
+        if not gs:
+            continue
+        for x in bunji.findall(a):
+            b[x].update(gs)
+        for x in facil.findall(a):
+            f[x].update(gs)
+    return {"bunji": dict(b), "facil": dict(f)}
 
 
 def known_gu_names() -> set:

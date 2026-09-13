@@ -544,3 +544,69 @@ def test_storage_patch_skips_unknown_vehicle_ids(one, tmp_path):
                                "src": "map_vision", "conf": "추정"}]), encoding="utf-8")
     out = service.apply_storage_patch(str(p))
     assert out["unknown"] == 1 and out["applied"] == 0
+
+
+# ── 비전 판독 2차 가드 — 실측 오류에서 나온 것들 ──────────────────
+DONG_VOCAB = {"양주시": {"백석읍", "방성리", "고읍동", "남방동"},
+              "남양주시": {"오남읍", "오남리", "화도읍"},
+              "안양시": {"동안구", "관양동", "호계동"},
+              "미추홀구": {"학익동", "용현동", "주안동"}}
+PLACE_IDX = {"bunji": {"492-3": {"양주시"}}, "facil": {"정석주차장": {"양주시"}}}
+
+
+def test_vision_rejects_a_dong_that_does_not_belong_to_that_district():
+    """시·군·구가 실재하고 법원 시·도와 맞아도 틀릴 수 있다.
+
+    실측: '경기도 안양시 백석동 방성리 492-3(정석주차장)' — 안양시도 실재하고
+    경기도 맞지만, 실제는 **양주시 백석읍 방성리**였다. 그 시·군·구에 그런 동이
+    있는지까지 봐야 걸린다.
+    """
+    got = v_accept({"printed_address": "경기도 안양시 백석동 방성리 492-3(정석주차장)",
+                    "nearby_labels": [], "label_kind": "보관장소"},
+                   {"안양시"}, {"경기"}, DONG_VOCAB, None)
+    assert got["addr"] == "" and "확인되지 않는 지명" in got["why"]
+
+    ok = v_accept({"printed_address": "경기도 양주시 백석읍 방성리 492-3",
+                   "nearby_labels": [], "label_kind": "보관장소"},
+                  {"양주시"}, {"경기"}, DONG_VOCAB, None)
+    assert ok["addr"].startswith("경기도 양주시")
+
+
+def test_vision_rejects_a_place_that_trusted_data_puts_elsewhere():
+    """같은 시설명·번지가 신뢰 소스에선 다른 시·군·구면 하나는 틀렸다."""
+    got = v_accept({"printed_address": "경기도 안양시 관양동 492-3 정석주차장",
+                    "nearby_labels": [], "label_kind": "보관장소"},
+                   {"안양시"}, None, DONG_VOCAB, PLACE_IDX)
+    assert got["addr"] == "" and "신뢰 소스에서" in got["why"]
+
+
+def test_short_lot_numbers_do_not_trigger_a_contradiction():
+    """'22-11' 같은 짧은 번호는 다른 동네와 우연히 겹친다 — 정상 주소를 떨어뜨렸다."""
+    idx = {"bunji": {"22-11": {"평택시"}}, "facil": {}}
+    got = v_accept({"printed_address": "경기도 양주시 고읍동 285 (청담로 39번길 22-11)",
+                    "nearby_labels": [], "label_kind": "보관장소"},
+                   {"양주시"}, None, DONG_VOCAB, idx)
+    assert got["addr"], f"짧은 번호 우연 충돌로 정상 주소를 버렸다: {got['why']}"
+
+
+def test_label_prefix_is_stripped_from_the_address():
+    """모델이 라벨 문구를 주소 앞에 붙여 온다 — '보관장소 - …', '어선 보관장소 …'."""
+    from src.vision.map_vision import clean_address
+    assert clean_address("보관장소 - 경상북도 안동시 강남14길 65") == "경상북도 안동시 강남14길 65"
+    assert clean_address("어선 보관장소 여수시 국동항") == "여수시 국동항"
+    assert clean_address("대상물건 보관장소 부산광역시 강서구") == "부산광역시 강서구"
+
+
+def test_validation_vocabulary_excludes_vision_output(one):
+    """⚠ 검증 어휘를 비전 결과로 만들면 순환이 된다 — 실제로 그랬다.
+
+    비전이 만들어 낸 '병설리'·'화이트동'이 어휘에 들어가 자기 자신을 통과시켰다.
+    """
+    db.upsert_vehicle({"id": "T1", "folder_key": "T1", "case_no": "2026타경3",
+                       "item_no": "1", "court": "의정부지방법원", "status": "완료",
+                       "location": "경기도 양주시 백석읍 방성리 1"})
+    db.update_fields("T1", storage_addr="경기도 양주시 백석읍 병설리 490-2",
+                     storage_src="map_vision")
+    vocab = service.known_dong_by_gu()
+    assert "방성리" in vocab.get("양주시", set()), "location 은 어휘에 들어가야 한다"
+    assert "병설리" not in vocab.get("양주시", set()), "비전 결과가 어휘를 오염시켰다"

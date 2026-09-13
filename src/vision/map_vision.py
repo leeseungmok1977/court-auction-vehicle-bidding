@@ -194,8 +194,24 @@ def sido_of(text: str) -> str:
     return _SIDO_CANON.get(m.group(1), m.group(1)) if m else ""
 
 
+_DONG_RE = re.compile(r"[가-힣]{1,6}(?:동|리|읍|면)")
+# 번지 모순 검사는 **3자리 이상**에만 건다. "22-11" 같은 짧은 번호는 다른 동네와
+# 우연히 겹쳐 정상 주소를 떨어뜨린다(실측: 양주시 고읍동 건이 평택시와 충돌 판정).
+_BUNJI_RE = re.compile(r"\d{3,5}-\d{1,4}")
+_FACIL_RE = re.compile(r"[가-힣]{2,8}(?:주차장|물류|모터스|정비|공업사|산업|센터)")
+# 모델이 라벨 문구를 주소 앞에 붙여 오는 경우가 있다
+# ("보관장소 - 경상북도 안동시…", "어선 보관장소 여수시 국동항")
+_PREFIX_RE = re.compile(r"^\s*(?:어선|선박|차량|대상물건|본건)?\s*보관\s*장소\s*[-:·\s]*")
+
+
+def clean_address(addr: str) -> str:
+    return re.sub(r"\s+", " ", _PREFIX_RE.sub("", addr or "")).strip(" .,·-")
+
+
 def accept(result: dict, known_gu: Optional[set] = None,
-           court_sido: Optional[set] = None) -> dict:
+           court_sido: Optional[set] = None,
+           dong_by_gu: Optional[dict] = None,
+           place_index: Optional[dict] = None) -> dict:
     """**인쇄된 주소만** 채택한다. 모델이 '읽었다'는 주변 지명은 쓰지 않는다.
 
     ⚠ 왜 주변 지명을 버리는가 — 실측에서 충남 서산시 지도를 주고 물었더니 모델이
@@ -231,8 +247,32 @@ def accept(result: dict, known_gu: Optional[set] = None,
     if court_sido and sd and sd not in court_sido:
         out["why"] = f"법원 관할 시·도({'/'.join(sorted(court_sido))})와 어긋남: {sd}"
         return out
-    out.update(addr=re.sub(r"\s+", " ", printed).strip(" .,·"),
-               level="full", evidence=printed)
+    addr = clean_address(printed)
+
+    # ⚠ 시·군·구가 실재하고 법원 시·도와 맞아도 틀릴 수 있다 — '안양시 백석동 방성리'는
+    #   둘 다 통과했지만 실제는 '양주시 백석읍 방성리'였다. 그 시·군·구에 그런 동이
+    #   있는지까지 봐야 걸린다. 어휘는 비전 결과를 뺀 소스로만 만든다(순환 금지).
+    if dong_by_gu:
+        for g in gus:
+            vocab = dong_by_gu.get(g)
+            if not vocab or len(vocab) < 3:
+                continue                     # 어휘가 빈약한 시군구는 판정하지 않는다
+            unseen = [d for d in _DONG_RE.findall(addr) if d not in vocab and d != g]
+            if unseen:
+                out["why"] = f"{g} 에 '{unseen[0]}' 은(는) 확인되지 않는 지명"
+                return out
+
+    # 같은 번지·같은 시설명이 신뢰 소스에선 다른 시·군·구로 돼 있으면 하나는 틀렸다
+    if place_index:
+        for key, table in (("bunji", _BUNJI_RE), ("facil", _FACIL_RE)):
+            idx = place_index.get(key) or {}
+            for tok in table.findall(addr):
+                seen = idx.get(tok)
+                if seen and not (seen & set(gus)):
+                    out["why"] = f"'{tok}' 은 신뢰 소스에서 {sorted(seen)} 로 돼 있음"
+                    return out
+
+    out.update(addr=addr, level="full", evidence=printed)
     return out
 
 
