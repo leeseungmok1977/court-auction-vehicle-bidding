@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>{{ v.model|mdl }} 분석 리포트 · {{ v.case_no }}</title>
 <meta name="description" content="{{ v.model|mdl }} 법원경매 분석 리포트 — 예상 낙찰가·추천 입찰가·시세 대비·유사 낙찰 실적을 담은 경매로 내차GET 리포트."/>
+<script>try{ if(localStorage.getItem("naechaget:large")==="1") document.documentElement.classList.add("nc-large"); }catch(e){}</script>
 <link rel="stylesheet" href="/static/app.css?v={{ css_v }}"/>
 <style>
   /* 용어 설명 툴팁 — base.html과 동일 컴포넌트(리포트는 독립 문서라 여기에 별도 정의). 인쇄 시 숨김 유지 */
@@ -59,6 +60,7 @@ body{background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:
 .no-print{margin-bottom:18px;display:flex;justify-content:flex-end;gap:8px}
 .btn{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:8px 16px;font-size:13px;font-weight:600;border:1px solid var(--line);background:#fff;color:var(--ink);cursor:pointer;text-decoration:none}
 .btn.pri{background:var(--cobalt);color:#fff;border-color:var(--cobalt)}
+#rptLarge[aria-pressed="true"]{background:#2f5fe0;color:#fff;border-color:#2f5fe0}
 .masthead{background:var(--cobalt-deep);color:#fff;border-radius:14px;padding:28px 32px 24px}
 .mh-top{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap}
 .brand{display:flex;align-items:center;gap:10px}
@@ -80,7 +82,7 @@ body{background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:
 .verdict{border:1px solid var(--line-strong);border-top:3px solid var(--cobalt)}
 /* 결론이 부정이면 카드 상단 바도 로즈. 파란 바만 두면 판정이 바뀌어도 카드가 같아 보인다. */
 .verdict.is-stop{border-top-color:var(--red)}
-/* stop 화면에서 초록 CONFIDENCE 배지가 "좋은 물건"으로 오독된다 — 분석 신뢰도일 뿐이다. */
+/* stop 화면에서 초록 신뢰도 배지가 "좋은 물건"으로 오독된다 — 시세 신뢰도일 뿐이다. */
 .masthead.is-stop .badge b{color:#C9D4E8}
 .vgrid{display:grid;grid-template-columns:auto 1fr;gap:28px;align-items:start}
 .v-label{font-size:12px;color:var(--ink-soft);font-weight:600;margin-bottom:6px}
@@ -98,7 +100,7 @@ body{background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:
 .vpts li::before{content:"";position:absolute;left:0;top:8px;width:6px;height:6px;border-radius:2px;background:var(--cobalt)}
 .vpts b{color:var(--ink)}
 /* 섹션 점프 바 — 리포트는 9,600px(=11화면)짜리 문서인데 고정 요소가 하나도 없어
-   가장 중요한 STOP RULE·리스크 항목까지 도달률이 사실상 0이었다(2026-09-12 패널 지적). */
+   가장 중요한 입찰 중단 기준·리스크 항목까지 도달률이 사실상 0이었다(2026-09-12 패널 지적). */
 /* 한글 어절 파괴 방지 — **산문에만** 건다 (2026-09-12 실측 후 결정).
    한글은 어절 중간에서 끊기면 '재경매'가 '재경/매'처럼 갈라져 한 글자만 다음 줄로 떨어진다.
    ⚠ 전역(*)에 걸면 안 된다: 표·칩·KPI 카드처럼 폭이 빠듯한 요소가 최소폭을 잃어
@@ -144,7 +146,7 @@ table, thead, tbody, tr, th, td { word-break: keep-all; overflow-wrap: break-wor
 .proc{margin:16px 0 0;padding-left:20px}
 .proc li{font-size:13px;line-height:1.6;color:var(--ink-soft);margin-bottom:9px}
 .proc li b{color:var(--ink)}
-/* ⚠ STOP RULE 박스 전용. 판정 톤 클래스와 이름이 겹치면 .card 전체가 가로 배치된다
+/* ⚠ 입찰 중단 기준 박스 전용. 판정 톤 클래스와 이름이 겹치면 .card 전체가 가로 배치된다
    — 실제로 §01이 3열로 무너져 육각형이 화면 밖으로 나갔다(4회차 디자인 P0). */
 .stop{margin-top:20px;display:flex;gap:12px;align-items:flex-start;border-radius:10px;padding:13px 16px}
 .stop.on{background:var(--red-tint);border:1px solid #F2C8C8}.stop.off{background:#F4F6F9;border:1px solid var(--line)}
@@ -173,6 +175,8 @@ table, thead, tbody, tr, th, td { word-break: keep-all; overflow-wrap: break-wor
 .cscore .n{font-family:var(--mono);font-size:42px;font-weight:700;line-height:1.1;color:var(--green)}
 .cscore .n.mid{color:var(--amber)}.cscore .n small{font-size:15px;color:var(--ink-faint);font-weight:500}
 .cscore .l{font-size:11.5px;font-weight:600;color:var(--ink-soft);margin-top:4px}
+/* 점수가 무엇의 점수인지 말하는 이름 — 캡션(.s)과 같은 급으로 두면 안 읽힌다 */
+.cscore .nm{font-size:13px;font-weight:700;color:var(--ink-soft);margin-bottom:4px}
 .cscore .s{font-size:11px;color:var(--ink-faint);margin-top:8px;line-height:1.5}
 .cbars{display:grid;gap:12px}
 .cbar{display:grid;grid-template-columns:110px 1fr 78px;gap:12px;align-items:center}
@@ -339,6 +343,95 @@ details.raw summary{cursor:pointer;font-size:12px;color:var(--cobalt);font-weigh
 @media print{details.raw{display:none}}
 @media (max-width:660px){.vgrid,.confw{grid-template-columns:1fr}.vpts{border-left:none;border-top:1px solid var(--line);padding-left:0;padding-top:16px}.sp-pin .lf{display:none}.sp-pin .la{display:inline}.card{padding:18px 16px}}
 @media print{body{background:#fff}.page{padding:0;max-width:none}.no-print{display:none}.card,.masthead{border-radius:0;break-inside:avoid}.section{break-inside:avoid}@page{size:A4;margin:12mm}}
+
+/* ── 큰글씨(어르신) 모드 — 리포트 ────────────────────────────────
+   리포트는 base.html 을 쓰지 않는 **독립 문서**라 헤더의 큰글씨 토글이
+   여기엔 걸리지 않았다. 60·70대에게 글이 가장 많고 판단이 가장 무거운 화면만
+   접근성 옵션에서 빠져 있던 셈이다(디자인 검수 2026-09-13).
+   본문이 전부 px 고정이라 루트 폰트 확대(html{font-size:125%})로는 한 글자도
+   안 커진다 → 실제 크기를 ×1.25 로 재선언한다(0.5px 반올림, 아래는 기계 생성).
+   normal 모드 렌더는 한 픽셀도 바뀌지 않는다 — .nc-large 가 붙어야만 적용된다.
+   @media screen 으로 묶는 이유: 인쇄는 종이 크기가 고정이라 확대하면 넘쳐 잘린다.
+   (print 안에서 font-size:revert 로 되돌리면 작성자 스타일이 아니라 브라우저
+    기본값으로 돌아가 인쇄물이 통째로 깨진다 — 그 길로 가지 않는다.) */
+@media screen{
+  html.nc-large .gloss .q{font-size:12.5px}
+  html.nc-large .gloss .pop{font-size:15px}
+  html.nc-large body{font-size:17.5px}
+  html.nc-large .btn{font-size:16px}
+  html.nc-large .brand-mark{font-size:21px}
+  html.nc-large .brand-name{font-size:19px}
+  html.nc-large .brand-sub{font-size:13px}
+  html.nc-large .badge{font-size:13px}
+  html.nc-large .mh-eyebrow{font-size:14.5px}
+  html.nc-large .mh-meta dt{font-size:14px}
+  html.nc-large .mh-meta dd{font-size:16px}
+  html.nc-large .sec-no{font-size:15px}
+  html.nc-large .sec-head h2{font-size:24px}
+  html.nc-large .sec-note{font-size:15px}
+  html.nc-large .v-label{font-size:15px}
+  html.nc-large .v-sub{font-size:15.5px}
+  html.nc-large .vpts li{font-size:16.5px}
+  html.nc-large .secnav a{font-size:15px}
+  html.nc-large .proc li{font-size:16px}
+  html.nc-large .stop .tg{font-size:16px}
+  html.nc-large .stop p{font-size:15.5px}
+  html.nc-large .sp-title{font-size:15px}
+  html.nc-large .sp-pin .pl{font-size:12.5px}
+  html.nc-large /* 축약 라벨(최저/예상/상한/시세) — 모바일에서만 */ .sp-pin .pv{font-size:14px}
+  html.nc-large .sp-blabel{font-size:15px}
+  /* 큰글씨에서 320·360px 넘침(실측). 절대배치 + nowrap 이라 가운데 정렬 기준으로
+     좌우가 트랙 밖으로 나갔다 — 폭을 묶고 줄바꿈을 허용한다. */
+  html.nc-large .sp-blabel{white-space:normal;max-width:min(94vw,320px);line-height:1.3}
+  /* 산출 로직의 금액 칸(mono·nowrap)이 19px로 커지며 설명 칸을 밀어냈다.
+     설명 칸이 줄어들 수 있게 하고(min-width:0), 금액은 줄을 바꿔 아래로 내린다. */
+  html.nc-large .logic{grid-template-columns:24px 1fr;gap:8px 10px}
+  html.nc-large .logic .ld{min-width:0}
+  html.nc-large .logic .lv{grid-column:2;justify-self:end;white-space:nowrap}
+  html.nc-large .sp-foot{font-size:14.5px}
+  html.nc-large .cscore .n{font-size:52.5px}
+  html.nc-large .cscore .n small{font-size:19px}
+  html.nc-large .cscore .l{font-size:14.5px}
+  html.nc-large .cscore .nm{font-size:16px}
+  html.nc-large .cscore .s{font-size:14px}
+  html.nc-large .cbar .nm{font-size:15.5px}
+  html.nc-large .cbar .vv{font-size:14px}
+  html.nc-large .tag{font-size:11px}
+  html.nc-large .legend{font-size:14px}
+  html.nc-large table{font-size:16px}
+  html.nc-large .scroll-hint{font-size:13px}
+  html.nc-large thead th{font-size:14px}
+  html.nc-large .note{font-size:14.5px}
+  html.nc-large /* 자료가 없는 섹션 — 번호를 건너뛰면 3명이 '버그'로 읽었다(패널 2026-09-13). 섹션은 항상 두고,html.nc-large 왜 비었는지를 본문에 적는다. 처음엔 점선 테두리였는데 인쇄물에서 점선은 '절취선·기입란'으로 읽히고(디자인 검수),html.nc-large 실선 카드 안에 점선 박스가 들어가 프레임이 두 겹이 됐다 → 좌측 레일로 바꿨다. */ .sec-empty{font-size:15.5px}
+  html.nc-large .kv{font-size:16px}
+  html.nc-large .hx-lbl-off{font-size:11px}
+  html.nc-large .hx-lbl{font-size:13px}
+  html.nc-large .hx-tip{font-size:15px}
+  html.nc-large .hx-tip b{font-size:19px}
+  html.nc-large .hx-row{font-size:15.5px}
+  html.nc-large .hx-row .bs{font-size:14px}
+  html.nc-large .hx-foot{font-size:14px}
+  html.nc-large /* 칩 내용은 거의 한글이다. mono 를 쓰는 조상(.num) 안에 놓이면 글리프가 없어 글자마다 폴백이 일어나 "써 낼 수 없 는"으로 자간이 벌어진다 — 명시적으로 되돌린다. */ .chip{font-size:13px}
+  html.nc-large .matrix .axis{font-size:14px}
+  html.nc-large .logic .ln{font-size:14px}
+  html.nc-large .logic .ld{font-size:16px}
+  html.nc-large .logic .ld small{font-size:14.5px}
+  html.nc-large .logic .lv{font-size:17px}
+  html.nc-large .logic:last-child .lv{font-size:19px}
+  html.nc-large pre.body{font-size:15.5px}
+  html.nc-large .disc{font-size:14.5px}
+  html.nc-large .foot{font-size:13px}
+  html.nc-large .vsum{font-size:17px}
+  html.nc-large .vstat .n{font-size:27.5px}
+  html.nc-large .vstat .l{font-size:13px}
+  html.nc-large .vstat .s{font-size:12px}
+  html.nc-large .abadge{font-size:14px}
+  html.nc-large details.raw summary{font-size:15px}
+  @media (max-width:560px){
+    html.nc-large table.rowcard td.sub{font-size:14.5px}
+  }
+}
+
 </style>
 </head>
 <body>
@@ -368,6 +461,24 @@ function _reportBack(e){
   }catch(err){}
   return true;
 }
+
+/* 큰글씨(어르신) 모드 — base.html 과 **같은 저장 키**를 쓴다. 목록에서 켜고 리포트로
+   넘어오면 그대로 유지돼야 한다(다른 키를 쓰면 "여기만 왜 작지"가 된다). */
+function rptToggleLarge(){
+  try{
+    var on = document.documentElement.classList.toggle('nc-large');
+    localStorage.setItem('naechaget:large', on ? '1' : '0');
+    var b = document.getElementById('rptLarge');
+    if (b) b.setAttribute('aria-pressed', on ? 'true' : 'false');
+  }catch(e){}
+}
+/* 이 스크립트 블록은 버튼(.rtop)보다 **위**에 있다 — 바로 실행하면 null 이라
+   켜져 있어도 aria-pressed=false 로 남는다(실측). DOM 이 준비된 뒤에 맞춘다. */
+document.addEventListener('DOMContentLoaded', function(){ try{
+  var b = document.getElementById('rptLarge');
+  if (b) b.setAttribute('aria-pressed',
+        document.documentElement.classList.contains('nc-large') ? 'true' : 'false');
+}catch(e){} });
 
 /* 고정 바 실높이를 앵커 여백에 반영(칩 줄바꿈·큰글씨·회전 대응) */
 function _syncRtopH(){
@@ -401,6 +512,8 @@ document.addEventListener('click', function(e){
   <div class="rtop-btns">
     <a href="/vehicle/{{ v.id }}" class="btn" onclick="return _reportBack(event)"><span class="material-symbols-outlined" style="font-size:18px">arrow_back</span> 상세로</a>
     <button onclick="window.print()" class="btn pri"><span class="material-symbols-outlined" style="font-size:18px">print</span> 인쇄 / PDF 저장</button>
+    <button type="button" id="rptLarge" class="btn" aria-pressed="false" onclick="rptToggleLarge()"
+            title="글씨를 크게 봅니다 (다시 누르면 원래대로)" aria-label="큰글씨 모드 전환">큰글씨</button>
     <span class="btn btn-soon" style="opacity:.5;cursor:not-allowed;gap:6px" title="곧 제공 — 리포트를 계정에 보관하고 건당 구매(현재 무료·인쇄로 저장하세요)" aria-disabled="true"><span class="material-symbols-outlined" style="font-size:18px">bookmark_add</span> 보관·구매 <span style="font-size:10px;background:var(--line);color:var(--ink-soft);padding:1px 6px;border-radius:99px">준비 중</span></span>
   </div>
 
@@ -420,9 +533,9 @@ document.addEventListener('click', function(e){
   <header class="masthead{{ ' is-stop' if _tone0 == 'stop' }}">
     <div class="mh-top">
       <div class="brand"><div class="brand-mark">A</div>
-        <div><div class="brand-name">차량경매 분석 리포트</div><div class="brand-sub">Court Auction Vehicle Intelligence</div></div></div>
+        <div><div class="brand-name">차량경매 분석 리포트</div><div class="brand-sub">법원경매 차량 분석</div></div></div>
       <div class="badges">
-        {% if conf %}<div class="badge fill">CONFIDENCE <b>{{ conf }}</b>/100</div>{% endif %}
+        {% if conf %}<div class="badge fill">시세 신뢰도 <b>{{ conf }}</b>/100</div>{% endif %}
         <div class="badge">{{ v.market_confidence_label or '—' }}</div>
       </div>
     </div>
@@ -506,7 +619,7 @@ document.addEventListener('click', function(e){
           {% elif thin_margin %}<li style="color:var(--amber)"><b style="color:var(--amber)">재판매 부적합 신호</b> — 예상낙찰가가 마진 확보선(<b class="num">{{ upper|won }}원</b>)을 초과해 <b>되팔이 차익은 어렵습니다</b>{% if bidst and bidst.state in ('resale','usepick') %} — 직접 타실 목적이면 검토할 만합니다{% endif %}</li>
           {% else %}<li>재판매 목적이면 마진 확보선 <b class="num">{{ upper|won }}원</b> 이하가 기준 (목표마진 {{ report.target_margin|won }}원)</li>{% endif %}
           {% if next_min %}<li>이번 기일에 유찰되면 <b>다음 기일 예상 최저가는 <span class="num">{{ next_min.price|won }}원</span></b>({{ ((1-next_min.ratio)*100)|round|int }}% 저감{% if next_min.basis == 'court' %} · 이 법원 실측 {{ next_min.court_n }}회{% if next_min.share and next_min.share < 0.85 %} 중 {{ (next_min.share*100)|round|int }}%{% endif %}{% else %} · 전국 기준(이 법원 표본 부족){% endif %})</li>{% endif %}
-          <li>본 결론의 신뢰도 <b>{{ conf }}/100</b> — 미확정 요소는 현장확인(상태·정비비)뿐이며 결과에 따라 밴드가 조정될 수 있음(09)</li>
+          <li><b>시세 신뢰도 {{ conf }}/100</b> — 이 결론이 딛고 선 <b>소매 시세</b>를 얼마나 믿을 수 있는지의 점수입니다(차량 상태·사고 이력의 확실성은 별개 · 02 참조). 미확정 요소는 현장확인(상태·정비비)뿐이며 결과에 따라 밴드가 조정될 수 있음(09)</li>
         </ul>
       </div>
       {# 종합 프로필 6축 육각형 — 단일 시리즈(범례 없음), 값은 우측 표·툴팁, 자료 없는 축은 미산출로 둔다 #}
@@ -541,7 +654,7 @@ document.addEventListener('click', function(e){
       </div>
       {% endif %}
       <div class="stop {{ 'on' if report.stop_active else 'off' }}">
-        <span class="tg">STOP RULE</span>
+        <span class="tg">입찰 중단 기준</span>
         <p class="gloss-row">{% if report.stop_active %}<b>사고/침수 이력이 감지</b>되었습니다. 현장에서 골격(프레임) 손상·침수 확정 시 본 리포트의 권장가는 <b>즉시 무효</b>이며 입찰 보류를 권장합니다.
         {% else %}현장/서류에서 <b>골격(프레임) 사고 · 침수 · 미기재 중대 결함 · {{ ui.gloss('인수 부담 권리관계', '낙찰가 말고 따로 물어내야 하는 돈이에요. 차량 경매에서는 ① 정비·보관업자의 유치권(수리비·보관료) ② 말소되지 않는 저당권·압류 ③ 체납 자동차세·과태료(내지 않으면 이전등록 자체가 막힙니다) ④ 검사 만료 시 재검사비가 해당합니다. 부동산 경매에서 쓰는 권리 개념은 차량에 그대로 적용되지 않습니다. 자동차등록원부(갑구·을구)로 확인하세요.', q=false) }}</b> 중 하나라도 확인되면 본 리포트의 권장가는 무효로 간주하고 입찰을 보류하십시오.{% endif %}</p>
       </div>
@@ -568,15 +681,20 @@ document.addEventListener('click', function(e){
 
   <!-- 02 데이터 신뢰도 -->
   <section class="section">
-    <div class="sec-head" id="sec02"><span class="sec-no">02</span><h2>데이터 신뢰도</h2><span class="sec-note">"이 결론을 얼마나 믿어도 되는가"</span></div>
+    <div class="sec-head" id="sec02"><span class="sec-no">02</span><h2>근거 점검</h2><span class="sec-note">"이 결론을 얼마나 믿어도 되는가"</span></div>
     <div class="card">
       <div class="confw">
+        {# 이름 없는 큰 숫자였다. 다섯 막대 평균(71.4)과 우연히 비슷해 종합점수로
+             읽혔지만 실제로는 **시세 하나**의 점수다 — 이름을 붙여 구분한다. #}
         <div class="cscore">
+          <div class="nm">시세 신뢰도</div>
           <div class="n {{ 'mid' if conf<70 else '' }} num">{{ conf }}<small>/100</small></div>
           <div class="l">{{ v.market_confidence_label or '—' }}</div>
-          <div class="s">현장확인 시 신뢰도 상향</div>
+          <div class="s">표본 수와 가격 편차로 계산합니다</div>
         </div>
         <div class="cbars">
+          {# 방향어('아래')를 쓰지 않는다 — 661px 이상과 인쇄에서는 막대가 점수의 **오른쪽**이다 #}
+          <div class="v-label" style="margin-bottom:8px">항목별 자료 확보도</div>
           {% for c in report.cats %}
           <div class="cbar {{ 'warn' if c.score<70 else '' }}">
             <span class="nm">{{ c.name }}</span>
@@ -623,7 +741,7 @@ document.addEventListener('click', function(e){
       {% if backtest and (backtest.mae_pct or backtest.history_n) %}
       <div class="v-label" style="margin-top:20px">모델 검증 실적 <span style="font-weight:400;color:var(--ink-faint)">— 예측이 실제 낙찰을 얼마나 맞혔는가</span></div>
       <div class="vstats">
-        {% if backtest.mae_pct %}<div class="vstat"><div class="n">±{{ backtest.mae_pct|round|int }}%</div><div class="l">예측 오차 (LOO MAE)</div><div class="s">자기 제외 실측 검증</div></div>{% endif %}
+        {% if backtest.mae_pct %}<div class="vstat"><div class="n">±{{ backtest.mae_pct|round|int }}%</div><div class="l">예측 오차</div><div class="s">자기 제외 방식으로 실측 검증</div></div>{% endif %}
         {# '상한가 적중률'은 재판매 마진선을 넘겼는지를 재는 지표라 '예측 적중률'로 오독된다.
            ±9%·175와 같은 크기·같은 색으로 20%가 놓여 "적중률이 20%밖에 안 되나"로 읽혔다.
            같은 이유로 /accuracy 에서는 이미 뺐는데 리포트에만 남아 있었다(2026-09-12 패널 지적).
@@ -631,7 +749,7 @@ document.addEventListener('click', function(e){
         {% if backtest.history_n %}<div class="vstat"><div class="n num">{{ backtest.history_n }}</div><div class="l">학습 낙찰표본</div><div class="s">누적 실측</div></div>{% endif %}
         {% if backtest.actual_sample %}<div class="vstat"><div class="n">±{{ backtest.actual_mae_pct|round|int }}%</div><div class="l">시세 실측 대조</div><div class="s">n={{ backtest.actual_sample }}</div></div>{% endif %}
       </div>
-      <p class="note">과거 실제 낙찰을 <b>자기 제외(Leave-One-Out)</b>로 예측했을 때의 정확도입니다. 개별 경매를 정밀 예측하지 않으며, 낙찰 표본이 쌓일수록 모델이 자동 정교화됩니다.</p>
+      <p class="note">과거에 실제로 낙찰된 차를 <b>그 차를 빼고</b> 예측해 봤을 때의 정확도입니다. 개별 경매를 정밀 예측하지 않으며, 낙찰 표본이 쌓일수록 모델이 자동 정교화됩니다.</p>
       {% endif %}
     </div>
   </section>
@@ -788,7 +906,7 @@ document.addEventListener('click', function(e){
 
   <!-- 06 총 취득원가 -->
   <section class="section">
-    <div class="sec-head" id="sec06"><span class="sec-no">06</span><h2>총 취득원가 (All-in Cost)</h2><span class="sec-note">{{ abasis_ko }} {{ abid|won }}원 기준</span></div>
+    <div class="sec-head" id="sec06"><span class="sec-no">06</span><h2>총 취득원가</h2><span class="sec-note">{{ abasis_ko }} {{ abid|won }}원 기준</span></div>
     <div class="card">
       {% set a = report.allin_ref %}
       <div class="tscroll"><table class="rowcard cost">
@@ -854,7 +972,7 @@ document.addEventListener('click', function(e){
         </tbody>
       </table></div>
       <p class="scroll-hint">← 좌우로 밀어 재판매가 상단 구간까지 보기</p>
-      <p class="note">단위: 만원(마진). 현장에서 정비비가 예상보다 크거나 매도가가 낮아질수록 마진이 빠르게 줄어듭니다. 음수(적자) 구간에 진입하면 STOP RULE에 준해 입찰을 재검토하십시오.</p>
+      <p class="note">단위: 만원(마진). 현장에서 정비비가 예상보다 크거나 매도가가 낮아질수록 마진이 빠르게 줄어듭니다. 음수(적자) 구간에 진입하면 <b>입찰 중단 기준</b>에 준해 입찰을 재검토하십시오.</p>
     </div>
   </section>
 
@@ -879,7 +997,7 @@ document.addEventListener('click', function(e){
           <tr><td class="k">자동차세 체납</td><td class="sub">체납 승계 가능 — 관할 구청 사전 확인 권장</td><td class="c tagcell"><span class="chip warn">확인 권장</span></td></tr>
         </tbody>
       </table></div>
-      <p class="note">현장확인에서 결함 발견 시 항목별로 취득원가(정비비/충당금)에 반영하거나, 중대 결함(STOP RULE)이면 입찰을 보류합니다.</p>
+      <p class="note">현장확인에서 결함 발견 시 항목별로 취득원가(정비비/충당금)에 반영하거나, 중대 결함(입찰 중단 기준 해당)이면 입찰을 보류합니다.</p>
     </div>
   </section>
 
@@ -984,11 +1102,11 @@ document.addEventListener('click', function(e){
 
   <div class="disc">
     <b>이용 안내 및 면책</b><br>
-    본 리포트는 대법원 법원경매정보·감정평가서·보험이력과 소매 시세 참고 정보를 기반으로 발행 시점에 자동 생성된 참고자료입니다. 시세·낙찰 경쟁·차량 상태는 매각기일까지 변동될 수 있으며, 최종 입찰 판단과 결과의 책임은 입찰자 본인에게 있습니다. 예상낙찰가는 실측 통계 기반 중심 추정치로 오차(±{{ report.mae|round|int if report and report.mae else 30 }}%)가 있고 단일 경매를 정밀 예측하지 않습니다. 본 리포트는 투자 권유가 아니며, 차량 실물 확인·등기/공부 열람을 대체하지 않습니다. <b style="color:var(--red)">STOP RULE 해당 사전 발견 시 권장가는 무효입니다.</b>
+    본 리포트는 대법원 법원경매정보·감정평가서·보험이력과 소매 시세 참고 정보를 기반으로 발행 시점에 자동 생성된 참고자료입니다. 시세·낙찰 경쟁·차량 상태는 매각기일까지 변동될 수 있으며, 최종 입찰 판단과 결과의 책임은 입찰자 본인에게 있습니다. 예상낙찰가는 실측 통계 기반 중심 추정치로 오차(±{{ report.mae|round|int if report and report.mae else 30 }}%)가 있고 단일 경매를 정밀 예측하지 않습니다. 본 리포트는 투자 권유가 아니며, 차량 실물 확인·등기/공부 열람을 대체하지 않습니다. <b style="color:var(--red)">입찰 중단 기준에 해당하는 사실을 미리 발견하면 권장가는 무효입니다.</b>
   </div>
   <footer class="foot">
-    <span>AUTOBID REPORT · {{ v.case_no }}</span>
-    <span>발행 {{ now }} · 유효기간 매각기일까지{% if conf %} · CONFIDENCE {{ conf }}/100{% endif %}</span>
+    <span>차량경매 분석 리포트 · {{ v.case_no }}</span>
+    <span>발행 {{ now }} · 유효기간 매각기일까지{% if conf %} · 시세 신뢰도 {{ conf }}/100{% endif %}</span>
   </footer>
 </div>
 <script>

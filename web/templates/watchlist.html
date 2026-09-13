@@ -14,7 +14,7 @@
     <label class="text-xs text-mut">정렬</label>
     <select name="sort" onchange="this.form.submit()" class="inp py-1.5 text-sm">
       <option value="sale_date" {% if sort=='sale_date' %}selected{% endif %}>매각기일순</option>
-      <option value="dday" {% if sort=='dday' %}selected{% endif %}>임박(D-day)순</option>
+      <option value="dday" {% if sort=='dday' %}selected{% endif %}>매각기일 가까운 순</option>
       <option value="margin" {% if sort=='margin' %}selected{% endif %}>여유(예상−최저) 큰순</option>
       <option value="expected" {% if sort=='expected' %}selected{% endif %}>예상낙찰가 높은순</option>
       <option value="min_sale_price" {% if sort=='min_sale_price' %}selected{% endif %}>최저매각가 낮은순</option>

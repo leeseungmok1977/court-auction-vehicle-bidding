@@ -240,9 +240,18 @@
     html.nc-large header .nc-brand-img{width:2rem;height:2rem}
     html.nc-large header{gap:.25rem;padding-left:.5rem;padding-right:.5rem}
   }
+  /* 320px(폴드 커버·구형 SE) + 큰글씨: 토글을 '큰글씨' 알약으로 키우자 우측 합이
+     328px가 되어 **검색 아이콘이 다시 잘렸다**(실측). 워드마크는 읽을 내용이 아니라
+     로고다 — 확대 대상에서 빼고 검색을 지킨다(위 규칙과 같은 판단). */
+  @media (max-width:359px){
+    html.nc-large header .nc-brand-name{font-size:15px}
+    html.nc-large header .nc-brand-img{width:34px;height:34px}
+  }
   /* 숫자와 단위가 떨어져 다른 값으로 읽히는 것 방지(±9.2 / % 처럼) */
   .nc-unit{white-space:nowrap}
-  #largeToggle[aria-pressed="true"]{background:#2f5fe0;color:#fff}
+  /* 꺼짐 상태가 테두리 없는 회색 글자라 "버튼"으로 안 읽혔다(디자인 검수) —
+     켜짐과 같은 알약 형태로 두고 채움만 다르게 한다. */
+  #largeToggle[aria-pressed="true"]{background:#2f5fe0;color:#fff;border-color:#2f5fe0}
 </style>
 <script>try{ if(sessionStorage.getItem("nc_splash")) document.documentElement.className += " splash-done"; }catch(e){}</script>
 <script>try{ if(localStorage.getItem("naechaget:large")==="1") document.documentElement.classList.add("nc-large"); }catch(e){}</script>
@@ -333,7 +342,7 @@
     <a href="/" class="flex lg:hidden items-center gap-2 shrink-0" title="경매로 내차GET">
       <img src="/static/icons/logo-header.png" alt="" class="nc-brand-img w-9 h-9 min-[360px]:w-11 min-[360px]:h-11 rounded-lg shrink-0"/>
       <span class="leading-tight">
-        <span class="block text-[17px] font-extrabold text-txt tracking-tight whitespace-nowrap">경매로 내차<span class="text-amber-700">GET</span></span>
+        <span class="nc-brand-name block text-[17px] font-extrabold text-txt tracking-tight whitespace-nowrap">경매로 내차<span class="text-amber-700">GET</span></span>
         {# 320px(폴드 커버·구형 SE)에서는 부제까지 넣으면 헤더 합이 폭을 넘어 검색 아이콘이 잘린다 #}
         <span class="nc-brand-sub hidden min-[360px]:block text-[11px] text-mut whitespace-nowrap tracking-[0.12em] uppercase">AI Court Auction</span>
       </span>
@@ -346,8 +355,8 @@
       <span id="runText" class="text-primary font-semibold">진행 중…</span>
     </a>
     <button type="button" id="largeToggle" aria-pressed="false" onclick="ncToggleLarge()"
-            class="shrink-0 text-mut hover:text-txt px-2 py-1 rounded-md hover:bg-line/40 transition-colors font-bold text-[15px] leading-none"
-            title="큰글씨 모드 — 글씨를 크게 봅니다" aria-label="큰글씨 모드 전환">가+</button>
+            class="shrink-0 text-mut hover:text-txt border border-line px-2.5 py-1 rounded-full hover:bg-line/40 transition-colors font-bold text-[14px] leading-none whitespace-nowrap"
+            title="글씨를 크게 봅니다 (다시 누르면 원래대로)" aria-label="큰글씨 모드 전환">큰글씨</button>
     {% set _ac = alert_count() %}
     <a href="/#alerts" class="relative shrink-0 text-mut hover:text-txt p-1.5 rounded-md hover:bg-line/40 transition-colors" title="임박 매각기일 알림 {{ _ac }}건">
       <span class="material-symbols-outlined" style="font-variation-settings:'FILL' {{ 1 if _ac else 0 }}">notifications</span>
@@ -491,7 +500,7 @@ window._goBack = function(e){
 };
 </script>
 
-<!-- 큰글씨(어르신) 모드 토글 — 헤더 '가+' 버튼. 상태는 기기 로컬 저장, 로드 전 <head>에서 선적용(FOUC 방지) -->
+<!-- 큰글씨(어르신) 모드 토글 — 헤더 '큰글씨' 버튼. 상태는 기기 로컬 저장, 로드 전 <head>에서 선적용(FOUC 방지) -->
 <script>
 function ncToggleLarge(){ try{ var on=document.documentElement.classList.toggle('nc-large'); localStorage.setItem('naechaget:large', on?'1':'0'); var b=document.getElementById('largeToggle'); if(b) b.setAttribute('aria-pressed', on?'true':'false'); }catch(e){} }
 (function(){ try{ var b=document.getElementById('largeToggle'); if(b) b.setAttribute('aria-pressed', document.documentElement.classList.contains('nc-large')?'true':'false'); }catch(e){} })();

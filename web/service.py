@@ -3184,7 +3184,7 @@ def market_provenance(v: Optional[dict]) -> Optional[dict]:
         "stale": stale,
         "borrowed": borrowed,                    # 직접 수집이 아니라 동급 물건 시세 참조
         "cross_n": (v.get("kcar_sample") or 0) if _blend_ok(v) else 0,
-        "method": "이상치(IQR 1.5) 제외 후 중앙값",
+        "method": "값이 유난히 튀는 매물을 걸러낸 뒤 중앙값(가운데 값)",
         "weak_n": weak_n, "weak_cv": weak_cv,
         "grade": grade,
         "grade_ko": {"weak": "근거 약함", "mid": "근거 보통", "good": "근거 충분"}[grade],
@@ -4050,7 +4050,10 @@ def report_data(v: dict, config: dict, bt: dict) -> Optional[dict]:
          "tag": "confirmed" if v.get("mileage_km") else "estimated"},
         {"name": "사고·이력", "score": 90 if v.get("insurance_history") else 60,
          "tag": "verified" if v.get("insurance_history") else "estimated"},
-        {"name": "시장 가격", "score": conf, "tag": "verified"},
+        # '시장 가격' 축은 뺐다 — 값이 conf 와 **완전히 같아** §02 헤드라인 숫자와
+        # 그 아래 막대에 같은 72가 두 번 찍혔다. 게다가 다섯 축 평균(71.4)이 우연히
+        # 72와 비슷해, 헤드라인이 종합점수처럼 읽혔다(실제로는 시세 신뢰도 하나).
+        # 헤드라인에 '시세 신뢰도'라고 이름을 붙이고 중복 막대를 지운다.
         {"name": "상태·정비비", "score": min(state_score, 90), "tag": "estimated"},
     ]
     stop_active = v.get("accident_grade") in ("accident", "flood")
