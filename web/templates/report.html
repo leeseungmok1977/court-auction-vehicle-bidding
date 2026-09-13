@@ -4,7 +4,7 @@
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>{{ v.model|mdl }} 분석 리포트 · {{ v.case_no }}</title>
-<meta name="description" content="{{ v.model|mdl }} 법원경매 분석 리포트 — 예상 낙찰가·추천 입찰가·시세 대비·유사 낙찰 실적을 담은 경매로 내차GET 리포트."/>
+<meta name="description" content="{{ v.model|mdl }} 법원경매 분석 리포트 — 예상낙찰가·추천 입찰가·시세 대비·유사 낙찰 실적을 담은 경매로 내차GET 리포트."/>
 <script>try{ if(localStorage.getItem("naechaget:large")==="1") document.documentElement.classList.add("nc-large"); }catch(e){}</script>
 <link rel="stylesheet" href="/static/app.css?v={{ css_v }}"/>
 <style>
@@ -280,7 +280,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}
   table.rowcard tr.row-sum{ border-top:1.5px solid var(--line-strong);
                             background:#FAFBFD; padding:12px 0 11px; margin-top:2px }
   table.rowcard tr.row-sum td{ background:none }
-  /* 예상 낙찰가 행(.row-hl)도 같은 증상 — td 배경이 두 열 사이에 흰 틈을 냈다(360px 실측) */
+  /* 예상낙찰가 행(.row-hl)도 같은 증상 — td 배경이 두 열 사이에 흰 틈을 냈다(360px 실측) */
   table.rowcard tr.row-hl{ background:var(--cobalt-tint) }
   table.rowcard tr.row-hl td{ background:none }
   /* 스크롤이 남는 표는 밀 수 있다는 것을 보이게 — 잘린 것처럼 보이면 조판 사고로 읽힌다 */
@@ -705,9 +705,9 @@ document.addEventListener('click', function(e){
       <div class="vgrid">
         <div>
           {# 같은 자리·같은 크기의 큰 숫자가 상태에 따라 뜻이 정반대였다 —
-             blocked/over_market이면 예상 낙찰가는 '절대 써서는 안 되는 금액'이고
+             blocked/over_market이면 예상낙찰가는 '절대 써서는 안 되는 금액'이고
              usepick이면 '써도 되는 금액'이다. 경고 상태에서는 순서를 바꿔
-             **입찰 상한선을 1순위 숫자로** 올리고 예상 낙찰가를 참고로 내린다(3회차 검수). #}
+             **입찰 상한선을 1순위 숫자로** 올리고 예상낙찰가를 참고로 내린다(3회차 검수). #}
           {% set _danger = _tone == 'stop' or (max_bid and exp and exp > max_bid) %}
           {% if max_bid and _danger %}
           <div class="v-label gloss-row">입찰 상한선 <span style="font-weight:400">— 여기까지만 유효 · 직접 탈 목적 {{ ui.gloss('손익분기', '이 금액을 넘겨 낙찰받으면, 같은 차를 소매로 사는 것보다 손해가 되는 경계선이에요. 취득세·이전·탁송·정비 충당까지 더해 계산합니다.') }}</span></div>
@@ -720,19 +720,19 @@ document.addEventListener('click', function(e){
             {%- if use.accident_assumed %}(이력 미확인 — 사고차로 가정)
             {%- elif use.accident_hits is not none %}(확인된 사고 {{ use.accident_hits }}건 기준 · 업계 통용 범위 기반 <b>가정</b>이며 실측값이 아닙니다)
             {%- endif %} · 정비 충당 <b>{{ use.reserve|won }}원</b>{% endif %}</div>
-          <div class="v-label gloss-row" style="margin-top:14px">예상 낙찰가 <span style="font-weight:400">{% if exp %}— 참고({{ ui.gloss('분위수 밴드', '과거 낙찰 결과가 얼마나 흩어졌는지(사분위 폭)를 중심값에 적용한 범위예요. 이 안에 떨어질 가능성이 높다는 뜻이지 보장은 아닙니다.') }}{% if backtest.within10_pct %} · 실측 ±10% 적중 {{ backtest.within10_pct|round|int }}%{% endif %}){% endif %}</span></div>
+          <div class="v-label gloss-row" style="margin-top:14px">예상낙찰가 <span style="font-weight:400">{% if exp %}— 참고({{ ui.gloss('분위수 밴드', '과거 낙찰 결과가 얼마나 흩어졌는지(사분위 폭)를 중심값에 적용한 범위예요. 이 안에 떨어질 가능성이 높다는 뜻이지 보장은 아닙니다.') }}{% if backtest.within10_pct %} · 실측 ±10% 적중 {{ backtest.within10_pct|round|int }}%{% endif %}){% endif %}</span></div>
           <div class="v-sub" style="font-size:15px"><b class="num">{% if report.lo and report.hi %}{{ (report.lo/10000)|round|int }} ~ {{ (report.hi/10000)|round|int }} 만원{% elif exp %}{{ (exp/10000)|round|int }} 만원{% else %}<b>미산출</b>{% endif %}</b>
             {% if exp %}· 중심값 {{ exp|won }}원 {% endif %}· 재판매 상한가 {% if upper %}{{ upper|won }}원{% else %}미산출{% endif %}
-            {% if not exp %}<span style="display:block;font-weight:400">— 이 물건은 <b>예상 낙찰가를 산출하지 않았습니다</b>(표본·조건 불충족). 아래 06·08은 현 최저매각가 기준입니다.</span>{% endif %}
+            {% if not exp %}<span style="display:block;font-weight:400">— 이 물건은 <b>예상낙찰가를 산출하지 않았습니다</b>(표본·조건 불충족). 아래 06·08은 현 최저매각가 기준입니다.</span>{% endif %}
             {% if report.hi and exp and report.hi <= exp %}<span style="display:block;font-weight:400;color:var(--ink-faint)">예상가 밴드는 소매 시세의 110%(소프트캡)에서 멈추도록 제한돼 있어 윗부분이 여기서 끊깁니다. 중심값이 맨 위에 있다고 해서 그 금액까지 써도 된다는 뜻은 아닙니다.</span>{% endif %}
             {% if exp and exp > max_bid %}<b style="color:var(--red)">— 예상 경쟁가가 상한선을 {{ (exp - max_bid)|won }}원 넘습니다.</b>{% endif %}</div>
           {% else %}
           {# 미산출이면 정확도 꼬리표를 붙이지 않는다 — 없는 값에 적중률을 달면 값이 있는 것처럼 읽힌다 #}
-          <div class="v-label gloss-row">예상 낙찰가 <span style="font-weight:400">{% if exp %}— {{ ui.gloss('분위수 밴드', '과거 낙찰 결과가 얼마나 흩어졌는지(사분위 폭)를 중심값에 적용한 범위예요. 이 안에 떨어질 가능성이 높다는 뜻이지 보장은 아닙니다.') }}{% if backtest.within10_pct %} · 실측 ±10% 적중 {{ backtest.within10_pct|round|int }}%{% endif %}{% endif %}</span></div>
+          <div class="v-label gloss-row">예상낙찰가 <span style="font-weight:400">{% if exp %}— {{ ui.gloss('분위수 밴드', '과거 낙찰 결과가 얼마나 흩어졌는지(사분위 폭)를 중심값에 적용한 범위예요. 이 안에 떨어질 가능성이 높다는 뜻이지 보장은 아닙니다.') }}{% if backtest.within10_pct %} · 실측 ±10% 적중 {{ backtest.within10_pct|round|int }}%{% endif %}{% endif %}</span></div>
           <div class="v-band num">{% if report.lo and report.hi %}{{ (report.lo/10000)|round|int }} <small>~</small> {{ (report.hi/10000)|round|int }}<small> 만원</small>{% elif exp %}{{ (exp/10000)|round|int }}<small> 만원</small>{% else %}<span style="font-family:var(--sans);font-size:21px;color:var(--ink-soft)">미산출</span>{% endif %}</div>
           <div class="v-sub">{% if exp %}중심값 <b class="num">{{ exp|won }}원</b> · {% endif %}재판매 상한가 {% if upper %}<b class="num">{{ upper|won }}원</b>{% else %}<b>미산출</b>{% endif %}
             {% if report.hi and exp and report.hi <= exp %}<span style="display:block;color:var(--ink-faint)">예상가 밴드는 소매 시세의 110%(소프트캡)에서 멈추도록 제한돼 있어 윗부분이 여기서 끊깁니다. 중심값이 맨 위에 있다고 해서 그 금액까지 써도 된다는 뜻은 아닙니다.</span>{% endif %}
-            {% if not exp %}<span style="display:block">— 이 물건은 <b>예상 낙찰가를 산출하지 않았습니다</b>(표본·조건 불충족). 아래 <b>06·08은 현 최저매각가 기준</b>입니다.</span>{% endif %}</div>
+            {% if not exp %}<span style="display:block">— 이 물건은 <b>예상낙찰가를 산출하지 않았습니다</b>(표본·조건 불충족). 아래 <b>06·08은 현 최저매각가 기준</b>입니다.</span>{% endif %}</div>
           {% if max_bid %}
           {# 상한선이 최저매각가보다 낮으면 이 큰 숫자는 **법적으로 써낼 수 없는 금액**이다.
              06에서 고친 오류와 같은 종류가 히어로에 남아 있었다(디자인 검수 지적 2). #}
@@ -1009,7 +1009,7 @@ document.addEventListener('click', function(e){
             <td class="r num" style="font-size:12px;color:var(--ink-soft)">{{ c.sale_date or '—' }}</td>
           </tr>
         {% endfor %}
-          {% if comp_ratio_med %}<tr class="row-hl"><td colspan="5"><b>표본 {{ comps_won|length }}건 · 낙찰가/시세 중앙값</b></td><td class="r num" style="font-weight:700;color:var(--cobalt)">{{ (comp_ratio_med*100)|round|int }}%</td><td></td></tr>{% endif %}
+          {% if comp_ratio_med %}<tr class="row-hl"><td colspan="5"><b>표본 {{ comps_won|length }}건 · 낙찰가/시세중앙값</b></td><td class="r num" style="font-weight:700;color:var(--cobalt)">{{ (comp_ratio_med*100)|round|int }}%</td><td></td></tr>{% endif %}
         </tbody>
       </table></div>
       <p class="scroll-hint">← 좌우로 밀어 실낙찰가·낙찰/시세·매각일까지 보기</p>

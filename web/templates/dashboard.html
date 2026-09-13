@@ -63,10 +63,10 @@
          대각선으로 흩어졌다(디자인 검수). 위 정렬이면 라벨은 라벨끼리, 숫자는 숫자끼리 같은 줄. #}
       <div class="p-3 flex items-start justify-between gap-2 tabular-nums">
         {# 두 금액은 한 줄에 — OS 글자 크기 확대(rem 130%)에서 320px 의 두 숫자 간격이 10px 까지 좁아졌다(실측). rem 과 폭 중 작은 쪽. #}
-        <div><div class="text-[10px] text-mut">최저 입찰가</div><div class="font-mono font-semibold text-txt whitespace-nowrap" style="font-size:min(.875rem,4vw)">{{ v.min_sale_price|won }}</div></div>
+        <div><div class="text-[10px] text-mut">최저매각가</div><div class="font-mono font-semibold text-txt whitespace-nowrap" style="font-size:min(.875rem,4vw)">{{ v.min_sale_price|won }}</div></div>
         {# 라벨 한 줄에 '무엇 / 얼마나 믿을 만한지 / 등급'을 다 얹었더니 320px·큰글씨에서 "시세 / 신뢰도"가
    줄 사이에서 끊겼다(육안). 신뢰도는 숫자 아래 자기 줄로 — 줄바꿈 금지. #}
-<div class="text-right"><div class="text-[10px] text-primary">AI 예상 낙찰가</div><div class="font-mono font-extrabold text-primary leading-tight whitespace-nowrap" style="font-size:min(1.125rem,5.2vw)">{{ v.expected_win|won if v.expected_win else '—' }}</div>{% if v.market_confidence %}<div class="text-[10px] text-mut leading-tight mt-0.5">시세&nbsp;신뢰도&nbsp;{{ v.market_confidence }}/100{% if v.market_confidence_label %} <span class="inline-flex items-center gap-0.5 font-bold align-middle {{ 'text-emerald-700' if v.market_confidence_label=='높음' else 'text-amber-700' if v.market_confidence_label=='보통' else 'text-rose-600' }}"><span class="inline-block w-1.5 h-1.5 rounded-full {{ 'bg-emerald-500' if v.market_confidence_label=='높음' else 'bg-amber-500' if v.market_confidence_label=='보통' else 'bg-rose-500' }}"></span>{{ v.market_confidence_label }}</span>{% endif %}</div>{% endif %}</div>
+<div class="text-right"><div class="text-[10px] text-primary">AI 예상낙찰가</div><div class="font-mono font-extrabold text-primary leading-tight whitespace-nowrap" style="font-size:min(1.125rem,5.2vw)">{{ v.expected_win|won if v.expected_win else '—' }}</div>{% if v.market_confidence %}<div class="text-[10px] text-mut leading-tight mt-0.5">시세&nbsp;신뢰도&nbsp;{{ v.market_confidence }}/100{% if v.market_confidence_label %} <span class="inline-flex items-center gap-0.5 font-bold align-middle {{ 'text-emerald-700' if v.market_confidence_label=='높음' else 'text-amber-700' if v.market_confidence_label=='보통' else 'text-rose-600' }}"><span class="inline-block w-1.5 h-1.5 rounded-full {{ 'bg-emerald-500' if v.market_confidence_label=='높음' else 'bg-amber-500' if v.market_confidence_label=='보통' else 'bg-rose-500' }}"></span>{{ v.market_confidence_label }}</span>{% endif %}</div>{% endif %}</div>
       </div>
     </a>
     {% endfor %}
@@ -322,7 +322,7 @@
         <th class="text-left py-2 font-medium hidden md:table-cell">법원</th>
         <th class="text-right py-2 font-medium">최저매각가</th>
         <th class="text-right py-2 font-medium" title="재판매 마진 차감 후 손익분기가 — 예상낙찰가보다 낮은 것이 정상">상한가 <span class="text-mut">재판매</span></th>
-        <th class="text-right py-2 font-medium" title="최저매각가 × 유찰 프리미엄 기반 예상 낙찰가 — 일반 매수 실입찰 기준">예상낙찰가 <span class="text-mut">실입찰</span></th>
+        <th class="text-right py-2 font-medium" title="최저매각가 × 유찰 프리미엄 기반 예상낙찰가 — 일반 매수 실입찰 기준">예상낙찰가 <span class="text-mut">실입찰</span></th>
         <th class="text-right py-2 font-medium">시세중앙값</th>
         <th class="text-right py-2 font-medium" title="(시세중앙값 − 예상낙찰가) ÷ 시세중앙값 — 정렬 기준(× 신뢰도)">시세 대비</th>
         <th class="text-center py-2 font-medium">시세 신뢰도</th></tr></thead>
@@ -405,7 +405,7 @@
       {% if backtest.discount_p25 %}<div class="text-xs text-mut mt-1">범위 {{ (backtest.discount_p25*100)|round|int }}~{{ (backtest.discount_p75*100)|round|int }}%</div>{% endif %}
     </div>
     <div class="bg-background border border-line rounded-lg p-4">
-      <div class="text-xs text-mut mb-1">예상 낙찰가 오차 <span class="text-mut">(낮을수록 정확)</span></div>
+      <div class="text-xs text-mut mb-1">예상낙찰가 오차 <span class="text-mut">(낮을수록 정확)</span></div>
       <div class="text-2xl font-bold font-mono {{ 'text-emerald-700' if backtest.mae_pct and backtest.mae_pct<=15 else 'text-amber-700' }}">±{{ backtest.mae_pct }}%</div>
       <div class="text-xs text-mut mt-1">목표 ≤15% · {{ '달성' if backtest.mae_pct and backtest.mae_pct<=15 else '개선 필요' }}</div>
     </div>
@@ -428,7 +428,7 @@
   {% if backtest.upper_hit_rate is not none and backtest.upper_hit_rate < 0.5 %}
   <div class="mt-3 text-xs bg-amber-50 border border-amber-200 text-amber-700 rounded-md px-3 py-2 leading-relaxed">
     ⚠ 실제 낙찰가가 산정 상한가를 넘는 경우가 많습니다({{ (100-backtest.upper_hit_rate*100)|round|int }}%). 현재 산정은 <b>리셀러 마진 기준(보수적)</b>이라 일반 매수 목적이면 상한가가 낮게 잡힙니다 —
-    <b class="text-txt">예상 낙찰가(최저가 기반 · 실측 오차 ±{{ backtest.mae_pct|round|int }}%)</b>를 실입찰 기준으로 참고하세요.
+    <b class="text-txt">예상낙찰가(최저가 기반 · 실측 오차 ±{{ backtest.mae_pct|round|int }}%)</b>를 실입찰 기준으로 참고하세요.
   </div>
   {% endif %}
   {% else %}

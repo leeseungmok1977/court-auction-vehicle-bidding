@@ -502,7 +502,7 @@ def personal_use_saving(v: dict, bt: Optional[dict] = None,
                         config: Optional[dict] = None) -> Optional[int]:
     """실사용 목적으로 경매가 소매보다 얼마나 싼가(원). 이득이 없으면 None.
 
-    비교 기준은 **예상 낙찰가**다. 최저매각가로 계산하면 '그 값에 낙찰될 때만' 성립하는
+    비교 기준은 **예상낙찰가**다. 최저매각가로 계산하면 '그 값에 낙찰될 때만' 성립하는
     낙관적 수치가 되고, 무엇보다 예상낙찰가가 시세를 넘는 물건에 '비권장' 경고를 띄우면서
     같은 물건을 추천 칸에 올리는 모순이 생긴다(2026-09-12 P0-3 수정과 정합).
 
@@ -539,7 +539,7 @@ def personal_use_max_bid(v: dict, bt: Optional[dict] = None,
                         config: Optional[dict] = None) -> Optional[int]:
     """실사용 손익분기 — **이 값을 넘겨 낙찰받으면 소매로 사는 게 낫다**(원).
 
-    예상 낙찰가는 '얼마에 팔릴까'의 추정치일 뿐이다. 경매장에서 실제로 필요한 값은
+    예상낙찰가는 '얼마에 팔릴까'의 추정치일 뿐이다. 경매장에서 실제로 필요한 값은
     '얼마까지 써도 되는가'인데, 지금까지 리포트에는 재판매 마진 기준 상한가만 있었다
     (2026-09-12 1·2회차 경매 전문가 재지적). 새 데이터가 필요 없다 —
     personal_use_saving의 부등식을 exp에 대해 풀면 그대로 나온다.
@@ -613,6 +613,28 @@ def is_personal_use_pick(v: dict, bt: Optional[dict] = None, today=None) -> bool
 
 # 실사용 추천의 두 갈래 — 화면 문구는 세 화면(홈·목록·상세) 모두 여기서만 가져온다(이름이 갈리지 않게).
 USE_TIER_LABELS = {"now": "지금 사면 이득", "cheap": "싸게 낙찰되면 이득"}
+
+# 산술로는 실사용 이득이 있는데 **초록불을 켜지 못하는 이유** — 셋은 다른 사실이라 한 이름으로 부르지 않는다.
+# (오차를 모르는 물건에 '오차 범위 안'이라 쓰면 모르는 것을 아는 척하는 것 — 2026-09-14 회귀 테스트가 잡아냈다.)
+# 머리말은 범주('실사용 이득')가 아니라 **상태**('이득 불확실') — "실사용 이득 — 시세 확인 필요"는 이득을 단정한 뒤
+# 그 근거인 시세를 의심하는 자기모순이었다(디자인 검수). 초록 짝 '지금 사면 이득'과 같은 결의 문장.
+USEPICK_WEAK_LABELS = {
+    "within_error": "이득 불확실 — 오차 범위 안",       # 절감 폭 ≤ 이 유형의 실측 오차(5회차 게이트)
+    "no_error_stat": "이득 불확실 — 검증 표본 부족",    # 이 유형의 검증 표본 부족 → 오차 자체를 모른다(히어로 산정 기준 줄과 같은 말)
+    "saving_unverified": "이득 불확실 — 시세 확인 필요",  # 시세가 감정가와 크게 어긋남 → 오매칭 의심, 절감액 신뢰 불가
+}
+
+
+def usepick_weak_reason(v: dict, bt: Optional[dict] = None) -> str:
+    """`personal_use_significant`가 False 인 usepick 물건이 **왜** 초록이 아닌지. bid_state 만 부른다."""
+    ap = v.get("appraisal_value") or 0
+    med = effective_median(v) or v.get("median_price") or 0
+    if ap and med and not (USE_APPRAISAL_LOW <= med / ap <= USE_APPRAISAL_HIGH):
+        return "saving_unverified"
+    acc = accuracy_for(v, bt)
+    if not acc or not acc.get("mae"):
+        return "no_error_stat"
+    return "within_error"
 
 
 def personal_use_tier(v: dict, bt: Optional[dict] = None, today=None) -> Optional[dict]:
@@ -1011,7 +1033,7 @@ def hexagon_scores(v: dict, today=None, include_private: bool = False, newcar_ok
     2 시세 신뢰도  market_confidence 그대로(동급참조 시세는 이미 한 단계 하향된 값)
     3 사고·상태    사고 없음 100 / 사고 45 / 침수 0, 상태 poor −20 · fair −5, 검사 만료 −15
     4 주행 적정성  실주행 ÷ (경과연수×15,000km): 0.5→100 · 1.0→70 · 1.5→45 · 2.0→25 · 3.0+→10
-    5 잔존가치     시세 중앙값 ÷ 당시 출시가(등급 범위 중간값): 15%→10 · 30%→35 · 45%→60 · 60%→80 · 75%→95 · 90%+→100
+    5 잔존가치     시세중앙값 ÷ 당시 출시가(등급 범위 중간값): 15%→10 · 30%→35 · 45%→60 · 60%→80 · 75%→95 · 90%+→100
                   (구 '연식' 축 대체 — 경과연수는 근거에 표기. 출시가 미확보면 미산출)
     6 유동성       동급 매물 규모(엔카 검색 총량, log10): 10건→45 · 100→70 · 1,000→95 · 1,585+→100 (0건→5)
 
@@ -1083,7 +1105,7 @@ def hexagon_scores(v: dict, today=None, include_private: bool = False, newcar_ok
                      "note": f"{km:,}km · 연평균 {km / yrs:,.0f}km (기준 15,000km)"})
     else:
         axes.append({"key": "km", "name": "주행 적정성", "score": None, "note": "주행거리 또는 연식 없음"})
-    # 5) 잔존가치 — 출시가 범위(등급별 최저~최고, 만원)의 중간값 대비 시세 중앙값. 출처명은 어떤 경우에도 쓰지 않는다(권리자 조건).
+    # 5) 잔존가치 — 출시가 범위(등급별 최저~최고, 만원)의 중간값 대비 시세중앙값. 출처명은 어떤 경우에도 쓰지 않는다(권리자 조건).
     #    newcar_ok=False(공개 플래그 꺼짐·비관리자)면 값·숫자 모두 내지 않는다.
     if newcar_ok is None:
         newcar_ok = include_private or bool(load_config().get("newcar_public", False))
@@ -2864,7 +2886,7 @@ def backtest_stats() -> dict:
 
     - 낙찰가/시세중앙값 분포 = 경매 낙찰률(시세 대비 실거래 할인)
     - 낙찰가 ≤ 산정 상한가 비율 = 상한가가 실제 낙찰가를 안전히 상회했는지
-    - 시세 기반 예상 낙찰가(=시세×할인중앙값)의 실측 대비 오차(MAE%)
+    - 시세 기반 예상낙찰가(=시세×할인중앙값)의 실측 대비 오차(MAE%)
     사용자 최우선 가치 '실측 신뢰'를 데이터로 검증하고, 산정 보정 근거를 제공한다.
 
     결과는 낙찰표본수 키 + TTL로 캐시(페이지 렌더 반복 호출 비용 제거). 표본수가 바뀌면 자동 재계산.
@@ -3026,7 +3048,7 @@ def backtest_stats() -> dict:
 
 
 def expected_winning(median_price: Optional[int], discount: Optional[float]) -> Optional[int]:
-    """시세중앙값 × 경매 할인율 = 실측 기반 예상 낙찰가 (10만원 단위 반올림 — 거짓 정밀 제거)."""
+    """시세중앙값 × 경매 할인율 = 실측 기반 예상낙찰가 (10만원 단위 반올림 — 거짓 정밀 제거)."""
     if not median_price or not discount:
         return None
     return int(round(median_price * discount / 100_000) * 100_000)
@@ -3317,7 +3339,7 @@ def stale_floor(v: dict) -> bool:
 
 
 def expected_for(v: dict, bt: dict) -> Optional[int]:
-    """물건 dict + 백테스트 통계 → 예상 낙찰가(중심 추정치).
+    """물건 dict + 백테스트 통계 → 예상낙찰가(중심 추정치).
 
     핵심: **최저매각가 × 유찰버킷 프리미엄**(낙찰가/최저가). 유찰로 내려간 최저가가
     시장 할인을 이미 반영해 낙찰가/시세보다 훨씬 안정적 → 실측 오차 최소(~10%).
@@ -3372,7 +3394,7 @@ def win_probability(v: dict, bid: Optional[int], bt: Optional[dict] = None) -> O
 
 
 def expected_band(v: dict, bt: dict) -> Optional[dict]:
-    """예상 낙찰가 중심값 + 밴드(보수/균형/공격)를 **하나의 기준**으로 산출.
+    """예상낙찰가 중심값 + 밴드(보수/균형/공격)를 **하나의 기준**으로 산출.
 
     상단 'AI 예상낙찰가'·추천 입찰 전략·한줄 코멘트가 모두 이 함수 하나를 공유해
     계산식이 일치한다(별도 산정 금지). 중심값(=균형)은 `expected_for`(목록·대시보드와
@@ -3468,7 +3490,8 @@ def bid_state(v: dict, bt: Optional[dict] = None, config: Optional[dict] = None)
       wait        최저가가 예상낙찰가보다 높음 — 추가 유찰 대기
       blocked     **최저매각가가 이미 실사용 손익분기를 넘음** — 이번 회차는 어떤 금액도 손해
       over_market 예상낙찰가 > 소매 시세 — 소매 구매가 유리
-      usepick     실사용이면 이득 (재판매 마진은 없음)
+      usepick     실사용 이득 (재판매 마진은 없음) — 절감 폭이 이 유형의 실측 오차보다 크면 ok '지금 사면 이득',
+                  아니면 caution 에 이유(`weak`: within_error / no_error_stat / saving_unverified)
       resale      재판매 손익분기 이내 — 되팔이 차익도 가능
 
     tone: ok(초록) / caution(앰버) / stop(로즈) / wait(회색). 색은 여기서만 정한다."""
@@ -3480,7 +3503,7 @@ def bid_state(v: dict, bt: Optional[dict] = None, config: Optional[dict] = None)
     floor = v.get("min_sale_price") or 0
     upper = v.get("upper_bid") or 0
     mb = personal_use_max_bid(v, bt, cfg)
-    base = {"exp": exp, "med": med, "floor": floor, "upper": upper or None, "max_bid": mb,
+    base = {"exp": exp, "med": med, "floor": floor, "upper": upper or None, "max_bid": mb, "weak": None,
             # 예상 경쟁가가 상한선을 얼마나 넘는가 — caution 문장에 폭을 실어 준다(디자인 검수).
             # 목록 칩은 짧은 label 을 그대로 쓰고, 리포트 스펙트럼·§01 만 이 값을 쓴다.
             "over_by": (exp - mb) if (exp and mb and exp > mb) else None}
@@ -3517,9 +3540,17 @@ def bid_state(v: dict, bt: Optional[dict] = None, config: Optional[dict] = None)
     if exp > med:
         return out("over_market", "시세 초과 — 입찰 비권장", "stop")
     if upper and exp <= upper:
-        return out("resale", "재판매 차익 가능", "ok")
+        return out("resale", PICK_LABELS["resale"], "ok")      # 홈 유망 물건 태그 '되팔아도 남음'과 같은 말
     if mb and exp <= mb:
-        return out("usepick", "실사용이면 이득", "ok")
+        # 홈·목록의 '지금 사면 이득'과 같은 잣대: 절감 폭이 이 유형의 실측 오차보다 커야 '이득'이라 부른다(5회차 게이트).
+        # 오차 안이면 초록 대신 주황 — '실사용이면 이득'(초록) 칩과 '싸게 낙찰되면 이득'(주황) 태그가 한 카드에
+        # 같이 놓이던 모순(2026-09-14 검수)을 없앤다. 이름도 한 곳(USE_TIER_LABELS)에서.
+        if personal_use_significant(v, bt):
+            return out("usepick", USE_TIER_LABELS["now"], "ok")
+        # 초록이 아닌 **이유**까지 여기서 정한다 — 오차를 모르는 물건(검증 표본 부족)과 시세·감정가가 어긋나는
+        # 물건(오매칭 의심)은 '오차 범위 안'이 아니다. 칩·게이지·판정문이 같은 이유를 말한다.
+        why = usepick_weak_reason(v, bt)
+        return {**out("usepick", USEPICK_WEAK_LABELS[why], "caution"), "weak": why}
     if mb:
         # 상한선을 넘지만 최저가는 아직 아래 — 경쟁이 붙으면 손해로 넘어간다
         return out("over_market", "예상 경쟁가가 상한선 초과", "caution")
@@ -3550,7 +3581,7 @@ def plain_verdict(v: dict, expected: Optional[dict],
     if st["state"] == "closed":
         return {"tone": "closed", "text": "이미 매각이 끝난 물건입니다 (참고용)."}
     if st["state"] == "lowconf":
-        # ⚠ 판정을 못 해도 **산술은 말할 수 있다.** 18인 패널 실측: 예상 낙찰가가
+        # ⚠ 판정을 못 해도 **산술은 말할 수 있다.** 18인 패널 실측: 예상낙찰가가
         #   시세의 221%인 물건에 "참고용입니다"만 내보내, 초보가 그 221%를 혼자
         #   해석해야 했다("결국 사라는 건지 말라는 건지 모르겠어요" 24세).
         #   비율은 판단이 아니라 나눗셈이므로 신뢰도와 무관하게 낼 수 있다.
@@ -3561,16 +3592,16 @@ def plain_verdict(v: dict, expected: Optional[dict],
         elif ratio and ratio <= 70:
             tail = f" 지금 예상가는 소매 시세의 {ratio}% 수준입니다."
         return {"tone": "caution",
-                "text": (f"시세 신뢰도가 낮아 참고용입니다. 예상 낙찰가 {won(exp)}은 "
+                "text": (f"시세 신뢰도가 낮아 참고용입니다. 예상낙찰가 {won(exp)}은 "
                          f"현장 확인 후 판단하세요.{tail}")}
     if st["state"] == "wait":
         return {"tone": "wait",
-                "text": f"지금 최저가 {won(floor)}은 예상 낙찰가 {won(exp)}보다 높습니다. "
+                "text": f"지금 최저가 {won(floor)}은 예상낙찰가 {won(exp)}보다 높습니다. "
                         f"아직 비싸니 추가 유찰을 기다리는 게 좋습니다."}
     if st["state"] == "blocked" and v.get("accident_grade") == "flood":
         return {"tone": "stop",
                 "text": "침수·전손이 의심되는 물건입니다. 잔존 가치를 산정할 수 없어 "
-                        "예상 낙찰가·입찰 상한선을 제공하지 않습니다. 입찰하지 마세요."}
+                        "예상낙찰가·입찰 상한선을 제공하지 않습니다. 입찰하지 마세요."}
     if st["state"] == "blocked":
         # 최저매각가조차 손익분기를 넘는다 = 써낼 수 있는 **모든** 금액이 손해다.
         # "낙찰 가능성이 낮다"고만 쓰면 초보자는 "더 쓰면 되겠네"로 읽는다(3회차 경매 지적).
@@ -3599,28 +3630,40 @@ def plain_verdict(v: dict, expected: Optional[dict],
     if st["state"] == "over_market" and exp > med:
         over = round((exp - med) / med * 100)
         return {"tone": "stop",
-                "text": f"예상 낙찰가 {won(exp)}이 소매 시세 {won(med)}보다 약 {over}% 높습니다. "
+                "text": f"예상낙찰가 {won(exp)}이 소매 시세 {won(med)}보다 약 {over}% 높습니다. "
                         f"취득세·이전비까지 더하면 소매 구매가 유리해 입찰을 권하지 않습니다."}
     if st["state"] == "over_market":      # 최저가는 아래지만 예상 경쟁가가 상한선 초과
         return {"tone": "caution",
                 "text": f"지금 {won(floor)}에 입찰할 수 있지만, 예상 경쟁가 {won(exp)}은 "
                         f"실사용 손익분기 {won(mb)}을 넘습니다. {won(mb)}까지만 유효하며 "
                         f"그 위로 올라가면 소매 구매가 유리합니다."}
-    head = f"지금 {won(floor)}에 입찰할 수 있고 예상 낙찰가는 {won(exp)}입니다."
+    head = f"지금 {won(floor)}에 입찰할 수 있고 예상낙찰가는 {won(exp)}입니다."
     gap = round((med - exp) / med * 100) if med > exp else 0
     gap_txt = f"소매 시세보다 약 {gap}% 낮지만" if gap >= 3 else "소매 시세와 큰 차이가 없어"
     if st["state"] == "resale":
         return {"tone": "ok",
                 "text": f"{head} 재판매 손익분기({won(upper)}) 이내라 되팔이 차익도 노려볼 만합니다."}
-    # usepick — 실사용이면 이득. 상한선을 함께 말해 '얼마까지'를 남긴다.
+    # usepick — 지금 사면 이득. 상한선을 함께 말해 '얼마까지'를 남긴다.
+    # 절감 폭이 오차 안(bid_state tone caution)이면 확정적이라고 말하지 않는다 — 칩(주황)과 문장이 같은 말을 해야 한다.
     cap = f" 입찰 상한선은 {won(mb)}입니다." if mb else ""
+    tone = "caution" if st.get("tone") == "caution" else "ok"
+    weak = {
+        "within_error": " 다만 절감 폭이 이 유형의 예측 오차 범위 안이라 이득이 확정적이지는 않습니다.",
+        "no_error_stat": " 다만 이 유형은 예측 오차를 낼 검증 표본이 부족해 이득이 확정적이라고 말할 수 없습니다.",
+        "saving_unverified": (" 다만 시세가 감정가와 크게 어긋나 시세 오매칭이 의심됩니다 — 절감액을 확정할 수 없으니 "
+                              "입찰 전 같은 등급·연식의 시세를 직접 확인하세요."),
+    }.get(st.get("weak") or ("within_error" if tone == "caution" else ""), "")
+    if st.get("weak") == "saving_unverified" and mb:
+        # 상한선도 그 의심스러운 시세로 계산한 값이다 — "상한선은 300만원입니다"(확정) 뒤에 "다만 시세가 의심"(철회)
+        # 순서면 사용자는 앞의 확정 숫자에 닻을 내린다(검수). 의심을 먼저 말하고 상한선은 그 조건 아래 둔다.
+        weak, cap = weak + f" 입찰 상한선 {won(mb)}도 이 시세로 계산한 값입니다.", ""
     if upper:
-        return {"tone": "ok",
+        return {"tone": tone,
                 "text": f"{head} {gap_txt}, 이전·수리·명도비를 빼면 재판매 손익분기"
                         f"({won(upper)})를 초과해 되팔이 차익은 어렵습니다. "
-                        f"직접 타실 목적이면 검토할 만합니다.{cap}"}
-    return {"tone": "ok",
-            "text": f"{head} {gap_txt} 되팔이 차익은 크지 않고, 직접 타실 목적이면 검토할 만합니다.{cap}"}
+                        f"직접 타실 목적이면 검토할 만합니다.{cap}{weak}"}
+    return {"tone": tone,
+            "text": f"{head} {gap_txt} 되팔이 차익은 크지 않고, 직접 타실 목적이면 검토할 만합니다.{cap}{weak}"}
 
 
 # ── 적중률 층화 ────────────────────────────────────────────────────

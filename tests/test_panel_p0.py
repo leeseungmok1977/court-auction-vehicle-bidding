@@ -25,7 +25,11 @@ BT = {"discount_median": 0.74, "mae_pct": 9.2, "sample": 172, "within10_pct": 62
       "within20_pct": 96, "pred_n": 135,
       "min_premium_median": 1.13, "min_premium_by_fail": {"0": 1.20, "1": 1.13, "2+": 1.06},
       "min_premium_p25": 1.05, "min_premium_p75": 1.22,
-      "min_premium_pool": [round(1.00 + i * 0.004, 4) for i in range(60)]}
+      "min_premium_pool": [round(1.00 + i * 0.004, 4) for i in range(60)],
+      # 층별 오차(accuracy_for)를 내려면 pred_pool 이 있어야 한다. 없으면 판정이 "오차를 모르면 이득이라
+      # 부르지 않는다"(주황 '오차 미산출')로 가서 **정상 경로** 회귀 가드가 성립하지 않는다(2026-09-14).
+      "pred_pool": [{"err_pct": 8.0 + (i % 5), "maker": "현대", "model": "쏘나타", "fail_count": 1,
+                     "median_price": 20_000_000, "actual": 20_000_000} for i in range(40)]}
 
 
 @pytest.fixture(autouse=True)

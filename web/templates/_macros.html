@@ -4,6 +4,10 @@
    탭(포커스)/호버/키보드 모두 지원(CSS는 base.html .gloss). 순수 설명이라 외부 데이터 노출 없음. #}
 {% macro gloss(term, desc, q=true, cls='') %}<span class="gloss {{ cls }}" tabindex="0" role="button" aria-label="{{ term }} — {{ desc }}"><span class="gt">{{ term }}</span>{% if q %}<span class="q" aria-hidden="true">?</span>{% endif %}<span class="pop" role="tooltip"><b>{{ term }}</b> — {{ desc }}</span></span>{% endmacro %}
 
+{# 판정 라벨 — ' — ' 앞뒤를 각각 한 덩어리로 찍는다. 좁은 폭(큰글씨 320px)에서 "…시세 확인 / 필요"처럼
+   낱말 중간이 아니라 대시 뒤에서만 접히게(디자인 검수). 부모가 flex 면 gap 으로 띄우고, 아니면 사이 공백이 띄운다. #}
+{% macro judge_label(label) %}{% if label and ' — ' in label %}{% set _p = label.split(' — ', 1) %}<span class="whitespace-nowrap">{{ _p[0] }} —</span> <span class="whitespace-nowrap">{{ _p[1] }}</span>{% else %}{{ label }}{% endif %}{% endmacro %}
+
 {# 미니 가격 게이지: 최저매각가 → 예상낙찰가(마커) → 시세중앙값(틱) 위치를 한 줄 바로 #}
 {% macro minigauge(floor, exp, median) %}
 {% if floor and exp and median and ([median, exp]|max) > floor %}

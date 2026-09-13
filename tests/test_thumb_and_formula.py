@@ -207,7 +207,7 @@ def test_cap_equal_to_final_prints_the_number_once(capwin_client):
     assert b["price"] == b["basis"]["cap"], "이 픽스처는 상한==최종 경우여야 한다"
 
     html = capwin_client.get("/vehicle/CAPWIN_1").text
-    seg = html.split("예상 낙찰가(균형) 산정식")[1].split("</div>\n        </div>")[0]
+    seg = html.split("예상낙찰가(균형) 산정식")[1].split("</div>\n        </div>")[0]
     money = f"{b['price']:,}"
     assert seg.count(money) == 1, (
         f"상한과 최종이 같은데 {money}이 산식 줄에 {seg.count(money)}번 찍혔다")
@@ -241,7 +241,7 @@ def test_floor_override_still_shows_all_three_numbers(tmp_path, monkeypatch):
     assert b["price"] > b["basis"]["cap"], "이 픽스처는 하한이 이기는 경우여야 한다"
 
     html = TestClient(A.app).get("/vehicle/FLOOR_1").text
-    seg = html.split("예상 낙찰가(균형) 산정식")[1].split("<div class=\"text-[11px] text-mut")[0]
+    seg = html.split("예상낙찰가(균형) 산정식")[1].split("<div class=\"text-[11px] text-mut")[0]
     for label, val in (("원값", b["basis"]["raw"]), ("절단값", b["basis"]["cap"]),
                        ("최종", b["price"])):
         assert f"{val:,}" in seg, f"{label} {val:,} 이 산식에서 빠졌다"
@@ -291,7 +291,7 @@ def test_no_pre_analysis_notice_when_a_formula_is_shown(tmp_path, monkeypatch):
     assert v["status"] != "완료", "미완료여야 이 분기를 탄다"
 
     html = TestClient(A.app).get("/vehicle/PRE_1").text
-    assert "예상 낙찰가(균형) 산정식" in html, "픽스처가 산정식을 안 만든다"
+    assert "예상낙찰가(균형) 산정식" in html, "픽스처가 산정식을 안 만든다"
     assert "분석 전 — 상단" not in html
 
 

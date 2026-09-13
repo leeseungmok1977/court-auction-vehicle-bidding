@@ -186,3 +186,12 @@ p, dd, li { text-wrap: pretty; }
   .btn-primary:active, .btn-ghost:active, .hoverable:hover { transform: none !important; }
   .skeleton::after { animation: none; }
 }
+
+/* 상세 히어로 게이지 아래 3항(최저 · 판정 · 시세): 칸이 좁으면(큰글씨 320·360px, OS 글자 확대) 가운데 판정이
+   낱말마다 접혀 "⚠ / 오차 / 범위 / 안" 4줄이 됐다(2026-09-14 실측). 폭이 아니라 rem 대비 폭으로 판단해
+   판정을 둘째 줄 전체 폭(가운데 정렬)으로 내린다. 미지원 브라우저는 기존 3항 한 줄 그대로. */
+.nc-gaugerow-host { container-type: inline-size; }
+@container (max-width: 19rem) {
+  .nc-gaugerow { flex-wrap: wrap; }
+  .nc-gaugerow > .nc-gauge-judge { order: 3; flex-basis: 100%; margin-top: .125rem; }
+}
