@@ -206,9 +206,11 @@ def test_report_scroll_hint_is_actually_in_the_markup():
     않아, 사용자에게는 '밀 수 있다'는 안내가 끝내 안 보였다. 디자인 검수가 잡았다.
     """
     src = (_TPL / "report.html").read_text(encoding="utf-8")
-    style = src.split("</style>")[0]
-    body = src.split("</style>", 1)[1]
-    assert ".scroll-hint" in style, "CSS 규칙이 사라졌다"
+    # ⚠ 이 템플릿에는 <style> 블록이 둘이다(base 미상속 단독 문서라 CSS를 복제해 쓴다).
+    #   첫 블록만 보면 규칙을 못 찾아 멀쩡한 마크업을 실패로 판정한다 — 실제로 그랬다.
+    styles = "".join(_re.findall(r"<style>(.*?)</style>", src, _re.S))
+    body = _re.sub(r"<style>.*?</style>", "", src, flags=_re.S)
+    assert ".scroll-hint" in styles, "CSS 규칙이 사라졌다"
     assert 'class="scroll-hint"' in body, "CSS만 있고 쓰는 곳이 없다(죽은 규칙)"
     # 가려진 열 이름을 적어야 '무엇이 더 있는지'를 알 수 있다
     assert body.count('class="scroll-hint"') >= 3, "넘치는 표 3개에 모두 붙어야 한다"
