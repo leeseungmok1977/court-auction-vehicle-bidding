@@ -60,7 +60,9 @@ body{background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:
 .no-print{margin-bottom:18px;display:flex;justify-content:flex-end;gap:8px}
 .btn{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:8px 16px;font-size:13px;font-weight:600;border:1px solid var(--line);background:#fff;color:var(--ink);cursor:pointer;text-decoration:none}
 .btn.pri{background:var(--cobalt);color:#fff;border-color:var(--cobalt)}
-#rptLarge[aria-pressed="true"]{background:#2f5fe0;color:#fff;border-color:#2f5fe0}
+/* 켜짐을 파란 채움으로 표시하면 옆의 주동작(인쇄, 코발트 채움)과 구별이 안 됐다(디자인 검수) */
+#rptLarge[aria-pressed="true"]{background:#fff;color:var(--cobalt);border:2px solid var(--cobalt)}
+#rptLarge[aria-pressed="true"]::before{content:"✓"}
 .masthead{background:var(--cobalt-deep);color:#fff;border-radius:14px;padding:28px 32px 24px}
 .mh-top{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap}
 .brand{display:flex;align-items:center;gap:10px}
@@ -131,7 +133,30 @@ table, thead, tbody, tr, th, td { word-break: keep-all; overflow-wrap: break-wor
 @media (max-width:520px){ .rtop .btn-soon{display:none} }
 /* 가로 스크롤을 쓰면 마지막 칩이 잘린 채 보이고 스크롤 가능하다는 힌트도 없다
    (2026-09-12 사용자 제보). 줄바꿈으로 바꿔 화면 밖으로 나가는 요소를 아예 없앤다. */
-.secnav{display:flex;flex-wrap:wrap;gap:6px;padding:8px 0}
+/* 칩 5개 합(일반 337px·큰글씨 386px)이 320~390px 폭을 넘어 두 줄로 접혔고, 버튼 두 줄과 합쳐
+   큰글씨 360px 에서 고정 바가 202px(화면의 32%)였다. 목록 필터칩과 같은 한 줄 가로 스크롤로.
+   오른쪽 페이드 = '잘림'이 아니라 '더 있음'. padding-right 18px 로 끝까지 밀면 마지막 칩이 페이드 밖. */
+/* 페이드를 투명까지 내리면 320px 에서 '⚠ 리스크'의 '크'가 통째로 사라져 '⚠ 리스' — 미완성 낱말은
+   '더 있음'이 아니라 렌더링 사고로 읽힌다(디자인 검수). 끝을 30% 로 남겨 '흐린 내용'으로 두고,
+   마지막 칩이 실제로 가려져 있을 때만 페이드와 › 표식을 켠다(.can-scroll, JS _syncSecnav).
+   페이드를 항상 걸면 다 보이는 폭(390px 일반)에서 마지막 칩 끝을 이유 없이 흐린다(최종 검수). */
+.secnav-wrap{position:relative}
+.secnav{display:flex;flex-wrap:nowrap;gap:6px;padding:8px 18px 8px 0;overflow-x:auto;-webkit-overflow-scrolling:touch;
+  scroll-padding-right:24px;scrollbar-width:none}
+.secnav-wrap.can-scroll .secnav{-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 24px),rgba(0,0,0,.3));
+  mask-image:linear-gradient(to right,#000 calc(100% - 24px),rgba(0,0,0,.3))}
+/* › 는 칩 위가 아니라 바의 오른쪽 여백(padding 20px, 순수 종이) 위에. 칩 위에 종이색 원으로 얹었더니
+   가장자리 칩에 구멍을 내 '⚠ 리 ›' — 가장 강해야 할 경고 칩의 낱말을 훼손했다(최종 검수). */
+.secnav-more{position:absolute;right:-20px;width:20px;text-align:center;top:50%;transform:translateY(-50%);
+  font-size:18px;color:var(--ink-faint);pointer-events:none;display:none;line-height:1}
+.secnav-wrap.can-scroll .secnav-more{display:block}
+.secnav::-webkit-scrollbar{display:none}
+/* 인쇄 버튼 라벨: 일반 모드는 ≤380px 에서만 짧게(390px 은 전체 라벨이 40px 여유로 들어간다).
+   짧은 라벨은 '인쇄·PDF'가 아니라 'PDF 저장' — 프린터 아이콘이 이미 인쇄를 말하고, 이 버튼의 주 용도는
+   파일로 남겨 자식·법무사에게 보내는 것이다(디자인 검수). 큰글씨는 screen 블록에서 ≤430px. */
+.rtop .bl-short{display:none}
+@media (max-width:380px){ .rtop .bl-full{display:none} .rtop .bl-short{display:inline} }
+@media screen and (max-width:430px){ html.nc-large .rtop .bl-full{display:none} html.nc-large .rtop .bl-short{display:inline} }
 /* 고정 바 높이만큼 여유를 둬 점프 시 제목이 가리지 않게 한다 */
 /* 앵커 여백은 고정 바의 **실제 높이**를 따라간다.
    고정값(104px)을 쓰던 동안 모바일에서 칩이 2줄로 접히면 바가 138px가 돼
@@ -180,7 +205,10 @@ table, thead, tbody, tr, th, td { word-break: keep-all; overflow-wrap: break-wor
 /* 채움 밴드가 통째로 한계선 오른쪽이면 코발트(이 앱에서 가장 신뢰도 높은 색)로
    금지 구간을 칠하는 셈이 된다 — 하단 빨간 판정과 색이 반대편에 선다. */
 .sp-fill.over{background:linear-gradient(90deg,#D98A8C,#C86B6E)}
-.sp-blabel{position:absolute;bottom:-30px;left:50%;transform:translateX(-50%);font-size:12px;font-weight:700;color:var(--cobalt);white-space:nowrap;text-align:center}
+/* left:X% + translateX(-50%) 로 두면 절대배치 상자의 가용 폭이 (컨테이너 − left) 라 오른쪽에 붙을수록
+   좁아져 4줄로 접혔다(이전 사고). left:0 에 두고 transform 으로 중심을 옮기면 가용 폭이 항상 컨테이너
+   전체라, 텍스트가 컨테이너보다 길 때만 그 폭에서 줄바꿈된다(최대 2줄). */
+.sp-blabel{position:absolute;bottom:-30px;left:0;width:max-content;max-width:100%;font-size:12px;font-weight:700;color:var(--cobalt);white-space:normal;text-align:center;line-height:1.3}
 .sp-blabel.is-stop{color:var(--red)}.sp-blabel.is-caution{color:var(--amber)}.sp-blabel.is-ok{color:var(--green)}
 .sp-foot{margin-top:42px;font-size:11.5px;color:var(--ink-faint)}
 .confw{display:grid;grid-template-columns:180px 1fr;gap:28px;align-items:start}
@@ -301,9 +329,19 @@ table{width:100%;border-collapse:collapse;font-size:13px}
   table.rowcard.sim tr{ grid-template-columns:minmax(0,1fr) auto }
   table.rowcard.sim td.k{ min-width:0 }
   table.rowcard.sim td.k .tag{ display:block; width:max-content; margin-top:4px }
+  /* 큰글씨: 가로 패딩은 줄여 한 줄에, 높이는 44px 보장(WCAG 2.5.5 / Android 48dp 근접). 글자만 키우고
+     탭 타깃을 34~38px 로 두면 손떨림이 있는 바로 그 사용자에게 가장 작은 조작 대상을 남긴다(디자인 검수). */
+  html.nc-large .rtop .btn{ padding:7px 10px; min-height:44px }
+  html.nc-large .rtop-btns{ gap:10px }
+
   html.nc-large table.rowcard.sim thead th{ font-size:13px }
   html.nc-large table.rowcard.sim td.v b{ font-size:16.5px }
 }
+/* ≤359px 큰글씨: ✓ 접두가 붙자 세 버튼(300px)이 280px 행을 넘겨 두 줄(바 163px)로 접혔다.
+   글자 1px·패딩 2px·간격 4px 만 양보해 한 줄을 지킨다 — 44px 높이·라벨·아이콘은 그대로(여유 ≈10px).
+   시스템 폰트 폴백(웹폰트 도착 전 첫 방문)에서는 320px 이 일반 모드부터 두 줄이 되지만 --rtop-h 가 실높이를
+   따라가고, 폰트는 같은 출처·서브셋·SW 캐시라 두 번째부터는 즉시 잡힌다 — 간격 조정으로 덮을 폭이 아니다. */
+@media screen and (max-width:359px){ html.nc-large .rtop .btn{ font-size:15px; padding:7px 8px } html.nc-large .rtop-btns{ gap:6px } }
 .scroll-hint{ display:none; font-size:10.5px; color:var(--ink-soft); margin-top:4px }
 .m-only{ display:none }   /* 모바일 카드 전용 셀 — 카드 규칙(table.rowcard td)이 더 구체적이라 거기서 다시 켜진다 */
 
@@ -567,8 +605,26 @@ function _syncRtopH(){
     var t = document.querySelector('.rtop');
     if (t) document.documentElement.style.setProperty('--rtop-h',
         Math.round(t.getBoundingClientRect().height + 10) + 'px');
+    _syncSecnav();
   }catch(e){}
 }
+/* 칩 스크롤 표식: 밀 수 있을 때만 › 를 보이고 끝까지 밀면 숨긴다. 페이드만으로는 320px 에서
+   '⚠ 리스'로 잘린 것처럼 읽혔다 — 도형(›)은 '더 있음'으로, 미완성 낱말은 '고장'으로 읽힌다. */
+function _syncSecnav(){
+  try{
+    var w = document.querySelector('.secnav-wrap'), n = w && w.querySelector('.secnav'), last = n && n.lastElementChild;
+    if (!last) return;
+    /* scrollWidth 는 padding-right 18px 를 포함해 칩이 다 보여도 '밀 수 있음'이 됐다(390px 일반, 최종 검수).
+       마지막 칩의 오른쪽 끝이 보이는 영역 밖에 있을 때만 — 끝까지 밀면 자연히 거짓이 된다. */
+    var can = last.getBoundingClientRect().right > n.getBoundingClientRect().right + 2;
+    w.classList.toggle('can-scroll', can);
+  }catch(e){}
+}
+document.addEventListener('DOMContentLoaded', function(){ try{
+  var n = document.querySelector('.secnav'); if (n) n.addEventListener('scroll', _syncSecnav, {passive:true});
+  _syncSecnav();
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(_syncSecnav);   /* 웹폰트가 늦게 오면 칩 폭이 바뀐다 */
+}catch(e){} });
 _syncRtopH();
 window.addEventListener('load', _syncRtopH);
 window.addEventListener('resize', _syncRtopH);
@@ -592,7 +648,7 @@ document.addEventListener('click', function(e){
   <div class="rtop no-print">
   <div class="rtop-btns">
     <a href="/vehicle/{{ v.id }}" class="btn" onclick="return _reportBack(event)"><span class="material-symbols-outlined" style="font-size:18px">arrow_back</span> 상세로</a>
-    <button onclick="window.print()" class="btn pri"><span class="material-symbols-outlined" style="font-size:18px">print</span> 인쇄 / PDF 저장</button>
+    <button onclick="window.print()" class="btn pri"><span class="material-symbols-outlined" style="font-size:18px">print</span> <span class="bl-full">인쇄 / PDF 저장</span><span class="bl-short">PDF 저장</span></button>
     <button type="button" id="rptLarge" class="btn" aria-pressed="false" onclick="rptToggleLarge()"
             title="글씨를 크게 봅니다 (다시 누르면 원래대로)" aria-label="큰글씨 모드 전환">큰글씨</button>
     <span class="btn btn-soon" style="opacity:.5;cursor:not-allowed;gap:6px" title="곧 제공 — 리포트를 계정에 보관하고 건당 구매(현재 무료·인쇄로 저장하세요)" aria-disabled="true"><span class="material-symbols-outlined" style="font-size:18px">bookmark_add</span> 보관·구매 <span style="font-size:10px;background:var(--line);color:var(--ink-soft);padding:1px 6px;border-radius:99px">준비 중</span></span>
@@ -601,11 +657,14 @@ document.addEventListener('click', function(e){
   {# 본문(01~12)이 통째로 없는 미산정 리포트에서는 탭도 내린다 —
      대상 없는 앵커가 다섯 개 남아 눌러도 아무 일이 없었다. #}
   {% if report %}
+  <div class="secnav-wrap">
   <nav class="secnav" aria-label="섹션 바로가기">
     <a href="#sec01">결론</a><a href="#sec05">시세비교</a>
     <a href="#sec06">취득원가</a><a href="#sec09" class="warn">⚠ 리스크</a>
     <a href="#sec12">낙찰 절차</a>
   </nav>
+  <i class="secnav-more material-symbols-outlined" aria-hidden="true">chevron_right</i>
+  </div>
   {% endif %}
   </div>
 
@@ -666,7 +725,7 @@ document.addEventListener('click', function(e){
             {% if exp %}· 중심값 {{ exp|won }}원 {% endif %}· 재판매 상한가 {% if upper %}{{ upper|won }}원{% else %}미산출{% endif %}
             {% if not exp %}<span style="display:block;font-weight:400">— 이 물건은 <b>예상 낙찰가를 산출하지 않았습니다</b>(표본·조건 불충족). 아래 06·08은 현 최저매각가 기준입니다.</span>{% endif %}
             {% if report.hi and exp and report.hi <= exp %}<span style="display:block;font-weight:400;color:var(--ink-faint)">예상가 밴드는 소매 시세의 110%(소프트캡)에서 멈추도록 제한돼 있어 윗부분이 여기서 끊깁니다. 중심값이 맨 위에 있다고 해서 그 금액까지 써도 된다는 뜻은 아닙니다.</span>{% endif %}
-            {% if exp and exp > max_bid %}<b style="color:var(--red)">— 예상 경쟁가가 이미 상한선을 넘습니다.</b>{% endif %}</div>
+            {% if exp and exp > max_bid %}<b style="color:var(--red)">— 예상 경쟁가가 상한선을 {{ (exp - max_bid)|won }}원 넘습니다.</b>{% endif %}</div>
           {% else %}
           {# 미산출이면 정확도 꼬리표를 붙이지 않는다 — 없는 값에 적중률을 달면 값이 있는 것처럼 읽힌다 #}
           <div class="v-label gloss-row">예상 낙찰가 <span style="font-weight:400">{% if exp %}— {{ ui.gloss('분위수 밴드', '과거 낙찰 결과가 얼마나 흩어졌는지(사분위 폭)를 중심값에 적용한 범위예요. 이 안에 떨어질 가능성이 높다는 뜻이지 보장은 아닙니다.') }}{% if backtest.within10_pct %} · 실측 ±10% 적중 {{ backtest.within10_pct|round|int }}%{% endif %}{% endif %}</span></div>
@@ -763,7 +822,8 @@ document.addEventListener('click', function(e){
             <div class="sp-track">{% if max_bid %}<i class="sp-over" style="left:{{ (max_bid/gmax*100)|round(1) }}%"></i>{% endif %}<div class="sp-fill{{ ' over' if _over }}" style="left:{{ (floor/gmax*100)|round(1) }}%;width:{{ ((exp-floor)/gmax*100)|round(1) if exp>floor else 0.5 }}%"></div></div>
             {% if max_bid %}<i class="sp-lim" style="left:{{ (max_bid/gmax*100)|round(1) }}%"></i>{% endif %}
           </div>
-          <div class="sp-blabel is-{{ _tone }}" style="left:{{ (((floor+exp)/2)/gmax*100)|round(1) }}%">{{ bidst.label if bidst else '유찰 대기 구간' }}</div>
+          {% set _blc = (max_bid if (_tone == 'caution' and max_bid) else (floor+exp)/2) %}
+          <div class="sp-blabel is-{{ _tone }}" style="left:{{ (_blc/gmax*100)|round(1) }}%">{% if bidst and bidst.tone == 'caution' and bidst.over_by %}예상 경쟁가가 상한선을 {{ (bidst.over_by/10000)|round|int }}만원 초과{% else %}{{ bidst.label if bidst else '유찰 대기 구간' }}{% endif %}</div>
         </div>
         <div class="sp-foot">예상낙찰가는 과거 낙찰 실측(낙찰가/시세 분포)에 유찰횟수를 반영한 중심 추정치이며, 밴드는 분위수 기반 불확실 구간입니다(산출: 10).</div>
       </div>
@@ -1307,11 +1367,12 @@ document.addEventListener('click', function(e){
        줄바꿈 없이 한 줄을 유지한다. 아래 여백도 실제 높이로 잡아 다음 문단과 안 겹치게. */
     var bl = host.parentElement && host.parentElement.querySelector('.sp-blabel');
     if (bl) {
+      if (!bl.dataset.left) bl.dataset.left = (parseFloat(bl.style.left) || 50);   // 템플릿이 준 목표 중심(%)
+      bl.style.left = '0px'; bl.style.transform = 'none';                          // 가용 폭 = 컨테이너 전체
       var bw = bl.offsetWidth, half = bw / 2;
-      var want = (parseFloat(bl.dataset.left || bl.style.left) || 50) / 100 * W;
-      if (!bl.dataset.left) bl.dataset.left = (parseFloat(bl.style.left) || 50);
+      var want = parseFloat(bl.dataset.left) / 100 * W;
       var cx = Math.min(Math.max(want, half), Math.max(half, W - half));
-      bl.style.left = cx + 'px';
+      bl.style.transform = 'translateX(' + (cx - half).toFixed(2) + 'px)';
       var spec = host.closest ? host.closest('.spectrum') : null;   /* .sp-foot 는 .sp-wrap 이 아니라 .spectrum 의 자식 */
       var foot = spec && spec.querySelector('.sp-foot');
       if (foot) foot.style.marginTop = (bl.offsetHeight + 24) + 'px';

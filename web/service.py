@@ -3410,7 +3410,10 @@ def bid_state(v: dict, bt: Optional[dict] = None, config: Optional[dict] = None)
     floor = v.get("min_sale_price") or 0
     upper = v.get("upper_bid") or 0
     mb = personal_use_max_bid(v, bt, cfg)
-    base = {"exp": exp, "med": med, "floor": floor, "upper": upper or None, "max_bid": mb}
+    base = {"exp": exp, "med": med, "floor": floor, "upper": upper or None, "max_bid": mb,
+            # 예상 경쟁가가 상한선을 얼마나 넘는가 — caution 문장에 폭을 실어 준다(디자인 검수).
+            # 목록 칩은 짧은 label 을 그대로 쓰고, 리포트 스펙트럼·§01 만 이 값을 쓴다.
+            "over_by": (exp - mb) if (exp and mb and exp > mb) else None}
 
     def out(state, label, tone):
         return {**base, "state": state, "label": label, "tone": tone}

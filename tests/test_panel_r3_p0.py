@@ -119,10 +119,14 @@ def test_spectrum_row_height_is_measured_not_hardcoded():
 
 
 def test_verdict_label_is_clamped_not_wrapped():
-    """줄바꿈으로 넘침을 막으면 세로로 늘어나 트랙·핀을 덮는다(그래서 판독 불가가 됐다)."""
+    """left:X% + translateX(-50%) 배치는 절대배치 상자의 가용 폭이 (컨테이너 − left)라 오른쪽에
+    붙을수록 좁아져 4줄로 접혔다(판독 불가). 이제 left:0 에 두고 transform 으로 중심을 옮긴다 —
+    가용 폭이 항상 컨테이너 전체라 텍스트가 그보다 길 때만 컨테이너 폭에서 줄바꿈된다."""
     src = (TPL / "report.html").read_text(encoding="utf-8")
     assert "html.nc-large .sp-blabel{white-space:normal" not in src, \
-        "판정 라벨에 줄바꿈을 허용하면 4줄로 늘어나 숫자를 덮는다"
+        "큰글씨에서만 줄바꿈을 켜는 옛 방식이 돌아왔다"
+    assert ".sp-blabel{position:absolute;bottom:-30px;left:0;width:max-content;max-width:100%" in src, \
+        "판정 라벨이 left:0 + max-width:100% 배치가 아니다 — 오른쪽에 붙으면 다시 여러 줄로 접힌다"
     i = src.index("var bl = ")
     seg = src[i:i + 700]
     assert "Math.min(Math.max(" in seg, "가로 클램프가 없다 — 트랙 밖으로 나간다"
