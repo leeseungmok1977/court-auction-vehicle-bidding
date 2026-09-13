@@ -25,6 +25,23 @@ from web import service
 from tests.test_render_smoke import BT, _BASE
 
 TPL = pathlib.Path(__file__).resolve().parents[1] / "web" / "templates"
+
+
+def _inner(html: str, open_tag: str) -> str:
+    """여는 태그부터 **짝이 맞는** 닫는 태그까지 — 중첩 div 를 건너뛴다."""
+    i = html.index(open_tag) + len(open_tag)
+    depth, j = 1, i
+    while depth and j < len(html):
+        o, c = html.find("<div", j), html.find("</div>", j)
+        if c < 0:
+            break
+        if 0 <= o < c:
+            depth += 1
+            j = o + 4
+        else:
+            depth -= 1
+            j = c + 6
+    return html[i:j]
 _PUBLIC = {"x-forwarded-for": "203.0.113.7"}
 
 
@@ -128,8 +145,13 @@ def test_spectrum_pin_is_named_for_what_it_actually_is(client):
     html = client.get("/vehicle/P0_1/report", headers=_PUBLIC).text
     i = html.index('class="sp-labels"')
     pins = html[i:html.index("sp-track", i)]
-    assert "재판매 상한가" in pins and "재판매상한" in pins
+    assert "재판매 상한가" in pins
     assert ">상한<" not in pins, "'상한' 두 글자는 입찰 상한선으로 오독된다"
+    # 좁은 폭 축약이 둘 다 '…상한'으로 끝나면 다시 헷갈린다(디자인 검수)
+    import re as _re
+    abbr = _re.findall(r'<span class="la">([^<]+)</span>', pins)
+    ends = [a for a in abbr if a.endswith("상한")]
+    assert len(ends) <= 1, f"축약 라벨이 '…상한'으로 겹친다: {abbr}"
 
 
 def test_connector_does_not_pierce_a_lower_label():
@@ -147,3 +169,87 @@ def test_section01_has_one_bold_not_three(client):
     assert seg.count("<b>") <= 1, f"볼드가 {seg.count('<b>')}개 — 강조가 흩어진다"
     assert "전국 통계" in seg
     assert "· 유찰 2회 반영" not in html, "바로 위 문장과 중복된 고아 줄"
+
+
+# ── 스펙트럼에 결정선을 넣는다 (디자인 검수 후속) ──────────────────
+# "이 그래프는 결정 도구인데 정작 '얼마까지 써도 되는가'(입찰 상한선) 핀이 없다."
+# 넣으니 "최저매각가가 상한선보다 오른쪽 → 그래서 부적합"이 그림 한 장으로 자명해졌다.
+
+def test_spectrum_has_the_decision_line(client):
+    html = client.get("/vehicle/P0_1/report", headers=_PUBLIC).text
+    i = html.index('class="sp-labels"')
+    pins = html[i:html.index("sp-blabel", i)]
+    assert "sp-pin lim" in pins, "입찰 상한선 핀이 없다 — 결정 기준이 그래프에 빠졌다"
+    assert "입찰 상한선" in pins and "입찰상한" in pins
+    assert 'class="sp-lim"' in pins, "트랙 위 한계선이 없다"
+
+
+def test_scale_includes_the_decision_line():
+    """축척에서 빼면 상한선이 최대값일 때 핀이 100% 밖으로 나간다."""
+    src = (TPL / "report.html").read_text(encoding="utf-8")
+    i = src.index("set gmax")
+    assert "max_bid" in src[i:i + 120], f"gmax 가 상한선을 포함하지 않는다: {src[i:i+120]}"
+
+
+def test_no_pin_when_ceiling_is_not_computed(client, monkeypatch):
+    """손익분기를 못 구한 물건에 0원짜리 한계선을 그으면 안 된다."""
+    monkeypatch.setattr(service, "personal_use_max_bid", lambda *a, **k: None)
+    html = client.get("/vehicle/P0_1/report", headers=_PUBLIC).text
+    assert "sp-pin lim" not in html and 'class="sp-lim"' not in html
+
+
+def test_label_placement_checks_neighbours_too():
+    """연결선만 피하려다 같은 행 이웃과 겹쳤다('3880'✕'2860', 320·360px 실측)."""
+    src = (TPL / "report.html").read_text(encoding="utf-8")
+    i = src.index("function clearOf")
+    seg = src[i:i + 800]
+    assert "o.row === it.row" in seg, "같은 행 이웃을 검사하지 않는다"
+    assert "o.row > it.row" in seg, "상위 행 연결선을 검사하지 않는다"
+
+
+def test_label_can_be_promoted_when_it_cannot_move_sideways():
+    """맨 오른쪽 핀은 클램프에 막혀 못 비킨다 — 위 행으로 올려야 관통이 사라진다."""
+    src = (TPL / "report.html").read_text(encoding="utf-8")
+    assert "it.row = rows.length;" in src, "비킬 자리 없을 때의 승격 경로가 없다"
+
+
+# ── 결정선 검수 반영분 ────────────────────────────────────────────
+def test_limit_line_is_not_clipped_by_the_track():
+    """`.sp-track{overflow:hidden}` 안에 두면 위아래 돌출분이 잘려
+    '가로지르는 벽'이 아니라 트랙과 같은 두께의 점이 된다(디자인 검수에서 적발).
+    실측: 밖으로 빼기 전 9px → 뺀 뒤 19px(트랙 9px)."""
+    src = (TPL / "report.html").read_text(encoding="utf-8")
+    i = src.index('<div class="sp-trackwrap">')
+    seg = src[i:src.index("sp-blabel", i)]
+    # 트랙 엘리먼트 **안쪽만** 잘라 본다. 중첩 div(.sp-fill)가 있으므로 깊이를 센다 —
+    # 처음엔 첫 </div> 로 잘랐다가, 한계선을 트랙 안으로 되돌린 사보타주를 놓쳤다.
+    track = _inner(seg, '<div class="sp-track">')
+    assert "sp-lim" not in track, "한계선이 overflow:hidden 안에 있어 잘린다"
+    assert "sp-lim" in seg, "한계선이 아예 없다"
+    assert ".sp-trackwrap{position:relative}" in src, "한계선의 배치 기준이 없다"
+
+
+def test_overshoot_zone_is_shaded(client):
+    """한계선 오른쪽은 전부 '써낼 수 없는 금액' — 면으로 보여야 인과가 닫힌다."""
+    html = client.get("/vehicle/P0_1/report", headers=_PUBLIC).text
+    assert 'class="sp-over"' in html
+    src = (TPL / "report.html").read_text(encoding="utf-8")
+    assert ".sp-over{" in src and "--red-tint" in src[src.index(".sp-over{"):src.index(".sp-over{") + 140]
+
+
+def test_fill_colour_agrees_with_the_verdict(client):
+    """채움 밴드가 통째로 한계선 오른쪽인데 코발트(이 앱에서 가장 신뢰도 높은 색)면
+    색이 결론을 배신한다 — 하단 판정은 빨간데 트랙은 파랗다."""
+    from web import db
+    html = client.get("/vehicle/P0_1/report", headers=_PUBLIC).text
+    v = db.get_vehicle("P0_1")
+    mb = service.bid_state(v, _BT2)["max_bid"]
+    assert mb and v["min_sale_price"] > mb, "픽스처가 초과 상태가 아니다"
+    assert 'class="sp-fill over"' in html, "초과인데 채움이 코발트 그대로다"
+
+    # 정상 물건은 코발트를 유지해야 한다 — 전부 빨갛게 만들면 경고가 무의미해진다
+    db.upsert_vehicle({**v, "id": "OK_1", "folder_key": "OK_1", "case_no": "2026타경9102",
+                       "min_sale_price": 4_410_000, "appraisal_value": 9_000_000,
+                       "median_price": 8_450_000, "upper_bid": 4_750_000, "fail_count": 1})
+    ok = client.get("/vehicle/OK_1/report", headers=_PUBLIC).text
+    assert 'class="sp-fill over"' not in ok, "정상 물건까지 경고색이 됐다"

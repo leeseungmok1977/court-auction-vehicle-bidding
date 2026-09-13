@@ -157,6 +157,10 @@ table, thead, tbody, tr, th, td { word-break: keep-all; overflow-wrap: break-wor
 .sp-title{font-size:12px;font-weight:600;color:var(--ink-soft);margin-bottom:12px}
 .sp-wrap{position:relative;margin:0 8px}
 .sp-labels{position:relative;height:56px}   /* 라벨 영역 — JS가 겹침 회피로 행 수에 맞춰 높이 조정 */
+/* 트랙을 감싸는 상자 — 한계선을 트랙 위아래로 내밀어야 '가로지르는 벽'이 된다.
+   .sp-track 은 .sp-fill 을 둥근 모양 안에 가두려고 overflow:hidden 이라, 그 안에
+   한계선을 두면 돌출분이 통째로 잘려 트랙과 같은 두께가 된다(디자인 검수에서 적발). */
+.sp-trackwrap{position:relative}
 .sp-track{height:9px;border-radius:99px;background:#E8ECF3;position:relative;overflow:hidden}
 .sp-fill{position:absolute;top:0;bottom:0;background:linear-gradient(90deg,var(--cobalt),#4F79E8);border-radius:99px}
 .sp-pin{position:absolute;top:0;bottom:0;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;white-space:nowrap;pointer-events:none}
@@ -167,6 +171,15 @@ table, thead, tbody, tr, th, td { word-break: keep-all; overflow-wrap: break-wor
 .sp-pin.acc .pv{color:var(--cobalt)}
 .sp-conn{flex:1 1 auto;width:1px;min-height:6px;background:var(--line-strong);margin-top:2px}
 .sp-pin.acc .sp-conn{background:var(--cobalt);width:1.5px}
+/* 입찰 상한선 = 넘으면 안 되는 한계선. 값 핀(회색)·예측 핀(코발트)과 색으로 구분한다. */
+.sp-pin.lim .pl,.sp-pin.lim .pv{color:var(--amber)}
+.sp-pin.lim .sp-conn{background:var(--amber);width:1.5px}
+.sp-lim{position:absolute;top:-5px;bottom:-5px;width:2px;background:var(--amber);transform:translateX(-50%);border-radius:2px}
+/* 한계선 오른쪽은 전부 '써낼 수 없는 금액' 구간 — 면으로 보여야 인과가 닫힌다 */
+.sp-over{position:absolute;top:0;bottom:0;right:0;background:var(--red-tint)}
+/* 채움 밴드가 통째로 한계선 오른쪽이면 코발트(이 앱에서 가장 신뢰도 높은 색)로
+   금지 구간을 칠하는 셈이 된다 — 하단 빨간 판정과 색이 반대편에 선다. */
+.sp-fill.over{background:linear-gradient(90deg,#D98A8C,#C86B6E)}
 .sp-blabel{position:absolute;bottom:-30px;left:50%;transform:translateX(-50%);font-size:12px;font-weight:700;color:var(--cobalt);white-space:nowrap;text-align:center}
 .sp-blabel.is-stop{color:var(--red)}.sp-blabel.is-caution{color:var(--amber)}.sp-blabel.is-ok{color:var(--green)}
 .sp-foot{margin-top:42px;font-size:11.5px;color:var(--ink-faint)}
@@ -661,17 +674,25 @@ document.addEventListener('click', function(e){
       </div>
       <!-- 가격 스펙트럼 -->
       {% if med and floor and exp %}
-      {% set gmax = [med, floor, upper, report.hi or exp]|max %}
+      {% set gmax = [med, floor, upper, max_bid or 0, report.hi or exp]|max %}
       <div class="spectrum">
         <div class="sp-title">가격 스펙트럼 <span style="font-weight:400;color:var(--ink-faint)">— 단위: 만원</span></div>
         <div class="sp-wrap">
           <div class="sp-labels" id="spLabels">
             <div class="sp-pin" style="left:{{ (floor/gmax*100)|round(1) }}%"><span class="sp-sp"></span><span class="pl"><span class="lf">최저매각가</span><span class="la">최저</span></span><span class="pv num">{{ (floor/10000)|round|int }}</span><i class="sp-conn"></i></div>
             <div class="sp-pin acc" style="left:{{ (exp/gmax*100)|round(1) }}%"><span class="sp-sp"></span><span class="pl"><span class="lf">예상낙찰가</span><span class="la">예상</span></span><span class="pv num">{{ (exp/10000)|round|int }}</span><i class="sp-conn"></i></div>
-            {% if upper %}<div class="sp-pin" style="left:{{ (upper/gmax*100)|round(1) }}%"><span class="sp-sp"></span><span class="pl"><span class="lf">재판매 상한가</span><span class="la">재판매상한</span></span><span class="pv num">{{ (upper/10000)|round|int }}</span><i class="sp-conn"></i></div>{% endif %}
+            {% if upper %}<div class="sp-pin" style="left:{{ (upper/gmax*100)|round(1) }}%"><span class="sp-sp"></span><span class="pl"><span class="lf">재판매 상한가</span><span class="la">재판매</span></span><span class="pv num">{{ (upper/10000)|round|int }}</span><i class="sp-conn"></i></div>{% endif %}
             <div class="sp-pin" style="left:{{ (med/gmax*100)|round(1) }}%"><span class="sp-sp"></span><span class="pl"><span class="lf">시세중앙값</span><span class="la">시세</span></span><span class="pv num">{{ (med/10000)|round|int }}</span><i class="sp-conn"></i></div>
+            {# 이 그래프는 결정 도구인데 정작 '얼마까지 써도 되는가'(입찰 상한선)가 없었다.
+               핀을 넣으면 "최저매각가가 상한선보다 오른쪽 → 그래서 부적합"이 그림으로 자명해진다.
+               앰버는 다른 핀(중립 회색·예상 코발트)과 겹치지 않는 '한계선' 전용 색이다. #}
+            {% if max_bid %}<div class="sp-pin lim" style="left:{{ (max_bid/gmax*100)|round(1) }}%"><span class="sp-sp"></span><span class="pl"><span class="lf">입찰 상한선</span><span class="la">입찰상한</span></span><span class="pv num">{{ (max_bid/10000)|round|int }}</span><i class="sp-conn"></i></div>{% endif %}
           </div>
-          <div class="sp-track"><div class="sp-fill" style="left:{{ (floor/gmax*100)|round(1) }}%;width:{{ ((exp-floor)/gmax*100)|round(1) if exp>floor else 0.5 }}%"></div></div>
+          {% set _over = max_bid and floor and floor > max_bid %}
+          <div class="sp-trackwrap">
+            <div class="sp-track">{% if max_bid %}<i class="sp-over" style="left:{{ (max_bid/gmax*100)|round(1) }}%"></i>{% endif %}<div class="sp-fill{{ ' over' if _over }}" style="left:{{ (floor/gmax*100)|round(1) }}%;width:{{ ((exp-floor)/gmax*100)|round(1) if exp>floor else 0.5 }}%"></div></div>
+            {% if max_bid %}<i class="sp-lim" style="left:{{ (max_bid/gmax*100)|round(1) }}%"></i>{% endif %}
+          </div>
           <div class="sp-blabel is-{{ _tone }}" style="left:{{ (((floor+exp)/2)/gmax*100)|round(1) }}%">{{ bidst.label if bidst else '유찰 대기 구간' }}</div>
         </div>
         <div class="sp-foot">예상낙찰가는 과거 낙찰 실측(낙찰가/시세 분포)에 유찰횟수를 반영한 중심 추정치이며, 밴드는 분위수 기반 불확실 구간입니다(산출: 10).</div>
@@ -1155,30 +1176,54 @@ document.addEventListener('click', function(e){
       it.row = placed;                               // 0 = 트랙에 가장 가까운 행
     });
     var maxRow = rows.length - 1;
-    host.style.height = (maxRow*ROWH + ROWH + 8) + 'px';
 
     /* 양 끝 핀의 글자가 컨테이너 밖으로 나간다 — 특히 예상낙찰가가 맨 오른쪽이면
        '3880' 의 절반이 잘린다(6개 폭 전부, 큰글씨 무관). 가장 중요한 숫자가 잘리는 자리다.
        **눈금(.sp-conn)은 실제 값 위치에 그대로 두고 글자만** 안으로 민다 — 핀 전체를
        옮기면 눈금이 값에서 벗어나 그래프가 거짓말을 하게 된다. */
     /* 상위 행 핀의 연결선은 아래 행 라벨 띠를 가로질러 트랙까지 내려간다. 그 x에 아래 행
-       숫자가 있으면 1px 선이 글자를 관통한다 — 실측: 선(3525)이 '3392'를 뚫었다.
-       연결선은 실제 값 위치라 못 옮기므로, **아래 행 글자를 옆으로 비킨다.** */
-    items.forEach(function(it){
+       숫자가 있으면 1px 선이 글자를 관통한다(실측: 선 3525 가 '3392'·'3880'을 뚫었다).
+       연결선은 실제 값 위치라 못 옮긴다 → 아래 행 **글자를** 비킨다. 비킬 자리가 없으면
+       (예: 맨 오른쪽 핀은 클램프에 막혀 못 움직인다) 그 라벨을 **맨 위 행으로 올린다** —
+       위에는 아무 연결선도 없으므로 관통이 원천적으로 불가능해진다. */
+    /* cc 위치가 (a) 상위 행 연결선을 다 피하고 (b) 같은 행 이웃 글자와 안 겹치는가.
+       처음엔 (a)만 봤더니 연결선을 피하려고 옆으로 민 라벨이 같은 행 이웃과 겹쳤다
+       ('3880' ✕ '2860', 320·360px 실측). 두 조건은 같이 봐야 한다. */
+    function clearOf(it, cc) {
       var hw = it.w / 2;
-      items.forEach(function(o){
-        if (o === it || o.row <= it.row) return;
-        var c = it.cx + it.dx;
-        if (o.cx > c - hw - 3 && o.cx < c + hw + 3) {
-          var left = o.cx - hw - 3, right = o.cx + hw + 3;
-          it.dx = (Math.abs(left - it.cx) <= Math.abs(right - it.cx) ? left : right) - it.cx;
+      return items.every(function(o){
+        if (o === it) return true;
+        if (o.row > it.row)                                  // (a) 위 행 연결선
+          return o.cx <= cc - hw - 2 || o.cx >= cc + hw + 2;
+        if (o.row === it.row) {                              // (b) 같은 행 이웃 글자
+          var oc = o.cx + (o.dx || 0), ohw = o.w / 2;
+          return (oc + ohw + 4) <= (cc - hw) || (oc - ohw - 4) >= (cc + hw);
         }
+        return true;
       });
-      var c2 = it.cx + it.dx;                       // 비킨 뒤 다시 컨테이너 안으로
-      if (c2 - hw < PAD) it.dx = PAD + hw - it.cx;
-      else if (c2 + hw > W - PAD) it.dx = W - PAD - it.cx - hw;
+    }
+    items.forEach(function(it){
+      var hw = it.w / 2, lo = PAD + hw, hi = Math.max(lo, W - PAD - hw);
+      var cur = Math.min(Math.max(it.cx + it.dx, lo), hi);
+      if (clearOf(it, cur)) { it.dx = cur - it.cx; return; }
+      var best = null, bestD = Infinity;
+      items.forEach(function(o){                     // 상위 연결선 좌/우로 붙여 보기
+        if (o === it || o.row <= it.row) return;
+        [o.cx - hw - 3, o.cx + hw + 3].forEach(function(c){
+          var cc = Math.min(Math.max(c, lo), hi);
+          if (!clearOf(it, cc)) return;
+          var d = Math.abs(cc - it.cx);
+          if (d < bestD) { bestD = d; best = cc; }
+        });
+      });
+      if (best !== null) { it.dx = best - it.cx; return; }
+      it.row = rows.length;                          // 비킬 자리 없음 → 맨 위 행으로
+      rows.push([{l: cur - hw - 5, r: cur + hw + 5}]);
+      it.dx = cur - it.cx;
     });
+    maxRow = rows.length - 1;                        // 승격으로 행이 늘 수 있다
 
+    host.style.height = (maxRow*ROWH + ROWH + 8) + 'px';
     items.forEach(function(it){
       var t = it.dx ? 'translateX(' + it.dx.toFixed(2) + 'px)' : '';
       ['.pl', '.pv'].forEach(function(sel){
