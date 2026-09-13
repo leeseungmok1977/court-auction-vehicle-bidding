@@ -157,6 +157,27 @@ p, dd, li { text-wrap: pretty; }
   animation: skshimmer 1.4s infinite;
 }
 
+/* 유망 물건·즐겨찾기 카드의 세 금액(최저매각가·예상낙찰가·시세중앙값) — 카드 폭이 **글자 크기 대비** 좁으면 3열 → 3행.
+   3열 + 줄바꿈 금지 + vw 상한만으로는 320px 에서 10.6px 까지 줄어들어 큰글씨 라벨(15px)보다 작아졌다(디자인 검수).
+   조건을 폭이 아니라 rem 대비 폭(@container … rem)으로 걸어 320px·큰글씨·OS 글자 확대를 한 규칙이 덮는다:
+   일반 16px → 카드 304px 미만(320·360px 폰)만 3행, 큰글씨 20px → 380px 미만(폰 전부), OS 130% → 395px 미만.
+   360px 카드(≈296px)가 18.5rem 경계에 딱 걸려 있어 19rem 으로 8px 안쪽에 둔다(패딩 1px 변화로 배치가 뒤집히지 않게 — 검수).
+   3열이 남는 390px+ 일반은 11자리(1억 이상)도 들어간다(실측 여유 ≥ 8px). 미지원 브라우저는 3열 + vw 상한(측정된 안전값 3.3vw)으로 남는다. */
+.nc-pricegrid-host { container-type: inline-size; }
+/* 컨테이너 쿼리를 지원하면(항상 참인 조건) 숫자는 rem 그대로 — 인라인 vw 상한은 미지원 브라우저 폴백에만 남는다.
+   3열이 남는 폭(카드 ≥ 304px)은 14px 11자리도 들어가므로 3열에서도 줄일 이유가 없다. */
+@container (min-width: 0) {
+  .nc-pricegrid .nc-price { font-size: .875rem !important; }
+}
+@container (max-width: 19rem) {
+  .nc-pricegrid { grid-template-columns: minmax(0, 1fr) !important; gap: .25rem !important; }
+  .nc-pricegrid > div { display: flex; align-items: baseline; justify-content: space-between; gap: .5rem; text-align: right; }
+  .nc-pricegrid > div > :first-child { text-align: left; }
+  /* 알약 띠의 px-1(4px) 만큼 바깥으로 흘려 1의 자리가 위·아래 행과 같은 세로선에 놓이게 — 정렬이 3행의 존재 이유다(검수) */
+  .nc-pricegrid > .nc-price-hero { margin-inline: -.25rem; }
+  .nc-pricegrid .nc-price { font-size: .875rem !important; }   /* rem 그대로 — 큰글씨·OS 확대를 따라 커진다 */
+}
+
 /* 모션 저감 선호 — transform 모션만 제거, 색/투명도 전환은 유지(Emil) */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; }

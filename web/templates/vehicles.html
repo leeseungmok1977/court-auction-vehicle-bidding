@@ -340,11 +340,12 @@ d.addEventListener('toggle',function(){try{localStorage.setItem('ncUsepickBasis'
         <div class="flex items-end justify-between gap-2 mt-2.5">
           <div>
             <div class="text-[10px] text-mut">최저입찰가{% if v.appr_pct %} <span class="text-mut">· 감정 {{ v.appr_pct }}%</span>{% endif %}</div>
-            <div class="font-mono text-base font-semibold text-txt tnum">{{ v.min_sale_price|won }}</div>
+            {# 숫자 두 개는 한 줄에 — OS 글자 크기 확대(rem 130%)에서 320px 카드 밖으로 20px 나갔다(실측). rem 과 폭 중 작은 쪽. #}
+            <div class="font-mono font-semibold text-txt tnum whitespace-nowrap" style="font-size:min(1rem,4.6vw)">{{ v.min_sale_price|won }}</div>
           </div>
           <div class="text-right">
             <div class="text-[10px] text-primary">AI 예상 낙찰가</div>
-            <div class="font-mono text-lg font-bold tnum {{ 'text-mut' if closed else 'text-mut' if (lowconf or exp_far) else 'text-primary' }}">{{ v.expected_win|won if v.expected_win else '—' }}{% if v.expected_win and not closed and lowconf %}<span class="text-rose-500 text-[11px] align-top">*</span>{% elif v.expected_win and not closed and exp_far %}<span class="text-mut text-[11px] align-top">↑</span>{% endif %}</div>
+            <div class="font-mono font-bold tnum whitespace-nowrap {{ 'text-mut' if closed else 'text-mut' if (lowconf or exp_far) else 'text-primary' }}" style="font-size:min(1.125rem,5.2vw)">{{ v.expected_win|won if v.expected_win else '—' }}{% if v.expected_win and not closed and lowconf %}<span class="text-rose-500 text-[11px] align-top">*</span>{% elif v.expected_win and not closed and exp_far %}<span class="text-mut text-[11px] align-top">↑</span>{% endif %}</div>
           </div>
         </div>
         {# 실사용 갈래 태그 — 홈 카드·상세와 같은 문구(service.USE_TIER_LABELS). 초록=지금, 주황=조건부(이 앱의 caution 색).

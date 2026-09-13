@@ -62,10 +62,11 @@
       {# items-end 였다 — 큰글씨에서 오른쪽이 5줄이 되면 왼쪽 숫자가 배지 줄과 나란히 놓여 두 금액이
          대각선으로 흩어졌다(디자인 검수). 위 정렬이면 라벨은 라벨끼리, 숫자는 숫자끼리 같은 줄. #}
       <div class="p-3 flex items-start justify-between gap-2 tabular-nums">
-        <div><div class="text-[10px] text-mut">최저 입찰가</div><div class="font-mono text-sm font-semibold text-txt">{{ v.min_sale_price|won }}</div></div>
+        {# 두 금액은 한 줄에 — OS 글자 크기 확대(rem 130%)에서 320px 의 두 숫자 간격이 10px 까지 좁아졌다(실측). rem 과 폭 중 작은 쪽. #}
+        <div><div class="text-[10px] text-mut">최저 입찰가</div><div class="font-mono font-semibold text-txt whitespace-nowrap" style="font-size:min(.875rem,4vw)">{{ v.min_sale_price|won }}</div></div>
         {# 라벨 한 줄에 '무엇 / 얼마나 믿을 만한지 / 등급'을 다 얹었더니 320px·큰글씨에서 "시세 / 신뢰도"가
    줄 사이에서 끊겼다(육안). 신뢰도는 숫자 아래 자기 줄로 — 줄바꿈 금지. #}
-<div class="text-right"><div class="text-[10px] text-primary">AI 예상 낙찰가</div><div class="font-mono text-lg font-extrabold text-primary leading-tight">{{ v.expected_win|won if v.expected_win else '—' }}</div>{% if v.market_confidence %}<div class="text-[10px] text-mut leading-tight mt-0.5">시세&nbsp;신뢰도&nbsp;{{ v.market_confidence }}/100{% if v.market_confidence_label %} <span class="inline-flex items-center gap-0.5 font-bold align-middle {{ 'text-emerald-700' if v.market_confidence_label=='높음' else 'text-amber-700' if v.market_confidence_label=='보통' else 'text-rose-600' }}"><span class="inline-block w-1.5 h-1.5 rounded-full {{ 'bg-emerald-500' if v.market_confidence_label=='높음' else 'bg-amber-500' if v.market_confidence_label=='보통' else 'bg-rose-500' }}"></span>{{ v.market_confidence_label }}</span>{% endif %}</div>{% endif %}</div>
+<div class="text-right"><div class="text-[10px] text-primary">AI 예상 낙찰가</div><div class="font-mono font-extrabold text-primary leading-tight whitespace-nowrap" style="font-size:min(1.125rem,5.2vw)">{{ v.expected_win|won if v.expected_win else '—' }}</div>{% if v.market_confidence %}<div class="text-[10px] text-mut leading-tight mt-0.5">시세&nbsp;신뢰도&nbsp;{{ v.market_confidence }}/100{% if v.market_confidence_label %} <span class="inline-flex items-center gap-0.5 font-bold align-middle {{ 'text-emerald-700' if v.market_confidence_label=='높음' else 'text-amber-700' if v.market_confidence_label=='보통' else 'text-rose-600' }}"><span class="inline-block w-1.5 h-1.5 rounded-full {{ 'bg-emerald-500' if v.market_confidence_label=='높음' else 'bg-amber-500' if v.market_confidence_label=='보통' else 'bg-rose-500' }}"></span>{{ v.market_confidence_label }}</span>{% endif %}</div>{% endif %}</div>
       </div>
     </a>
     {% endfor %}
@@ -348,15 +349,20 @@
     {% for v in candidates %}
     {% set exp = v.expected_win %}
     {% set dot = 'bg-emerald-500' if v.market_confidence_label=='높음' else 'bg-amber-500' if v.market_confidence_label=='보통' else 'bg-rose-500' %}
-    <a href="/vehicle/{{ v.id }}" class="block px-1 py-3 hover:bg-slate-50 transition-colors">
+    <a href="/vehicle/{{ v.id }}" class="block px-1 py-3 hover:bg-slate-50 transition-colors nc-pricegrid-host">
       <div class="flex items-center justify-between gap-2">
         <span class="font-semibold text-primary truncate" style="word-break:keep-all">{{ v.model|mdl }} <span class="text-xs text-mut font-normal">{{ v.year or '' }}</span></span>
         {% if v.market_confidence_label %}<span class="inline-flex items-center gap-1 text-xs text-mut whitespace-nowrap shrink-0"><span class="w-1.5 h-1.5 rounded-full {{ dot }}"></span>{{ v.market_confidence_label }}</span>{% endif %}
       </div>
-      <div class="grid grid-cols-3 gap-2 mt-2 text-right tabular-nums">
-        <div><div class="text-[10px] text-mut">최저매각가</div><div class="font-mono text-sm text-mut">{{ v.min_sale_price|won }}</div></div>
-        <div class="rounded-md bg-primary/5 px-1.5 py-0.5"><div class="text-[10px] text-primary">예상낙찰가</div><div class="font-mono text-sm font-bold text-txt">{{ exp|won if exp else '—' }}</div></div>
-        <div><div class="text-[10px] text-mut">시세중앙값</div><div class="font-mono text-sm text-mut">{{ v.median_price|won }}</div></div>
+      {# 세 숫자는 반드시 한 줄에. 사용자 실기기(안드로이드 글자 크기 확대 = rem 확대)에서 가운데 칸이 1/3 폭에 갇혀
+         '10,200,00 / 0'으로 접혔다. 가운데 칸은 내용 폭(auto), 양옆이 남는 폭을 나누고, 숫자 크기는 rem 과 화면 폭(vw) 중
+         작은 쪽 — 큰글씨·OS 확대에서는 넓은 화면에서만 커지고 좁은 화면에서는 칸에 맞춘다(320px 에서 10.6px; 3.5vw 는 큰글씨 320px 에서 양옆 숫자가 2px 넘쳤다). #}
+      {# 카드 폭이 글자 크기 대비 좁으면(320·360px, 큰글씨, OS 확대) tailwind_input.css 의 @container 규칙이 3행 목록으로 바꾼다.
+         3열일 때 정렬은 왼쪽/가운데/오른쪽 — 아래 minigauge 의 왼끝(최저)·오른끝(시세)과 자리를 맞춘다(검수). #}
+      <div class="nc-pricegrid grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] gap-2 mt-2 tabular-nums">
+        <div class="text-left"><div class="text-[10px] text-mut">최저매각가</div><div class="nc-price font-mono text-mut whitespace-nowrap" style="font-size:min(.875rem,3.3vw)">{{ v.min_sale_price|won }}</div></div>
+        <div class="nc-price-hero text-center rounded-md bg-primary/5 px-1 py-0.5"><div class="text-[10px] text-primary">예상낙찰가</div><div class="nc-price font-mono font-bold text-txt whitespace-nowrap" style="font-size:min(.875rem,3.3vw)">{{ exp|won if exp else '—' }}</div></div>
+        <div class="text-right"><div class="text-[10px] text-mut">시세중앙값</div><div class="nc-price font-mono text-mut whitespace-nowrap" style="font-size:min(.875rem,3.3vw)">{{ v.median_price|won }}</div></div>
       </div>
       {{ ui.minigauge(v.min_sale_price, exp, v.median_price) }}
     </a>
