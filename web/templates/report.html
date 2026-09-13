@@ -217,8 +217,10 @@ table{width:100%;border-collapse:collapse;font-size:13px}
   table.rowcard.cost td.tagcell{ grid-column:2; grid-row:3; text-align:right }
   /* 합계 강조를 td 에 걸면 `table.rowcard td{border:0}` 에 밀리고, 배경이 열 간격에
      흰 틈을 만들어 띠가 끊긴다. tr 에 건다. */
+  /* ⚠ 좌우 padding 을 주면 합계 금액만 그만큼 안쪽에서 끝나 다시 자릿수가 어긋난다
+     (실측 6px). 강조는 위아래 여백과 선·배경으로만 준다. */
   table.rowcard tr.row-sum{ border-top:1.5px solid var(--line-strong);
-                            background:#FAFBFD; padding:11px 6px; margin-top:2px }
+                            background:#FAFBFD; padding:12px 0 11px; margin-top:2px }
   table.rowcard tr.row-sum td{ background:none }
   /* 스크롤이 남는 표는 밀 수 있다는 것을 보이게 — 잘린 것처럼 보이면 조판 사고로 읽힌다 */
   .tscroll:not(:has(> table.rowcard)){
