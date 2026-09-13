@@ -212,8 +212,17 @@ def test_report_scroll_hint_is_actually_in_the_markup():
     body = _re.sub(r"<style>.*?</style>", "", src, flags=_re.S)
     assert ".scroll-hint" in styles, "CSS 규칙이 사라졌다"
     assert 'class="scroll-hint"' in body, "CSS만 있고 쓰는 곳이 없다(죽은 규칙)"
-    # 가려진 열 이름을 적어야 '무엇이 더 있는지'를 알 수 있다
-    assert body.count('class="scroll-hint"') >= 3, "넘치는 표 3개에 모두 붙어야 한다"
+    # 진짜 불변식: **가로 스크롤이 남을 수 있는 표**(카드로 쌓이지도, 화면에 들어오지도
+    # 않는 표)에는 전부 안내문이 붙고, 스크롤이 안 남는 표에는 붙지 않는다.
+    # 처음엔 '3개'로 못 박았는데, 07을 카드로 쌓고 08을 화면에 맞추자 그 숫자가
+    # 틀린 가드가 됐다(패널 3차 후속). 개수가 아니라 대응 관계를 본다.
+    tables = _re.findall(r'<div class="tscroll"><table([^>]*)>(?:(?!</table>).)*</table></div>\s*(<p class="scroll-hint">)?',
+                         body, _re.S)
+    assert tables, "tscroll 표를 하나도 못 찾았다 — 정규식이 깨졌는지 확인"
+    for attrs, hint in tables:
+        scrolls = ("rowcard" not in attrs) and ("matrix" not in attrs)
+        assert bool(hint) == scrolls, (
+            f"표 <table{attrs}> : 스크롤 {'가능' if scrolls else '없음'}인데 안내문 {'없음' if not hint else '있음'}")
 
 
 def test_report_print_does_not_rely_on_background_graphics():

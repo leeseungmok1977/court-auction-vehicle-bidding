@@ -59,9 +59,13 @@
           <div class="text-[11px] text-white/60 mt-0.5">{{ (v.court or '')|replace('지방법원','지법') }}{% if v.mileage_km %} · {{ (v.mileage_km/10000)|round(1) }}만km{% endif %}</div>
         </div>
       </div>
-      <div class="p-3 flex items-end justify-between gap-2 tabular-nums">
+      {# items-end 였다 — 큰글씨에서 오른쪽이 5줄이 되면 왼쪽 숫자가 배지 줄과 나란히 놓여 두 금액이
+         대각선으로 흩어졌다(디자인 검수). 위 정렬이면 라벨은 라벨끼리, 숫자는 숫자끼리 같은 줄. #}
+      <div class="p-3 flex items-start justify-between gap-2 tabular-nums">
         <div><div class="text-[10px] text-mut">최저 입찰가</div><div class="font-mono text-sm font-semibold text-txt">{{ v.min_sale_price|won }}</div></div>
-        <div class="text-right"><div class="text-[10px] text-primary">AI 예상 낙찰가{% if v.market_confidence %} · 신뢰도 {{ v.market_confidence }}{% if v.market_confidence_label %} <span class="inline-flex items-center gap-0.5 font-bold align-middle {{ 'text-emerald-700' if v.market_confidence_label=='높음' else 'text-amber-700' if v.market_confidence_label=='보통' else 'text-rose-600' }}"><span class="inline-block w-1.5 h-1.5 rounded-full {{ 'bg-emerald-500' if v.market_confidence_label=='높음' else 'bg-amber-500' if v.market_confidence_label=='보통' else 'bg-rose-500' }}"></span>{{ v.market_confidence_label }}</span>{% endif %}{% endif %}</div><div class="font-mono text-lg font-extrabold text-primary leading-tight">{{ v.expected_win|won if v.expected_win else '—' }}<span class="text-xs font-normal text-mut"> 원</span></div></div>
+        {# 라벨 한 줄에 '무엇 / 얼마나 믿을 만한지 / 등급'을 다 얹었더니 320px·큰글씨에서 "시세 / 신뢰도"가
+   줄 사이에서 끊겼다(육안). 신뢰도는 숫자 아래 자기 줄로 — 줄바꿈 금지. #}
+<div class="text-right"><div class="text-[10px] text-primary">AI 예상 낙찰가</div><div class="font-mono text-lg font-extrabold text-primary leading-tight">{{ v.expected_win|won if v.expected_win else '—' }}</div>{% if v.market_confidence %}<div class="text-[10px] text-mut leading-tight mt-0.5">시세&nbsp;신뢰도&nbsp;{{ v.market_confidence }}/100{% if v.market_confidence_label %} <span class="inline-flex items-center gap-0.5 font-bold align-middle {{ 'text-emerald-700' if v.market_confidence_label=='높음' else 'text-amber-700' if v.market_confidence_label=='보통' else 'text-rose-600' }}"><span class="inline-block w-1.5 h-1.5 rounded-full {{ 'bg-emerald-500' if v.market_confidence_label=='높음' else 'bg-amber-500' if v.market_confidence_label=='보통' else 'bg-rose-500' }}"></span>{{ v.market_confidence_label }}</span>{% endif %}</div>{% endif %}</div>
       </div>
     </a>
     {% endfor %}
@@ -306,7 +310,7 @@
         <th class="text-right py-2 font-medium" title="재판매 마진 차감 후 손익분기가 — 예상낙찰가보다 낮은 것이 정상">상한가 <span class="text-mut">재판매</span></th>
         <th class="text-right py-2 font-medium" title="최저매각가 × 유찰 프리미엄 기반 예상 낙찰가 — 일반 매수 실입찰 기준">예상낙찰가 <span class="text-mut">실입찰</span></th>
         <th class="text-right py-2 font-medium">시세중앙값</th>
-        <th class="text-center py-2 font-medium">신뢰도</th></tr></thead>
+        <th class="text-center py-2 font-medium">시세 신뢰도</th></tr></thead>
       <tbody class="divide-y divide-line">
       {% for v in candidates %}
       {% set exp = v.expected_win %}

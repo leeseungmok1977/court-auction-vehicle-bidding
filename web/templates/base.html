@@ -251,6 +251,9 @@
   .nc-unit{white-space:nowrap}
   /* 꺼짐 상태가 테두리 없는 회색 글자라 "버튼"으로 안 읽혔다(디자인 검수) —
      켜짐과 같은 알약 형태로 두고 채움만 다르게 한다. */
+  /* 큰글씨에서 용어 ? 원(14px 고정)이 본문 대비 작아지지 않게 — 리포트와 같은 처방 */
+  html.nc-large .gloss .q{width:18px;height:18px;font-size:12px}
+  html.nc-large .gloss .pop{font-size:16px}
   #largeToggle[aria-pressed="true"]{background:#2f5fe0;color:#fff;border-color:#2f5fe0}
 </style>
 <script>try{ if(sessionStorage.getItem("nc_splash")) document.documentElement.className += " splash-done"; }catch(e){}</script>

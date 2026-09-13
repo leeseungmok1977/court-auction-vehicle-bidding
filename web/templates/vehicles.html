@@ -337,8 +337,11 @@ d.addEventListener('toggle',function(){try{localStorage.setItem('ncUsepickBasis'
         {% if v.market_confidence and v.median_price is not none and not closed %}
         <div class="mt-2.5">
           <div class="flex justify-between text-[10px] mb-1">
-            <span class="text-mut">예측 신뢰도 · 시세 <span class="font-mono text-mut">{{ v.median_price|won }}</span>{% if v.market_platform == '동급참조' %} <span class="font-bold text-amber-700" title="같은 차종·연식의 기존 실측 시세를 참조(외부 조회 불가 기간)">참조</span>{% endif %}</span>
-            <span class="font-semibold {{ confcol }}">{{ v.market_confidence }}% ({{ v.market_confidence_label }})</span>
+            {# '예측 신뢰도'라고 써 놨는데 이 값은 시세 표본·편차 점수다 — 리포트가 "예측이 아니라
+               시세의 신뢰도"라고 정정하는 바로 그 숫자. 단위도 % 가 아니라 /100 점수(패널 3차:
+               홈 76 · 목록 76% · 리포트 76/100 이 한 값의 세 얼굴이었다). #}
+            <span class="text-mut">시세 신뢰도 · 시세 <span class="font-mono text-mut">{{ v.median_price|won }}</span>{% if v.market_platform == '동급참조' %} <span class="font-bold text-amber-700" title="같은 차종·연식의 기존 실측 시세를 참조(외부 조회 불가 기간)">참조</span>{% endif %}</span>
+            <span class="font-semibold {{ confcol }}">{{ v.market_confidence }}<span class="font-normal text-mut">/100</span> ({{ v.market_confidence_label }})</span>
           </div>
           <div class="h-1.5 rounded-full bg-slate-100 overflow-hidden"><div class="h-full rounded-full {{ confbar }}" style="width:{{ v.market_confidence }}%"></div></div>
         </div>

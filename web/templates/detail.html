@@ -256,7 +256,7 @@
     <div class="ml-auto text-right">
       <div class="text-xs text-white/55 mb-1">시세 신뢰도</div>
       {% set cbadge = 'bg-emerald-400 text-[#0b142b]' if cl=='높음' else 'bg-amber-400 text-[#0b142b]' if cl=='보통' else 'bg-rose-400 text-white' %}
-      <span class="text-xs font-bold px-2.5 py-1 rounded-full {{ cbadge }}">{{ cl }}{% if v.market_confidence %} · {{ v.market_confidence }}점{% endif %}</span>
+      <span class="text-xs font-bold px-2.5 py-1 rounded-full {{ cbadge }}">{{ cl }}{% if v.market_confidence %} · {{ v.market_confidence }}/100{% endif %}</span>
     </div>
   </div>
   {% if v.min_sale_price and v.median_price %}
@@ -599,7 +599,7 @@
                      else 'bg-rose-50 text-rose-600 border-rose-200' %}
         <span class="text-xs font-semibold px-2.5 py-1 rounded-full border {{ cbg }}"
               title="표본수·매칭단계·가격분산·이상치를 종합한 시세 신뢰도">
-          신뢰도 {{ cl }}{% if v.market_confidence %} · {{ v.market_confidence }}점{% endif %}
+          시세 신뢰도 {{ cl }}{% if v.market_confidence %} · {{ v.market_confidence }}/100{% endif %}
         </span>
         {% endif %}
       </div>

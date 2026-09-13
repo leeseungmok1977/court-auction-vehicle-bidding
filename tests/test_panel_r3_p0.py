@@ -253,3 +253,42 @@ def test_fill_colour_agrees_with_the_verdict(client):
                        "median_price": 8_450_000, "upper_bid": 4_750_000, "fail_count": 1})
     ok = client.get("/vehicle/OK_1/report", headers=_PUBLIC).text
     assert 'class="sp-fill over"' not in ok, "정상 물건까지 경고색이 됐다"
+
+
+# ── 07·08 표 — 판정 칸이 가로 스크롤 밖에 있었다 (패널 3차 3명·심각도 4) ────────
+# 07: "판정을 숨겨놓으면 표를 왜 그리나". 6열 표를 모바일에서 [낙찰가|마진]/[내역|판정]
+#     두 줄 카드로 쌓는다(06과 같은 .rowcard 패턴). 데스크톱은 6열 그대로.
+# 08: 4열 행렬인데 '모든 표에 min-width:430px' 규칙에 걸려 억지로 넘쳤다. 축 제목 셀이
+#     nowrap 135px(큰글씨 168px)로 폭을 밀어낸 것도 원인.
+
+def test_simulation_table_stacks_into_cards_on_mobile(client):
+    html = client.get("/vehicle/P0_1/report", headers=_PUBLIC).text
+    assert 'class="rowcard sim"' in html, "07이 카드 패턴이 아니다 — 판정이 스크롤 밖으로 간다"
+    tbl = _inner(html, '<table class="rowcard sim">')
+    assert 'class="sub m-only"' in tbl, "모바일 요약 셀이 없다"
+    assert tbl.count('class="c tagcell"') >= 1, "판정 칩이 tagcell 이 아니라 카드에서 자리를 못 잡는다"
+    src = (TPL / "report.html").read_text(encoding="utf-8")
+    assert "table.rowcard.sim td.d{ display:none }" in src, "모바일에서 세부 숫자 셀을 접지 않는다"
+    assert ".m-only{ display:none }" in src, "데스크톱에서 요약 셀을 숨기지 않는다 — 열이 7개가 된다"
+
+
+def test_matrix_is_exempt_from_the_forced_min_width():
+    src = (TPL / "report.html").read_text(encoding="utf-8")
+    assert ":not(.matrix)" in src, "4열 행렬에도 430px 최소폭이 걸려 390px 에서 넘친다"
+    assert ".matrix th.axis,.matrix td.axis{white-space:normal}" in src, "축 제목이 nowrap 이면 표를 밀어낸다"
+    assert "추가 정비비 ↓ / 재판매가 →" not in src, "긴 축 제목이 남아 있다"
+
+
+def test_highlighted_row_has_no_gutter_in_card_mode():
+    """td 배경은 카드(grid) 두 열 사이에 흰 틈을 낸다 — 합계행에서 한 번 잡은 증상."""
+    src = (TPL / "report.html").read_text(encoding="utf-8")
+    assert "table.rowcard tr.row-hl{ background:var(--cobalt-tint) }" in src
+    assert "table.rowcard tr.row-hl td{ background:none }" in src
+
+
+def test_scroll_hint_only_where_a_table_can_scroll(client):
+    """07·08은 이제 스크롤이 안 남는다 — 안내문이 남아 있으면 '잘린 표'로 읽힌다."""
+    html = client.get("/vehicle/P0_1/report", headers=_PUBLIC).text
+    for title in ("수익 시뮬레이션", "민감도"):
+        i = html.index(title); sec = html[i:html.index("</section>", i)]
+        assert 'class="scroll-hint"' not in sec, f"{title}: 스크롤 없는 표에 안내문"

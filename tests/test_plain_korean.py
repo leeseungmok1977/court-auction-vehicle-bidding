@@ -160,16 +160,28 @@ def test_large_mode_uses_the_same_storage_key_as_the_header():
 
 
 def test_large_mode_does_not_touch_printing():
-    """종이 크기는 고정이라 확대하면 넘쳐 잘린다 — 화면에서만 확대한다."""
-    src = (TPL / "report.html").read_text(encoding="utf-8")
-    i = src.index("html.nc-large")
-    head = src[:i]
-    assert head.rstrip().endswith("@media screen{"),         "큰글씨 규칙이 @media screen 밖에 있어 인쇄까지 확대된다"
-    # 주석에는 이 낱말이 '왜 안 쓰는지'로 남아 있다 — 실제 선언만 본다
+    """종이 크기는 고정이라 확대하면 넘쳐 잘린다 — 화면에서만 확대한다.
+
+    처음엔 '첫 html.nc-large 가 @media screen{ 바로 뒤'만 봤다. 큰글씨 규칙이 다른 screen
+    블록(@media screen and (max-width:560px))에도 생기자 멀쩡한 코드를 실패로 판정했다.
+    진짜 불변식은 **모든 html.nc-large 규칙이 screen 미디어 안**에 있다는 것이다."""
     import re as _re
-    code = _re.sub(r"/\*.*?\*/", " ", src, flags=_re.S)
-    assert "font-size:revert" not in code, \
-        "revert 는 작성자 스타일이 아니라 브라우저 기본값으로 되돌린다 — 인쇄가 깨진다"
+    src = _re.sub(r"/[*].*?[*]/", " ", (TPL / "report.html").read_text(encoding="utf-8"), flags=_re.S)
+    # 최상위 @media 블록의 (query, start, end) 를 중괄호 깊이로 구한다
+    blocks = []
+    for m in _re.finditer(r"@media([^{]*)\{", src):
+        depth, k = 1, m.end()
+        while depth and k < len(src):
+            depth += {"{": 1, "}": -1}.get(src[k], 0); k += 1
+        blocks.append((m.group(1).strip(), m.start(), k))
+    outside = []
+    for m in _re.finditer(r"html\.nc-large", src):
+        enclosing = [q for q, a, b in blocks if a <= m.start() < b]
+        # 중첩 미디어(@media screen{ @media (max-width:560px){…} })는 바깥이 screen 이면 된다
+        if not any(q.startswith("screen") for q in enclosing):
+            outside.append(src[m.start():m.start() + 50].split("{")[0].strip())
+    assert not outside, "screen 미디어 밖의 큰글씨 규칙(인쇄까지 확대된다): " + " | ".join(outside[:5])
+    assert "font-size:revert" not in src,         "revert 는 작성자 스타일이 아니라 브라우저 기본값으로 되돌린다 — 인쇄가 깨진다"
 
 
 def test_large_mode_scales_the_body_text():
@@ -197,3 +209,71 @@ def test_narrow_large_header_keeps_the_search_icon():
     assert i > 0, "320px 큰글씨 완충 규칙이 없다 — 검색 아이콘이 잘린다"
     block = src[i:src.index("}", src.index("}", i) + 1) + 1]
     assert "nc-large" in block and "nc-brand-name" in block, block
+
+
+# ── 같은 값에 이름 하나 — 리포트만 고치고 홈·목록을 빠뜨렸다 (패널 3차 5명 지적) ──
+# 홈 "신뢰도 76" · 목록 "예측 신뢰도 76%" · 리포트 "시세 신뢰도 76/100" — 한 값의 세 얼굴.
+# 특히 목록의 '예측 신뢰도'는 리포트가 "예측이 아니라 시세의 신뢰도"라고 정정하는
+# 바로 그 숫자를 예측 신뢰도라고 불렀다. 단위(%)도 틀렸다 — 0~100 점수다.
+
+def test_confidence_is_named_the_same_on_home_and_list(client):
+    # 목록은 픽스처 물건이 실제로 렌더되므로 응답으로 본다
+    html = _COMMENT.sub(" ", _TAGSTRIP.sub(" ", client.get("/vehicles", headers=_PUBLIC).text))
+    assert "예측 신뢰도" not in html, "목록: 시세 점수를 '예측 신뢰도'라고 부른다"
+    assert "시세 신뢰도" in html, "목록: 리포트와 다른 이름을 쓴다"
+    # 홈 배너 카드는 '추천 물건' 조건을 타서 픽스처가 안 뜰 수 있다 — 템플릿 문자열로 본다
+    src = _visible(TPL / "dashboard.html")
+    # 320px 큰글씨에서 '시세 / 신뢰도'가 줄 사이에서 끊겨 이름·점수를 &nbsp; 로 붙였다 — 두 표기 다 허용
+    assert ("시세 신뢰도 {{ v.market_confidence }}/100" in src
+            or "시세&nbsp;신뢰도&nbsp;{{ v.market_confidence }}/100" in src), "홈 배너가 이름 없는 '신뢰도 76'을 쓴다"
+    assert ">시세 신뢰도</th>" in src, "홈 유망 표 헤더가 '신뢰도'만 쓴다"
+    assert "· 신뢰도 {{ v.market_confidence }}" not in src
+
+
+def test_confidence_is_a_score_not_a_percentage(client):
+    """0~100 점수에 % 를 붙이면 '적중률 76%'로 읽힌다."""
+    import re as _re
+    html = client.get("/vehicles", headers=_PUBLIC).text
+    seg = html[html.index("시세 신뢰도 · 시세"):]
+    seg = seg[:seg.index("</div>", seg.index("font-semibold"))]
+    assert "/100" in seg, "목록 카드의 신뢰도에 /100 단위가 없다"
+    assert not _re.search(r"[0-9]+% \(", seg), "목록 카드의 신뢰도가 여전히 % 로 나간다"
+
+
+# ── 리포트 본문 용어 툴팁 (60·70대 패널: "상세엔 ? 가 여섯 개 붙어 있지만 리포트 본문엔
+#    거의 없다"). 전부 달면 지저분해지므로 섹션별 첫 출현·판단에 직결되는 용어에만 단다.
+#    팝오버는 반드시 .gloss-row 컨테이너 안에 — 아니면 320px 에서 화면 밖으로 나간다
+#    (2026-09-12 실측 +75px).
+
+_GLOSSED = ("유찰", "저감", "손익분기", "분위수 밴드", "총 취득원가", "리스크 충당금", "목표마진",
+            "유찰버킷 낙찰 프리미엄", "매각허가결정", "대금지급기한", "경락잔금대출", "기일입찰표")
+
+
+def test_report_glosses_the_terms_the_panel_could_not_read():
+    src = (TPL / "report.html").read_text(encoding="utf-8")
+    missing = [t for t in _GLOSSED if f"ui.gloss('{t}'" not in src]
+    assert not missing, f"툴팁이 빠진 용어: {missing}"
+
+
+def test_every_gloss_sits_inside_a_gloss_row():
+    """컨테이너가 없으면 팝오버가 트리거 기준으로 열려 좁은 폭에서 화면 밖으로 나간다."""
+    src = (TPL / "report.html").read_text(encoding="utf-8")
+    bad = []
+    pos = 0
+    while True:
+        i = src.find("ui.gloss(", pos)
+        if i < 0:
+            break
+        # 이 호출을 감싸는 가장 가까운 여는 태그(li/div/td/p) 를 뒤로 찾는다
+        j = max(src.rfind("<li", 0, i), src.rfind("<div", 0, i), src.rfind("<td", 0, i), src.rfind("<p", 0, i))
+        open_tag = src[j:src.find(">", j) + 1]
+        if "gloss-row" not in open_tag:
+            bad.append(src[i:i + 40])
+        pos = i + 9
+    assert not bad, "gloss-row 없는 툴팁: " + " | ".join(bad)
+
+
+def test_gloss_count_stays_proportionate():
+    """전부 달면 지저분해진다 — 섹션별 첫 출현만. 갑자기 늘면 의도적인지 확인."""
+    src = (TPL / "report.html").read_text(encoding="utf-8")
+    assert 14 <= src.count("ui.gloss(") <= 24, src.count("ui.gloss(")
