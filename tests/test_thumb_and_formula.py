@@ -293,3 +293,36 @@ def test_no_pre_analysis_notice_when_a_formula_is_shown(tmp_path, monkeypatch):
     html = TestClient(A.app).get("/vehicle/PRE_1").text
     assert "예상 낙찰가(균형) 산정식" in html, "픽스처가 산정식을 안 만든다"
     assert "분석 전 — 상단" not in html
+
+
+def test_report_shows_the_floor_step_too(tmp_path, monkeypatch):
+    """리포트 §10도 하한 단계를 적어야 한다 — 상세만 적고 리포트가 빠져 있었다.
+
+    18인 패널의 개발자 페르소나가 "캡 1,240만을 계산해놓고 결론이 2,500만이면
+    캡이 적용된 게 아니다, 코드 버그"라고 지목했다. 버그가 아니라 **표기 누락**이었고,
+    그 결과 같은 산식이 화면마다 다르게 설명됐다.
+    """
+    from web import db
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "rep.db")
+    monkeypatch.setattr(service, "backtest_stats", lambda *a, **k: BT)
+    db.init_db()
+    db.upsert_vehicle({
+        "id": "RF_1", "folder_key": "RF_1", "case_no": "2026타경8005", "item_no": "1",
+        "court": "성남지원", "maker": "현대", "model": "그랜저", "year": 2019,
+        "min_sale_price": 25_000_000, "appraisal_value": 30_000_000, "fail_count": 1,
+        "sale_date": "2999-01-01", "status": "완료", "judgment": "유찰 대기",
+        "median_price": 11_300_000, "market_confidence": 52,
+        "market_confidence_label": "보통", "sample_count": 5, "photo_count": 3,
+    })
+    import web.app as A
+    b = service.expected_band(db.get_vehicle("RF_1"), BT)
+    assert b["basis"]["capped"] is True
+    assert b["price"] > b["basis"]["cap"], "이 픽스처는 하한이 이기는 경우여야 한다"
+
+    html = TestClient(A.app).get("/vehicle/RF_1/report").text
+    # '산출 로직'은 주석과 <h2> 두 군데 나온다 — 마지막 것 뒤를 봐야 본문이다
+    seg = html.split("<h2>산출 로직</h2>")[1].split("재판매 상한가")[0]
+    for label, val in (("절단 전", b["basis"]["raw"]), ("소프트캡", b["basis"]["cap"]),
+                       ("최종", b["price"])):
+        assert f"{val:,}" in seg, f"§10 에 {label} {val:,} 이 없다"
+    assert "하한" in seg, "캡보다 결과가 큰 이유(하한)를 §10 이 설명하지 않는다"

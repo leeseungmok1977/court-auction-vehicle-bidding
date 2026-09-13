@@ -737,6 +737,13 @@ document.addEventListener('click', function(e){
       {% if bs.capped %}{# 캡이 걸리면 1×2가 결과와 안 맞는다 — 인쇄물이라 검산이 닫혀야 한다 #}
       <div class="logic"><span class="ln">3</span><div class="ld">= 캡 적용 전<small>이 값이 시세×1.10을 넘어 아래 상한으로 내립니다</small></div><span class="lv num">{{ bs.raw|won }}</span></div>
       <div class="logic"><span class="ln">4</span><div class="ld">→ 시세 × 1.10 소프트캡<small>낙찰가가 소매 시세를 크게 넘는 비현실 방어(신건·고감정가)</small></div><span class="lv num">{{ bs.cap|won }}</span></div>
+      {% if exp and bs.cap and exp > bs.cap %}
+      {# ⚠ 이 줄이 없으면 '캡 1,240만'을 적어놓고 결론이 2,500만이 되어, 읽는 사람에겐
+         산식이 자기모순으로 보인다. 18인 패널의 개발자 페르소나가 "캡을 계산해놓고
+         반영을 안 한 버그"로 지목했다 — 버그가 아니라 표기 누락이었다.
+         상세 화면에는 이미 3단으로 적고 있는데 리포트만 빠져 화면마다 설명이 달랐다. #}
+      <div class="logic"><span class="ln">5</span><div class="ld">→ 최저매각가 하한<small>절단선이 최저매각가보다 낮아, 써낼 수 없는 금액이 되지 않도록 최저매각가를 하한으로 둡니다</small></div><span class="lv num">{{ bs.min_sale_price|won }}</span></div>
+      {% endif %}
       {% endif %}
       <div class="logic"><span class="ln">＝</span><div class="ld"><b>예상낙찰가</b><small>분위수 밴드 {{ report.lo|won if report.lo else '—' }}~{{ report.hi|won if report.hi else '—' }}{% if report.mae %} · 실측 평균오차 ±{{ report.mae|round|int }}%</small>{% endif %}</div><span class="lv num">{{ exp|won }}</span></div>
       {% else %}
