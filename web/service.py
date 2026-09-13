@@ -3928,7 +3928,18 @@ def report_data(v: dict, config: dict, bt: dict) -> Optional[dict]:
                     "is_exp": b == exp, "is_upper": b == upper})
 
     # 민감도 — 정비비(수리비) 추가 × 재판매가 변동 (기준 낙찰가 = 예상낙찰가)
-    base_bid = exp or upper or floor
+    # 예상낙찰가가 안 나오는 물건이 24%(171/713)나 된다. 그때 06·08은 상한가(없으면
+    # 최저매각가)로 계산하는데, 제목만 "예상낙찰가 0원 기준"이라고 적혀 있었다 —
+    # 표는 4,839만원인데 제목은 0원. 무엇을 기준으로 계산했는지 화면이 말해야 한다.
+    #
+    # 그리고 최저매각가 **미만**은 법적으로 써낼 수 없는 금액이다. 아래 sim 표는 이미
+    # 그런 후보를 걸러내는데 취득원가만 안 걸러서, 최저 6,600만원인 물건의 총 취득원가를
+    # 4,839만원(상한가) 기준으로 계산해 놓고 있었다. 같은 규칙을 쓴다.
+    _basis, base_bid = next(
+        ((k, c) for k, c in (("expected", exp), ("upper", upper), ("floor", floor))
+         if c and (not floor or c >= floor)), (None, floor or 0))
+    if not base_bid:
+        _basis = None
     base_fixed = round(base_bid * tax_rate) + fixed + reserve
     sens = []
     for dr in (0, 500000, 1000000):
@@ -3957,7 +3968,10 @@ def report_data(v: dict, config: dict, bt: dict) -> Optional[dict]:
         "exp": exp, "lo": lo, "hi": hi, "upper": upper, "floor": floor, "resale": resale,
         "tax_rate": tax_rate, "transfer": transfer, "delivery": delivery, "fixed": fixed,
         "repair": repair, "reserve": reserve, "target_margin": target_margin,
-        "allin_ref": _allin(exp or upper or floor), "sim": sim, "sens": sens, "cats": cats,
+        "allin_ref": _allin(base_bid), "sim": sim, "sens": sens, "cats": cats,
+        # 06·08이 실제로 쓴 기준 낙찰가와 그 출처. 라벨이 exp를 그대로 찍으면
+        # exp=0인 물건에서 "0원 기준"이라는 거짓 제목이 나간다.
+        "allin_bid": base_bid, "allin_basis": _basis,
         "stop_active": stop_active, "discount": discount_for(bt, v.get("fail_count"), _model_key(v)),
         "mae": bt.get("mae_pct"),
     }
