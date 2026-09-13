@@ -380,9 +380,9 @@ details.raw summary{cursor:pointer;font-size:12px;color:var(--cobalt);font-weigh
   html.nc-large .sp-pin .pl{font-size:12.5px}
   html.nc-large /* 축약 라벨(최저/예상/상한/시세) — 모바일에서만 */ .sp-pin .pv{font-size:14px}
   html.nc-large .sp-blabel{font-size:15px}
-  /* 큰글씨에서 320·360px 넘침(실측). 절대배치 + nowrap 이라 가운데 정렬 기준으로
-     좌우가 트랙 밖으로 나갔다 — 폭을 묶고 줄바꿈을 허용한다. */
-  html.nc-large .sp-blabel{white-space:normal;max-width:min(94vw,320px);line-height:1.3}
+  /* ⚠ 여기서 줄바꿈을 허용했더니(white-space:normal) 판정 라벨이 4줄로 늘어나
+     '3392'(최저매각가)와 트랙을 덮어 판독 불가가 됐다(18인 패널 60·70대 심각도 5).
+     넘침은 줄바꿈이 아니라 **가로 위치 클램프**로 푼다 — 아래 layout() 참조. */
   /* 산출 로직의 금액 칸(mono·nowrap)이 19px로 커지며 설명 칸을 밀어냈다.
      설명 칸이 줄어들 수 있게 하고(min-width:0), 금액은 줄을 바꿔 아래로 내린다. */
   html.nc-large .logic{grid-template-columns:24px 1fr;gap:8px 10px}
@@ -613,7 +613,8 @@ document.addEventListener('click', function(e){
           {# 2026-09-12 수정: 여기 있던 report.discount는 **이 물건이 아니라 모집단 중앙값**이었다.
      "예상낙찰가는 약 73%"로 표시되는데 실제 이 물건은 105%인 사례가 3/3 재현됐다.
      이 물건 값(exp/med)을 쓰고, 모집단 통계는 별도 라벨로 분리한다. #}
-          <li>소매 시세중앙값 <b class="num">{{ med|won }}원</b> 대비 이 물건의 예상낙찰가는 <b{% if over_market %} style="color:var(--amber)"{% endif %}>{{ ('약 ' ~ ((exp/med*100)|round|int) ~ '%') if (med and exp) else '미산출' }}</b>{% if over_market %} <b style="color:var(--amber)">(시세 초과)</b>{% endif %}{% if report.discount %} · 동급 실낙찰 평균은 {{ (report.discount*100)|round|int }}%{% endif %} {% if v.fail_count %}(유찰 {{ v.fail_count }}회 반영){% endif %}</li>
+          <li>소매 시세중앙값 <b class="num">{{ med|won }}원</b> 대비 이 물건의 예상낙찰가는 <b{% if over_market %} style="color:var(--amber)"{% endif %}>{{ ('약 ' ~ ((exp/med*100)|round|int) ~ '%') if (med and exp) else '미산출' }}</b>{% if over_market %} <b style="color:var(--amber)">(시세 초과)</b>{% endif %}{% if report.discount %}{% set _db = report.discount_basis %}
+            <span style="display:block;font-weight:400">· {{ _db.label }}은 {{ (report.discount*100)|round|int }}%{% if _db.n %}(표본 {{ _db.n }}건){% endif %}입니다{% if _db.kind != 'model' %} — <b>이 차종의 실낙찰 기록이 아니라 전국 통계</b>입니다(05 참조){% endif %}{% if expected and expected.basis and expected.basis.kind == 'min_premium' %}. 이 물건의 예상낙찰가는 이 비율이 아니라 최저매각가 기준으로 냈습니다(10){% endif %}.</span>{% endif %}</li>
           {# 상한가가 미산출이면 "0원 이하로 써라"는 불가능한 지시가 된다 — 육각형 미산출 규칙과 동일하게 문장 자체를 생략(3회차 품질 지적 5). #}
           {% if not upper %}{# 미산출 — 재판매 기준선 문장 없음 #}
           {% elif thin_margin %}<li style="color:var(--amber)"><b style="color:var(--amber)">재판매 부적합 신호</b> — 예상낙찰가가 마진 확보선(<b class="num">{{ upper|won }}원</b>)을 초과해 <b>되팔이 차익은 어렵습니다</b>{% if bidst and bidst.state in ('resale','usepick') %} — 직접 타실 목적이면 검토할 만합니다{% endif %}</li>
@@ -667,7 +668,7 @@ document.addEventListener('click', function(e){
           <div class="sp-labels" id="spLabels">
             <div class="sp-pin" style="left:{{ (floor/gmax*100)|round(1) }}%"><span class="sp-sp"></span><span class="pl"><span class="lf">최저매각가</span><span class="la">최저</span></span><span class="pv num">{{ (floor/10000)|round|int }}</span><i class="sp-conn"></i></div>
             <div class="sp-pin acc" style="left:{{ (exp/gmax*100)|round(1) }}%"><span class="sp-sp"></span><span class="pl"><span class="lf">예상낙찰가</span><span class="la">예상</span></span><span class="pv num">{{ (exp/10000)|round|int }}</span><i class="sp-conn"></i></div>
-            {% if upper %}<div class="sp-pin" style="left:{{ (upper/gmax*100)|round(1) }}%"><span class="sp-sp"></span><span class="pl"><span class="lf">상한가</span><span class="la">상한</span></span><span class="pv num">{{ (upper/10000)|round|int }}</span><i class="sp-conn"></i></div>{% endif %}
+            {% if upper %}<div class="sp-pin" style="left:{{ (upper/gmax*100)|round(1) }}%"><span class="sp-sp"></span><span class="pl"><span class="lf">재판매 상한가</span><span class="la">재판매상한</span></span><span class="pv num">{{ (upper/10000)|round|int }}</span><i class="sp-conn"></i></div>{% endif %}
             <div class="sp-pin" style="left:{{ (med/gmax*100)|round(1) }}%"><span class="sp-sp"></span><span class="pl"><span class="lf">시세중앙값</span><span class="la">시세</span></span><span class="pv num">{{ (med/10000)|round|int }}</span><i class="sp-conn"></i></div>
           </div>
           <div class="sp-track"><div class="sp-fill" style="left:{{ (floor/gmax*100)|round(1) }}%;width:{{ ((exp-floor)/gmax*100)|round(1) if exp>floor else 0.5 }}%"></div></div>
@@ -1114,6 +1115,8 @@ document.addEventListener('click', function(e){
    (핀은 실제 값 위치 그대로 두고 세로 행만 달리해 연결선으로 트랙에 연결 → 화면·모바일·인쇄 모두 안 겹침). */
 (function(){
   var host = document.getElementById('spLabels'); if(!host) return;
+  /* 행 높이를 28px로 못 박아 두었더니 큰글씨에서 라벨이 25% 커지며 행끼리 겹쳤다.
+     글자 크기는 사용자 설정·폰트 로딩·인쇄에 따라 변한다 — 실측해서 쓴다. */
   var ROWH = 28;
   function layout(){
     var pins = Array.prototype.slice.call(host.querySelectorAll('.sp-pin'));
@@ -1122,11 +1125,28 @@ document.addEventListener('click', function(e){
     var items = pins.map(function(p){
       var sp = p.querySelector('.sp-sp'); if(sp) sp.style.height = '0px';   // 폭 측정 전 초기화
       var lp = parseFloat(p.style.left) || 0;
-      return { el:p, cx: lp/100*W, w: Math.max(p.offsetWidth, 26) };
+      /* ⚠ p.offsetHeight 를 쓰면 안 된다 — .sp-pin 은 top:0;bottom:0 이라 높이가 곧
+         컨테이너 높이다. 그걸로 ROWH 를 잡으면 컨테이너가 커질수록 ROWH 도 커지는
+         되먹임이 돌아 스펙트럼이 4,000px 로 늘어난다(실측). 라벨 **내용**만 잰다. */
+      var pl = p.querySelector('.pl'), pv = p.querySelector('.pv');
+      var ch = (pl ? pl.offsetHeight : 0) + (pv ? pv.offsetHeight : 0);
+      return { el:p, cx: lp/100*W, w: Math.max(p.offsetWidth, 26), h: ch };
     }).sort(function(a,b){ return a.cx - b.cx; });
-    var rows = [];                                   // 각 행이 차지한 x구간
+    ROWH = Math.max(28, Math.ceil(Math.max.apply(null,
+             items.map(function(it){ return it.h; })) ) + 8);   // 라벨 내용 높이 + 여백
+    /* ⚠ 클램프를 행 배치 **뒤에** 하면, 밀린 라벨이 같은 행 이웃과 새로 부딪힌다
+       (390px 실측 1건). 밀 거리를 먼저 구하고 그 위치로 충돌 검사를 한다. */
+    var PAD = 5;                    // 1px 여백은 '잘렸나?' 싶게 만든다(디자인 검수)
     items.forEach(function(it){
-      var l = it.cx - it.w/2 - 5, r = it.cx + it.w/2 + 5, placed = -1;
+      var hw = it.w / 2;
+      it.dx = (it.cx - hw < PAD) ? (PAD + hw - it.cx)
+            : (it.cx + hw > W - PAD) ? (W - PAD - it.cx - hw) : 0;
+    });
+
+    var rows = [];                                   // 각 행이 차지한 x구간(클램프 반영)
+    items.forEach(function(it){
+      var c = it.cx + it.dx;
+      var l = c - it.w/2 - 5, r = c + it.w/2 + 5, placed = -1;
       for(var i=0;i<rows.length;i++){
         var clash = rows[i].some(function(s){ return !(r < s.l || l > s.r); });
         if(!clash){ rows[i].push({l:l,r:r}); placed = i; break; }
@@ -1135,7 +1155,51 @@ document.addEventListener('click', function(e){
       it.row = placed;                               // 0 = 트랙에 가장 가까운 행
     });
     var maxRow = rows.length - 1;
-    host.style.height = (maxRow*ROWH + 34) + 'px';
+    host.style.height = (maxRow*ROWH + ROWH + 8) + 'px';
+
+    /* 양 끝 핀의 글자가 컨테이너 밖으로 나간다 — 특히 예상낙찰가가 맨 오른쪽이면
+       '3880' 의 절반이 잘린다(6개 폭 전부, 큰글씨 무관). 가장 중요한 숫자가 잘리는 자리다.
+       **눈금(.sp-conn)은 실제 값 위치에 그대로 두고 글자만** 안으로 민다 — 핀 전체를
+       옮기면 눈금이 값에서 벗어나 그래프가 거짓말을 하게 된다. */
+    /* 상위 행 핀의 연결선은 아래 행 라벨 띠를 가로질러 트랙까지 내려간다. 그 x에 아래 행
+       숫자가 있으면 1px 선이 글자를 관통한다 — 실측: 선(3525)이 '3392'를 뚫었다.
+       연결선은 실제 값 위치라 못 옮기므로, **아래 행 글자를 옆으로 비킨다.** */
+    items.forEach(function(it){
+      var hw = it.w / 2;
+      items.forEach(function(o){
+        if (o === it || o.row <= it.row) return;
+        var c = it.cx + it.dx;
+        if (o.cx > c - hw - 3 && o.cx < c + hw + 3) {
+          var left = o.cx - hw - 3, right = o.cx + hw + 3;
+          it.dx = (Math.abs(left - it.cx) <= Math.abs(right - it.cx) ? left : right) - it.cx;
+        }
+      });
+      var c2 = it.cx + it.dx;                       // 비킨 뒤 다시 컨테이너 안으로
+      if (c2 - hw < PAD) it.dx = PAD + hw - it.cx;
+      else if (c2 + hw > W - PAD) it.dx = W - PAD - it.cx - hw;
+    });
+
+    items.forEach(function(it){
+      var t = it.dx ? 'translateX(' + it.dx.toFixed(2) + 'px)' : '';
+      ['.pl', '.pv'].forEach(function(sel){
+        var e = it.el.querySelector(sel); if (e) e.style.transform = t;
+      });
+    });
+
+    /* 판정 라벨(.sp-blabel)은 핀이 아니라 밴드 중앙에 따로 붙는다 — 회피 대상이 아니었다.
+       좌우 끝 근처에서 트랙 밖으로 나가므로 컨테이너 안으로 밀어 넣고(가로 클램프),
+       줄바꿈 없이 한 줄을 유지한다. 아래 여백도 실제 높이로 잡아 다음 문단과 안 겹치게. */
+    var bl = host.parentElement && host.parentElement.querySelector('.sp-blabel');
+    if (bl) {
+      var bw = bl.offsetWidth, half = bw / 2;
+      var want = (parseFloat(bl.dataset.left || bl.style.left) || 50) / 100 * W;
+      if (!bl.dataset.left) bl.dataset.left = (parseFloat(bl.style.left) || 50);
+      var cx = Math.min(Math.max(want, half), Math.max(half, W - half));
+      bl.style.left = cx + 'px';
+      var spec = host.closest ? host.closest('.spectrum') : null;   /* .sp-foot 는 .sp-wrap 이 아니라 .spectrum 의 자식 */
+      var foot = spec && spec.querySelector('.sp-foot');
+      if (foot) foot.style.marginTop = (bl.offsetHeight + 24) + 'px';
+    }
     items.forEach(function(it){
       var sp = it.el.querySelector('.sp-sp');
       if(sp) sp.style.height = ((maxRow - it.row)*ROWH) + 'px';   // 위 행일수록 스페이서↑(연결선이 트랙까지 늘어남)

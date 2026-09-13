@@ -2826,6 +2826,7 @@ def backtest_stats() -> dict:
            "upper_hit_rate": None, "upper_n": 0, "mae_pct": None,
            "actual_sample": 0, "actual_mae_pct": None,
            "discount_by_fail": {}, "discount_by_model": {}, "model_learned": 0,
+           "discount_n_by_fail": {}, "discount_n_by_model": {},
            "history_n": db.count_sale_results()}
     if ratios:
         out["discount_median"] = round(st.median(ratios), 3)
@@ -2853,6 +2854,7 @@ def backtest_stats() -> dict:
             else:
                 by[b] = dm
         out["discount_by_fail"] = by
+        out["discount_n_by_fail"] = {b: len(vs) for b, vs in bg.items()}
         # 모델별 할인율 — 데이터가 쌓여 특정 모델 표본이 임계치(MODEL_MIN)를 넘으면 자동 활성.
         # (인기·선호가 낙찰률에 반영됨. 표본 적을 땐 비활성 → 유찰버킷/전역으로 폴백)
         MODEL_MIN = 8
@@ -2867,6 +2869,7 @@ def backtest_stats() -> dict:
                 w = len(vs) / (len(vs) + 10)        # 모델별은 더 보수적으로 수축
                 bym[mk] = round(w * st.median(vs) + (1 - w) * dm, 3)
         out["discount_by_model"] = bym
+        out["discount_n_by_model"] = {mk: len(vs) for mk, vs in bgm.items() if mk in bym}
         out["model_learned"] = len(bym)
         # ── 최저매각가 기반 예측(핵심 개선): 낙찰가/최저가 프리미엄은 낙찰가/시세보다 훨씬 안정적 ──
         # 유찰로 내려간 최저가가 '시장이 드러낸 할인'을 이미 반영 → 예측 오차 대폭↓(26%→~10%).
@@ -2991,6 +2994,29 @@ def discount_for(bt: dict, fail_count=None, model_key: str = "") -> Optional[flo
     by_fail = bt.get("discount_by_fail") or {}
     b = "1" if (fail_count or 0) <= 1 else "2plus"
     return by_fail.get(b) or bt.get("discount_median")
+
+
+def discount_basis(bt: dict, fail_count=None, model_key: str = "") -> dict:
+    """`discount_for` 가 실제로 어느 단계 통계를 썼는지 + 그 표본 수.
+
+    이게 없어서 화면이 전국 유찰버킷 통계를 **"동급 실낙찰 평균"** 이라고 적고 있었다.
+    같은 리포트의 05는 "이 차종의 법원 실낙찰 기록이 아직 확보되지 않았습니다"라고
+    말하는데 01은 '동급' 평균을 인용하니 정면으로 부딪혔다(18인 패널 3개 조 전부 지적).
+    판정 순서는 discount_for 와 반드시 같아야 한다 — 갈리면 라벨이 또 거짓이 된다.
+    """
+    bt = bt or {}
+    by_model = bt.get("discount_by_model") or {}
+    if model_key and model_key in by_model:
+        return {"kind": "model", "n": (bt.get("discount_n_by_model") or {}).get(model_key),
+                "label": "같은 차종 실낙찰 평균"}
+    by_fail = bt.get("discount_by_fail") or {}
+    b = "1" if (fail_count or 0) <= 1 else "2plus"
+    if by_fail.get(b):
+        return {"kind": "fail", "n": (bt.get("discount_n_by_fail") or {}).get(b),
+                "bucket": ("유찰 0~1회" if b == "1" else "유찰 2회 이상"),
+                "label": ("유찰 0~1회 물건의 전국 평균 낙찰률" if b == "1"
+                          else "유찰 2회 이상 물건의 전국 평균 낙찰률")}
+    return {"kind": "global", "n": bt.get("won_total"), "label": "전국 평균 낙찰률"}
 
 
 COMP_MIN_N = 3   # 유사 낙찰이 이 이상이면 개별 보정에 사용
@@ -4066,6 +4092,7 @@ def report_data(v: dict, config: dict, bt: dict) -> Optional[dict]:
         # exp=0인 물건에서 "0원 기준"이라는 거짓 제목이 나간다.
         "allin_bid": base_bid, "allin_basis": _basis,
         "stop_active": stop_active, "discount": discount_for(bt, v.get("fail_count"), _model_key(v)),
+        "discount_basis": discount_basis(bt, v.get("fail_count"), _model_key(v)),
         "mae": bt.get("mae_pct"),
     }
 
