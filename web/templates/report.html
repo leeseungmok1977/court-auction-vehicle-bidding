@@ -184,6 +184,47 @@ table{width:100%;border-collapse:collapse;font-size:13px}
    .tscroll 안에 있으므로 최소 너비를 줘 **눌리는 대신 그 안에서만 가로 스크롤**하게 한다.
    문서 전체가 넘치는 게 아니라 표 컨테이너 안에서만 움직이므로 페이지 레이아웃은 안전하다. */
 @media (max-width:560px){ .tscroll > table{ min-width:430px } }
+
+/* ── 좁은 폭 표 처리 (18인 패널 2순위 · 15/18명 지적) ─────────────────────────
+   390px에서 표 5개가 전부 114~251px씩 넘쳤다. `.tscroll` 안이라 밀면 보이지만,
+   **이 리포트는 인쇄/PDF 버튼이 달린 서면**이고 정지 화면에서는 그냥 잘려 보인다.
+   하필 잘리는 것이 총 취득원가 **합계**와 리스크 **경고문**이었다.
+     "제일 중요한 게 돈인데 그 돈만 안 보이니 아들한테 물어봐야 했어"(68세)
+     "잘린 표를 그대로 출력하면 의뢰인에게 못 냅니다"(48세 법무사)
+   ⚠ 내 앞선 측정이 '스크롤 가능하면 합격'으로 판정해 이걸 0건으로 보고했다.
+     인쇄물에 그 기준을 쓴 것이 잘못이었다.
+
+   글자 크기만 줄여선 안 된다(316px 칸에 567px 표). 글이 많은 표는 **행을 카드로**
+   접어 세로로 쌓고, 숫자 격자표는 스크롤을 유지하되 밀 수 있다는 표시를 준다. */
+@media (max-width:560px){
+  .tscroll > table.rowcard{ min-width:0; width:100% }
+  table.rowcard thead{ display:none }
+  table.rowcard tr{ display:grid; grid-template-columns:1fr auto;
+                    gap:2px 10px; padding:9px 0; border-bottom:1px solid var(--line) }
+  table.rowcard tbody tr:last-child{ border-bottom:0 }
+  table.rowcard td{ display:block; border:0; padding:0; text-align:left }
+  table.rowcard td.k{ font-weight:600 }
+  table.rowcard td.v{ text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums }
+  table.rowcard td.sub{ grid-column:1/-1; font-size:11.5px; color:var(--ink-soft); line-height:1.5 }
+  table.rowcard td.tagcell{ grid-column:1/-1; text-align:left }
+  /* 스크롤이 남는 표는 밀 수 있다는 것을 보이게 — 잘린 것처럼 보이면 조판 사고로 읽힌다 */
+  .tscroll:not(:has(> table.rowcard)){
+    -webkit-mask-image:linear-gradient(to right,#000 calc(100% - 18px),transparent);
+            mask-image:linear-gradient(to right,#000 calc(100% - 18px),transparent) }
+  .tscroll + .scroll-hint{ display:block }
+}
+.scroll-hint{ display:none; font-size:10.5px; color:var(--ink-soft); margin-top:4px }
+
+/* 인쇄: 스크롤 컨테이너가 잘라내지 않게 풀고, A4 폭에 들어가도록 살짝 줄인다 */
+@media print{
+  .tscroll{ overflow:visible !important; mask-image:none !important;
+            -webkit-mask-image:none !important }
+  .tscroll > table{ min-width:0 !important; width:100% !important; font-size:10.5px }
+  .scroll-hint{ display:none !important }
+  table.rowcard thead{ display:table-header-group }
+  table.rowcard tr{ display:table-row }
+  table.rowcard td{ display:table-cell }
+}
 thead th{text-align:left;font-size:11px;font-weight:600;color:var(--ink-soft);padding:0 10px 9px;border-bottom:1.5px solid var(--line-strong);white-space:nowrap}
 tbody td{padding:10px;border-bottom:1px solid var(--line);vertical-align:top}
 tbody tr:last-child td{border-bottom:none}
@@ -641,15 +682,15 @@ document.addEventListener('click', function(e){
     <div class="sec-head" id="sec06"><span class="sec-no">06</span><h2>총 취득원가 (All-in Cost)</h2><span class="sec-note">예상낙찰가 {{ exp|won }}원 기준</span></div>
     <div class="card">
       {% set a = report.allin_ref %}
-      <div class="tscroll"><table>
+      <div class="tscroll"><table class="rowcard">
         <thead><tr><th>비용 항목</th><th>산정 근거</th><th class="r">금액</th><th class="c">성격</th></tr></thead>
         <tbody>
-          <tr><td>낙찰가</td><td>예상낙찰가(중심 추정)</td><td class="r num">{{ a.bid|won }}원</td><td class="c"><span class="tag estimated">추정</span></td></tr>
-          <tr><td>취득세</td><td>비영업용 승용 {{ (report.tax_rate*100)|round|int }}% · 낙찰가 연동</td><td class="r num">{{ a.tax|won }}원</td><td class="c"><span class="tag confirmed">세율확정</span></td></tr>
-          <tr><td>이전등록·탁송</td><td>이전 {{ (report.transfer/10000)|round|int }}만 + 탁송 {{ (report.delivery/10000)|round|int }}만(고정)</td><td class="r num">{{ a.fixed|won }}원</td><td class="c"><span class="tag estimated">추정</span></td></tr>
-          <tr><td>정비비</td><td>기본 정비 충당(현장확인 시 조정)</td><td class="r num">{{ a.repair|won }}원</td><td class="c"><span class="tag estimated">추정</span></td></tr>
-          <tr><td>리스크 충당금</td><td>미확인 결함 대비 현금 충당</td><td class="r num">{{ a.reserve|won }}원</td><td class="c"><span class="tag estimated">충당</span></td></tr>
-          <tr class="row-sum"><td colspan="2">총 취득원가</td><td class="r num">{{ a.total|won }}원</td><td class="c"><span class="tag estimated">시나리오</span></td></tr>
+          <tr><td class="k">낙찰가</td><td class="sub">예상낙찰가(중심 추정)</td><td class="r num v">{{ a.bid|won }}원</td><td class="c tagcell"><span class="tag estimated">추정</span></td></tr>
+          <tr><td class="k">취득세</td><td class="sub">비영업용 승용 {{ (report.tax_rate*100)|round|int }}% · 낙찰가 연동</td><td class="r num v">{{ a.tax|won }}원</td><td class="c tagcell"><span class="tag confirmed">세율확정</span></td></tr>
+          <tr><td class="k">이전등록·탁송</td><td class="sub">이전 {{ (report.transfer/10000)|round|int }}만 + 탁송 {{ (report.delivery/10000)|round|int }}만(고정)</td><td class="r num v">{{ a.fixed|won }}원</td><td class="c tagcell"><span class="tag estimated">추정</span></td></tr>
+          <tr><td class="k">정비비</td><td class="sub">기본 정비 충당(현장확인 시 조정)</td><td class="r num v">{{ a.repair|won }}원</td><td class="c tagcell"><span class="tag estimated">추정</span></td></tr>
+          <tr><td class="k">리스크 충당금</td><td class="sub">미확인 결함 대비 현금 충당</td><td class="r num v">{{ a.reserve|won }}원</td><td class="c tagcell"><span class="tag estimated">충당</span></td></tr>
+          <tr class="row-sum"><td class="k" colspan="2">총 취득원가</td><td class="r num v">{{ a.total|won }}원</td><td class="c tagcell"><span class="tag estimated">시나리오</span></td></tr>
         </tbody>
       </table></div>
       <p class="note">취득세는 낙찰가에 연동되어 낙찰가별로 재계산됩니다(07). 개인 실사용이면 리스크 충당금 일부를 제외해 판단할 수 있습니다.</p>
@@ -704,21 +745,21 @@ document.addEventListener('click', function(e){
   <section class="section">
     <div class="sec-head" id="sec09"><span class="sec-no">09</span><h2>리스크 · 현장확인 항목</h2></div>
     <div class="card">
-      <div class="tscroll"><table>
+      <div class="tscroll"><table class="rowcard">
         <thead><tr><th>항목</th><th>내용</th><th class="c">상태</th></tr></thead>
         <tbody>
-          <tr><td>권리·저당</td><td>저당권·압류 말소 여부(<b>자동차등록원부</b> 갑·을구) · 정비/보관업자 <b>유치권</b>(수리비·보관료) — 아래 06 총 취득원가에 <b>반영돼 있지 않음</b></td><td class="c"><span class="chip warn">원부 확인</span></td></tr>
-          <tr><td>보관료·견인비</td><td>낙찰 후 인도까지의 보관료는 낙찰자 부담이 될 수 있음 — 보관장소에 금액 문의</td><td class="c"><span class="chip warn">사전 문의</span></td></tr>
-          <tr><td>사고·침수</td><td>{{ v|accv }}{% if v.accident_hits %} — {{ v.accident_hits|join(', ') }}{% endif %} · 골격 손상 여부 현장 확인</td>{# '이력 미확인'에 초록 ok 칩을 달면 확인하지 못한 것을 확인해서 괜찮은 것처럼
+          <tr><td class="k">권리·저당</td><td class="sub">저당권·압류 말소 여부(<b>자동차등록원부</b> 갑·을구) · 정비/보관업자 <b>유치권</b>(수리비·보관료) — 아래 06 총 취득원가에 <b>반영돼 있지 않음</b></td><td class="c tagcell"><span class="chip warn">원부 확인</span></td></tr>
+          <tr><td class="k">보관료·견인비</td><td class="sub">낙찰 후 인도까지의 보관료는 낙찰자 부담이 될 수 있음 — 보관장소에 금액 문의</td><td class="c tagcell"><span class="chip warn">사전 문의</span></td></tr>
+          <tr><td class="k">사고·침수</td><td class="sub">{{ v|accv }}{% if v.accident_hits %} — {{ v.accident_hits|join(', ') }}{% endif %} · 골격 손상 여부 현장 확인</td>{# '이력 미확인'에 초록 ok 칩을 달면 확인하지 못한 것을 확인해서 괜찮은 것처럼
              읽힌다. 이 앱에서 가장 하면 안 되는 종류의 오독이다 — 초록은 이력이 실제로
              있고 양호할 때만. 미확인은 앰버다. (5회차 미조치) #}
-          <td class="c"><span class="chip {{ 'risk' if report.stop_active else ('ok' if v.insurance_history else 'warn') }}">{{ 'STOP 대상' if report.stop_active else ('이력상 양호' if v.insurance_history else '이력 미확인') }}</span></td></tr>
-          <tr><td>기관·하체</td><td>시동·누유·변속·하체 부식 — 매각기일 전 보관장소 확인</td><td class="c"><span class="chip warn">현장확인</span></td></tr>
-          <tr><td>상태·옵션·정비</td><td>정비 필요 범위(타이어·소모품)에 따라 정비비 변동 → 06·08 반영{% if asum and (asum.condition.major or asum.condition.poor or asum.condition.minor) %} · <span class="{{ 'neg' if asum.condition.major or asum.condition.poor else 'neu' }}">감정 요항에 외관·상태 손상 언급</span>{% endif %}</td><td class="c"><span class="chip {{ 'risk' if asum and (asum.condition.major or asum.condition.poor) else 'warn' }}">현장확인</span></td></tr>
-          {% if asum and asum.inspection %}<tr><td>자동차검사 유효기간</td><td class="num">{{ asum.inspection.valid_to }}{% if asum.inspection.expired %} · <span class="neg">경과(재검사 필요)</span>{% elif asum.inspection.days_left is not none %} · D{{ asum.inspection.days_left }}{% endif %} <span style="color:var(--ink-faint);font-family:var(--sans)">— 감정 요항 기준</span></td><td class="c"><span class="chip {{ 'risk' if asum.inspection.expired else 'ok' }}">{{ '재검사 필요' if asum.inspection.expired else '유효' }}</span></td></tr>{% endif %}
-          {% if v.storage_addr and v.location and v.storage_addr != v.location %}<tr><td>보관장소 확인</td><td>차량 보관장소(<b>{{ v.storage_addr|truncate(24) }}</b>)가 목록상 주소와 달라 <b>실물 위치 사전 확인</b> 권장</td><td class="c"><span class="chip warn">위치 확인</span></td></tr>{% endif %}
-          {% if mile_mismatch %}<tr><td>주행거리 불일치</td><td>목록 <b>{{ mile_mismatch.listed|won }}km</b> vs 감정요항 <b>{{ mile_mismatch.appraisal|won }}km</b> — <b>{{ mile_mismatch.diff|won }}km</b> 차이. 계기판 조작 가능성이 있어 현장에서 반드시 재확인하세요(주행 적정성 축은 미산출로 처리)</td><td class="c"><span class="chip warn">현장확인</span></td></tr>{% endif %}
-          <tr><td>자동차세 체납</td><td>체납 승계 가능 — 관할 구청 사전 확인 권장</td><td class="c"><span class="chip warn">확인 권장</span></td></tr>
+          <td class="c tagcell"><span class="chip {{ 'risk' if report.stop_active else ('ok' if v.insurance_history else 'warn') }}">{{ 'STOP 대상' if report.stop_active else ('이력상 양호' if v.insurance_history else '이력 미확인') }}</span></td></tr>
+          <tr><td class="k">기관·하체</td><td class="sub">시동·누유·변속·하체 부식 — 매각기일 전 보관장소 확인</td><td class="c tagcell"><span class="chip warn">현장확인</span></td></tr>
+          <tr><td class="k">상태·옵션·정비</td><td class="sub">정비 필요 범위(타이어·소모품)에 따라 정비비 변동 → 06·08 반영{% if asum and (asum.condition.major or asum.condition.poor or asum.condition.minor) %} · <span class="{{ 'neg' if asum.condition.major or asum.condition.poor else 'neu' }}">감정 요항에 외관·상태 손상 언급</span>{% endif %}</td><td class="c tagcell"><span class="chip {{ 'risk' if asum and (asum.condition.major or asum.condition.poor) else 'warn' }}">현장확인</span></td></tr>
+          {% if asum and asum.inspection %}<tr><td class="k">자동차검사 유효기간</td><td class="sub" class="num">{{ asum.inspection.valid_to }}{% if asum.inspection.expired %} · <span class="neg">경과(재검사 필요)</span>{% elif asum.inspection.days_left is not none %} · D{{ asum.inspection.days_left }}{% endif %} <span style="color:var(--ink-faint);font-family:var(--sans)">— 감정 요항 기준</span></td><td class="c tagcell"><span class="chip {{ 'risk' if asum.inspection.expired else 'ok' }}">{{ '재검사 필요' if asum.inspection.expired else '유효' }}</span></td></tr>{% endif %}
+          {% if v.storage_addr and v.location and v.storage_addr != v.location %}<tr><td class="k">보관장소 확인</td><td class="sub">차량 보관장소(<b>{{ v.storage_addr|truncate(24) }}</b>)가 목록상 주소와 달라 <b>실물 위치 사전 확인</b> 권장</td><td class="c tagcell"><span class="chip warn">위치 확인</span></td></tr>{% endif %}
+          {% if mile_mismatch %}<tr><td class="k">주행거리 불일치</td><td class="sub">목록 <b>{{ mile_mismatch.listed|won }}km</b> vs 감정요항 <b>{{ mile_mismatch.appraisal|won }}km</b> — <b>{{ mile_mismatch.diff|won }}km</b> 차이. 계기판 조작 가능성이 있어 현장에서 반드시 재확인하세요(주행 적정성 축은 미산출로 처리)</td><td class="c tagcell"><span class="chip warn">현장확인</span></td></tr>{% endif %}
+          <tr><td class="k">자동차세 체납</td><td class="sub">체납 승계 가능 — 관할 구청 사전 확인 권장</td><td class="c tagcell"><span class="chip warn">확인 권장</span></td></tr>
         </tbody>
       </table></div>
       <p class="note">현장확인에서 결함 발견 시 항목별로 취득원가(정비비/충당금)에 반영하거나, 중대 결함(STOP RULE)이면 입찰을 보류합니다.</p>
