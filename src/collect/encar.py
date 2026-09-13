@@ -38,12 +38,15 @@ MAKER_NORMALIZE = {
     "쌍용": "KG모빌리티(쌍용)", "kgm": "KG모빌리티(쌍용)",
     # 법인명 표기(실측): '제너럴모터스', 'CHEVROLET …' 등도 엔카 쉐보레로
     "제너럴모터스": "쉐보레(GM대우)", "chevrolet": "쉐보레(GM대우)",
+    "generalmotors": "쉐보레(GM대우)",   # 'GENERAL MOTORS LLC' (실측: COLORADO 미조회)
 }
 
 
 def normalize_maker(court_maker: Optional[str]) -> Optional[str]:
     """법원경매 제조사명(예: '현대자동차(주)') → 엔카 표기(예: '현대'). 미상 시 None."""
     s = (court_maker or "").replace("(주)", "").replace("주식회사", "").replace(" ", "").lower()
+    if s in ("gm", "gmkorea", "한국gm"):          # 'GM' 단독 표기(실측: 'GM | CHEVROLET TRAVERSE')
+        return "쉐보레(GM대우)"
     for key, val in MAKER_NORMALIZE.items():
         if key in s:
             return val
@@ -57,12 +60,24 @@ GENESIS_MODELS = {"G70", "G80", "G90", "GV60", "GV70", "GV80", "EQ900"}
 # 첫 토큰 추출이 틀리는 다토큰 모델의 별칭 (공백 제거 키 → 엔카 모델그룹)
 MODELGROUP_ALIAS = {
     "그랜드스타렉스": "스타렉스", "더뉴스타렉스": "스타렉스", "스타렉스": "스타렉스",
-    "g4렉스턴": "G4 렉스턴", "렉스턴스포츠": "렉스턴 스포츠",
+    "그랜드스타렉": "스타렉스",     # 법원 차명이 잘린 채 들어온 실측 사례
+    # ⚠ 엔카는 ModelGroup(차종) → Model(세대) 두 단계다. 2026-09-13 승인 조회 실측:
+    #   ModelGroup '렉스턴' 안에 Model '렉스턴 스포츠'·'렉스턴 스포츠 칸'·'G4 렉스턴'·'올 뉴 렉스턴'이 같이 있다.
+    #   전에는 '렉스턴 스포츠'·'G4 렉스턴'을 ModelGroup 자리에 넣어 19대 전부 0건이었다.
+    #   픽업/SUV 는 model_hint() 가 Model 명으로 가른다(같은 그룹에 섞여 있으므로 필수).
+    "g4렉스턴": "렉스턴", "렉스턴스포츠": "렉스턴", "렉스턴스포츠칸": "렉스턴",
+    "렉스턴스포츠쿨멘": "렉스턴", "더뉴렉스턴": "렉스턴", "올뉴렉스턴": "렉스턴",
     "코란도스포츠": "코란도", "뉴코란도": "코란도",
     "더뉴카니발": "카니발", "그랜드카니발": "카니발",
+    "레이ev": "레이",               # 실측: ModelGroup '레이' 안에 Model '더 뉴 기아 레이 EV'(연료 전기)
     # 영문 표기 차명(실측: '제너럴모터스 | CHEVROLET TRAVERSE AWD') → 엔카 한글 모델그룹
     "traverse": "트래버스", "trailblazer": "트레일블레이저", "equinox": "이쿼녹스",
     "malibu": "말리부", "colorado": "콜로라도", "tahoe": "타호", "spark": "스파크", "trax": "트랙스",
+    # 수입 ModelGroup 은 한글 음차가 원칙(실측 성공: 토러스·카이엔·레인지로버 / 승인 조회: 익스플로러·파사트·쿠퍼).
+    # 영문 그대로 보내면 0건이라 '시세 없음'으로 굳는다. RAV4 처럼 영문이 정식인 것도 있다(실측 39건).
+    "explorer": "익스플로러", "passat": "파사트", "cooper": "쿠퍼",
+    # 아래는 미검증 — 틀리면 0건(=지금과 같음)이지 오매칭은 아니다. 다음 승인 조회에서 확인.
+    "coopercountryman": "컨트리맨", "cooperclubman": "클럽맨", "tiguan": "티구안", "corsair": "코세어",
 }
 
 # 차명 앞에 붙는 브랜드 토큰 — 모델그룹 추출 전에 제거한다.
@@ -70,7 +85,8 @@ MODELGROUP_ALIAS = {
 _BRAND_PREFIX = {
     "현대", "현대자동차", "기아", "기아자동차", "제네시스", "쌍용", "kg모빌리티", "kgm",
     "쉐보레", "chevrolet", "gm", "대우", "르노", "르노삼성", "삼성",
-    "벤츠", "메르세데스", "mercedes", "benz", "bmw", "아우디", "audi", "폭스바겐", "volkswagen",
+    "벤츠", "메르세데스", "mercedes", "benz", "mercedes-benz", "bmw", "아우디", "audi", "폭스바겐", "volkswagen",
+    "폭스바켄", "peugoet",   # 법원 오타 실측('폭스바켄 | Tiguan', '푸조 | Peugoet 3008')
     "지프", "짚", "jeep", "포드", "ford", "볼보", "volvo", "렉서스", "lexus",
     "도요타", "토요타", "toyota", "혼다", "honda", "닛산", "nissan", "포르쉐", "porsche",
     "재규어", "jaguar", "랜드로버", "링컨", "lincoln", "캐딜락", "cadillac",
@@ -99,16 +115,44 @@ def clean_model_group(car_nm: Optional[str]) -> Optional[str]:
     if key in MODELGROUP_ALIAS:
         return MODELGROUP_ALIAS[key]
     first = s.split(" ")[0]                       # 첫 토큰도 별칭 조회('TRAVERSE AWD'→트래버스)
+    # '트랙스1.4'·'말리부1.5' — 차명에 배기량이 붙어 한 토큰이 된 실측 사례. 한글 차명 뒤의 'n.n'만 뗀다
+    # (포터Ⅱ·봉고3 같은 세대 숫자는 건드리지 않는다 — 그 표기는 별개 문제).
+    m = re.match(r"^([가-힣]+)\d\.\d$", first)
+    if m:
+        first = m.group(1)
     return MODELGROUP_ALIAS.get(first.lower(), first)
+
+
+def model_hint(car_nm: Optional[str]) -> tuple:
+    """엔카 Model(세대) 이름으로 차형을 가르는 키워드 — (포함 목록, 제외 목록).
+
+    엔카는 같은 ModelGroup 안에 차형이 다른 Model 을 섞어 둔다(2026-09-13 승인 조회 실측):
+      '렉스턴' = 렉스턴 스포츠(픽업) · 렉스턴 스포츠 칸 · G4 렉스턴(SUV) · 올 뉴 렉스턴
+      '코란도' = 뷰티풀 코란도(SUV) · 더 뉴 코란도 스포츠(픽업)     '레이' = 레이 · 레이 EV
+    실제 사고: 2022 렉스턴(SUV, 감정 3,100만)이 '더 뉴 렉스턴 스포츠' 6건으로 2,145만에 평가됐다.
+    반환한 키워드로 summarize 가 Model 을 거른다(포함 표본 3건 미만이면 신뢰도 '낮음' 상한)."""
+    s = re.sub(r"\([^)]*\)", "", car_nm or "").replace(" ", "").lower()
+    inc, exc = [], []
+    if "렉스턴" in s or "코란도" in s:
+        if "스포츠" in s:
+            inc.append("스포츠")
+            (inc if "칸" in s else exc).append("칸")
+        else:
+            exc.append("스포츠")
+    if s.startswith("레이"):
+        (inc if "ev" in s else exc).append("EV")
+    return inc, exc
 
 
 # 수입 브랜드 감지 (법원 제조사/차명의 키워드 → 엔카 수입 제조사 표기)
 IMPORT_BRANDS = [
+    # 미니가 BMW 보다 먼저 — 법원 제조사가 'BMW AG'라 'MINI Cooper'가 BMW/Cooper 로 조회돼 10대 전부 0건이었다.
+    # 엔카 실측(승인 조회): 제조사 '미니' · ModelGroup '쿠퍼'(Model 쿠퍼·쿠퍼 S·쿠퍼 D).
+    (("미니", "mini"), "미니"),
     (("벤츠", "benz", "메르세데스", "mercedes", "다임러", "daimler"), "벤츠"),
     (("bmw", "비엠"), "BMW"),
     (("아우디", "audi"), "아우디"),
-    (("폭스바겐", "volkswagen"), "폭스바겐"),
-    (("미니", "mini"), "미니"),
+    (("폭스바겐", "volkswagen", "폭스바켄"), "폭스바겐"),
     (("랜드로버", "랜드로바", "land rover", "landrover", "레인지로버", "디스커버리", "디펜더"), "랜드로버"),
     (("재규어", "jaguar"), "재규어"),
     (("포르쉐", "porsche", "카이엔", "파나메라", "마칸"), "포르쉐"),
@@ -131,10 +175,14 @@ IMPORT_BRANDS = [
 
 
 def detect_import(court_maker: Optional[str], car_nm: Optional[str]) -> Optional[str]:
-    s = ((court_maker or "") + " " + (car_nm or "")).lower()
-    for kws, name in IMPORT_BRANDS:
-        if any(k in s for k in kws):
-            return name
+    # 차명 먼저, 그다음 제조사+차명. 법인명이 두 브랜드를 품는 경우('제규어랜드로버코리아 | 재규어 F-PACE')
+    # 제조사 문자열의 '랜드로버'가 차명의 '재규어'를 이겨 엉뚱한 제조사로 조회됐다(실측 2대).
+    for s in ((car_nm or "").lower(), ((court_maker or "") + " " + (car_nm or "")).lower()):
+        for kws, name in IMPORT_BRANDS:
+            if name == "미니" and ("미니버스" in s or "미니밴" in s):
+                continue                              # 국산 승합 '미니버스'는 브랜드가 아니다
+            if any(k in s for k in kws):
+                return name
     return None
 
 
@@ -158,10 +206,11 @@ def _benz_group(car_nm: str) -> Optional[str]:
             return gl + "-클래스"
     for cl in ("CLA", "CLS"):
         if cl in su:
-            return cl
+            return cl + "-클래스"      # 실측(승인 조회): 'CLS-클래스 W218' — 접미 없이 'CLS'는 0건(7대)
     if "마이바흐" in s or "MAYBACH" in su:
         return "S-클래스"
-    m = re.search(r"\b([ABCESG])\s?-?\s?클래스", s) or re.search(r"\b([ABCESG])\d", su)
+    # 'E 250'(공백)·'E300' 둘 다 — 'Mercedes-Benz E 250'이 공백 때문에 못 잡혀 모델그룹이 'Mercedes-Benz'가 됐다
+    m = re.search(r"\b([ABCESG])\s?-?\s?클래스", s) or re.search(r"\b([ABCESG])\s?\d", su)
     if m:
         L = m.group(1)
         return "G-클래스" if L == "G" else f"{L}-클래스"
@@ -184,7 +233,16 @@ def import_model_group(brand: str, car_nm: Optional[str]) -> Optional[str]:
         return _benz_group(car_nm)
     if brand == "BMW":
         return _bmw_group(car_nm)
-    return clean_model_group(car_nm)  # 아우디·포르쉐·랜드로버·렉서스 등은 첫 토큰이 대체로 일치
+    mg = clean_model_group(car_nm)  # 아우디·포르쉐·랜드로버·렉서스 등은 첫 토큰이 대체로 일치
+    if brand == "렉서스" and mg:
+        # 실측(승인 조회): ModelGroup 'RX' 안에 Model 'RX350h 5세대'·'RX450h+ 5세대' — 'RX350h'는 0건
+        m = re.match(r"^([A-Z]{2})\d", mg.upper())
+        if m:
+            return m.group(1)
+    if brand == "랜드로버" and mg:
+        # 실측(comps): ModelGroup '디스커버리' 안에 Model '디스커버리 4'·'디스커버리 5' — '디스커버리4'는 0건
+        return re.sub(r"^(디스커버리)\s?\d+$", r"\1", mg)
+    return mg
 
 
 # 국산 모델명 → 엔카 제조사. 법원 제조사가 비었거나 법인명·오타일 때 차명으로 추정한다.
@@ -222,7 +280,10 @@ def auto_map(court_maker: Optional[str], car_nm: Optional[str],
     mg = clean_model_group(car_nm)
     if not mg:
         return None
-    # 1) 제네시스
+    # 1) 제네시스 — 단, 차명이 그냥 '제네시스'(2008~2016 현대 제네시스 DH·BH)면 엔카는 **현대/제네시스**다
+    #    (승인 조회 실측: 현대/제네시스 2015 → 1,017건, Model '제네시스 DH'). 브랜드 쪽으로 보내면 0건(10대).
+    if mg == "제네시스":
+        return {"car_type": "Y", "manufacturer": "현대", "model_group": "제네시스"}
     if mg.upper() in GENESIS_MODELS or "제네시스" in (car_nm or ""):
         return {"car_type": "Y", "manufacturer": "제네시스", "model_group": mg}
     # 2) 국산 (미니버스 등 오탐 방지: 국산 제조사면 여기서 확정)

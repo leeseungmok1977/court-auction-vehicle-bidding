@@ -160,6 +160,7 @@ def _analyze_item(cs, es, raw: dict, item, config: dict, repair_cost: int,
                                car_type=mp.get("car_type", "Y"), premium=mp.get("premium", False),
                                year_from=yf, year_to=yt, limit=100)
             # 감정가는 상세(aeeEvlAmt, 권위값)를 가드 소스로 전달 — 신뢰도 가드는 summarize 내부에서 통합
+            _mh = encar.model_hint(item.model)   # 픽업/SUV/EV 혼입 그룹은 Model 명으로 가른다
             stats = summarize(encar.normalize(res["results"]), form_year=item.year,
                               mileage_km=detail.mileage_km, platform="encar",
                               year_tol=config.get("year_tol", 1),
@@ -168,7 +169,7 @@ def _analyze_item(cs, es, raw: dict, item, config: dict, repair_cost: int,
                               min_sample=config.get("min_sample_count", 5),
                               trim=encar.trim_hint(item.model),
                               appraisal_value=detail.appraisal_value or item.appraisal_value,
-                              config=config)
+                              config=config, model_include=_mh[0], model_exclude=_mh[1])
             base.update({"market_platform": "encar", "encar_total": res["count"],
                          "market_ref_date": None, "market_ref_id": None})   # 실측 성공 → 동급참조 표기 해제
             base.update(_guarded_market_fields(stats))
@@ -1553,6 +1554,16 @@ def daily_update(within_days: int = 30, analyze: bool = True,
 
             if run_id:
                 db.update_run(run_id, processed=analyzed)
+    # ②-0b 0표본 재조회 — 현재 매핑으로 다시 묻는다(런당 상한·7일 백오프). 실패가 영구가 되지 않게.
+    #      동급참조(②-1)보다 먼저: 실측이 되면 참조가 필요 없고, 새 실측이 다른 물건의 공여자도 된다.
+    requery = {"targets": 0, "updated": 0}
+    if health["state"] != "blocked":
+        try:
+            requery = requery_missing_market(within_days=within_days,
+                                             max_requests=int(config.get("requery_daily_cap", 20)),
+                                             run_id=run_id)
+        except Exception:  # noqa: BLE001 — 재조회 실패가 갱신 전체를 막지 않도록(차단은 recompute 가 스스로 중단)
+            pass
     # ②-1 시세 공백 보완: 엔카를 못 쓴 물건에 DB의 동급 시세를 참조 적용(외부요청 0, 정직 표기)
     reuse = reuse_market_prices(within_days=within_days)
     if run_id and reuse.get("applied"):
@@ -1594,6 +1605,7 @@ def daily_update(within_days: int = 30, analyze: bool = True,
                if review.get("found") else "")
         _hv = "" if health["state"] == "ok" else f" · ⚠엔카 {health['state']}(HTTP {health['code']})"
         _ru = f" · 동급참조 {reuse['applied']}" if reuse.get("applied") else ""
+        _ru += f" · 0표본 재조회 {requery['updated']}" if requery.get("updated") else ""
         _nc = (f" · 출시가 {newcar.get('matched', 0)}건(대기 {newcar.get('remaining', 0)})"
                if (newcar.get("matched") or newcar.get("remaining")) else "")
         _ph = (f" · 사진정렬 {photos['sorted']}건" if photos.get("sorted")
@@ -1601,7 +1613,7 @@ def daily_update(within_days: int = 30, analyze: bool = True,
         db.update_run(run_id, status="done", finished_at=_now(),
                       message=f"입찰예정 {stored} · 분석 {analyzed}{_ru}{_nc}{_ph} · 낙찰결과 {results}건{_rv}{_hv}")
     return {"stored": stored, "analyzed": analyzed, "results": results, "review": review,
-            "encar_health": health, "reuse": reuse, "newcar": newcar, "photos": photos}
+            "encar_health": health, "reuse": reuse, "requery": requery, "newcar": newcar, "photos": photos}
 
 
 def photo_autosort_run(limit: int = 150, timeout: int = 1500) -> dict:
@@ -4131,12 +4143,14 @@ def analyze_single(vid: str, repair_cost: Optional[int] = None) -> Optional[dict
     return db.get_vehicle(vid)
 
 
-def recompute_all_market(run_id: Optional[int] = None, finalize: bool = True) -> int:
+def recompute_all_market(run_id: Optional[int] = None, finalize: bool = True,
+                         targets: Optional[list] = None, max_requests: Optional[int] = None) -> int:
     """기존 물건 전체의 시세를 개선 로직(연식범위·연료·동세대)으로 일괄 재교정.
 
     물건상세는 재조회하지 않고(주행거리·사진·사고이력·낙찰결과 보존), 저장된
     연식·주행거리 + 저장된 감정요항(appraisal.txt)의 연료로 **엔카만 재조회**한다.
     같은 (제조사·모델·연식)끼리 묶어 엔카 요청을 캐시해 요청 수를 줄인다.
+    targets 를 주면 그 물건들만(0표본 재조회용), max_requests 는 그룹(=엔카 요청) 수 하드캡(C.4-1).
     """
     import os
     from src.parse.detail_parser import _fuel_from_text
@@ -4146,7 +4160,7 @@ def recompute_all_market(run_id: Optional[int] = None, finalize: bool = True) ->
 
     # 시세 매핑 가능 + 연식 있는 물건만
     groups: dict = {}
-    for v in db.list_vehicles():
+    for v in (targets if targets is not None else db.list_vehicles()):
         if v.get("year") is None:
             continue
         # 이미 매각(낙찰)·종결된 물건은 재교정 대상 제외(판정을 '검토가능'으로 되살리지 않음)
@@ -4162,7 +4176,10 @@ def recompute_all_market(run_id: Optional[int] = None, finalize: bool = True) ->
                bool(mp.get("premium", False)), int(v["year"]))
         groups.setdefault(key, []).append(v)
 
-    keys = list(groups.keys())
+    keys = list(groups.keys())         # targets 를 준 순서(=호출자가 정한 우선순위)가 그룹 순서다
+    if max_requests:
+        keys = keys[:int(max_requests)]   # 그룹 1개 = 엔카 요청 1회(+케이카) — 런당 하드캡
+        groups = {k: groups[k] for k in keys}
     total_items = sum(len(g) for g in groups.values())   # 진행바 분모(물건 수)와 단위 통일
     if run_id:
         db.update_run(run_id, target=total_items, processed=0, scanned=0)
@@ -4218,11 +4235,13 @@ def recompute_all_market(run_id: Optional[int] = None, finalize: bool = True) ->
                 except Exception:  # noqa: BLE001
                     pass
             _msc = config.get("min_sample_count", 5)
+            _mh = encar.model_hint(v.get("model"))   # 픽업/SUV/EV 혼입 그룹은 Model 명으로 가른다
             stats = summarize(listings, form_year=v["year"], mileage_km=v.get("mileage_km"),
                               platform="encar", year_tol=year_tol, mileage_tol=mileage_tol,
                               fuel=fuel, min_sample=_msc,
                               trim=encar.trim_hint(v.get("model")),
-                              appraisal_value=v.get("appraisal_value"), config=config)
+                              appraisal_value=v.get("appraisal_value"), config=config,
+                              model_include=_mh[0], model_exclude=_mh[1])
             fields = {"market_platform": "encar", "encar_total": res.get("count"),
                       "analyzed_at": _now()}
             fields.update(_appraisal_signals(atext, config, item_no=v.get("item_no")))
@@ -4272,6 +4291,41 @@ def recompute_all_market(run_id: Optional[int] = None, finalize: bool = True) ->
         db.update_run(run_id, status="done", finished_at=_now(),
                       message=f"시세 재교정 {updated}건{_km}")
     return updated
+
+
+def requery_missing_market(within_days: int = 30, max_requests: int = 20, min_age_days: int = 7,
+                           run_id: Optional[int] = None) -> dict:
+    """시세 0표본인 입찰예정 물건을 **현재 매핑으로 다시** 엔카에 묻는다(런당 요청 상한 + 백오프).
+
+    물건은 수집 시점에 한 번만 시세를 조회했고, 실패(0건)는 영구였다. 그래서 09-10 매핑 개선(법인명·
+    영문·브랜드 접두)도 09-13 계층 수정(렉스턴·제네시스 DH·미니·CLS·수입 한글 음차)도 기존 0건 물건에는
+    한 번도 적용되지 않았다 — 실측: 매핑 가능한데 미조회 68대, '0건' 기록 중 현재 코드로는 조회되는
+    물건 다수(M4·마세라티·RAV4…). 매일 소량(기본 20그룹)씩 다시 묻고, 같은 물건은 min_age_days 뒤에
+    또 묻는다. 상용·특수차처럼 정말 시장이 없는 물건은 계속 0건으로 남는다 — 그건 정답이다.
+    C.4: 그룹 1개 = 요청 1회, max_requests 하드캡, 요청 간 5초(encar.search), 차단 시 즉시 중단(recompute).
+    """
+    from datetime import timedelta as _td
+    today = date.today()
+    cutoff = (today - _td(days=min_age_days)).isoformat() if min_age_days > 0 else "9999-12-31"
+    targets = []
+    for v in db.list_vehicles(upcoming_days=within_days):
+        if (v.get("sample_count") or 0) > 0 or v.get("median_price"):
+            continue                                  # 시세가 있는 물건은 대상이 아니다(동급참조 포함)
+        if v.get("status") in ("종결", "상세없음") or v.get("auction_result") in ("낙찰", "종결"):
+            continue
+        if v.get("year") is None or not encar.auto_map(v.get("maker"), v.get("model")):
+            continue                                  # 매핑 자체가 없으면 물어도 의미 없다(중장비 등)
+        if str(v.get("analyzed_at") or v.get("collected_at") or "")[:10] > cutoff:
+            continue                                  # 최근에 물었다 — 백오프
+        targets.append(v)
+    targets.sort(key=lambda v: (v.get("sale_date") or "9999"))
+    if run_id:
+        db.update_run(run_id, message=f"시세 0표본 재조회 대상 {len(targets)}대 · 최대 {max_requests}그룹")
+    # run_id 는 진행 메시지에만 쓴다 — recompute 가 일일 갱신 런의 분모(target)를 덮지 않게 None 으로 넘긴다
+    updated = recompute_all_market(run_id=None, finalize=False, targets=targets, max_requests=max_requests)
+    if updated:
+        invalidate_backtest_cache()
+    return {"targets": len(targets), "updated": updated}
 
 
 def _run_recompute_all(run_id: int) -> None:

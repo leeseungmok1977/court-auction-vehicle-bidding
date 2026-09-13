@@ -304,11 +304,14 @@ def summarize(listings: list[dict], form_year: Optional[int],
               trim: Optional[str] = None,
               appraisal_value: Optional[int] = None, config: Optional[dict] = None,
               cross_status: Optional[str] = None, cross_rel: Optional[float] = None,
-              kcar_median: Optional[int] = None, kcar_sample: int = 0) -> MarketStats:
+              kcar_median: Optional[int] = None, kcar_sample: int = 0,
+              model_include: Optional[list] = None,
+              model_exclude: Optional[list] = None) -> MarketStats:
     """매칭 + 통계 (정교화판).
 
-    ① **트림**(마이바흐·AMG 등 Badge) ② **연료 일치** ③ **동일 세대**(물건 연식의 지배적
-    엔카 Model만) ④ 동급(연식±1·주행±30%) → 확장 → 연식±3 단계 완화.
+    ① **트림**(마이바흐·AMG 등 Badge) ①-b **차형**(Model 명 포함/제외 — 픽업·SUV·EV 혼입 그룹)
+    ② **연료 일치** ③ **동일 세대**(물건 연식의 지배적 엔카 Model만)
+    ④ 동급(연식±1·주행±30%) → 확장 → 연식±3 단계 완화.
     표본 id 중복을 제거하고, 표본이 min_sample 미만이면 신뢰도를 '낮음'으로 게이팅한다.
     trim이 있으나 Badge로 확인되는 표본이 부족하면(상위 트림 오매칭 위험) 신뢰도를 낮춘다.
     """
@@ -319,6 +322,7 @@ def summarize(listings: list[dict], form_year: Optional[int],
     trim_unconfirmed = False
     fuel_unconfirmed = False
     gen_unconfirmed = False
+    body_unconfirmed = False
     # ① 트림(Badge) 일치 — 상위 트림이 기본 트림 시세에 섞이지 않게
     if trim:
         tp = [l for l in pool if trim.upper() in (l.get("badge") or "").upper()]
@@ -327,6 +331,21 @@ def summarize(listings: list[dict], form_year: Optional[int],
             note += f"·{trim}"
         else:
             trim_unconfirmed = True   # 트림 확인 불가 → 아래에서 신뢰도 상한
+    # ①-b 차형(Model 명) — 엔카는 같은 ModelGroup 에 픽업·SUV·EV 를 섞어 둔다(렉스턴·코란도·레이, encar.model_hint).
+    #     2022 렉스턴(SUV)이 '더 뉴 렉스턴 스포츠'(픽업) 6건으로 평가된 실측 사고의 방지책.
+    #     제외는 항상 적용(SUV 에 픽업이 한 건도 섞이면 안 된다), 포함은 3건 이상일 때만 좁히고
+    #     아니면 '차형 미확인'으로 신뢰도 상한 — 확인 못 한 것을 확인한 것처럼 보이지 않게.
+    if model_exclude:
+        pool = [l for l in pool
+                if not any(t.lower() in (l.get("model") or "").lower() for t in model_exclude)]
+    if model_include:
+        bp = [l for l in pool
+              if all(t.lower() in (l.get("model") or "").lower() for t in model_include)]
+        if len(bp) >= 3:
+            pool = bp
+            note += "·" + "/".join(model_include)
+        else:
+            body_unconfirmed = True
     # ② 연료 일치 (하이브리드·전기 표기 변형까지 부분일치)
     if fuel:
         fp = [l for l in pool if _fuel_match(fuel, l.get("fuel"))]
@@ -390,6 +409,9 @@ def summarize(listings: list[dict], form_year: Optional[int],
     if trim_unconfirmed:                  # 상위 트림 Badge 미확인 → 신뢰도 상한
         st.confidence = min(st.confidence, 40)
         st.match_label += f"·{trim}트림 미확인"
+    if body_unconfirmed:                  # 차형(픽업/SUV/EV) 확인 불가 → 신뢰도 '낮음' 상한
+        st.confidence = min(st.confidence, 40)
+        st.match_label += "·차형 미확인"
     if gen_unconfirmed:                    # 이종 세대 혼입 가능 → '보통' 상한
         st.confidence = min(st.confidence, 60)
         st.match_label += "·세대미확인"
