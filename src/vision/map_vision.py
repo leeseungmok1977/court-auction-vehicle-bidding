@@ -194,25 +194,35 @@ def sido_of(text: str) -> str:
     return _SIDO_CANON.get(m.group(1), m.group(1)) if m else ""
 
 
-_DONG_RE = re.compile(r"[가-힣]{1,6}(?:동|리|읍|면)")
+# ⚠ 앞뒤에 한글이 붙으면 지명이 아니다 — "자동차"에서 "자동"을 동 이름으로 뽑아
+#   엉뚱한 후보(만세구·서구·화성시)를 만들었다.
+_DONG_RE = re.compile(r"(?<![가-힣])[가-힣]{1,5}(?:동|리|읍|면)(?![가-힣])")
 # 번지 모순 검사는 **3자리 이상**에만 건다. "22-11" 같은 짧은 번호는 다른 동네와
 # 우연히 겹쳐 정상 주소를 떨어뜨린다(실측: 양주시 고읍동 건이 평택시와 충돌 판정).
 _BUNJI_RE = re.compile(r"\d{3,5}-\d{1,4}")
 _FACIL_RE = re.compile(r"[가-힣]{2,8}(?:주차장|물류|모터스|정비|공업사|산업|센터)")
 # 모델이 라벨 문구를 주소 앞에 붙여 오는 경우가 있다
 # ("보관장소 - 경상북도 안동시…", "어선 보관장소 여수시 국동항")
-_PREFIX_RE = re.compile(r"^\s*(?:어선|선박|차량|대상물건|본건)?\s*보관\s*장소\s*[-:·\s]*")
+_PREFIX_RE = re.compile(
+    r"^\s*(?:본건\s*)?(?:어선|선박|차량|자동차|평가대상|대상물건|대상\s*물건|물건)?\s*"
+    r"(?:보관\s*장소|보관소|소재지)\s*[-:·()\s]*")
 
 
 def clean_address(addr: str) -> str:
-    return re.sub(r"\s+", " ", _PREFIX_RE.sub("", addr or "")).strip(" .,·-")
+    t = re.sub(r"\s+", " ", _PREFIX_RE.sub("", addr or "")).strip(" .,·-")
+    # 접두어를 떼면 여는 괄호가 사라져 닫는 괄호만 남는다("보관장소(수신면 …21)").
+    for a, b in (("(", ")"), ("[", "]"), ("'", "'"), ('"', '"')):
+        if t.count(b) > t.count(a):
+            t = t.replace(b, "")
+    return t.strip(" .,·-")
 
 
 def accept(result: dict, known_gu: Optional[set] = None,
            court_sido: Optional[set] = None,
            dong_by_gu: Optional[dict] = None,
            place_index: Optional[dict] = None,
-           gu_sido: Optional[dict] = None) -> dict:
+           gu_sido: Optional[dict] = None,
+           gu_parent: Optional[dict] = None) -> dict:
     """**인쇄된 주소만** 채택한다. 모델이 '읽었다'는 주변 지명은 쓰지 않는다.
 
     ⚠ 왜 주변 지명을 버리는가 — 실측에서 충남 서산시 지도를 주고 물었더니 모델이
@@ -251,14 +261,23 @@ def accept(result: dict, known_gu: Optional[set] = None,
             return out
         cands = {g for g, ds in dong_by_gu.items()
                  if any(d in ds for d in dongs) and gu_sido.get(g) in court_sido}
-        # 시/구 계층 중복 제거는 하지 않는다 — 애매하면 버린다
+        # ⚠ '천안시'와 '동남구'는 같은 곳이다(구가 시 안에 있다). 계층을 중의성으로
+        #   세면 정상 주소가 "후보 2개"로 버려진다 — 실측에서 그랬다. 부모 표로 합친다.
+        if gu_parent and len(cands) > 1:
+            tops = {gu_parent.get(g, g) for g in cands}
+            if len(tops) == 1:
+                top = next(iter(tops))
+                child = sorted(c for c in cands if c != top)
+                cands = {f"{top} {child[0]}" if child else top}
         if len(cands) != 1:
             out["why"] = (f"시·군·구 없음 — 법원 관할에서 후보 {len(cands)}개라 특정 불가"
                           if cands else "인쇄된 문자열에 시·군·구가 없음")
             return out
         g = next(iter(cands))
         printed = f"{g} {printed}"
-        gus = [g]
+        # 병합 결과가 "천안시 동남구" 처럼 두 토큰일 수 있다 — 통째로 하나의
+        # 시·군·구로 보면 어휘 대조에서 떨어진다. 다시 쪼개서 넣는다.
+        gus = _GU_RE.findall(printed)
         out["completed"] = g
     if known_gu and not any(g in known_gu for g in gus):
         out["why"] = f"'{gus[0]}' 는 아는 시·군·구가 아님"

@@ -2053,6 +2053,7 @@ def backfill_map_vision(limit: int = 20, delay: float = 6.0,
     dbg = known_dong_by_gu()
     pidx = trusted_place_index()
     gsido = gu_to_sido()
+    gpar = gu_parent_map()
     # ⚠ 원응답을 남긴다. 지난 배치는 결과만 저장해서, 채택 규칙을 고칠 때마다
     #   602건을 다시 호출해야 했다($2.4씩). 규칙은 앞으로도 바뀐다.
     raw_log = open("data/map_vision_raw.jsonl", "a", encoding="utf-8")
@@ -2090,7 +2091,7 @@ def backfill_map_vision(limit: int = 20, delay: float = 6.0,
         raw_log.write(_json.dumps({"id": v["id"], "court": v.get("court"),
                                    "photo": maps[0], **res}, ensure_ascii=False) + chr(10))
         raw_log.flush()
-        got = MV.accept(res, gu, csido.get(v.get("court")), dbg, pidx, gsido)
+        got = MV.accept(res, gu, csido.get(v.get("court")), dbg, pidx, gsido, gpar)
         if got["addr"]:
             out["found"] += 1
             if not dry_run:
@@ -2129,6 +2130,32 @@ def court_sido_map(min_share: float = 0.05) -> dict:
         n = sum(c.values())
         out[court] = {k for k, m in c.items() if m / n >= min_share}
     return out
+
+
+def gu_parent_map() -> dict:
+    """구 → 그 구가 속한 시. '천안시 동남구' 처럼 한 주소에 함께 나오면 부모로 본다.
+
+    계층을 중의성으로 세면 정상 주소가 "후보 2개"라며 버려진다 — 실측에서
+    '수신면'이 [동남구, 천안시] 두 후보를 만들어 폐기됐다. 둘은 같은 곳이다.
+    """
+    import re as _re
+    from collections import Counter, defaultdict
+    si = _re.compile(r"(?<![가-힣])([가-힣]{2,4}시)(?![가-힣])")
+    gu = _re.compile(r"(?<![가-힣])([가-힣]{2,4}구)(?![가-힣])")
+    seen = defaultdict(Counter)
+    for v in db.list_vehicles(hide_incomplete=False):
+        fields = [v.get("location")]
+        if v.get("storage_src") in ("court", "text"):
+            fields.append(v.get("storage_addr"))
+        for f in fields:
+            if not f:
+                continue
+            t = str(f)
+            sis, gus = si.findall(t), gu.findall(t)
+            if len(sis) == 1 and gus:
+                for g in gus:
+                    seen[g][sis[0]] += 1
+    return {g: c.most_common(1)[0][0] for g, c in seen.items() if c}
 
 
 def gu_to_sido() -> dict:
@@ -2358,6 +2385,90 @@ def _storage_src_of(folder_key: str, addr: str) -> str:
         except OSError:
             pass
     return ""
+
+
+def find_court_mismatch() -> list:
+    """저장된 상세(사진·감정서)가 **다른 법원 물건**인 행을 찾는다(무네트워크).
+
+    ⚠ 근본 원인: `id`/`folder_key` 가 `사건번호_물건번호` 뿐이고 **법원 코드가 없다.**
+      사건번호는 법원마다 따로 매기므로 다른 법원의 같은 번호가 한 폴더·한 행으로
+      충돌한다. 목록(가격·기일)은 A법원 것이 남고, 폴더(사진·감정서)는 B법원 것이
+      덮어써진 상태가 된다.
+
+    영향이 크다 — 사진·감정서가 남의 차라서 시세 매칭·예상낙찰가·상한가·사고판정이
+    전부 다른 차 값이 된다. 실측(2026-09-13): 1,301건 중 29건(2.2%), 진행 중 16건.
+    18인 페르소나 패널이 '벤츠 제목에 그랜저 사진'으로 이걸 잡아냈다.
+    """
+    import json as _json
+    import os
+    out = []
+    for v in db.list_vehicles(hide_incomplete=False):
+        fk = v.get("folder_key") or v["id"]
+        folder = os.path.join("data", fk)
+        if not os.path.isdir(folder):
+            continue
+        for name in sorted(os.listdir(folder)):
+            if not name.endswith(".json"):
+                continue
+            try:
+                with open(os.path.join(folder, name), encoding="utf-8") as fh:
+                    o = _json.load(fh)
+            except (OSError, ValueError):
+                continue
+            if not isinstance(o, dict):
+                continue
+            jc = str(o.get("court_code") or "").strip()
+            dc = str(v.get("court_code") or "").strip()
+            if jc and dc and jc != dc:
+                out.append({"id": v["id"], "db_court": dc, "db_court_name": v.get("court"),
+                            "file_court": jc, "db_model": f"{v.get('maker')} {v.get('model')}",
+                            "file_model": f"{o.get('maker')} {o.get('model')}",
+                            "status": v.get("status"), "sale_date": v.get("sale_date")})
+            break
+    return out
+
+
+# 남의 차 상세로 만들어진 파생값 — 격리할 때 지운다. 지우지 않으면 목록에서 숨겨도
+# 백테스트·추천·통계로 흘러든다.
+_DERIVED_ON_DETAIL = (
+    "median_price", "mean_price", "min_price", "sample_count", "encar_total",
+    "market_confidence", "market_confidence_label", "market_cv", "market_vs_appraisal",
+    "comps", "upper_bid", "lower_bound", "judgment", "breakdown", "match_label",
+    "accident_grade", "accident_hits", "insurance_history", "runnable",
+    "condition_level", "condition_flags", "inspection_to", "spec_remark",
+    "mileage_km", "displacement_cc", "fuel_code", "photo_order", "photo_order_src",
+    "map_photos", "storage_addr", "storage_src", "storage_conf",
+)
+
+
+def quarantine_court_mismatch(apply: bool = False) -> dict:
+    """법원이 어긋난 행을 목록에서 감추고 파생값을 지운다(무네트워크).
+
+    삭제하지 않는다 — 사건 자체는 실재하므로, 나중에 id에 법원 코드를 넣어 다시
+    수집하면 복구된다. 지금은 **남의 차 정보를 보여주지 않는 것**이 우선이다.
+    """
+    rows = find_court_mismatch()
+    out = {"found": len(rows), "quarantined": 0, "already": 0}
+    if not apply:
+        return out
+    conn = db.connect()
+    for r in rows:
+        if r["status"] == "상세없음":
+            out["already"] += 1
+            continue
+        db.update_fields(r["id"], status="상세없음",
+                         **{c: None for c in _DERIVED_ON_DETAIL})
+        with conn:
+            conn.execute(
+                "INSERT INTO anomaly_log (ts, vehicle_id, case_no, reasons, action, note)"
+                " VALUES (?,?,?,?,?,?)",
+                (db._now(), r["id"], r["id"].rsplit("_", 1)[0],
+                 "법원코드 불일치(사건번호 충돌)", "quarantined",
+                 f"DB {r['db_court']}({r['db_court_name']}) vs 저장파일 {r['file_court']} · "
+                 f"표시 '{r['db_model']}' vs 파일 '{r['file_model']}'"))
+        out["quarantined"] += 1
+    conn.close()
+    return out
 
 
 def backfill_storage_addr() -> dict:

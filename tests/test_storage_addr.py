@@ -646,3 +646,47 @@ def test_validation_vocabulary_excludes_vision_output(one):
     vocab = service.known_dong_by_gu()
     assert "방성리" in vocab.get("양주시", set()), "location 은 어휘에 들어가야 한다"
     assert "병설리" not in vocab.get("양주시", set()), "비전 결과가 어휘를 오염시켰다"
+
+
+# ── 시 보완의 실제 버그들 (원응답 재평가로 발견) ────────────────────
+def test_city_completion_merges_the_si_gu_hierarchy():
+    """'천안시'와 '동남구'는 같은 곳이다 — 계층을 중의성으로 세면 안 된다.
+
+    실측: '수신면 우각골길 21' 이 후보 [동남구, 천안시] 둘이라며 폐기됐다.
+    구가 시 안에 있는 관계이므로 '천안시 동남구' 하나로 합쳐야 한다.
+    """
+    dbg = {"천안시": {"수신면", "목천읍"}, "동남구": {"수신면"}}
+    gsido = {"천안시": "충남", "동남구": "충남"}
+    gpar = {"동남구": "천안시"}
+    got = v_accept({"printed_address": "보관장소(수신면 우각골길 21)",
+                    "nearby_labels": [], "label_kind": "보관장소"},
+                   {"천안시", "동남구"}, {"충남"}, dbg, None, gsido, gpar)
+    assert got["addr"] == "천안시 동남구 수신면 우각골길 21", got
+
+
+def test_dong_pattern_does_not_match_inside_a_word():
+    """'자동차'에서 '자동'을 동 이름으로 뽑아 엉뚱한 후보를 만들었다."""
+    from src.vision.map_photo import is_map_photo  # noqa: F401
+    from src.vision.map_vision import _DONG_RE
+    assert _DONG_RE.findall("본건 자동차 보관장소") == []
+    assert _DONG_RE.findall("수신면 우각골길 21") == ["수신면"]
+    assert _DONG_RE.findall("덕진동1가 1420") == ["덕진동"]
+
+
+def test_label_prefix_variants_are_stripped():
+    """실측에서 나온 라벨 변형들 — 안 벗기면 '자동'이 동으로 잡힌다."""
+    from src.vision.map_vision import clean_address
+    for raw, want in [
+        ("본건 자동차 보관장소", ""),
+        ("대상물건 보관장소", ""),
+        ("자동차 보관장소 (다원물류)", "다원물류"),
+        ("보관장소(수신면 우각골길 21)", "수신면 우각골길 21"),
+        ("물건소재지", ""),
+    ]:
+        assert clean_address(raw) == want, f"{raw!r} → {clean_address(raw)!r}"
+
+
+def test_unbalanced_bracket_is_removed_after_prefix_strip():
+    """접두어를 떼면 여는 괄호가 사라져 닫는 괄호만 남는다."""
+    from src.vision.map_vision import clean_address
+    assert clean_address("보관장소(수신면 우각골길 21)").endswith("21")
