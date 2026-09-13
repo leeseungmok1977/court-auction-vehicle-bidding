@@ -435,11 +435,47 @@ def test_vision_never_uses_labels_the_model_claims_to_have_read():
     assert "인쇄돼 있지 않" in got["why"]
 
 
-def test_vision_rejects_a_bongeon_only_map():
-    """'본건' 지도는 채무자 주소일 수 있다 — 보관장소로 쓰지 않는다."""
+def test_vision_uses_bongeon_maps_too():
+    """'본건' 지도도 쓴다 — **자동차는 부동산과 다르다.**
+
+    부동산은 물건 소재지가 그 부동산 위치로 고정되지만, 자동차는 그렇지 않다.
+    차량의 물건 소재지가 곧 보관장소다.
+
+    실측도 이를 뒷받침한다: 2024타경51422의 '본건' 지도는 감정서 본문의
+    보관장소(동문동)와 일치했고, 오히려 법원 API 값(율지8로 52)이 달랐다.
+    대신 다른 가드(지명 어휘·법원 시·도·번지 모순)는 그대로 태운다.
+    """
     got = v_accept({"printed_address": "서산시 동문동 195-4",
-                    "nearby_labels": [], "label_kind": "본건"}, GU2)
-    assert got["addr"] == ""
+                    "nearby_labels": [], "label_kind": "본건"}, {"서산시"})
+    assert got["addr"] == "서산시 동문동 195-4"
+
+    # 라벨이 무엇이든 다른 가드는 여전히 막는다
+    blocked = v_accept({"printed_address": "경기도 안양시 백석동 방성리 492-3",
+                        "nearby_labels": [], "label_kind": "본건"},
+                       {"안양시"}, {"경기"}, DONG_VOCAB, None)
+    assert blocked["addr"] == ""
+
+
+def test_city_is_completed_only_when_unique_in_the_court_region():
+    """'호계동 1101번지'처럼 시가 빠진 주소는 법원 관할에서 **유일할 때만** 채운다.
+
+    실측: 우리 어휘의 동/리 892개 중 77%가 시·도를 알면 시·군·구가 유일해진다.
+    둘 이상이면 지어내지 않고 포기한다 — 엉뚱한 도시로 보내는 것이 더 나쁘다.
+    """
+    dbg = {"안양시": {"호계동", "관양동"}, "포항시": {"호계동"}}
+    gsido = {"안양시": "경기", "포항시": "경북"}
+    ok = v_accept({"printed_address": "호계동 1101번지", "nearby_labels": [],
+                   "label_kind": "보관장소"},
+                  {"안양시", "포항시"}, {"경기"}, dbg, None, gsido)
+    assert ok["addr"] == "안양시 호계동 1101번지", ok
+
+    # 같은 시·도에 후보가 둘이면 포기한다
+    dbg2 = {"안양시": {"호계동"}, "성남시": {"호계동"}}
+    gsido2 = {"안양시": "경기", "성남시": "경기"}
+    amb = v_accept({"printed_address": "호계동 1101번지", "nearby_labels": [],
+                    "label_kind": "보관장소"},
+                   {"안양시", "성남시"}, {"경기"}, dbg2, None, gsido2)
+    assert amb["addr"] == "" and "특정 불가" in amb["why"]
 
 
 def test_vision_rejects_an_address_contradicting_the_court_region():

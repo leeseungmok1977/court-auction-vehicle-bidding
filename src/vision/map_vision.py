@@ -211,7 +211,8 @@ def clean_address(addr: str) -> str:
 def accept(result: dict, known_gu: Optional[set] = None,
            court_sido: Optional[set] = None,
            dong_by_gu: Optional[dict] = None,
-           place_index: Optional[dict] = None) -> dict:
+           place_index: Optional[dict] = None,
+           gu_sido: Optional[dict] = None) -> dict:
     """**인쇄된 주소만** 채택한다. 모델이 '읽었다'는 주변 지명은 쓰지 않는다.
 
     ⚠ 왜 주변 지명을 버리는가 — 실측에서 충남 서산시 지도를 주고 물었더니 모델이
@@ -224,9 +225,11 @@ def accept(result: dict, known_gu: Optional[set] = None,
     **추정**하는 데 쓰지 않고, 명백한 모순을 **반증**하는 데만 쓴다.
     """
     out = {"addr": "", "level": "", "evidence": "", "why": ""}
-    if result.get("label_kind") == "본건":
-        out["why"] = "'본건' 라벨 — 보관장소가 아닐 수 있음"
-        return out
+    # ⚠ '본건' 라벨을 배제하지 않는다. **자동차는 부동산과 다르다** — 소재지가 물건에
+    #   고정돼 있지 않으므로 차량의 물건 소재지가 곧 보관장소다(사용자 지적).
+    #   실측도 이를 뒷받침한다: 2024타경51422의 '본건' 지도는 감정서 본문의
+    #   보관장소(동문동)와 일치했고, 오히려 법원 API 값(율지8로 52)이 달랐다.
+    #   대신 다른 가드(지명 어휘·법원 시·도·번지 모순)는 그대로 태운다.
 
     printed = result.get("printed_address")
     if not printed:
@@ -236,10 +239,27 @@ def accept(result: dict, known_gu: Optional[set] = None,
                          if labels else ""))
         return out
 
+    printed = clean_address(printed)
     gus = _GU_RE.findall(printed)
     if not gus:
-        out["why"] = "인쇄된 문자열에 시·군·구가 없음"
-        return out
+        # "호계동 1101번지" 처럼 동+번지는 있고 시만 없는 경우. 법원 관할 시·도 안에서
+        # 그 동을 가진 시·군·구가 **유일할 때만** 보완한다(실측: 동/리 이름의 77%가
+        # 시·도를 알면 유일해진다). 둘 이상이면 지어내지 않고 포기한다.
+        dongs = [d for d in _DONG_RE.findall(printed)]
+        if not (dongs and dong_by_gu and court_sido and gu_sido):
+            out["why"] = "인쇄된 문자열에 시·군·구가 없음"
+            return out
+        cands = {g for g, ds in dong_by_gu.items()
+                 if any(d in ds for d in dongs) and gu_sido.get(g) in court_sido}
+        # 시/구 계층 중복 제거는 하지 않는다 — 애매하면 버린다
+        if len(cands) != 1:
+            out["why"] = (f"시·군·구 없음 — 법원 관할에서 후보 {len(cands)}개라 특정 불가"
+                          if cands else "인쇄된 문자열에 시·군·구가 없음")
+            return out
+        g = next(iter(cands))
+        printed = f"{g} {printed}"
+        gus = [g]
+        out["completed"] = g
     if known_gu and not any(g in known_gu for g in gus):
         out["why"] = f"'{gus[0]}' 는 아는 시·군·구가 아님"
         return out
@@ -247,7 +267,7 @@ def accept(result: dict, known_gu: Optional[set] = None,
     if court_sido and sd and sd not in court_sido:
         out["why"] = f"법원 관할 시·도({'/'.join(sorted(court_sido))})와 어긋남: {sd}"
         return out
-    addr = clean_address(printed)
+    addr = printed
 
     # ⚠ 시·군·구가 실재하고 법원 시·도와 맞아도 틀릴 수 있다 — '안양시 백석동 방성리'는
     #   둘 다 통과했지만 실제는 '양주시 백석읍 방성리'였다. 그 시·군·구에 그런 동이

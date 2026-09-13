@@ -2052,6 +2052,10 @@ def backfill_map_vision(limit: int = 20, delay: float = 6.0,
     csido = court_sido_map()
     dbg = known_dong_by_gu()
     pidx = trusted_place_index()
+    gsido = gu_to_sido()
+    # ⚠ 원응답을 남긴다. 지난 배치는 결과만 저장해서, 채택 규칙을 고칠 때마다
+    #   602건을 다시 호출해야 했다($2.4씩). 규칙은 앞으로도 바뀐다.
+    raw_log = open("data/map_vision_raw.jsonl", "a", encoding="utf-8")
     out = {"tried": 0, "found": 0, "rejected": 0, "no_map": 0,
            "tokens_in": 0, "tokens_out": 0, "aborted": "", "why": {}}
     streak = 0
@@ -2082,7 +2086,11 @@ def backfill_map_vision(limit: int = 20, delay: float = 6.0,
             continue
         out["tokens_in"] += res.get("usage_in", 0)
         out["tokens_out"] += res.get("usage_out", 0)
-        got = MV.accept(res, gu, csido.get(v.get("court")), dbg, pidx)
+        import json as _json
+        raw_log.write(_json.dumps({"id": v["id"], "court": v.get("court"),
+                                   "photo": maps[0], **res}, ensure_ascii=False) + chr(10))
+        raw_log.flush()
+        got = MV.accept(res, gu, csido.get(v.get("court")), dbg, pidx, gsido)
         if got["addr"]:
             out["found"] += 1
             if not dry_run:
@@ -2093,6 +2101,7 @@ def backfill_map_vision(limit: int = 20, delay: float = 6.0,
             out["rejected"] += 1
             key = got["why"][:40]
             out["why"][key] = out["why"].get(key, 0) + 1
+    raw_log.close()
     return out
 
 
@@ -2120,6 +2129,37 @@ def court_sido_map(min_share: float = 0.05) -> dict:
         n = sum(c.values())
         out[court] = {k for k, m in c.items() if m / n >= min_share}
     return out
+
+
+def gu_to_sido() -> dict:
+    """시·군·구 → 그 구가 주로 속한 시·도. 시가 빠진 부분 주소를 보완할 때 쓴다.
+
+    시·도 토큰(서울특별시·경기도 등)은 시·군·구로 세지 않는다 — 안 그러면
+    '서울특별시'가 '시'로 잡혀 계층이 뒤섞인다.
+    """
+    import re as _re
+    from collections import Counter, defaultdict
+    from src.vision.map_vision import sido_of
+    sido_tok = _re.compile(
+        r"^(서울특별시|부산광역시|대구광역시|인천광역시|광주광역시|대전광역시|울산광역시|"
+        r"세종특별자치시|경기도|강원특별자치도|강원도|충청북도|충청남도|전북특별자치도|"
+        r"전라북도|전라남도|경상북도|경상남도|제주특별자치도)$")
+    gu = _re.compile(r"[가-힣]{1,5}(?:시|군|구)")
+    seen = defaultdict(Counter)
+    for v in db.list_vehicles(hide_incomplete=False):
+        fields = [v.get("location")]
+        if v.get("storage_src") in ("court", "text"):
+            fields.append(v.get("storage_addr"))
+        for f in fields:
+            if not f:
+                continue
+            sd = sido_of(str(f))
+            if not sd:
+                continue
+            for g in gu.findall(str(f)):
+                if not sido_tok.match(g):
+                    seen[g][sd] += 1
+    return {g: c.most_common(1)[0][0] for g, c in seen.items() if c}
 
 
 def known_dong_by_gu() -> dict:
