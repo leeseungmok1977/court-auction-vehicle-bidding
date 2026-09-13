@@ -802,6 +802,7 @@ def collect_upcoming(within_days: int = 30, run_id: Optional[int] = None,
     end = today + timedelta(days=within_days)
     cs = new_session(); warmup(cs)
     stored = 0
+    collided = 0
     page = 1
     total = None
     seen_ids: set[str] = set()   # 이번 스캔에서 관측한 모든 물건 id(목록이탈 감지용)
@@ -822,8 +823,18 @@ def collect_upcoming(within_days: int = 30, run_id: Optional[int] = None,
             except ValueError:
                 continue
             if today <= d <= end:
-                db.upsert_listing(_listing_rec(item))
-                stored += 1
+                try:
+                    db.upsert_listing(_listing_rec(item))
+                    stored += 1
+                except db.CaseCollision as e:
+                    # 다른 법원의 같은 사건번호 — 병합하면 한 행이 두 대의 차가 된다.
+                    # 새 물건을 버리는 것이 아니라 **기존 행을 지키고** 기록만 남긴다.
+                    # id에 법원 코드를 넣는 마이그레이션 전까지의 방어선이다.
+                    collided += 1
+                    _log_anomaly(e.vid, item.case_no, "사건번호 충돌(다른 법원)",
+                                 "skipped",
+                                 f"기존 {e.old_court} 유지 · 신규 {e.new_court} "
+                                 f"({item.maker} {item.model}) 반영 안 함")
         if run_id:
             db.update_run(run_id, scanned=page * 40, processed=stored,
                           message=f"목록 {page}페이지 순회 · 입찰예정 {stored}건")
@@ -837,9 +848,13 @@ def collect_upcoming(within_days: int = 30, run_id: Optional[int] = None,
     if complete and total and len(seen_ids) >= int(total * 0.8):
         sweep = db.mark_disappeared(seen_ids, today.isoformat(), end.isoformat())
         db.set_setting("last_disappear_sweep", f"{_now()} {sweep}")
+    if collided:
+        # 조용히 넘기면 왜 물건이 안 들어오는지 아무도 모른다 — 실행 결과에 드러낸다.
+        db.set_setting("last_case_collisions", f"{_now()} {collided}건")
     if finalize and run_id:
+        _cl = f" · 사건번호 충돌 {collided}건 보류" if collided else ""
         db.update_run(run_id, status="done", finished_at=_now(),
-                      message=f"입찰예정 {stored}건 갱신 (≤{within_days}일)")
+                      message=f"입찰예정 {stored}건 갱신 (≤{within_days}일){_cl}")
     return stored
 
 
@@ -2385,6 +2400,19 @@ def _storage_src_of(folder_key: str, addr: str) -> str:
         except OSError:
             pass
     return ""
+
+
+def _log_anomaly(vid: str, case_no: str, reasons: str, action: str, note: str) -> None:
+    """데이터 무결성 사건을 감사기록에 남긴다. 조용히 넘어가면 같은 일이 반복된다."""
+    conn = db.connect()
+    try:
+        with conn:
+            conn.execute(
+                "INSERT INTO anomaly_log (ts, vehicle_id, case_no, reasons, action, note)"
+                " VALUES (?,?,?,?,?,?)",
+                (db._now(), vid, case_no, reasons, action, note))
+    finally:
+        conn.close()
 
 
 def find_court_mismatch() -> list:

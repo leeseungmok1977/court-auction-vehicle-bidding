@@ -199,14 +199,27 @@ table{width:100%;border-collapse:collapse;font-size:13px}
 @media (max-width:560px){
   .tscroll > table.rowcard{ min-width:0; width:100% }
   table.rowcard thead{ display:none }
+  /* ⚠ 자동배치에 맡기면 합계 행만 어긋난다 — 합계는 `colspan=2`라 값이 다른 트랙에
+     놓여 **가산항과 자릿수가 안 맞았다**(390px에서 약 9.5px 밀림). 세로 덧셈표에서
+     합계가 안 맞으면 눈으로 검산이 안 된다. 칸을 명시해 고정한다. */
   table.rowcard tr{ display:grid; grid-template-columns:1fr auto;
                     gap:2px 10px; padding:9px 0; border-bottom:1px solid var(--line) }
   table.rowcard tbody tr:last-child{ border-bottom:0 }
   table.rowcard td{ display:block; border:0; padding:0; text-align:left }
-  table.rowcard td.k{ font-weight:600 }
-  table.rowcard td.v{ text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums }
-  table.rowcard td.sub{ grid-column:1/-1; font-size:11.5px; color:var(--ink-soft); line-height:1.5 }
-  table.rowcard td.tagcell{ grid-column:1/-1; text-align:left }
+  table.rowcard td.k{ grid-column:1; grid-row:1; font-weight:600 }
+  table.rowcard td.v{ grid-column:2; grid-row:1; text-align:right; white-space:nowrap;
+                      font-variant-numeric:tabular-nums }
+  table.rowcard td.sub{ grid-column:1/-1; grid-row:2; font-size:11.5px;
+                        color:var(--ink-soft); line-height:1.5 }
+  /* 06의 태그는 금액의 신뢰 수준이라 금액 아래(우측)에, 09의 태그는 사용자가 할
+     행동이라 한 줄을 줘도 정당하다 — 성격이 달라 배치를 나눈다. */
+  table.rowcard td.tagcell{ grid-column:1/-1; grid-row:3; text-align:left }
+  table.rowcard.cost td.tagcell{ grid-column:2; grid-row:3; text-align:right }
+  /* 합계 강조를 td 에 걸면 `table.rowcard td{border:0}` 에 밀리고, 배경이 열 간격에
+     흰 틈을 만들어 띠가 끊긴다. tr 에 건다. */
+  table.rowcard tr.row-sum{ border-top:1.5px solid var(--line-strong);
+                            background:#FAFBFD; padding:11px 6px; margin-top:2px }
+  table.rowcard tr.row-sum td{ background:none }
   /* 스크롤이 남는 표는 밀 수 있다는 것을 보이게 — 잘린 것처럼 보이면 조판 사고로 읽힌다 */
   .tscroll:not(:has(> table.rowcard)){
     -webkit-mask-image:linear-gradient(to right,#000 calc(100% - 18px),transparent);
@@ -219,11 +232,21 @@ table{width:100%;border-collapse:collapse;font-size:13px}
 @media print{
   .tscroll{ overflow:visible !important; mask-image:none !important;
             -webkit-mask-image:none !important }
-  .tscroll > table{ min-width:0 !important; width:100% !important; font-size:10.5px }
+  /* 10.5px ≈ 7.9pt 는 서면 표 하한(9pt)보다 작다. A4 12mm 여백이면 본문 703px이라
+     가장 넓은 표(567px)가 12px에서도 들어간다 — 필요 이상으로 줄이지 않는다. */
+  .tscroll > table{ min-width:0 !important; width:100% !important; font-size:12px }
   .scroll-hint{ display:none !important }
   table.rowcard thead{ display:table-header-group }
   table.rowcard tr{ display:table-row }
   table.rowcard td{ display:table-cell }
+  /* ⚠ 크롬 인쇄의 '배경 그래픽'은 **기본 해제**다. 그 상태로 뽑으면 남색 배경이
+     사라져 **흰 글자인 차량명·사건번호가 백지에 인쇄**된다. 의뢰인에게 내는 서면의
+     첫 페이지 헤더가 통째로 비는 셈이다. 배경에 기대지 않고 잉크색으로 뒤집는다. */
+  .masthead{ background:#fff !important; color:var(--ink) !important;
+             border-bottom:2px solid var(--ink) !important }
+  .masthead *{ color:var(--ink) !important }
+  .row-sum, table.rowcard tr.row-sum{ background:transparent !important;
+             border-top:1.5px solid var(--ink) !important }
 }
 thead th{text-align:left;font-size:11px;font-weight:600;color:var(--ink-soft);padding:0 10px 9px;border-bottom:1.5px solid var(--line-strong);white-space:nowrap}
 tbody td{padding:10px;border-bottom:1px solid var(--line);vertical-align:top}
@@ -634,6 +657,7 @@ document.addEventListener('click', function(e){
           {% if comp_ratio_med %}<tr class="row-hl"><td colspan="5"><b>표본 {{ comps_won|length }}건 · 낙찰가/시세 중앙값</b></td><td class="r num" style="font-weight:700;color:var(--cobalt)">{{ (comp_ratio_med*100)|round|int }}%</td><td></td></tr>{% endif %}
         </tbody>
       </table></div>
+      <p class="scroll-hint">← 좌우로 밀어 실낙찰가·낙찰/시세·매각일까지 보기</p>
       <p class="note">법원경매 <b>실제 낙찰 결과</b>(감정·시세와 별개의 실측치)입니다. 같은 차종이 소매 시세 대비 실제 몇 %에 낙찰됐는지 보여주며, 예상낙찰가 산정의 핵심 근거입니다.</p>
       {% endif %}
 
@@ -682,7 +706,7 @@ document.addEventListener('click', function(e){
     <div class="sec-head" id="sec06"><span class="sec-no">06</span><h2>총 취득원가 (All-in Cost)</h2><span class="sec-note">예상낙찰가 {{ exp|won }}원 기준</span></div>
     <div class="card">
       {% set a = report.allin_ref %}
-      <div class="tscroll"><table class="rowcard">
+      <div class="tscroll"><table class="rowcard cost">
         <thead><tr><th>비용 항목</th><th>산정 근거</th><th class="r">금액</th><th class="c">성격</th></tr></thead>
         <tbody>
           <tr><td class="k">낙찰가</td><td class="sub">예상낙찰가(중심 추정)</td><td class="r num v">{{ a.bid|won }}원</td><td class="c tagcell"><span class="tag estimated">추정</span></td></tr>
@@ -716,6 +740,7 @@ document.addEventListener('click', function(e){
         {% endfor %}
         </tbody>
       </table></div>
+      <p class="scroll-hint">← 좌우로 밀어 총 취득원가·예상 마진·판정까지 보기</p>
       <p class="note">* 부대비(이전·탁송) + 정비비 + 리스크 충당금. 예상 마진 = 재판매가 − 총 취득원가. 목표마진 {{ report.target_margin|won }}원 이상이면 '우량/적정'. 재판매가는 시세중앙값(보수적)이며 실제 매도가에 따라 달라집니다.</p>
     </div>
   </section>
@@ -737,6 +762,7 @@ document.addEventListener('click', function(e){
         {% endfor %}
         </tbody>
       </table></div>
+      <p class="scroll-hint">← 좌우로 밀어 재판매가 상단 구간까지 보기</p>
       <p class="note">단위: 만원(마진). 현장에서 정비비가 예상보다 크거나 매도가가 낮아질수록 마진이 빠르게 줄어듭니다. 음수(적자) 구간에 진입하면 STOP RULE에 준해 입찰을 재검토하십시오.</p>
     </div>
   </section>

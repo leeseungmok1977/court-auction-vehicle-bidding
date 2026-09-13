@@ -345,10 +345,34 @@ _LISTING_KEEP = {
 }
 
 
+class CaseCollision(RuntimeError):
+    """같은 id에 **다른 법원** 물건을 쓰려 했다. 병합하면 남의 차 정보가 섞인다."""
+
+    def __init__(self, vid: str, old_court: str, new_court: str):
+        self.vid, self.old_court, self.new_court = vid, old_court, new_court
+        super().__init__(f"{vid}: 기존 {old_court} vs 신규 {new_court}")
+
+
 def upsert_listing(rec: dict) -> None:
     """목록 갱신용 upsert. 신규는 status='미분석', 기존은 목록 필드(가격·기일 등)만 갱신하고
-    분석 결과·사용자 선택·상태는 보존한다."""
+    분석 결과·사용자 선택·상태는 보존한다.
+
+    ⚠ **다른 법원의 같은 사건번호는 병합하지 않는다.** id가 `사건번호_물건번호` 뿐이라
+      법원이 다르면 충돌하는데, 그대로 덮으면 목록(가격·기일)은 A법원 것이 되고
+      상세(사진·감정서·시세)는 B법원 것이 되어 **한 행이 두 대의 차가 된다.**
+      실측 2026-09-13: 그렇게 섞인 행이 1,301건 중 29건이었고, 18인 페르소나 패널이
+      '벤츠 제목에 그랜저 사진'으로 발견했다. 조용히 병합하는 대신 예외로 올려
+      호출부가 기록·보고하게 한다(무시하고 넘어가면 같은 일이 반복된다).
+    """
     rec = _encode(rec)
+    vid, new_court = rec.get("id"), str(rec.get("court_code") or "").strip()
+    if vid and new_court:
+        conn = connect()
+        row = conn.execute("SELECT court_code FROM vehicles WHERE id=?", (vid,)).fetchone()
+        conn.close()
+        old_court = str((row["court_code"] if row else "") or "").strip()
+        if old_court and old_court != new_court:
+            raise CaseCollision(vid, old_court, new_court)
     cols = list(rec.keys())
     placeholders = ",".join("?" for _ in cols)
     updates = ",".join(f"{c}=excluded.{c}" for c in cols if c not in _LISTING_KEEP)

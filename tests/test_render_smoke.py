@@ -196,3 +196,31 @@ def test_no_multichar_hangul_inside_monospace():
     assert not offenders, (
         "mono 안에 한글 단어가 있다 (라벨은 sans, 숫자만 mono로 분리하라):\n  "
         + "\n  ".join(offenders))
+
+
+def test_report_scroll_hint_is_actually_in_the_markup():
+    """CSS에만 있고 마크업에 없는 클래스 = 죽은 규칙.
+
+    실측: 표 가로 스크롤 안내(.scroll-hint)를 CSS에 3번 정의해놓고 **마크업에는
+    하나도 넣지 않았다.** `.tscroll + .scroll-hint{display:block}` 이 영영 발동하지
+    않아, 사용자에게는 '밀 수 있다'는 안내가 끝내 안 보였다. 디자인 검수가 잡았다.
+    """
+    src = (_TPL / "report.html").read_text(encoding="utf-8")
+    style = src.split("</style>")[0]
+    body = src.split("</style>", 1)[1]
+    assert ".scroll-hint" in style, "CSS 규칙이 사라졌다"
+    assert 'class="scroll-hint"' in body, "CSS만 있고 쓰는 곳이 없다(죽은 규칙)"
+    # 가려진 열 이름을 적어야 '무엇이 더 있는지'를 알 수 있다
+    assert body.count('class="scroll-hint"') >= 3, "넘치는 표 3개에 모두 붙어야 한다"
+
+
+def test_report_print_does_not_rely_on_background_graphics():
+    """크롬 인쇄의 '배경 그래픽'은 기본 해제다.
+
+    마스트헤드가 남색 배경 + 흰 글자라, 배경을 끄고 뽑으면 **차량명·사건번호가
+    백지에 흰 글자로 인쇄**된다. 의뢰인에게 내는 서면의 첫 페이지가 통째로 빈다.
+    """
+    src = (_TPL / "report.html").read_text(encoding="utf-8")
+    pr = src[src.rindex("@media print{"):]
+    assert ".masthead" in pr, "인쇄 시 마스트헤드 처리가 없다"
+    assert "background:#fff" in pr.replace(" ", ""), "배경에 기대지 않는 처리가 없다"

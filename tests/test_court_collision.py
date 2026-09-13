@@ -89,3 +89,47 @@ def test_quarantine_writes_an_audit_row(two):
     conn.close()
     assert len(rows) == 1 and rows[0]["action"] == "quarantined"
     assert "법원코드 불일치" in rows[0]["reasons"]
+
+
+# ── 쓰기 시점 차단 (재발 방지) ───────────────────────────────────
+def _listing(vid, court_code, maker, model):
+    return {"id": vid, "folder_key": vid, "case_no": vid.rsplit("_", 1)[0], "item_no": "1",
+            "court": "법원", "court_code": court_code, "maker": maker, "model": model,
+            "year": 2020, "min_sale_price": 1_000_000, "sale_date": "2999-01-01",
+            "collected_at": "2026-09-13 00:00:00"}
+
+
+def test_listing_upsert_refuses_to_merge_a_different_court(tmp_path, monkeypatch):
+    """같은 사건번호라도 법원이 다르면 병합하지 않는다.
+
+    병합하면 목록(가격·기일)은 A법원, 상세(사진·감정서·시세)는 B법원이 되어
+    **한 행이 두 대의 차**가 된다. 조용히 덮는 대신 예외로 올려 기록하게 한다.
+    """
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "u.db")
+    db.init_db()
+    db.upsert_listing(_listing("2026타경7_1", "B000251", "벤츠", "S350"))
+
+    with pytest.raises(db.CaseCollision) as e:
+        db.upsert_listing(_listing("2026타경7_1", "B250826", "현대", "그랜저"))
+    assert e.value.old_court == "B000251" and e.value.new_court == "B250826"
+
+    v = db.get_vehicle("2026타경7_1")
+    assert v["court_code"] == "B000251" and v["model"] == "S350", "기존 행이 덮였다"
+
+
+def test_same_court_still_updates_normally(tmp_path, monkeypatch):
+    """같은 법원이면 평소대로 갱신돼야 한다 — 가드가 정상 수집을 막으면 안 된다."""
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "u2.db")
+    db.init_db()
+    db.upsert_listing(_listing("2026타경8_1", "B000251", "현대", "그랜저"))
+    rec = _listing("2026타경8_1", "B000251", "현대", "그랜저")
+    rec["min_sale_price"] = 800_000
+    db.upsert_listing(rec)
+    assert db.get_vehicle("2026타경8_1")["min_sale_price"] == 800_000
+
+
+def test_new_row_without_existing_court_is_allowed(tmp_path, monkeypatch):
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "u3.db")
+    db.init_db()
+    db.upsert_listing(_listing("2026타경9_1", "B000251", "현대", "그랜저"))
+    assert db.get_vehicle("2026타경9_1") is not None
