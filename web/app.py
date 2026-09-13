@@ -673,6 +673,9 @@ def vehicle_detail(request: Request, vid: str, cc: str = "", an: str = ""):
     return templates.TemplateResponse("detail.html", {
         "request": request, "v": service.public_view(v, _adm), "photos": photos, "appraisal": appraisal,
         "map_idx": map_idx, "map_n": map_n,
+        # 시세 근거(표본 수·수집 시점·집계 방식) — 계약상 금지는 출처명·매물 링크뿐이므로
+        # 공개한다. 원본 v 에서 뽑아 별도로 넘긴다: public_view 의 차단은 그대로 둔다.
+        "prov": service.market_provenance(v),
         "asum": asum, "cond": cond, "today": _date.today().isoformat(),
         "can_analyze": can_an, "running": service.is_running(),
         "wait": wait, "back_url": back_url, "expected": expected,
@@ -746,6 +749,7 @@ def vehicle_report(request: Request, vid: str):
     _report = service.report_data(v, config, bt)          # 원본 v로 계산
     return templates.TemplateResponse("report.html", {
         "request": request, "v": service.public_view(v, _adm), "expected": expected, "appraisal": appraisal,
+        "prov": service.market_provenance(v),          # 시세 근거(§02) — 출처명·매물 링크는 미포함
         "report": _report, "backtest": bt, "dist": dist if _adm else None,
         "photos": photos, "map_idx": map_idx, "map_n": map_n,
         "comps_won": comps_won, "asum": asum, "verdict": verdict,

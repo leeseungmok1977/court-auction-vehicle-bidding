@@ -3090,15 +3090,105 @@ def effective_median(v: dict) -> Optional[int]:
     극단 괴리(오매칭 의심)면 엔카만 사용 — 노이즈로 산정을 흔들지 않기 위함(신뢰 최우선).
     """
     enc = v.get("median_price")
-    if not enc:
+    if not _blend_ok(v):
         return enc
-    kc, kn = v.get("kcar_median"), (v.get("kcar_sample") or 0)
-    if not kc or kn < 2:
-        return enc
-    if not (0.5 <= kc / enc <= 2.0):     # 2배 이상 벌어지면 오매칭 의심 → 엔카만
-        return enc
-    w = min(0.35, kn / (kn + 6))          # 케이카 표본 가중(상한 35%)
-    return int(round(((1 - w) * enc + w * kc) / 10000) * 10000)
+    kn = v.get("kcar_sample") or 0
+    w = min(0.35, kn / (kn + 6))          # 2차 소스 표본 가중(상한 35%)
+    return int(round(((1 - w) * enc + w * v["kcar_median"]) / 10000) * 10000)
+
+
+def _blend_ok(v: dict) -> bool:
+    """2차 소스를 실제로 블렌드에 반영했는가.
+
+    시세 근거를 화면에 적으려면 "표본 몇 건"이 **실제로 그 숫자를 만든 표본**이어야 한다.
+    조건이 effective_median 과 갈리면 화면이 쓰지도 않은 표본을 근거로 세게 된다.
+    """
+    enc, kc, kn = v.get("median_price"), v.get("kcar_median"), (v.get("kcar_sample") or 0)
+    if not enc or not kc or kn < 2:
+        return False
+    return 0.5 <= kc / enc <= 2.0        # 2배 이상 벌어지면 오매칭 의심 → 기준 소스만
+
+
+_OUTLIER_RE = re.compile(r"·?이상치(\d+)건제외")
+#  '집계 방식'에 섞여 있던 것들 — 방식이 아니라 **결론**이라 라벨과 맞지 않았다.
+#  · 표본N건(부족): 바로 위 '표본 수' 행과 글자 그대로 중복(49건)
+#  · 감정가 대비 …: 유의사항이지 집계 방식이 아니다(79건)
+_DUP_SAMPLE_RE = re.compile(r"·?표본\d+건\(부족\)")
+_CAUTION_RE = re.compile(r"·?(감정가 대비[^·]*(?:·[^·]*확인)?)")
+#  근거 문자열에 출처명이 섞여 나가는 것을 **데이터 계층에서** 막는다.
+#  match_label 은 지금 1,320건 전부 깨끗하지만, 수집기가 라벨 문구를 바꾸면
+#  조용히 새어 나갈 수 있는 자리다(계약 위반이 조용히 일어나는 건 최악이다).
+_SOURCE_TOKENS = ("엔카", "SK엔카", "케이카", "보배드림", "encar", "kcar", "bobae")
+
+
+def _scrub_source(s: Optional[str]) -> str:
+    """공개 근거 문자열에서 출처명을 제거한다. 남으면 통째로 버린다."""
+    t = (s or "").strip()
+    if not t:
+        return ""
+    low = t.lower()
+    return "" if any(tok.lower() in low for tok in _SOURCE_TOKENS) else t
+
+
+def market_provenance(v: Optional[dict]) -> Optional[dict]:
+    """공개해도 되는 **시세 근거** — 표본 수 · 수집 시점 · 집계 방식 · 편차.
+
+    권리자 계약상 금지된 것은 **출처명과 매물 링크뿐**이다(2026-09-13 사용자 확인).
+    그전까지는 표본 수까지 통째로 가려서, 18인 패널의 F 항목("시세를 어디서 어떻게
+    구했는지 알 수 없다")이 5→15로 악화됐다 — 근거를 못 보면 숫자를 못 믿는다.
+
+    ⚠ 설계 원칙: 이 함수는 `public_view`의 차단(PRIVATE_FIELDS)을 **느슨하게 하지
+    않는다.** 원본 v에서 호출해 별도 인자로 넘기는 별도 통로이고, 개별 매물(comps)과
+    플랫폼명은 구조적으로 담기지 않는다(담을 필드가 없고, 문자열은 _scrub_source 통과).
+    """
+    if not v or not v.get("median_price"):
+        return None
+    n = v.get("sample_count") or 0
+    label = _scrub_source(v.get("match_label"))
+    m = _OUTLIER_RE.search(label)
+    outliers = int(m.group(1)) if m else 0
+    match = _OUTLIER_RE.sub("", label)
+    cm = _CAUTION_RE.search(match)
+    caution = cm.group(1).strip(" ·") if cm else ""
+    match = _DUP_SAMPLE_RE.sub("", _CAUTION_RE.sub("", match)).strip(" ·")
+    cv = v.get("market_cv")
+    borrowed = (v.get("market_platform") == REUSE_PLATFORM)
+    as_of = str(v.get("market_ref_date") or v.get("analyzed_at") or "")[:10]
+    days = None
+    if len(as_of) == 10:
+        try:
+            days = (date.today() - date.fromisoformat(as_of)).days
+        except ValueError:
+            as_of = ""
+    cv_pct = int(round(cv * 100)) if cv is not None else None
+    stale = bool(days is not None and days >= 21)
+    # 항목별 약점 — 화면은 **약한 항목의 숫자에만** 경고색을 칠한다.
+    # 처음엔 설명 문장 전체를 앰버로 칠했더니, 표본 47건·편차 ±30%인 물건은
+    # 편차 문장이 회색이라 경고가 **하나도 없는 카드**가 됐다(디자인 검수 지적 2).
+    # 앵커가 ±30% 흔들린다는 건 입찰가 전체가 그만큼 흔들린다는 뜻이다.
+    weak_n = bool(n and n < 5)
+    weak_cv = bool(cv_pct is not None and cv_pct > 20)
+    grade = ("weak" if (weak_n or stale or weak_cv or borrowed)
+             else "mid" if (n < 10 or (days is not None and days >= 14)
+                            or (cv_pct is not None and cv_pct > 10))
+             else "good")
+    return {
+        "n": n,                                  # 중앙값 산출에 실제 쓴 표본(이상치 제외 후)
+        "outliers": outliers,                    # IQR로 버린 건수
+        "n_raw": n + outliers,                   # 처음 모은 건수
+        "cv_pct": cv_pct,
+        "match": match,                          # 매칭 조건(연식±·주행±·연료·세대)
+        "caution": caution,                      # 유의사항(집계 방식이 아니라 결론)
+        "as_of": as_of,
+        "days": days,
+        "stale": stale,
+        "borrowed": borrowed,                    # 직접 수집이 아니라 동급 물건 시세 참조
+        "cross_n": (v.get("kcar_sample") or 0) if _blend_ok(v) else 0,
+        "method": "이상치(IQR 1.5) 제외 후 중앙값",
+        "weak_n": weak_n, "weak_cv": weak_cv,
+        "grade": grade,
+        "grade_ko": {"weak": "근거 약함", "mid": "근거 보통", "good": "근거 충분"}[grade],
+    }
 
 
 SOFT_CAP_RATIO = 1.10     # 예상낙찰가 상한 = 소매 시세 × 이 배율

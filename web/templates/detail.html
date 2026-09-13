@@ -418,6 +418,47 @@
 </div>
 {% endif %}
 
+{# 시세 근거 — 18인 패널 F: "이 시세를 어디서 어떻게 구했는지 알 수 없다".
+   계약상 공개 금지는 **출처명과 매물 링크뿐**이므로 표본 수·수집 시점·집계 방식·편차는 밝힌다.
+   관리자에게는 바로 아래 시세 카드에 원자료가 그대로 있으므로 여기서는 중복을 피한다.
+
+   색 규칙(디자인 검수): 경고색은 **헤더 칩 1개 + 약한 항목의 숫자**에만. 설명 문장은 전부
+   회색이다. 처음엔 설명 문장을 통째로 앰버로 칠했더니 (a) 색 면적이 커서 정작 판단 기준인
+   숫자가 검정이었고 (b) 표본 47건·편차 ±30%인 물건은 편차 문장이 회색이라 **경고가 하나도
+   없는 카드**가 됐다 — 앵커가 ±30% 흔들린다는 뜻인데 깨끗해 보였다. #}
+{% if prov and not is_admin(request) %}
+<div class="bg-surface border border-line rounded-lg p-5">
+  <div class="flex items-center gap-2 mb-3 flex-wrap">
+    <span class="material-symbols-outlined text-primary">balance</span>
+    <h3 class="text-lg font-semibold whitespace-nowrap">이 시세의 근거</h3>
+    <span class="text-xs font-semibold px-2.5 py-1 rounded-full border {{
+      'bg-amber-50 text-amber-700 border-amber-200' if prov.grade == 'weak'
+      else 'bg-surface text-mut border-line' }}">{{ prov.grade_ko }}</span>
+  </div>
+  <dl class="grid grid-cols-[max-content_1fr] sm:grid-cols-[130px_1fr] gap-x-3 gap-y-2.5 text-sm">
+    <dt class="text-mut">표본 수</dt>
+    <dd>{% if prov.n %}동급 차량 <b class="font-mono tnum {{ 'text-amber-700' if prov.weak_n }}">{{ prov.n }}건</b>{% if prov.outliers %} <span class="text-mut text-xs">({{ prov.n_raw }}건 중 극단값 {{ prov.outliers }}건 제외)</span>{% endif %}{% if prov.cross_n %} <span class="text-mut text-xs">· 2차 소스 {{ prov.cross_n }}건 반영</span>{% endif %}{% if prov.weak_n %}<span class="block text-mut text-xs">표본이 적어 중앙값이 소수 매물에 좌우됩니다 — 현장·다른 매물로 대조하세요.</span>{% endif %}{% else %}<span class="text-mut">기록 없음</span>{% endif %}</dd>
+
+    <dt class="text-mut">수집 시점</dt>
+    <dd>{% if prov.as_of %}<b class="font-mono tnum {{ 'text-amber-700' if prov.stale }}">{{ prov.as_of }}</b>{% if prov.days is not none %} <span class="text-mut text-xs">({{ prov.days }}일 전)</span>{% endif %}{% if prov.stale %}<span class="block text-mut text-xs">3주 넘게 갱신되지 않았습니다 — 그사이 시세가 움직였을 수 있습니다.</span>{% endif %}{% else %}<span class="text-mut">기록 없음</span>{% endif %}</dd>
+
+    <dt class="text-mut">집계 방식</dt>
+    <dd class="text-xs">{{ prov.method }}{% if prov.match %}<span class="block text-mut">매칭 조건 · {{ prov.match }}</span>{% endif %}{% if prov.borrowed %}<span class="block text-mut">직접 수집분이 아니라 같은 차종 다른 물건의 시세를 참조했습니다.</span>{% endif %}</dd>
+
+    {% if prov.cv_pct is not none %}
+    <dt class="text-mut">표본 편차</dt>
+    <dd><b class="font-mono tnum {{ 'text-amber-700' if prov.weak_cv }}">±{{ prov.cv_pct }}%</b><span class="block text-mut text-xs">{% if prov.cv_pct <= 10 %}동급끼리 값이 고르게 모여 있습니다.{% elif prov.cv_pct <= 20 %}보통 범위입니다.{% else %}흩어짐이 커서 트림·사고 이력에 따라 실제가는 크게 달라질 수 있습니다.{% endif %}</span></dd>
+    {% endif %}
+
+    {% if prov.caution %}
+    <dt class="text-mut">유의</dt>
+    <dd class="text-xs text-mut">{{ prov.caution }}</dd>
+    {% endif %}
+  </dl>
+  <p class="text-[11px] text-mut mt-3">※ 개별 매물의 <b class="text-txt">출처명과 링크는 제공 조건상 공개하지 않습니다.</b> 그 외 근거는 위와 같이 모두 밝힙니다. 게시가 기준이라 실거래가와 차이가 있을 수 있습니다.</p>
+</div>
+{% endif %}
+
 <!-- 낙찰 전 점검 포인트 (법차식 실용 체크리스트) -->
 <div class="bg-surface border border-line rounded-lg p-5">
   <div class="flex items-center gap-2 mb-3">

@@ -574,7 +574,7 @@ document.addEventListener('click', function(e){
         <div class="cscore">
           <div class="n {{ 'mid' if conf<70 else '' }} num">{{ conf }}<small>/100</small></div>
           <div class="l">{{ v.market_confidence_label or '—' }}</div>
-          <div class="s">{% if is_admin(request) %}동급 표본 {{ v.sample_count or 0 }}건{% if v.market_cv is not none %} · 편차 ±{{ (v.market_cv*100)|round|int }}%{% endif %}<br>{% endif %}현장확인 시 신뢰도 상향</div>
+          <div class="s">현장확인 시 신뢰도 상향</div>
         </div>
         <div class="cbars">
           {% for c in report.cats %}
@@ -592,6 +592,34 @@ document.addEventListener('click', function(e){
         <span><span class="tag estimated">추정</span> 시나리오·보정치(현장확인 전)</span>
       </div>
       <p class="note">데이터가 부족한 항목은 낙관적으로 추정하지 않고 신뢰도를 낮추며, 미확인분은 취득원가의 리스크 충당금(현금)으로 보수 반영합니다.</p>
+
+      {# 시세 근거 — 18인 패널 F: "이 시세를 어디서 어떻게 구했는지 알 수 없다"가 재평가에서
+         5→15로 악화된 항목이다. 계약상 공개 금지는 **출처명과 매물 링크뿐**이므로
+         표본 수·수집 시점·집계 방식·편차는 밝힌다. 숫자만 있고 근거가 없으면 못 믿는다.
+
+         태그 색(디자인 검수): **나쁜 상태만 앰버, 나머지는 무채색.** 처음엔 좋은 상태에
+         초록(confirmed)을 달았는데, 같은 §02 안에 '확정=초록' 범례가 있어 한 화면에서
+         초록이 두 뜻으로 쓰였다. 또 4행 중 3행이 초록이면 유일하게 위험한 행이 묻힌다. #}
+      {% if prov %}
+      <div class="v-label" style="margin-top:20px">소매 시세 근거 <span style="font-weight:400;color:var(--ink-faint)">— 이 시세가 어떻게 만들어졌는가</span></div>
+      <div class="tscroll"><table class="rowcard prov">
+        <tbody>
+          <tr><td class="k">표본 수</td><td class="sub">{% if prov.n %}중앙값 산출에 실제 사용한 동급 차량 <b>{{ prov.n }}건</b>{% if prov.outliers %} — 처음 모은 {{ prov.n_raw }}건에서 극단값 {{ prov.outliers }}건을 버린 뒤{% endif %}{% if prov.cross_n %} · 2차 소스 {{ prov.cross_n }}건을 표본 가중으로 반영{% endif %}{% else %}표본 수 미기록{% endif %}</td>
+              <td class="c tagcell"><span class="tag {{ 'estimated' if prov.weak_n else 'basis' }}">{{ '부족' if prov.weak_n else '보통' if prov.n < 10 else '충분' }}</span></td></tr>
+          <tr><td class="k">수집 시점</td><td class="sub">{% if prov.as_of %}<b class="num">{{ prov.as_of }}</b>{% if prov.days is not none %} · {{ prov.days }}일 전{% endif %} 기준{% if prov.stale %} — <b>3주 넘게 갱신되지 않았습니다.</b> 그사이 시세가 움직였을 수 있습니다{% endif %}{% else %}기록 없음{% endif %}</td>
+              <td class="c tagcell"><span class="tag {{ 'estimated' if prov.stale else 'basis' }}">{{ '오래됨' if prov.stale else '최근' }}</span></td></tr>
+          <tr><td class="k">집계 방식</td><td class="sub">{{ prov.method }}{% if prov.match %} · 매칭 조건 {{ prov.match }}{% endif %}{% if prov.borrowed %} · <b>직접 수집분이 아니라 같은 차종 다른 물건의 시세를 참조</b>했습니다{% endif %}</td>
+              <td class="c tagcell"><span class="tag {{ 'estimated' if prov.borrowed else 'basis' }}">{{ '참조' if prov.borrowed else '실측' }}</span></td></tr>
+          <tr><td class="k">표본 편차</td><td class="sub">{% if prov.cv_pct is not none %}동급 차량끼리 가격이 <b>±{{ prov.cv_pct }}%</b> 흩어져 있습니다 — {% if prov.cv_pct <= 10 %}값이 고르게 모여 중앙값을 믿을 만합니다{% elif prov.cv_pct <= 20 %}보통 범위입니다{% else %}흩어짐이 커서 트림·사고 이력에 따라 실제가는 크게 달라질 수 있습니다{% endif %}{% else %}표본이 적어 산출하지 않았습니다{% endif %}</td>
+              <td class="c tagcell"><span class="tag {{ 'estimated' if (prov.cv_pct is none or prov.weak_cv) else 'basis' }}">{{ '미산출' if prov.cv_pct is none else '넓음' if prov.weak_cv else '보통' if prov.cv_pct > 10 else '고름' }}</span></td></tr>
+          {% if prov.caution %}
+          <tr><td class="k">유의</td><td class="sub">{{ prov.caution }}</td>
+              <td class="c tagcell"><span class="tag estimated">확인 필요</span></td></tr>
+          {% endif %}
+        </tbody>
+      </table></div>
+      <p class="note">개별 매물의 <b>출처명과 링크는 제공 조건상 공개하지 않습니다.</b> 그 외 표본 수·수집 시점·집계 방식은 위와 같이 모두 밝힙니다. 게시가 기준이라 실거래가와 차이가 있을 수 있어, 예상낙찰가는 실측 낙찰률로 별도 보정합니다(10).</p>
+      {% endif %}
       {% if backtest and (backtest.mae_pct or backtest.history_n) %}
       <div class="v-label" style="margin-top:20px">모델 검증 실적 <span style="font-weight:400;color:var(--ink-faint)">— 예측이 실제 낙찰을 얼마나 맞혔는가</span></div>
       <div class="vstats">
