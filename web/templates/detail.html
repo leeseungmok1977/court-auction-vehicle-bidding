@@ -239,7 +239,9 @@
     <p class="text-sm font-medium leading-snug {{ 'text-rose-50' if _vt=='stop' else 'text-white/90' }}" style="text-wrap:pretty">{{ verdict.text }}</p>
   </div>
   {% endif %}
-  <div class="relative flex flex-wrap items-end gap-x-8 gap-y-4">
+  {# nc-heronums: 큰글씨·OS 확대 320px 에서 8~11자리 금액 뒤의 단위 '원'이 다음 줄로 떨어졌다(실측 37.5px×10자 = 안폭 230px 초과).
+     폭이 아니라 **rem 대비 폭**으로 글자 단계를 낮춘다 — vw 상한을 쓰면 큰글씨에서 숫자만 확대에서 빠진다. #}
+  <div class="nc-heronums relative flex flex-wrap items-end gap-x-8 gap-y-4">
     {# min-w-0/max-w-full: 갈래 배지가 두 줄로 접힐 때 이 칸이 히어로 안폭보다 9px 넓어졌다(320px 큰글씨 실측) #}
     <div class="min-w-0 max-w-full">
       <div class="text-xs text-white/55 mb-1">판정</div>
@@ -252,12 +254,12 @@
     </div>
     <div>
       <div class="text-xs text-amber-300 mb-0.5" style="word-break:keep-all"><span class="whitespace-nowrap">AI 예상낙찰가</span> <span class="text-white/50 font-normal">실입찰{% if expected.mae %} ±{{ expected.mae|round|int }}%{% elif v.fail_count %} · 유찰 {{ v.fail_count }}회 반영{% endif %}</span></div>
-      <div class="font-mono text-3xl font-bold tnum text-white">{{ expected.price|won }}<span class="text-base font-normal text-white/60"> 원</span></div>
+      <div class="nc-heronum-lg font-mono text-3xl font-bold tnum text-white">{{ expected.price|won }}<span class="text-base font-normal text-white/60"> 원</span></div>
     </div>
     <div>
       <div class="text-xs text-white/55 mb-0.5">현 최저매각가</div>
-      <div class="font-mono text-xl font-semibold tnum text-white">{{ v.min_sale_price|won }} 원</div>
-      {% if v.appraisal_value and v.min_sale_price %}<div class="text-[11px] text-white/45 tnum mt-0.5">감정가 {{ (v.appraisal_value/10000)|round|int }}만 · 대비 {{ (100*v.min_sale_price/v.appraisal_value)|round|int }}%</div>{% endif %}
+      <div class="nc-heronum-sm font-mono text-xl font-semibold tnum text-white">{{ v.min_sale_price|won }} 원</div>
+      {% if v.appraisal_value and v.min_sale_price %}<div class="text-[11px] text-white/45 tnum mt-0.5">감정가 {{ v.appraisal_value|man }} · 대비 {{ (100*v.min_sale_price/v.appraisal_value)|round|int }}%</div>{% endif %}
     </div>
     <div class="ml-auto text-right">
       <div class="text-xs text-white/55 mb-1">시세 신뢰도</div>
@@ -267,27 +269,42 @@
   </div>
   {% if v.min_sale_price and v.median_price %}
   {% set mkt = eff_median or v.median_price %}   {# 소매 차익·코멘트와 동일한 시세(엔카+케이카 블렌드) #}
-  {% set gmax = [mkt, v.min_sale_price, expected.hi or expected.price]|max %}
-  {% set p_min = (v.min_sale_price / gmax * 100)|round(1) %}
-  {% set p_exp = (expected.price / gmax * 100)|round(1) %}
-  {% set p_med = (mkt / gmax * 100)|round(1) %}
-  {# nc-gaugerow-host: 칸이 좁으면(큰글씨 320·360px) 아래 3항의 가운데 판정이 낱말마다 접혀 4줄이 됐다(실측) → 컨테이너 쿼리로 판정을 둘째 줄 전체 폭에 #}
-  <div class="nc-gaugerow-host relative mt-4">
-    <div class="relative h-2 rounded-full bg-white/10">
-      <div class="absolute top-0 left-0 h-2 rounded-full bg-white/15" style="width:{{ p_med }}%"></div>
-      <div class="absolute top-0 h-2 rounded-full {{ {'ok':'bg-emerald-400','caution':'bg-amber-400','stop':'bg-rose-400','wait':'bg-white/40'}[bidst.tone if bidst else 'wait'] }}" style="left:{{ [p_min,p_exp]|min }}%; width:{{ (p_exp-p_min)|abs|round(1) }}%"></div>
-      <div class="absolute -top-1 w-0.5 h-4 bg-white" style="left:{{ p_min }}%"></div>
-      <div class="absolute -top-1 w-1 h-4 rounded bg-amber-300" style="left:calc({{ p_exp }}% - 2px)"></div>
+  {# 축은 **세 값의 최소~최대**다. 예전엔 0원~최대여서 최저매각가가 73% 지점에 그려지는데 라벨은 막대
+     왼쪽 끝에 있었고, 그래서 81% 의 예상 마커가 실제보다 훨씬 높은 값으로 읽혔다(2026-09-14 디자인 검수).
+     세 값의 대소 순서는 물건마다 다르다(로컬 220대 중 최저>시세 76 · 예상>시세 105) — 이름을 양 끝에
+     고정할 수 없으므로 막대 아래에 **값 오름차순 범례**로 두고, 색 점으로 막대의 표식과 잇는다. #}
+  {% set _gv = [v.min_sale_price, expected.price, mkt] %}
+  {% set glo = _gv|min %}{% set ghi = _gv|max %}
+  {% if ghi > glo %}
+  {% set _sp = ghi - glo %}
+  {% set p_min = ((v.min_sale_price - glo) / _sp * 100)|round(1) %}
+  {% set p_exp = ((expected.price - glo) / _sp * 100)|round(1) %}
+  {% set p_med = ((mkt - glo) / _sp * 100)|round(1) %}
+  <div class="relative mt-4">
+    <div class="relative h-2 rounded-full bg-white/10" title="최저매각가 {{ v.min_sale_price|won }}원 · 예상낙찰가 {{ expected.price|won }}원 · 시세 {{ mkt|won }}원">
+      {# 최저↔시세 = 값이 움직일 수 있는 폭, 그 위에 최저→예상 구간을 판정 색으로(60% — 마커가 구간 끝 캡으로
+         보이지 않게 채도를 낮춘다) #}
+      <div class="absolute top-0 h-2 rounded-full bg-white/15" style="left:{{ [p_min,p_med]|min }}%; width:{{ (p_med-p_min)|abs|round(1) }}%"></div>
+      <div class="absolute top-0 h-2 rounded-full {{ {'ok':'bg-emerald-400/60','caution':'bg-amber-400/60','stop':'bg-rose-400/60','wait':'bg-white/30'}[bidst.tone if bidst else 'wait'] }}" style="left:{{ [p_min,p_exp]|min }}%; width:{{ (p_exp-p_min)|abs|round(1) }}%"></div>
+      {# 표식은 **모양+색 이중 부호화** — 색만으로 나누면 판정색 구간(로즈·앰버) 위에 얹힌 시세 틱이 사라진다(검수).
+         최저=꽉 찬 흰 틱 · 시세=속 빈 틱 · 예상=앰버 마커, 셋 다 배경색 테두리로 어떤 구간색 위에서도 떠 보이게.
+         끝점(0·100%)에 놓인 표식이 반쯤 잘리지 않게 2~98% 로 좁혀 그린다. #}
+      <div class="absolute -top-1 w-1 h-4 rounded-sm bg-[#0b1730] shadow-[inset_0_0_0_1.5px_rgba(255,255,255,.85)] -translate-x-1/2" style="left:{{ [[p_med,2]|max,98]|min }}%"></div>
+      <div class="absolute -top-1 w-1 h-4 rounded-sm bg-white shadow-[0_0_0_1px_rgba(11,23,48,.85)] -translate-x-1/2" style="left:{{ [[p_min,2]|max,98]|min }}%"></div>
+      <div class="absolute -top-1.5 w-1.5 h-5 rounded bg-amber-300 shadow-[0_0_0_2px_rgba(11,23,48,.9)] -translate-x-1/2" style="left:{{ [[p_exp,2]|max,98]|min }}%"></div>
     </div>
-    <div class="nc-gaugerow flex justify-between items-baseline text-[11px] mt-2 gap-2" style="word-break:keep-all">
-      <span class="text-white/55 whitespace-nowrap">최저 {{ (v.min_sale_price/10000)|round|int }}만</span>
-      {% set _tone = (bidst.tone if bidst else 'wait') %}
-      {# 주황 '이득 불확실 — …'은 이유만 — 판정은 바로 위 칩이 이미 말했고, 한 줄로 끝나야 '필요'가 고아로 떨어지지 않는다(검수) #}
-      {% set _gl = bidst.label if bidst else '추가 유찰 대기' %}{% if bidst and bidst.weak %}{% set _gl = _gl.split(' — ', 1)[-1] %}{% endif %}
-      <span class="nc-gauge-judge {{ {'ok':'text-emerald-300','caution':'text-amber-300','stop':'text-rose-300','wait':'text-white/70'}[_tone] }} font-semibold text-center leading-tight">{{ {'ok':'✓ ','caution':'⚠ ','stop':'✕ ','wait':'↑ '}[_tone] }}{{ _gl }}</span>
-      <span class="text-white/55 whitespace-nowrap">시세 {{ (mkt/10000)|round|int }}만</span>
+    {# 범례 점은 막대의 표식과 **같은 모양** — 최저 꽉 참 · 시세 속 빔 · 예상 앰버 #}
+    {% set _leg = [(v.min_sale_price, '최저', 'bg-white'), (expected.price, '예상', 'bg-amber-300'),
+                   (mkt, '시세', 'bg-[#0b1730] ring-1 ring-white/80')]|sort %}
+    <div class="nc-gaugeleg flex flex-wrap items-center justify-center gap-x-2.5 gap-y-0.5 text-[11px] mt-2 text-white/55">
+      {% for _lv, _ln, _ld in _leg %}<span class="inline-flex items-center gap-1 whitespace-nowrap"><span class="inline-block w-1.5 h-1.5 rounded-full {{ _ld }}"></span>{{ _ln }} <b class="text-white/85 font-semibold tnum">{{ _lv|man }}</b></span>{% endfor %}
     </div>
+    {% set _tone = (bidst.tone if bidst else 'wait') %}
+    {# 주황 '이득 불확실 — …'은 이유만 — 판정은 바로 위 칩이 이미 말했다(검수) #}
+    {% set _gl = bidst.label if bidst else '추가 유찰 대기' %}{% if bidst and bidst.weak %}{% set _gl = _gl.split(' — ', 1)[-1] %}{% endif %}
+    <div class="nc-gauge-judge mt-1 text-center text-[11px] font-semibold leading-tight {{ {'ok':'text-emerald-300','caution':'text-amber-300','stop':'text-rose-300','wait':'text-white/70'}[_tone] }}" style="word-break:keep-all">{{ {'ok':'✓ ','caution':'⚠ ','stop':'✕ ','wait':'↑ '}[_tone] }}{{ _gl }}</div>
   </div>
+  {% endif %}
   {% endif %}
   {# 입찰 상한선 — '얼마에 팔릴까'가 아니라 '얼마까지 써도 되나'. 시세 초과 물건에서도
      반드시 보여야 하므로 소매 차익 패널 밖, 예측 카드 안에 둔다(3회차 지적). #}
@@ -303,7 +320,7 @@
   {% set b = expected.basis %}
   <div class="relative mt-4 pt-3 border-t border-white/10 text-[11px] text-white/55 leading-relaxed" style="word-break:keep-all">
     <span class="text-white/75 font-semibold">산정 기준</span> ·
-    {% if b.kind == 'min_premium' %}최저매각가 <b class="text-white/85 tnum">{{ (b.min_sale_price/10000)|round|int }}만</b> × 유찰 {{ b.fail_count }}회 낙찰 프리미엄 <b class="text-amber-300">×{{ b.premium }}</b>{% else %}소매 시세 <b class="text-white/85 tnum">{% if b.median %}{{ (b.median/10000)|round|int }}만{% else %}—{% endif %}</b> × 경매 할인율 <b class="text-amber-300">×{{ b.discount }}</b>{% endif %}{% if expected.comp_n %} · 동급 낙찰 {{ expected.comp_n }}건{{ ' 반영' if expected.comp_used else '은 참고용(미반영)' }}{% endif %}{% if expected.acc %} · 이 유형({{ expected.acc.label }}, {{ expected.acc.n }}건) 실측 오차 ±{{ expected.acc.mae }}%{% else %} · <b class="text-amber-300">이 유형은 검증 표본 부족</b>{% endif %}
+    {% if b.kind == 'min_premium' %}최저매각가 <b class="text-white/85 tnum">{{ b.min_sale_price|man }}</b> × 유찰 {{ b.fail_count }}회 낙찰 프리미엄 <b class="text-amber-300">×{{ b.premium }}</b>{% else %}소매 시세 <b class="text-white/85 tnum">{% if b.median %}{{ b.median|man }}{% else %}—{% endif %}</b> × 경매 할인율 <b class="text-amber-300">×{{ b.discount }}</b>{% endif %}{% if expected.comp_n %} · 동급 낙찰 {{ expected.comp_n }}건{{ ' 반영' if expected.comp_used else '은 참고용(미반영)' }}{% endif %}{% if expected.acc %} · 이 유형({{ expected.acc.label }}, {{ expected.acc.n }}건) 실측 오차 ±{{ expected.acc.mae }}%{% else %} · <b class="text-amber-300">이 유형은 검증 표본 부족</b>{% endif %}
   </div>
   {% endif %}
 </div>

@@ -337,8 +337,9 @@ d.addEventListener('toggle',function(){try{localStorage.setItem('ncUsepickBasis'
         {% set _tone = v.bidst.tone if v.bidst else '' %}
         <span class="nc-judge ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap {% if _tone == 'stop' %}bg-rose-600 text-white shadow-sm{% elif _tone == 'wait' %}bg-amber-500 text-white shadow-sm{% else %}{{ _tone|tcls }}{% endif %}">{{ v.bidst.label if v.bidst else (v.judgment|jshort if v.judgment else v.status|sstat) }}</span>
         </div>
-        <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent px-3 pt-6 pb-2 flex items-end justify-between">
-          <div class="flex items-center gap-1.5 text-[11px] text-white font-medium">
+        {# gap-2 + min-w-0 + 접힘: 왼쪽 정보(연식·주행·외관손상·사진 혼재)가 길면 카메라 아이콘이 카드 밖으로 밀려 잘렸다(큰글씨 320px 실측) #}
+        <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent px-3 pt-6 pb-2 flex items-end justify-between gap-2">
+          <div class="flex flex-wrap items-center gap-1.5 min-w-0 text-[11px] text-white font-medium">
             {% if v.year %}<span class="bg-white/25 rounded px-1.5 py-0.5">{{ v.year }}년식</span>{% endif %}
             {% if v.mileage_km %}<span>{{ v.mileage_km|won }}km</span>{% endif %}
             {% if v.condition_level in ('fair','poor') %}<span class="bg-amber-500/90 rounded px-1.5 py-0.5">외관손상</span>{% endif %}

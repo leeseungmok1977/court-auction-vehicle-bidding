@@ -133,10 +133,10 @@ def test_detail_hero_wraps_the_chip_only_after_the_dash():
     assert "bg-amber-400/20 text-amber-200 border" not in d
 
 
-def test_gauge_row_stacks_the_judgement_when_the_card_is_narrow():
-    """큰글씨 320·360px에서 게이지 아래 가운데 판정이 낱말마다 접혀 4줄 — 컨테이너 쿼리로 둘째 줄 전체 폭에.
-    새 CSS 는 `npm run build:css` 전엔 app.css 에 없다 — 빌드 산출물까지 확인한다."""
+def test_gauge_judgement_sits_on_its_own_line_with_the_reason_only():
+    """게이지 아래 가운데 판정이 3항 한 줄에 끼어 낱말마다 접혔다(큰글씨 4줄) → 범례 아래 제 줄로.
+    주황 판정은 이유만 남긴다 — 판정 이름은 바로 위 칩이 이미 말했다. (축·범례 검사는 test_hero_gauge)"""
     d = (TPL / "detail.html").read_text(encoding="utf-8")
-    assert 'class="nc-gaugerow-host relative mt-4"' in d and 'class="nc-gaugerow flex' in d and 'class="nc-gauge-judge ' in d
-    css = (ROOT / "web" / "static" / "app.css").read_text(encoding="utf-8")
-    assert ".nc-gaugerow-host" in css and ".nc-gauge-judge" in css and "@container" in css
+    assert 'class="nc-gauge-judge mt-1 text-center' in d
+    assert "_gl.split(' — ', 1)[-1]" in d
+    assert "nc-gaugerow" not in d, "죽은 3항 한 줄 구조가 남아 있다"

@@ -187,11 +187,19 @@ p, dd, li { text-wrap: pretty; }
   .skeleton::after { animation: none; }
 }
 
-/* 상세 히어로 게이지 아래 3항(최저 · 판정 · 시세): 칸이 좁으면(큰글씨 320·360px, OS 글자 확대) 가운데 판정이
-   낱말마다 접혀 "⚠ / 오차 / 범위 / 안" 4줄이 됐다(2026-09-14 실측). 폭이 아니라 rem 대비 폭으로 판단해
-   판정을 둘째 줄 전체 폭(가운데 정렬)으로 내린다. 미지원 브라우저는 기존 3항 한 줄 그대로. */
-.nc-gaugerow-host { container-type: inline-size; }
-@container (max-width: 19rem) {
-  .nc-gaugerow { flex-wrap: wrap; }
-  .nc-gaugerow > .nc-gauge-judge { order: 3; flex-basis: 100%; margin-top: .125rem; }
+/* 상세 히어로 금액 — 단위 '원'이 다음 줄로 떨어지던 것(큰글씨·OS 확대 320px, 8자리 이상)을 막는다.
+   숫자와 단위는 한 덩어리(nowrap)로 두고, **rem 대비 칸 폭**이 좁을 때만 글자를 한 단계씩 낮춘다.
+   vw 상한(min(rem, k·vw))으로 하면 큰글씨·OS 확대에서 숫자만 확대에서 빠진다 — 폰 전 폭에서 효과가 0이었다.
+   실측(안폭/root): 일반 320 = 14.6rem(그대로 30px) · 큰글씨 320 = 11.5rem(→24px) · OS130 320 = 10.9rem(→20px). */
+.nc-heronums { container-type: inline-size; }
+.nc-heronum-lg, .nc-heronum-sm { white-space: nowrap; }
+/* 1차(예상낙찰가)를 낮출 때 2차(최저매각가)도 함께 낮춘다 — 안 그러면 큰글씨에서 두 금액이 같은 크기로 보여
+   "어느 숫자가 결론인지" 위계가 사라진다(디자인 검수). 비율은 대략 0.75~0.8 유지. */
+@container (max-width: 14rem) {
+  .nc-heronum-lg { font-size: 1.5rem !important; }
+  .nc-heronum-sm { font-size: 1.125rem !important; }
+}
+@container (max-width: 11rem) {
+  .nc-heronum-lg { font-size: 1.25rem !important; }
+  .nc-heronum-sm { font-size: 1rem !important; }
 }

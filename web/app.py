@@ -168,6 +168,22 @@ def _won(v):
     return f"{int(v):,}" if isinstance(v, (int, float)) else "—"
 
 
+def _man(v):
+    """원 → 사람이 읽는 만/억 단위. 1억 이상은 억으로 올린다.
+
+    디자인 검수(2026-09-14): 게이지 범례가 '10420만'이라 바로 위 히어로의 '104,200,000 원'과
+    체계가 어긋났고, 옆 항목 '9850만'과 자릿수가 하나 달라 1,042만인지 순간 헷갈렸다.
+    고액 물건일수록 오독 손실이 크다."""
+    if not isinstance(v, (int, float)):
+        return "—"
+    n = int(round(v / 10000))
+    if abs(n) >= 10000:
+        eok, man = divmod(abs(n), 10000)
+        sign = "-" if n < 0 else ""
+        return f"{sign}{eok:,}억" + (f" {man:,}만" if man else "")
+    return f"{n:,}만"
+
+
 _TONE_CLS = {
     "ok": "bg-emerald-50 text-emerald-700 border border-emerald-200",
     "caution": "bg-amber-50 text-amber-700 border border-amber-200",
@@ -240,6 +256,7 @@ def _sstat(s):
 
 
 templates.env.filters["won"] = _won
+templates.env.filters["man"] = _man          # 1억 이상은 '1억 420만' — '10420만'은 자리 오독을 부른다
 templates.env.filters["bcls"] = _bcls
 templates.env.filters["tcls"] = _tcls
 templates.env.filters["jshort"] = _jshort
