@@ -56,7 +56,7 @@
        숨기는 것이 아니라 밀어서 전부 볼 수 있다. #}
     {# 잘린 위치가 카드 경계와 겹치면 스크롤 여지가 아니라 조판 사고로 보인다.
        우측 페이드 마스크로 "오른쪽에 더 있다"를 알린다. #}
-    <div class="flex items-center gap-2 w-full overflow-x-auto custom-scrollbar
+    <div class="nc-chiprow flex items-center gap-2 w-full overflow-x-auto custom-scrollbar
                 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden
                 [mask-image:linear-gradient(to_right,#000_calc(100%-16px),transparent)]
                 sm:contents sm:overflow-visible sm:[mask-image:none]">
@@ -97,7 +97,7 @@
 </div>
 
 <!-- 차종 프리셋 필터(모델명 기준 근사 분류) — 상용·패밀리 등 수요자별 빠른 탐색 -->
-<div class="flex items-center gap-1.5 text-xs px-1 overflow-x-auto
+<div class="nc-chiprow flex items-center gap-1.5 text-xs px-1 overflow-x-auto
             [scrollbar-width:none] [&::-webkit-scrollbar]:hidden
             [mask-image:linear-gradient(to_right,#000_calc(100%-16px),transparent)]
             sm:flex-wrap sm:overflow-visible sm:[mask-image:none]">
@@ -362,6 +362,18 @@ d.addEventListener('toggle',function(){try{localStorage.setItem('ncUsepickBasis'
             <div class="font-mono font-bold tnum whitespace-nowrap {{ 'text-mut' if closed else 'text-mut' if (lowconf or exp_far) else 'text-primary' }}" style="font-size:min(1.125rem,5.2vw)">{{ v.expected_win|won if v.expected_win else '—' }}{% if v.expected_win and not closed and lowconf %}<span class="text-rose-500 text-[11px] align-top">*</span>{% elif v.expected_win and not closed and exp_far %}<span class="text-mut text-[11px] align-top">↑</span>{% endif %}</div>
           </div>
         </div>
+        {# '얼마까지 써도 되나'를 카드에 둔다 — 카드에서 가장 큰 숫자(예상낙찰가)를 '써도 되는 금액'으로
+           읽은 사용자가 2회차 패널에 3명 있었다. 예상가가 법원 하한에 걸린 물건(전체의 24%)은 예측인 척하지 않는다. #}
+        {% if not closed and v.bidst and (v.bidst.max_bid or v.bidst.exp_pinned) %}
+        {# 스캔은 목록에서 일어난다 — 상세는 상한선을 대표로 올려놓고 목록만 '큰 보라 숫자 = 그 숫자'를
+           가르치면 고친 오독을 목록이 다시 심는다(디자인 검수). 보조줄이되 무게를 예상낙찰가와 동률로. #}
+        {% set _cover = v.bidst.floor and v.bidst.max_bid and v.bidst.floor > v.bidst.max_bid %}
+        {% set _cbad = _cover or v.bidst.state in ('blocked','over_market') %}
+        <div class="mt-1 flex flex-wrap items-baseline justify-between gap-x-2 text-xs" style="word-break:keep-all">
+          {% if v.bidst.exp_pinned %}<span class="text-mut text-[11px]">최저가 기준 — 더 내려가지 않음</span>{% else %}<span></span>{% endif %}
+          {% if v.bidst.max_bid %}<span class="ml-auto whitespace-nowrap font-semibold {{ 'text-rose-600' if _cbad else 'text-mut' }}">입찰 상한 <b class="font-mono tabular-nums {{ 'text-rose-700' if _cbad else 'text-txt' }}">{{ v.bidst.max_bid|won }}</b></span>{% endif %}
+        </div>
+        {% endif %}
         {# 실사용 갈래 태그 — 홈 카드·상세와 같은 문구(service.USE_TIER_LABELS). 초록=지금, 주황=조건부(이 앱의 caution 색).
            가격 칸 오른쪽에 넣었더니 320px 큰글씨에서 카드 밖으로 나갔다 → 가격 줄 아래 한 줄을 통째로 쓴다. #}
         {# 10px 는 카드에서 가장 작은 글자였다(검수) — 새로 넣은 핵심 정보(얼마나 싼가/얼마까지)라 12px. 숫자는 명사에서 떼지 않는다. #}

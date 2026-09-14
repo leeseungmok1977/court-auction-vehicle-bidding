@@ -367,6 +367,48 @@ USE_REPAIR_BASE = 500_000    # 정비 충당 기본(성능점검·보증이 없�
 # 시세/감정가 정합 대역 — market_match.appraisal_guard의 strong 대역과 동일하게 맞춘다.
 USE_APPRAISAL_LOW, USE_APPRAISAL_HIGH = 0.50, 1.80
 
+# 취득세율은 차종·용도로 갈린다(지방세법 제12조). 승용 7%를 화물에 그대로 쓰면 총액이 틀어지고,
+# 총액이 틀리면 그 아래 상한선·마진·시뮬레이션이 전부 같이 틀어진다(2회차 패널, 심각도 5).
+#   · 비영업용 승용 7% · 비영업용 그 밖의 자동차(화물·승합·특수) 5% · 영업용 4%
+# ⚠ **영업용/비영업용은 자동차등록원부의 용도 기재로 갈리는데 우리는 그 값을 갖고 있지 않다.**
+#   보수적으로 비영업용을 가정하고, 화면에 가정과 대안 세율을 함께 적어 사용자가 판단하게 한다.
+# ⚠ 경차(4%)는 건드리지 않는다 — 배기량만으로 경차를 단정할 수 없고, 7%를 쓰면 상한선이 낮게
+#   나와 보수적인 쪽으로 틀린다. 아는 것만 고친다.
+ACQ_TAX_COMMERCIAL = 0.05
+
+
+def sale_time_passed(v: dict, now: Optional[datetime] = None) -> bool:
+    """매각기일 **시각**이 지났는가. 시각을 모르면 False(지나지 않은 것으로 본다 — 보수적).
+
+    `sale_time` 은 '10:00' 같은 문자열이다. 형식이 다르면 판단하지 않는다(추측 금지).
+    """
+    t = str(v.get("sale_time") or "").strip()
+    m = re.match(r"^(\d{1,2}):(\d{2})$", t)
+    if not m:
+        return False
+    hh, mm = int(m.group(1)), int(m.group(2))
+    if not (0 <= hh <= 23 and 0 <= mm <= 59):
+        return False
+    n = now or datetime.now()
+    return (n.hour, n.minute) >= (hh, mm)
+
+
+def tax_config_for(v: dict, config: dict) -> dict:
+    """이 물건의 취득세율을 반영한 config 사본. 재판매 상한가 계산도 실사용 계산과 같은 세율을 쓴다."""
+    tx = tax_rate_for(v, config)
+    if tx["rate"] == config.get("acquisition_tax_rate"):
+        return config
+    return {**config, "acquisition_tax_rate": tx["rate"]}
+
+
+def tax_rate_for(v: dict, config: Optional[dict] = None) -> dict:
+    """이 물건에 적용할 취득세율 + 화면 표기. 판단 근거를 항상 같이 돌려준다."""
+    default = (config or {}).get("acquisition_tax_rate", USE_TAX_RATE)
+    if vehicle_segment(v) == "commercial":
+        return {"rate": ACQ_TAX_COMMERCIAL, "label": "비영업용 화물·특수 5%",
+                "note": "영업용이면 4% — 자동차등록원부의 용도를 확인하세요", "assumed": True}
+    return {"rate": default, "label": f"비영업용 승용 {round(default * 100)}%", "note": "", "assumed": False}
+
 
 def use_repair_reserve(v: dict, config: Optional[dict] = None) -> int:
     """실사용 정비 충당(원). 기본액 + config.yaml의 condition_costs를 물건 상태에 맞춰 가산.
@@ -529,8 +571,9 @@ def personal_use_saving(v: dict, bt: Optional[dict] = None,
         return None
     cfg = config or load_config()
     rate, _assumed = use_accident_rate(v, cfg)
-    auction = exp * (1 + USE_TAX_RATE) + USE_AUCTION_FEE + use_repair_reserve(v, cfg)
-    retail = med * (1 - rate) * (1 + USE_TAX_RATE) + USE_RETAIL_FEE
+    tx = tax_rate_for(v, cfg)["rate"]        # 화물은 승용 7%가 아니다(지방세법 제12조)
+    auction = exp * (1 + tx) + USE_AUCTION_FEE + use_repair_reserve(v, cfg)
+    retail = med * (1 - rate) * (1 + tx) + USE_RETAIL_FEE
     gain = retail - auction
     return int(round(gain)) if gain > 0 else None
 
@@ -554,8 +597,9 @@ def personal_use_max_bid(v: dict, bt: Optional[dict] = None,
         return None
     cfg = config or load_config()
     rate, _ = use_accident_rate(v, cfg)
-    retail = med * (1 - rate) * (1 + USE_TAX_RATE) + USE_RETAIL_FEE
-    exp_max = (retail - USE_AUCTION_FEE - use_repair_reserve(v, cfg)) / (1 + USE_TAX_RATE)
+    tx = tax_rate_for(v, cfg)["rate"]
+    retail = med * (1 - rate) * (1 + tx) + USE_RETAIL_FEE
+    exp_max = (retail - USE_AUCTION_FEE - use_repair_reserve(v, cfg)) / (1 + tx)
     return int(round(exp_max / 100_000) * 100_000) if exp_max > 0 else None
 
 
@@ -609,6 +653,12 @@ def is_personal_use_pick(v: dict, bt: Optional[dict] = None, today=None) -> bool
     if (v.get("sale_date") or "") < d:
         return False
     return personal_use_significant(v, bt)
+
+
+# 시세 신뢰도 등급 경계(src/parse/market_match.py 와 같은 값). 화면은 '높음'이라고만 쓰고 몇 점부터
+# 높음인지 안 밝혀, 76과 81이 둘 다 '높음'인 이유를 알 수 없었다(2회차 패널). 출처가 아니라 **경계**만 적으면 된다.
+CONF_CUTOFFS = ((70, "높음"), (45, "보통"), (0, "낮음"))
+CONF_SCALE_TEXT = "70점 이상 높음 · 45~69점 보통 · 44점 이하 낮음"
 
 
 # 실사용 추천의 두 갈래 — 화면 문구는 세 화면(홈·목록·상세) 모두 여기서만 가져온다(이름이 갈리지 않게).
@@ -670,8 +720,9 @@ def personal_use_tier(v: dict, bt: Optional[dict] = None, today=None) -> Optiona
         return None                                   # 오매칭 의심 — now 와 같은 문턱
     cfg = load_config()
     rate, _ = use_accident_rate(v, cfg)
-    retail = med * (1 - rate) * (1 + USE_TAX_RATE) + USE_RETAIL_FEE
-    gain_floor = retail - (floor * (1 + USE_TAX_RATE) + USE_AUCTION_FEE + use_repair_reserve(v, cfg))
+    tx = tax_rate_for(v, cfg)["rate"]
+    retail = med * (1 - rate) * (1 + tx) + USE_RETAIL_FEE
+    gain_floor = retail - (floor * (1 + tx) + USE_AUCTION_FEE + use_repair_reserve(v, cfg))
     acc = accuracy_for(v, bt)
     if not acc or not acc.get("mae") or gain_floor <= exp * acc["mae"] / 100.0:
         return None                                   # 최저가로 낙찰돼도 이득이 오차 안 → 이득이라 부르지 않는다
@@ -1916,7 +1967,7 @@ def update_results(max_courts: int = 100, run_id: Optional[int] = None,
                                   sample_count=v.get("sample_count") or 0, platform="encar",
                                   accident_grade=v.get("accident_grade") or "none",
                                   repair_cost=v.get("repair_cost") or 500000)
-                    bid = calculate(apply_accident_rate(bi, v, config), config)
+                    bid = calculate(apply_accident_rate(bi, v, config), tax_config_for(v, config))
                     fields["upper_bid"] = bid.upper_bid
                     fields["judgment"] = _final_judgment(bid.judgment, v.get("market_confidence_label"))
                     fields["breakdown"] = json.dumps(bid.breakdown, ensure_ascii=False)
@@ -2744,7 +2795,7 @@ def backfill_accident_grades() -> int:
                           platform=v.get("market_platform") or "encar",
                           accident_grade=grade, repair_cost=v.get("repair_cost") or 500000,
                           appraisal_text=atxt, photo_count=v.get("photo_count"))
-            bid = calculate(apply_accident_rate(bi, v, config), config)
+            bid = calculate(apply_accident_rate(bi, v, config), tax_config_for(v, config))
             fields.update(upper_bid=bid.upper_bid, lower_bound=bid.lower_bound,
                           judgment=_final_judgment(bid.judgment, v.get("market_confidence_label")),
                           breakdown=bid.breakdown)
@@ -3393,6 +3444,23 @@ def win_probability(v: dict, bid: Optional[int], bt: Optional[dict] = None) -> O
     return round(sum(1 for x in pool if x <= r) / len(pool) * 100)
 
 
+def expected_floor_pinned(v: dict, bt: Optional[dict] = None) -> bool:
+    """예상낙찰가가 **법원 하한(최저매각가)에 걸린** 값인가.
+
+    소프트캡이 최저매각가보다 아래로 내려가면 `expected_for`가 최저가를 하한으로 되돌린다 —
+    그 결과는 예측이 아니라 **법원이 정한 바닥값**이다. 카드에는 그 사정이 안 보여서
+    "예상낙찰가가 최저가 복사본"으로 읽혔다(2회차 패널 55세·30세). 예측인 척하지 않는다.
+    """
+    bt = bt if bt is not None else backtest_stats()
+    mn = v.get("min_sale_price")
+    prem = min_premium_for(bt, v.get("fail_count"))
+    if not (mn and prem):
+        return False
+    est = int(round(mn * prem / 100_000) * 100_000)
+    cap = soft_cap(effective_median(v))
+    return bool(cap and min(est, cap) < int(mn))
+
+
 def expected_band(v: dict, bt: dict) -> Optional[dict]:
     """예상낙찰가 중심값 + 밴드(보수/균형/공격)를 **하나의 기준**으로 산출.
 
@@ -3504,6 +3572,8 @@ def bid_state(v: dict, bt: Optional[dict] = None, config: Optional[dict] = None)
     upper = v.get("upper_bid") or 0
     mb = personal_use_max_bid(v, bt, cfg)
     base = {"exp": exp, "med": med, "floor": floor, "upper": upper or None, "max_bid": mb, "weak": None,
+            # 예상낙찰가가 법원 하한에 걸린 값이면 화면이 그렇게 말해야 한다(예측인 척 금지)
+            "exp_pinned": expected_floor_pinned(v, bt),
             # 예상 경쟁가가 상한선을 얼마나 넘는가 — caution 문장에 폭을 실어 준다(디자인 검수).
             # 목록 칩은 짧은 label 을 그대로 쓰고, 리포트 스펙트럼·§01 만 이 값을 쓴다.
             "over_by": (exp - mb) if (exp and mb and exp > mb) else None}
@@ -3524,6 +3594,10 @@ def bid_state(v: dict, bt: Optional[dict] = None, config: Optional[dict] = None)
     _sd = str(v.get("sale_date") or "")[:10]
     if len(_sd) == 10 and _sd < date.today().isoformat():
         return out("wait", "지난 기일 — 다음 기일 공고 대기", "wait")
+    # 경매는 날짜가 아니라 **시각** 단위다. 오전 10시 기일 물건이 같은 날 오후까지 '유찰 대기'로
+    # 떠 있으면 실무자는 앱의 기일 표기 전체를 못 믿는다(2회차 패널 48세, 단일 결격 사유).
+    if len(_sd) == 10 and _sd == date.today().isoformat() and sale_time_passed(v):
+        return out("wait", "기일 경과 — 결과 확인 전", "wait")
     if not exp or not med or v.get("market_confidence_label") == "낮음":
         return out("lowconf", "시세 신뢰도 낮음 — 판정 보류", "wait")
     if not (floor and floor <= exp):
@@ -3963,7 +4037,12 @@ def _pick_photo_url(v: dict) -> Optional[str]:
         return None
     avail = {p.name for p in pdir.iterdir() if p.is_file()}
     order = [n for n in (v.get("photo_order") or []) if n in avail]
-    names = order + sorted(n for n in avail if n not in order)
+    # ⚠ 분류가 안 된 물건은 원본 순서를 그대로 쓰는데, 경매 사진첩은 **보관장소 지적도**로 시작하는
+    # 경우가 많다. 그래서 미분류 물건은 카드 썸네일이 초록색 지도로 나갔다(2회차 패널 18인 중 13인이
+    # '차 사진 대신 지도'를 지적 — 기일 남은 440대 중 2대가 미분류였다). 폴백에서만 지도를 뒤로 민다.
+    maps = {n for n in (v.get("map_photos") or []) if n in avail}
+    rest = sorted(n for n in avail if n not in order)
+    names = order + [n for n in rest if n not in maps] + [n for n in rest if n in maps]
     # 홈 카드·알림 썸네일도 축소본을 쓴다. 목록만 /thumb으로 바꾼 탓에 홈이 3G에서
     # 43.1초·2,158KB(이미지 1,652KB)였다 — 병목이 옮겨간 것뿐이었다(5회차 품질 P1).
     return f"/thumb/{fk}/{names[0]}" if names else None
@@ -3982,6 +4061,8 @@ def _pick_dict(v: dict, bt: dict) -> dict:
     _tone = (bid_state(v, bt) or {}).get("tone")
     d["disc_pct"] = (int(round((med - exp) / med * 100))
                      if (med and exp and med > exp and _tone != "stop") else None)
+    # '시세보다 −37%'의 분모를 화면에 같이 보낸다 — 기준이 없으면 "안 싼 걸로 친다"(2회차 패널 55세)
+    d["disc_base"] = med if d.get("disc_pct") else None
     d["photo_url"] = _pick_photo_url(v)
     try:
         d["dday"] = (datetime.date.fromisoformat(v["sale_date"]) - datetime.date.today()).days
@@ -4138,19 +4219,21 @@ def price_distribution(v: dict, exp: Optional[int], mae: Optional[float],
     }
 
 
-def allin_estimate(bid: Optional[int], config: dict) -> Optional[dict]:
+def allin_estimate(bid: Optional[int], config: dict, v: Optional[dict] = None) -> Optional[dict]:
     """상세 화면용 간이 총비용 — 낙찰가 + 취득세 + 이전등록·탁송(고정비).
     초보 사용자의 '그래서 총 얼마 드나' 질문에 답한다. 정비비·리스크 충당금 등 전체 시나리오는
     리포트 06(총 취득원가)에서 다룬다(여기엔 넣지 않아 과대·혼동 방지). 외부 데이터 노출 없음."""
     if not bid or bid <= 0:
         return None
-    tax_rate = config.get("acquisition_tax_rate", 0.07)
+    _tx = tax_rate_for(v or {}, config)
+    tax_rate = _tx["rate"]
     fc = config.get("fixed_costs", {})
     transfer = fc.get("transfer_fee", 300000)
     delivery = fc.get("delivery_fee", 200000)
     tax = round(bid * tax_rate)
     fixed = transfer + delivery
     return {"bid": bid, "tax": tax, "tax_rate": tax_rate,
+            "tax_label": _tx["label"], "tax_note": _tx["note"],
             "transfer": transfer, "delivery": delivery, "fixed": fixed,
             "total": bid + tax + fixed}
 
@@ -4168,7 +4251,8 @@ def report_data(v: dict, config: dict, bt: dict) -> Optional[dict]:
     if not med:
         return None
     floor = v.get("min_sale_price") or 0
-    tax_rate = config.get("acquisition_tax_rate", 0.07)
+    _tx = tax_rate_for(v, config)          # 화물·특수는 승용 7%가 아니다
+    tax_rate = _tx["rate"]
     fc = config.get("fixed_costs", {})
     transfer, delivery = fc.get("transfer_fee", 300000), fc.get("delivery_fee", 200000)
     fixed = transfer + delivery
@@ -4252,7 +4336,13 @@ def report_data(v: dict, config: dict, bt: dict) -> Optional[dict]:
     stop_active = v.get("accident_grade") in ("accident", "flood")
     return {
         "exp": exp, "lo": lo, "hi": hi, "upper": upper, "floor": floor, "resale": resale,
-        "tax_rate": tax_rate, "transfer": transfer, "delivery": delivery, "fixed": fixed,
+        "tax_rate": tax_rate, "tax_label": _tx["label"], "tax_note": _tx["note"],
+        # 산식 화면에 **요율과 기준**을 같이 찍기 위한 값. 2회차 패널 4인이 "2·3단계 값이 똑같다"며
+        # 결론 금액의 신뢰를 0으로 뒀는데, 재검증 결과 계산은 맞고 요율이 우연히 같았을 뿐이다
+        # (수리비 50만 = 이전30+탁송20 · 사고감가 15% = 목표마진 15% · 리스크 7% = 취득세 7%).
+        # 금액만 나열하면 검산이 닫히지 않는다 — 무엇에 몇 %를 곱했는지 옆에 적는다.
+        "risk_rate": config.get("risk_premium_rate"), "margin_rate": config.get("margin_rate"),
+        "transfer": transfer, "delivery": delivery, "fixed": fixed,
         "repair": repair, "reserve": reserve, "target_margin": target_margin,
         "allin_ref": _allin(base_bid), "sim": sim, "sens": sens, "cats": cats,
         # 06·08이 실제로 쓴 기준 낙찰가와 그 출처. 라벨이 exp를 그대로 찍으면
@@ -4420,7 +4510,7 @@ def recompute_all_market(run_id: Optional[int] = None, finalize: bool = True,
                               accident_grade=v.get("accident_grade") or "none",
                               repair_cost=v.get("repair_cost") or 500000,
                               appraisal_text=atext, photo_count=v.get("photo_count"))
-                bid = calculate(apply_accident_rate(bi, v, config), config)
+                bid = calculate(apply_accident_rate(bi, v, config), tax_config_for(v, config))
                 fields.update({"upper_bid": bid.upper_bid, "lower_bound": bid.lower_bound,
                                "judgment": _final_judgment(bid.judgment, fields.get("market_confidence_label")),
                                "breakdown": json.dumps(bid.breakdown, ensure_ascii=False)})
@@ -4511,7 +4601,7 @@ def recompute(vid: str, repair_cost: int, config: dict | None = None) -> Optiona
     bi = BidInput(median_price=v["median_price"] or 0, min_sale_price=v["min_sale_price"] or 0,
                   sample_count=v.get("sample_count") or 0, platform="encar",
                   accident_grade=v.get("accident_grade") or "none", repair_cost=repair_cost)
-    bid = calculate(apply_accident_rate(bi, v, config), config)
+    bid = calculate(apply_accident_rate(bi, v, config), tax_config_for(v, config))
     db.update_fields(vid, repair_cost=repair_cost, upper_bid=bid.upper_bid,
                      lower_bound=bid.lower_bound,
                      judgment=_final_judgment(bid.judgment, v.get("market_confidence_label")),
@@ -4725,7 +4815,7 @@ def kcar_crosscheck(vid: str, config: dict | None = None) -> dict:
                       accident_grade=v.get("accident_grade") or "none",
                       repair_cost=v.get("repair_cost") or 500000,
                       appraisal_text=atext, photo_count=v.get("photo_count"))
-        bid = calculate(apply_accident_rate(bi, v, config), config)
+        bid = calculate(apply_accident_rate(bi, v, config), tax_config_for(v, config))
         fields.update({"upper_bid": bid.upper_bid, "lower_bound": bid.lower_bound,
                        "judgment": _final_judgment(bid.judgment, stats.confidence_label),
                        "breakdown": json.dumps(bid.breakdown, ensure_ascii=False)})

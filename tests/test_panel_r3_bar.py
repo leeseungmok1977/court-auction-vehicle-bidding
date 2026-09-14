@@ -93,7 +93,12 @@ def test_pressed_toggle_is_outlined_not_filled():
     """파란 채움 켜짐은 옆의 주동작(인쇄, 코발트 채움)과 구별이 안 됐다 — 리포트·헤더 둘 다."""
     rpt = (TPL / "report.html").read_text(encoding="utf-8")
     base = (TPL / "base.html").read_text(encoding="utf-8")
-    assert '#rptLarge[aria-pressed="true"]{background:#fff;color:var(--cobalt);border:2px solid var(--cobalt)}' in rpt
+    # 선택자는 토글이 늘면서 묶였다(#rptLarge, #rptResale) — 문자열이 아니라 규칙을 확인한다
+    import re as _re
+    _m = _re.search(r'([^\n]*#rptLarge\[aria-pressed="true"\][^\n]*)\{([^}]*)\}', rpt)
+    assert _m, "켜짐 상태 규칙이 없다"
+    assert "background:#fff" in _m.group(2) and "border:2px solid var(--cobalt)" in _m.group(2)
+    assert "#rptResale" in _m.group(1), "토글이 둘인데 켜짐 표시는 하나만 걸려 있다"
     assert '#largeToggle[aria-pressed="true"]{background:#fff;color:#2f5fe0;border:2px solid #2f5fe0}' in base
     assert "background:#2f5fe0;color:#fff" not in rpt and "background:#2f5fe0;color:#fff" not in base
 

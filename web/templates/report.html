@@ -5,7 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>{{ v.model|mdl }} 분석 리포트 · {{ v.case_no }}</title>
 <meta name="description" content="{{ v.model|mdl }} 법원경매 분석 리포트 — 예상낙찰가·추천 입찰가·시세 대비·유사 낙찰 실적을 담은 경매로 내차GET 리포트."/>
-<script>try{ if(localStorage.getItem("naechaget:large")==="1") document.documentElement.classList.add("nc-large"); }catch(e){}</script>
+<script>try{ if(localStorage.getItem("naechaget:large")==="1") document.documentElement.classList.add("nc-large");
+  if(localStorage.getItem("naechaget:rmode")==="resale") document.documentElement.classList.add("rmode-resale"); }catch(e){}</script>
 <link rel="stylesheet" href="/static/app.css?v={{ css_v }}"/>
 <style>
   /* 용어 설명 툴팁 — base.html과 동일 컴포넌트(리포트는 독립 문서라 여기에 별도 정의). 인쇄 시 숨김 유지 */
@@ -61,8 +62,8 @@ body{background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:
 .btn{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:8px 16px;font-size:13px;font-weight:600;border:1px solid var(--line);background:#fff;color:var(--ink);cursor:pointer;text-decoration:none}
 .btn.pri{background:var(--cobalt);color:#fff;border-color:var(--cobalt)}
 /* 켜짐을 파란 채움으로 표시하면 옆의 주동작(인쇄, 코발트 채움)과 구별이 안 됐다(디자인 검수) */
-#rptLarge[aria-pressed="true"]{background:#fff;color:var(--cobalt);border:2px solid var(--cobalt)}
-#rptLarge[aria-pressed="true"]::before{content:"✓"}
+#rptLarge[aria-pressed="true"],#rptResale[aria-pressed="true"]{background:#fff;color:var(--cobalt);border:2px solid var(--cobalt)}
+#rptLarge[aria-pressed="true"]::before,#rptResale[aria-pressed="true"]::before{content:"✓"}
 .masthead{background:var(--cobalt-deep);color:#fff;border-radius:14px;padding:28px 32px 24px}
 .mh-top{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap}
 .brand{display:flex;align-items:center;gap:10px}
@@ -154,6 +155,29 @@ table, thead, tbody, tr, th, td { word-break: keep-all; overflow-wrap: break-wor
 /* 인쇄 버튼 라벨: 일반 모드는 ≤380px 에서만 짧게(390px 은 전체 라벨이 40px 여유로 들어간다).
    짧은 라벨은 '인쇄·PDF'가 아니라 'PDF 저장' — 프린터 아이콘이 이미 인쇄를 말하고, 이 버튼의 주 용도는
    파일로 남겨 자식·법무사에게 보내는 것이다(디자인 검수). 큰글씨는 screen 블록에서 ≤430px. */
+/* 실사용 모드(기본)에서는 되팔기 전용 섹션을 감춘다. 인쇄도 화면과 같게 — 본 것이 인쇄돼야 한다. */
+html:not(.rmode-resale) [data-resale]{display:none}
+.rmode-hint{margin:0 0 18px;font-size:12.5px;color:var(--ink-faint)}
+/* ⚠ .no-print 가 display:flex 라 .rtoc 에도 상속돼 summary 와 ol 이 flex 아이템이 되고,
+   목록이 오른쪽으로 밀려 320px 왼쪽 절반이 비고 긴 항목이 잘렸다(디자인 검수).
+   .rtop 은 같은 이유로 display:block 을 명시해 뒀는데 목차에만 안 걸려 있었다. */
+.rtoc{display:block;margin-top:2px;font-size:12.5px}
+.rtoc summary{cursor:pointer;color:var(--cobalt);font-weight:600;padding:4px 0;list-style:none;display:inline-flex;align-items:center;gap:5px}
+.rtoc summary::-webkit-details-marker{display:none}
+.rtoc summary::before{content:"▸";transition:.15s;display:inline-block}
+.rtoc[open] summary::before{transform:rotate(90deg)}
+.rtoc ol{margin:4px 0 8px;padding-left:20px;columns:2;column-gap:18px}
+.rtoc li{margin:2px 0;break-inside:avoid}
+.rtoc a{color:var(--ink-soft);text-decoration:none}
+.rtoc a:hover{text-decoration:underline}
+/* 되팔기 전용 3개는 목차에서 지우지 않고 흐리게 남긴다 — 누르면 그 모드를 켜고 그리로 간다.
+   '전체 목차 12개'라 써 놓고 9개만 보이면 감춘 사실을 숨기는 셈이다. */
+.rtoc-resale{opacity:.55}
+.rtoc-resale a::after{content:" 🧮";font-size:10px}
+html.rmode-resale .rtoc-resale{opacity:1}
+html.rmode-resale .rtoc-resale a::after{content:""}
+@media (max-width:430px){ .rtoc ol{columns:1} }
+html.rmode-resale .rmode-hint{display:none}
 .rtop .bl-short{display:none}
 @media (max-width:380px){ .rtop .bl-full{display:none} .rtop .bl-short{display:inline} }
 @media screen and (max-width:430px){ html.nc-large .rtop .bl-full{display:none} html.nc-large .rtop .bl-short{display:inline} }
@@ -415,6 +439,12 @@ td.r,th.r{text-align:right}td.c,th.c{text-align:center}
 .hx-row .bs{grid-column:1/-1;margin-top:-3px;font-size:11px;color:var(--ink-faint)}.hx-row .bs b{color:var(--amber)}
 .hx-foot{grid-column:1/-1;margin-top:4px;font-size:11px;color:var(--ink-faint);line-height:1.6}.hx-foot b{color:var(--ink-soft)}
 @media (max-width:640px){.hexa{grid-template-columns:1fr}.hx-fig{max-width:300px;margin:0 auto}}
+/* 큰글씨: 글자만 커지고 도형은 250px 에 묶여 있었다 — 축 라벨이 SVG 안 텍스트라 도형을 키워야 같이 커진다. */
+/* 큰글씨: 글자만 커지고 도형은 250px 칸에 묶여 있었다 — 축 라벨이 SVG 안 텍스트라 도형을 키워야 같이 커진다.
+   ⚠ **≤640px 에는 걸지 않는다.** 좁은 화면은 이미 한 칸으로 떨어지는데(위 640px 규칙), 명시도가 높은
+   html.nc-large 로 2열을 되살리면 320px 에서 도형이 246px → **84px 로 찌그러지고** 가로 스크롤까지 생겼다(실측).
+   좁은 화면에서는 도형이 이미 카드 안폭을 다 쓰고 있어 더 키울 여지가 없다. */
+@media screen and (min-width:641px){ html.nc-large .hexa{grid-template-columns:minmax(0,320px) 1fr} html.nc-large .hx-fig{max-width:340px} }
 @media print{.hx-tip{display:none!important}}
 /* 칩 내용은 거의 한글이다. mono 를 쓰는 조상(.num) 안에 놓이면 글리프가 없어
    글자마다 폴백이 일어나 "써 낼 수 없 는"으로 자간이 벌어진다 — 명시적으로 되돌린다. */
@@ -591,12 +621,30 @@ function rptToggleLarge(){
     if (typeof _syncRtopH === 'function') { _syncRtopH(); setTimeout(_syncRtopH, 150); }
   }catch(e){}
 }
+/* 되팔기 계산 표시 — 기본은 실사용(07·08·11 감춤). 큰글씨와 같은 방식으로 기기에 기억한다. */
+function rptShowResale(){
+  try{
+    if (!document.documentElement.classList.contains('rmode-resale')) rptToggleResale();
+  }catch(e){}
+}
+function rptToggleResale(){
+  try{
+    var on = document.documentElement.classList.toggle('rmode-resale');
+    localStorage.setItem('naechaget:rmode', on ? 'resale' : 'use');
+    var b = document.getElementById('rptResale');
+    if (b) b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    if (typeof _syncRtopH === 'function') { _syncRtopH(); setTimeout(_syncRtopH, 150); }
+  }catch(e){}
+}
 /* 이 스크립트 블록은 버튼(.rtop)보다 **위**에 있다 — 바로 실행하면 null 이라
    켜져 있어도 aria-pressed=false 로 남는다(실측). DOM 이 준비된 뒤에 맞춘다. */
 document.addEventListener('DOMContentLoaded', function(){ try{
   var b = document.getElementById('rptLarge');
   if (b) b.setAttribute('aria-pressed',
         document.documentElement.classList.contains('nc-large') ? 'true' : 'false');
+  var r = document.getElementById('rptResale');
+  if (r) r.setAttribute('aria-pressed',
+        document.documentElement.classList.contains('rmode-resale') ? 'true' : 'false');
 }catch(e){} });
 
 /* 고정 바 실높이를 앵커 여백에 반영(칩 줄바꿈·큰글씨·회전 대응) */
@@ -651,6 +699,11 @@ document.addEventListener('click', function(e){
     <button onclick="window.print()" class="btn pri"><span class="material-symbols-outlined" style="font-size:18px">print</span> <span class="bl-full">인쇄 / PDF 저장</span><span class="bl-short">PDF 저장</span></button>
     <button type="button" id="rptLarge" class="btn" aria-pressed="false" onclick="rptToggleLarge()"
             title="글씨를 크게 봅니다 (다시 누르면 원래대로)" aria-label="큰글씨 모드 전환">큰글씨</button>
+    {# 되팔기 계산(07 수익 시뮬·08 민감도·11 반복 매매)은 딜러용이다. 직접 탈 사람에게는 '−855만 부적정' 같은
+       빨간 숫자가 "이 차가 나쁘다"로 읽혀 정작 자기 결론(총 취득원가·입찰 상한선)을 못 찾았다(2회차 패널 5인).
+       기본은 실사용, 누르면 되팔기 계산이 나온다. #}
+    <button type="button" id="rptResale" class="btn" aria-pressed="false" onclick="rptToggleResale()"
+            title="되팔기 계산(수익 시뮬레이션·민감도·반복 매매)을 함께 봅니다" aria-label="되팔기 계산 표시 전환">되팔기 계산</button>
     <span class="btn btn-soon" style="opacity:.5;cursor:not-allowed;gap:6px" title="곧 제공 — 리포트를 계정에 보관하고 건당 구매(현재 무료·인쇄로 저장하세요)" aria-disabled="true"><span class="material-symbols-outlined" style="font-size:18px">bookmark_add</span> 보관·구매 <span style="font-size:10px;background:var(--line);color:var(--ink-soft);padding:1px 6px;border-radius:99px">준비 중</span></span>
   </div>
 
@@ -665,6 +718,19 @@ document.addEventListener('click', function(e){
   </nav>
   <i class="secnav-more material-symbols-outlined" aria-hidden="true">chevron_right</i>
   </div>
+  {# 칩은 5개인데 섹션은 12개다 — 얼마나 남았는지 모른 채 스크롤하게 된다(2회차 패널 35·68세).
+     펼침은 기기에 기억하지 않는다(기본 접힘): 펼쳐 두면 고정 바가 그만큼 두꺼워진다. #}
+  <details class="rtoc no-print">
+    <summary>전체 목차 12개</summary>
+    <ol>
+      <li><a href="#sec01">핵심 결론</a></li><li><a href="#sec02">근거 점검</a></li>
+      <li><a href="#sec03">차량 · 경매 개요</a></li><li><a href="#sec04">감정평가 · 이력 요약</a></li>
+      <li><a href="#sec05">유사 낙찰 실적 · 시세 비교</a></li><li><a href="#sec06">총 취득원가</a></li>
+      <li class="rtoc-resale"><a href="#sec07" onclick="rptShowResale()">낙찰가별 수익 시뮬레이션</a></li><li class="rtoc-resale"><a href="#sec08" onclick="rptShowResale()">민감도 분석</a></li>
+      <li><a href="#sec09">리스크 · 현장확인 항목</a></li><li><a href="#sec10">산출 로직</a></li>
+      <li class="rtoc-resale"><a href="#sec11" onclick="rptShowResale()">법적 확인사항 — 반복 매매 시</a></li><li><a href="#sec12">낙찰 전후 절차</a></li>
+    </ol>
+  </details>
   {% endif %}
   </div>
 
@@ -675,7 +741,7 @@ document.addEventListener('click', function(e){
       <div class="brand"><div class="brand-mark">A</div>
         <div><div class="brand-name">차량경매 분석 리포트</div><div class="brand-sub">법원경매 차량 분석</div></div></div>
       <div class="badges">
-        {% if conf %}<div class="badge fill">시세 신뢰도 <b>{{ conf }}</b>/100</div>{% endif %}
+        {% if conf %}<div class="badge fill">시세 신뢰도 <b>{{ conf }}</b>/100 <span style="font-weight:400;opacity:.75">· {{ conf_scale }}</span></div>{% endif %}
         <div class="badge">{{ v.market_confidence_label or '—' }}</div>
       </div>
     </div>
@@ -711,7 +777,7 @@ document.addEventListener('click', function(e){
           {% set _danger = _tone == 'stop' or (max_bid and exp and exp > max_bid) %}
           {% if max_bid and _danger %}
           <div class="v-label gloss-row">입찰 상한선 <span style="font-weight:400">— 여기까지만 유효 · 직접 탈 목적 {{ ui.gloss('손익분기', '이 금액을 넘겨 낙찰받으면, 같은 차를 소매로 사는 것보다 손해가 되는 경계선이에요. 취득세·이전·탁송·정비 충당까지 더해 계산합니다.') }}</span></div>
-          <div class="v-band num" style="color:var(--red)">{{ (max_bid/10000)|round|int }}<small> 만원</small>{% if floor and floor > max_bid %} <span class="chip risk" style="vertical-align:middle">써낼 수 없는 금액</span>{% endif %}</div>
+          <div class="v-band num" style="color:var(--red)">{{ (max_bid/10000)|round|int }}<small>만원</small>{% if floor and floor > max_bid %} <span class="chip risk" style="vertical-align:middle">써낼 수 없는 금액</span>{% endif %}</div>
           {% if floor and floor > max_bid %}
           <div class="v-sub" style="color:var(--red);font-weight:600">현 최저매각가 {{ floor|won }}원이 이 손익분기를 이미 넘습니다 — <b>이번 기일은 어떤 금액을 써도 손해</b>입니다.</div>
           {% endif %}
@@ -720,7 +786,7 @@ document.addEventListener('click', function(e){
             {%- if use.accident_assumed %}(이력 미확인 — 사고차로 가정)
             {%- elif use.accident_hits is not none %}(확인된 사고 {{ use.accident_hits }}건 기준 · 업계 통용 범위 기반 <b>가정</b>이며 실측값이 아닙니다)
             {%- endif %} · 정비 충당 <b>{{ use.reserve|won }}원</b>{% endif %}</div>
-          <div class="v-label gloss-row" style="margin-top:14px">예상낙찰가 <span style="font-weight:400">{% if exp %}— 참고({{ ui.gloss('분위수 밴드', '과거 낙찰 결과가 얼마나 흩어졌는지(사분위 폭)를 중심값에 적용한 범위예요. 이 안에 떨어질 가능성이 높다는 뜻이지 보장은 아닙니다.') }}{% if backtest.within10_pct %} · 실측 ±10% 적중 {{ backtest.within10_pct|round|int }}%{% endif %}){% endif %}</span></div>
+          <div class="v-label gloss-row" style="margin-top:14px">예상낙찰가 <span style="font-weight:400">{% if exp %}— 참고({{ ui.gloss('분위수 밴드', '과거 낙찰 결과가 얼마나 흩어졌는지(사분위 폭)를 중심값에 적용한 범위예요. 이 안에 떨어질 가능성이 높다는 뜻이지 보장은 아닙니다.') }}{% if expected.acc %} · 실측 평균오차 ±{{ expected.acc.mae }}%{% elif backtest.mae_pct %} · 실측 평균오차 ±{{ backtest.mae_pct|round(1) }}%{% endif %}){% endif %}</span></div>
           <div class="v-sub" style="font-size:15px"><b class="num">{% if report.lo and report.hi %}{{ (report.lo/10000)|round|int }} ~ {{ (report.hi/10000)|round|int }} 만원{% elif exp %}{{ (exp/10000)|round|int }} 만원{% else %}<b>미산출</b>{% endif %}</b>
             {% if exp %}· 중심값 {{ exp|won }}원 {% endif %}· 재판매 상한가 {% if upper %}{{ upper|won }}원{% else %}미산출{% endif %}
             {% if not exp %}<span style="display:block;font-weight:400">— 이 물건은 <b>예상낙찰가를 산출하지 않았습니다</b>(표본·조건 불충족). 아래 06·08은 현 최저매각가 기준입니다.</span>{% endif %}
@@ -728,8 +794,8 @@ document.addEventListener('click', function(e){
             {% if exp and exp > max_bid %}<b style="color:var(--red)">— 예상 경쟁가가 상한선을 {{ (exp - max_bid)|won }}원 넘습니다.</b>{% endif %}</div>
           {% else %}
           {# 미산출이면 정확도 꼬리표를 붙이지 않는다 — 없는 값에 적중률을 달면 값이 있는 것처럼 읽힌다 #}
-          <div class="v-label gloss-row">예상낙찰가 <span style="font-weight:400">{% if exp %}— {{ ui.gloss('분위수 밴드', '과거 낙찰 결과가 얼마나 흩어졌는지(사분위 폭)를 중심값에 적용한 범위예요. 이 안에 떨어질 가능성이 높다는 뜻이지 보장은 아닙니다.') }}{% if backtest.within10_pct %} · 실측 ±10% 적중 {{ backtest.within10_pct|round|int }}%{% endif %}{% endif %}</span></div>
-          <div class="v-band num">{% if report.lo and report.hi %}{{ (report.lo/10000)|round|int }} <small>~</small> {{ (report.hi/10000)|round|int }}<small> 만원</small>{% elif exp %}{{ (exp/10000)|round|int }}<small> 만원</small>{% else %}<span style="font-family:var(--sans);font-size:21px;color:var(--ink-soft)">미산출</span>{% endif %}</div>
+          <div class="v-label gloss-row">예상낙찰가 <span style="font-weight:400">{% if exp %}— {{ ui.gloss('분위수 밴드', '과거 낙찰 결과가 얼마나 흩어졌는지(사분위 폭)를 중심값에 적용한 범위예요. 이 안에 떨어질 가능성이 높다는 뜻이지 보장은 아닙니다.') }}{% if expected.acc %} · 실측 평균오차 ±{{ expected.acc.mae }}%{% elif backtest.mae_pct %} · 실측 평균오차 ±{{ backtest.mae_pct|round(1) }}%{% endif %}{% endif %}</span></div>
+          <div class="v-band num">{% if report.lo and report.hi %}{{ (report.lo/10000)|round|int }} <small>~</small> {{ (report.hi/10000)|round|int }}<small>만원</small>{% elif exp %}{{ (exp/10000)|round|int }}<small>만원</small>{% else %}<span style="font-family:var(--sans);font-size:21px;color:var(--ink-soft)">미산출</span>{% endif %}</div>
           <div class="v-sub">{% if exp %}중심값 <b class="num">{{ exp|won }}원</b> · {% endif %}재판매 상한가 {% if upper %}<b class="num">{{ upper|won }}원</b>{% else %}<b>미산출</b>{% endif %}
             {% if report.hi and exp and report.hi <= exp %}<span style="display:block;color:var(--ink-faint)">예상가 밴드는 소매 시세의 110%(소프트캡)에서 멈추도록 제한돼 있어 윗부분이 여기서 끊깁니다. 중심값이 맨 위에 있다고 해서 그 금액까지 써도 된다는 뜻은 아닙니다.</span>{% endif %}
             {% if not exp %}<span style="display:block">— 이 물건은 <b>예상낙찰가를 산출하지 않았습니다</b>(표본·조건 불충족). 아래 <b>06·08은 현 최저매각가 기준</b>입니다.</span>{% endif %}</div>
@@ -738,7 +804,7 @@ document.addEventListener('click', function(e){
              06에서 고친 오류와 같은 종류가 히어로에 남아 있었다(디자인 검수 지적 2). #}
           {% set _unbiddable = floor and floor > max_bid %}
           <div class="v-label gloss-row" style="margin-top:14px">입찰 상한선 <span style="font-weight:400">— 직접 탈 목적 {{ ui.gloss('손익분기', '이 금액을 넘겨 낙찰받으면, 같은 차를 소매로 사는 것보다 손해가 되는 경계선이에요. 취득세·이전·탁송·정비 충당까지 더해 계산합니다.') }}</span></div>
-          <div class="v-band num" style="color:{{ 'var(--ink-soft)' if _unbiddable else 'var(--ink)' }}">{{ (max_bid/10000)|round|int }}<small> 만원</small>{% if _unbiddable %} <span class="chip risk" style="vertical-align:middle">써낼 수 없는 금액</span>{% endif %}</div>
+          <div class="v-band num" style="color:{{ 'var(--ink-soft)' if _unbiddable else 'var(--ink)' }}">{{ (max_bid/10000)|round|int }}<small>만원</small>{% if _unbiddable %} <span class="chip risk" style="vertical-align:middle">써낼 수 없는 금액</span>{% endif %}</div>
           {% if _unbiddable %}
           <div class="v-sub" style="color:var(--red);font-weight:600">현 최저매각가 {{ floor|won }}원이 이 손익분기를 이미 넘습니다 — <b>이번 기일은 어떤 금액을 써도 손해</b>입니다.</div>
           {% endif %}
@@ -908,7 +974,7 @@ document.addEventListener('click', function(e){
 
   <!-- 03 차량·경매 개요 -->
   <section class="section">
-    <div class="sec-head"><span class="sec-no">03</span><h2>차량 · 경매 개요</h2>{% if photos %}<span class="sec-note">경매 등록 사진 {{ photos|length }}장</span>{% endif %}</div>
+    <div class="sec-head" id="sec03"><span class="sec-no">03</span><h2>차량 · 경매 개요</h2>{% if photos %}<span class="sec-note">경매 등록 사진 {{ photos|length }}장</span>{% endif %}</div>
     <div class="card">
       {% if photos %}
       <img class="rphoto" src="/photo/{{ v.id }}/{{ photos[0] }}" alt="{{ v.model|mdl }}" loading="lazy" style="max-height:300px;margin-bottom:14px">
@@ -941,7 +1007,7 @@ document.addEventListener('click', function(e){
 
   <!-- 04 감정평가·이력 — 자료가 없어도 섹션은 유지한다(번호 공백 금지) -->
   <section class="section">
-    <div class="sec-head"><span class="sec-no">04</span><h2>감정평가 · 이력 요약</h2><span class="sec-note">법원 제공 자료 요약{% if v.appraisal_ecdoc_id %} · 감정평가서 원본 별도{% endif %}</span></div>
+    <div class="sec-head" id="sec04"><span class="sec-no">04</span><h2>감정평가 · 이력 요약</h2><span class="sec-note">법원 제공 자료 요약{% if v.appraisal_ecdoc_id %} · 감정평가서 원본 별도{% endif %}</span></div>
     {# 자료가 하나도 없으면 카드 껍데기를 씌우지 않는다 — 흰 카드 안의 빈 박스는
        '렌더 실패'로 보인다(디자인 검수). #}
     {% if not (v.spec_remark or appraisal or v.insurance_history or asum) %}
@@ -1060,13 +1126,14 @@ document.addEventListener('click', function(e){
   <!-- 06 총 취득원가 -->
   <section class="section">
     <div class="sec-head" id="sec06"><span class="sec-no">06</span><h2>총 취득원가</h2><span class="sec-note">{{ abasis_ko }} {{ abid|won }}원 기준</span></div>
+    <p class="rmode-hint">직접 탈 목적 기준으로 보고 있습니다 — 되팔기 계산(07 수익 시뮬레이션 · 08 민감도 · 11 반복 매매)은 접었습니다. 위 <b>'되팔기 계산'</b> 버튼을 누르면 함께 나옵니다.</p>
     <div class="card">
       {% set a = report.allin_ref %}
       <div class="tscroll"><table class="rowcard cost">
         <thead><tr><th>비용 항목</th><th>산정 근거</th><th class="r">금액</th><th class="c">성격</th></tr></thead>
         <tbody>
           <tr><td class="k">낙찰가</td><td class="sub">{% if abasis == 'expected' %}예상낙찰가(중심 추정){% else %}<b>{{ abasis_ko }}</b>를 낙찰가 자리에 넣은 <b>하한 시나리오</b>입니다 — 예상낙찰가가 산출되지 않아 이 금액으로 계산했습니다{% endif %}</td><td class="r num v">{{ a.bid|won }}원</td><td class="c tagcell"><span class="tag {{ 'estimated' if abasis == 'expected' else 'basis' }}">{{ '추정' if abasis == 'expected' else '계산 기준' }}</span></td></tr>
-          <tr><td class="k">취득세</td><td class="sub">비영업용 승용 {{ (report.tax_rate*100)|round|int }}% · 낙찰가 연동</td><td class="r num v">{{ a.tax|won }}원</td><td class="c tagcell"><span class="tag confirmed">세율확정</span></td></tr>
+          <tr><td class="k">취득세</td><td class="sub">{{ report.tax_label or '비영업용 승용 7%' }} · <b>낙찰가</b> 기준{% if report.tax_note %} · <span style="color:var(--amber);font-weight:600">{{ report.tax_note }}</span>{% endif %}</td><td class="r num v">{{ a.tax|won }}원</td><td class="c tagcell"><span class="tag {{ 'estimated' if report.tax_note else 'confirmed' }}">{{ '용도 가정' if report.tax_note else '세율확정' }}</span></td></tr>
           <tr><td class="k">이전등록·탁송</td><td class="sub">이전 {{ (report.transfer/10000)|round|int }}만 + 탁송 {{ (report.delivery/10000)|round|int }}만(고정)</td><td class="r num v">{{ a.fixed|won }}원</td><td class="c tagcell"><span class="tag estimated">추정</span></td></tr>
           <tr><td class="k">정비비</td><td class="sub">기본 정비 충당(현장확인 시 조정)</td><td class="r num v">{{ a.repair|won }}원</td><td class="c tagcell"><span class="tag estimated">추정</span></td></tr>
           <tr><td class="k gloss-row">{{ ui.gloss('리스크 충당금', '현장에서 확인하지 못한 결함이 나올 때 쓰려고 미리 떼어 두는 현금이에요. 결함이 없으면 그대로 남습니다.') }}</td><td class="sub">미확인 결함 대비 현금 충당</td><td class="r num v">{{ a.reserve|won }}원</td><td class="c tagcell"><span class="tag estimated">충당</span></td></tr>
@@ -1078,8 +1145,8 @@ document.addEventListener('click', function(e){
   </section>
 
   <!-- 07 수익 시뮬레이션 -->
-  <section class="section">
-    <div class="sec-head"><span class="sec-no">07</span><h2>낙찰가별 수익 시뮬레이션</h2><span class="sec-note">재판매가 {{ report.resale|won }}원(시세중앙값) 기준</span></div>
+  <section class="section" data-resale>
+    <div class="sec-head" id="sec07"><span class="sec-no">07</span><h2>낙찰가별 수익 시뮬레이션</h2><span class="sec-note">재판매가 {{ report.resale|won }}원(시세중앙값) 기준</span></div>
     <div class="card">
       {# 예상낙찰가가 없으면 후보가 최저매각가 하나뿐이다. 그 한 줄의 '부적정' 칩은
          판정이 아니라 **최저가에 단독 낙찰됐을 때**의 최악 시나리오다(디자인 검수). #}
@@ -1108,8 +1175,8 @@ document.addEventListener('click', function(e){
   </section>
 
   <!-- 08 민감도 -->
-  <section class="section">
-    <div class="sec-head"><span class="sec-no">08</span><h2>민감도 분석&nbsp;— 정비비&nbsp;× 재판매가</h2><span class="sec-note">낙찰가 {{ abid|won }}원({{ abasis_ko }}) 고정</span></div>
+  <section class="section" data-resale>
+    <div class="sec-head" id="sec08"><span class="sec-no">08</span><h2>민감도 분석&nbsp;— 정비비&nbsp;× 재판매가</h2><span class="sec-note">낙찰가 {{ abid|won }}원({{ abasis_ko }}) 고정</span></div>
     <div class="card">
       {% set _sn = namespace(allneg=true) %}{% for row in report.sens %}{% for m in row.cells %}{% if m >= 0 %}{% set _sn.allneg = false %}{% endif %}{% endfor %}{% endfor %}
       <div class="tscroll"><table class="matrix">
@@ -1156,7 +1223,7 @@ document.addEventListener('click', function(e){
 
   <!-- 10 산출 로직 -->
   <section class="section">
-    <div class="sec-head"><span class="sec-no">10</span><h2>산출 로직</h2></div>
+    <div class="sec-head" id="sec10"><span class="sec-no">10</span><h2>산출 로직</h2></div>
     <div class="card">
       <div class="v-label" style="margin-bottom:8px">예상낙찰가 (일반 매수)</div>
       {% if expected and expected.basis and expected.basis.kind == 'min_premium' %}
@@ -1197,21 +1264,28 @@ document.addEventListener('click', function(e){
       <div class="v-label" style="margin:18px 0 8px">재판매 상한가 (마진 기준)</div>
       {% set bd = v.breakdown %}
       <div class="logic"><span class="ln">1</span><div class="ld">기준시세</div><span class="lv num">{{ bd['기준시세']|won }}</span></div>
-      <div class="logic"><span class="ln">2</span><div class="ld">− 수리비 − 사고감가 − 리스크프리미엄<small>{{ bd['예상수리비']|won }} + {{ bd['사고감가']|won }} + {{ bd['리스크프리미엄']|won }}</small></div><span class="lv num">−{{ (bd['예상수리비']+bd['사고감가']+bd['리스크프리미엄'])|won }}</span></div>
+      {# ⚠ 금액만 나열하면 2·3단계가 같은 값으로 보인다 — 요율이 우연히 겹치기 때문이다(수리비 50만 = 이전30+탁송20,
+         사고감가 15% = 목표마진 15%, 리스크 7% = 취득세 7%). 무엇에 몇 %를 곱했는지 옆에 적어야 검산이 닫힌다. #}
+      <div class="logic"><span class="ln">2</span><div class="ld">− 수리비 − 사고감가 − 리스크프리미엄<small>수리비 {{ bd['예상수리비']|man }}(감정 요항 기준) + 사고감가 {{ bd['사고감가']|man }}(기준시세의 {{ ((bd['사고감가율'] or 0)*100)|round|int }}%) + 리스크프리미엄 {{ bd['리스크프리미엄']|man }}(기준시세의 {{ ((report.risk_rate or 0)*100)|round|int }}%)</small></div><span class="lv num">−{{ (bd['예상수리비']+bd['사고감가']+bd['리스크프리미엄'])|won }}</span></div>
       {# 상태정비추가는 합계에서만 빠지고 어느 줄에도 없어, 1~3을 더해도 ＝와 안 맞았다. #}
       {% if bd.get('상태정비추가') %}
       <div class="logic"><span class="ln">2′</span><div class="ld">− 상태 정비 추가<small>{{ bd.get('상태사유', [])|join(' · ') }}</small></div><span class="lv num">−{{ bd['상태정비추가']|won }}</span></div>
       {% endif %}
-      <div class="logic"><span class="ln">3</span><div class="ld">− 취득세 − 고정부대비 − 목표마진<small>{{ bd['취득세']|won }} + {{ bd['고정부대비']|won }} + {{ bd['마진']|won }}</small></div><span class="lv num">−{{ (bd['취득세']+bd['고정부대비']+bd['마진'])|won }}</span></div>
+      <div class="logic"><span class="ln">3</span><div class="ld">− 취득세 − 고정부대비 − 목표마진<small>취득세 {{ bd['취득세']|man }}(기준시세의 {{ ((report.tax_rate or 0)*100)|round|int }}%) + 고정부대비 {{ bd['고정부대비']|man }}(이전 {{ report.transfer|man }} + 탁송 {{ report.delivery|man }}) + 목표마진 {{ bd['마진']|man }}(기준시세의 {{ ((report.margin_rate or 0)*100)|round|int }}%)</small></div><span class="lv num">−{{ (bd['취득세']+bd['고정부대비']+bd['마진'])|won }}</span></div>
       <div class="logic"><span class="ln">＝</span><div class="ld"><b>재판매 상한가</b><small>이 값 이하로 낙찰 시 목표마진 확보</small></div><span class="lv num">{{ upper|won }}</span></div>
+      {# 두 줄의 합이 같아 보이면 복사 오류로 읽힌다(2회차 패널 4인이 여기서 결론 금액을 못 믿었다).
+         실제로는 요율이 우연히 겹친 것이므로, 겹칠 때만 그 사실을 한 줄로 밝힌다. #}
+      {% if (bd['예상수리비']+bd['사고감가']+bd['리스크프리미엄']) == (bd['취득세']+bd['고정부대비']+bd['마진']) %}
+      <p class="note" style="margin-top:10px">2·3단계의 합이 같은 것은 계산이 겹쳐서가 아니라 <b>요율이 우연히 같기</b> 때문입니다 — 사고감가율({{ ((bd['사고감가율'] or 0)*100)|round|int }}%)과 목표마진율({{ ((report.margin_rate or 0)*100)|round|int }}%), 리스크프리미엄율({{ ((report.risk_rate or 0)*100)|round|int }}%)과 취득세율({{ ((report.tax_rate or 0)*100)|round|int }}%), 수리비 기본액과 이전·탁송 합계가 각각 같은 값입니다. 위 괄호의 기준으로 검산됩니다.</p>
+      {% endif %}
       {% endif %}
       <p class="note" style="margin-top:14px">모든 상수(취득세율·마진·감가율)는 config로 외부화되어 있으며, 예상낙찰가의 낙찰률은 낙찰 데이터가 쌓일수록 모델별로 자동 정교화됩니다.</p>
     </div>
   </section>
 
   <!-- 11 법적 확인 -->
-  <section class="section">
-    <div class="sec-head"><span class="sec-no">11</span><h2>법적 확인사항 — 반복 매매 시</h2></div>
+  <section class="section" data-resale>
+    <div class="sec-head" id="sec11"><span class="sec-no">11</span><h2>법적 확인사항 — 반복 매매 시</h2></div>
     <div class="card">
       <p class="note" style="margin-top:0"><b class="pos" style="color:var(--ink)">자동차매매업 등록</b> · 영리 목적으로 반복 매입·판매 시 자동차관리법상 매매업 등록 대상일 수 있어 관할 지자체·전문가 확인이 필요합니다.</p>
       <p class="note"><b style="color:var(--ink)">매도 시 고지의무</b> · 성능·상태 점검 내용, 사고·침수 사실 고지의무가 있으며 누락 시 손해배상 책임이 발생할 수 있습니다.</p>

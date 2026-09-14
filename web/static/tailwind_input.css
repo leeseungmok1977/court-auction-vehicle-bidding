@@ -203,3 +203,14 @@ p, dd, li { text-wrap: pretty; }
   .nc-heronum-lg { font-size: 1.25rem !important; }
   .nc-heronum-sm { font-size: 1rem !important; }
 }
+
+/* 큰글씨·OS 확대에서는 가로 스크롤 칩 줄을 **접어서** 전부 보이게 한다.
+   2회차 패널: 목록 필터가 '검사 경과'의 '검사'에서 끊기고 차종 줄이 '경차'에서 잘렸다 —
+   글자가 커질수록 한 줄에 들어가는 칩이 줄어 오른쪽 페이드가 더 많이 먹는다.
+   고정 바가 아니라 본문이므로 세로로 길어지는 대가는 치를 만하다(리포트 고정 바는 그대로 스크롤 유지). */
+html.nc-large .nc-chiprow {
+  flex-wrap: wrap !important;
+  overflow-x: visible !important;
+  -webkit-mask-image: none !important;
+          mask-image: none !important;
+}

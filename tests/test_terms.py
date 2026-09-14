@@ -117,7 +117,9 @@ def test_suspect_market_never_shows_a_green_cap(monkeypatch):
     assert "이 시세로 계산한 값" in t and "입찰 상한선은" not in t
     assert t.index("오매칭") < t.index("입찰 상한선"), t
     d = (TPL / "detail.html").read_text(encoding="utf-8")
-    assert "'text-amber-300' if bidst.weak == 'saving_unverified' else 'text-emerald-300'" in d
+    # 색 규칙이 히어로의 _capcls 로 옮겨갔다 — 주황(시세 확인 필요)이 초록보다 먼저 걸리는지 본다
+    assert "'text-amber-300' if bidst.weak == 'saving_unverified'" in d
+    assert "else 'text-emerald-300' if bidst.tone == 'ok' else 'text-white'" in d
     assert "시세 확인 전 참고" in d
 
 

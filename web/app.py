@@ -265,6 +265,7 @@ templates.env.filters["acc"] = _acc
 templates.env.filters["accv"] = service.accident_label
 templates.env.filters["mdl"] = _mdl
 templates.env.filters["sstat"] = _sstat
+templates.env.globals["conf_scale"] = service.CONF_SCALE_TEXT   # 신뢰도 등급 경계(화면마다 같은 문장)
 templates.env.globals["car_name"] = _car_name   # 제조사+차명 중복 제거 결합(‘BMW BMW …’ 방지)
 
 
@@ -714,7 +715,7 @@ def vehicle_detail(request: Request, vid: str, cc: str = "", an: str = ""):
         "kcar_enabled": kcar.ENABLED, "cc_msg": cc, "an_msg": an,
         "newcar_public": bool(_cfg.get("newcar_public", False)),   # 당시 출시가 공개 여부(config 전환)
         # 낙찰 시 간이 총비용(낙찰가+취득세+이전·탁송) — 초보용 '그래서 총 얼마' 답변. 전체는 리포트 06.
-        "allin": service.allin_estimate(expected["price"] if expected else None, _cfg),
+        "allin": service.allin_estimate(expected["price"] if expected else None, _cfg, v),
         # 다음 기일 예상 최저가 — '이번 회차를 건너뛸까'를 판단할 유일한 숫자
         "next_min": service.next_min_sale(v),
         # 표시된 최저매각가가 직전(유찰된) 기일 값으로 보이면 그렇게 밝힌다
