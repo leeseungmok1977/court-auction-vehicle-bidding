@@ -22,7 +22,7 @@ sys.stdout.reconfigure(encoding="utf-8")
 
 from playwright.async_api import async_playwright  # noqa: E402
 
-OUT = ROOT / "screenshots" / "persona" / "2026-09-13-r3"
+OUT = ROOT / "screenshots" / "persona" / "2026-09-14-r4"
 BASE = "https://naechaget.co.kr"
 WIDTH, HEIGHT = 390, 900
 SPLASH = ("() => { const s = document.getElementById('splash');"
@@ -34,8 +34,12 @@ def _candidates() -> list[str]:
     con = sqlite3.connect(ROOT / "data" / "auction.db")
     con.row_factory = sqlite3.Row
     rows = con.execute(
+        # ⚠ photo_order 가 없는 물건(기일 남은 440대 중 2대)은 사진 정렬이 원본 순서라
+        # 첫 장이 보관장소 지적도다. 2회차에 하필 그 물건이 뽑혀 18인 중 13인이 '사진 대신 지도'를
+        # 지적했다 — 0.5% 짜리 사례를 대표 화면으로 쓴 셈이다. 분류가 끝난 물건만 고른다.
         "SELECT id FROM vehicles WHERE status='완료' AND median_price IS NOT NULL"
         " AND photo_count >= 5 AND upper_bid IS NOT NULL"
+        " AND photo_order IS NOT NULL AND photo_order <> ''"
         " AND (auction_result IS NULL OR auction_result <> '낙찰')"
         " AND sale_date >= date('now') ORDER BY sale_date LIMIT 40").fetchall()
     return [r["id"] for r in rows]
@@ -98,6 +102,22 @@ async def main():
             except Exception:
                 print(f"  ! {name}: 스플래시가 안 사라짐")
             await pg.wait_for_timeout(700)
+            # ⚠ 리포트 사진은 loading="lazy" 라 전체 페이지 캡처에서 **빈 회색 상자**로 찍힌다.
+            # 2회차 패널 3인이 그걸 보고 "사진칸이 깨졌다"고 적었는데, 프로덕션에서는 7장 모두
+            # 200·실제 이미지였다. 증거를 만드는 도구가 틀리면 평가 전체가 흔들린다.
+            # lazy 를 풀고 디코딩이 끝날 때까지 기다린 뒤 찍는다.
+            await pg.evaluate("""async () => {
+                document.querySelectorAll('img[loading="lazy"]').forEach(i => { i.loading = 'eager'; });
+                window.scrollTo(0, document.body.scrollHeight);
+                await new Promise(r => setTimeout(r, 400));
+                window.scrollTo(0, 0);
+                await Promise.all([...document.images].map(i => i.decode().catch(() => null)));
+            }""")
+            await pg.wait_for_timeout(300)
+            broken = await pg.evaluate(
+                "() => [...document.images].filter(i => !i.complete || i.naturalWidth === 0).length")
+            if broken:
+                print(f"  ! {name}: 로드 안 된 이미지 {broken}개 — 캡처를 신뢰하지 말 것")
             dest = OUT / f"{name}.png"
             await pg.screenshot(path=str(dest), full_page=True)
             info = await pg.evaluate(
