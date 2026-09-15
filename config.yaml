@@ -52,9 +52,9 @@ mileage_tol: 0.30      # 주행거리 허용 오차 (±비율)
 
 # 당시 출시가(신차가) 범위 — 보배드림 신차가격표 파생값 (docs/compliance-review.md §6)
 # newcar_public: false = 관리자 화면에만 표시(기본). true = 공개 리포트·상세에도 표시(출처명은 어떤 경우에도 공개하지 않음).
-#   → 공개 전환은 §6 조건(권리자 허락 등) 충족·기록 후에만. newcar_daily_cap = 일일 수집 요청 상한(권고 300).
+#   → 공개 전환은 §6 조건(권리자 허락 등) 충족·기록 후에만. newcar_daily_cap = 일일 수집 요청 상한(2026-09-12 사용자 승인 2400 — 코드 기본값 NEWCAR_DAILY_CAP 과 같게 유지).
 newcar_public: true    # 2026-09-11 보배드림 사용 승낙(조건: 출처명 미표기) — docs/compliance-review.md §6 승낙 기록 참조
-newcar_daily_cap: 300
+newcar_daily_cap: 2400   # 2026-09-16: 승인값이 코드에만 반영되고 여기엔 300이 남아 매일 300회에서 멈췄다(대기 213→282 증가)
 
 # 사진 자동 정렬(로컬 모델, src/parse/photo_autosort.py) — 일일 갱신에서 신규 물건만 정렬(photo_order_src='auto').
 # 주간 /classify-photos(Claude 비전)가 auto를 덮어써 보정. 런당 상한(물건 수).

@@ -1699,13 +1699,6 @@ def daily_update(within_days: int = 30, analyze: bool = True,
     reuse = reuse_market_prices(within_days=within_days)
     if run_id and reuse.get("applied"):
         db.update_run(run_id, message=f"동급 시세 참조 적용 {reuse['applied']}건")
-    # ②-2 당시 출시가 범위(보배드림 신차가격표) — 소량·저속·캐시 우선, 실패해도 갱신 전체를 막지 않음
-    try:
-        if run_id:
-            db.update_run(run_id, message="당시 출시가 범위 수집(보배드림)")
-        newcar = newcar_collect(max_requests=int(config.get("newcar_daily_cap", NEWCAR_DAILY_CAP)), within_days=within_days)
-    except Exception as e:  # noqa: BLE001
-        newcar = {"stopped": f"오류: {str(e)[:60]}", "matched": 0}
     # ②-3 사진 자동 정렬(로컬 모델·외부요청 0) — 신규 물건 썸네일이 지도·서류부터 나오지 않게.
     #     별도 프로세스로 실행해 모델 메모리를 회수(EC2 RAM 1GB). 모델 미설치·실패는 건너뜀(비치명).
     if run_id:
@@ -1731,20 +1724,52 @@ def daily_update(within_days: int = 30, analyze: bool = True,
         refresh_daily_picks(5)
     except Exception:  # noqa: BLE001 — 추천 갱신 실패가 갱신 전체를 막지 않도록
         pass
+    _base = ""
     if run_id:
         _rv = (f" · 검토 재확인 {review['reviewed']}(복원 {review['resolved']}·보류 {review['quarantined']})"
                if review.get("found") else "")
         _hv = "" if health["state"] == "ok" else f" · ⚠엔카 {health['state']}(HTTP {health['code']})"
         _ru = f" · 동급참조 {reuse['applied']}" if reuse.get("applied") else ""
         _ru += f" · 0표본 재조회 {requery['updated']}" if requery.get("updated") else ""
-        _nc = (f" · 출시가 {newcar.get('matched', 0)}건(대기 {newcar.get('remaining', 0)})"
-               if (newcar.get("matched") or newcar.get("remaining")) else "")
         _ph = (f" · 사진정렬 {photos['sorted']}건" if photos.get("sorted")
                else (" · ⚠사진정렬 건너뜀" if photos.get("error") else ""))
-        db.update_run(run_id, status="done", finished_at=_now(),
-                      message=f"입찰예정 {stored} · 분석 {analyzed}{_ru}{_nc}{_ph} · 낙찰결과 {results}건{_rv}{_hv}")
+        _base = f"입찰예정 {stored} · 분석 {analyzed}{_ru}{_ph} · 낙찰결과 {results}건{_rv}{_hv}"
+        # 긴 수집을 시작하기 **전에** 여기까지의 요약을 남긴다. 서버가 재시작되면 마지막 메시지 뒤에
+        # '(서버 재시작으로 중단됨)'만 붙는다 — 진행 메시지만 남아 있으면 앞 단계 건수가 통째로 사라진다.
+        db.update_run(run_id, message=f"{_base} · 출시가 수집 중")
+    # ⑥ 당시 출시가 범위(보배드림 신차가격표) — **맨 마지막**(2026-09-16 사용자 지시).
+    #    요청 사이 5초라 상한 2,400회면 최대 3시간 20분이다. 예전처럼 ②-2에 두면 사진 정렬·낙찰결과·오늘의 추천이
+    #    그만큼 늦어진다. 설정 상한이 300으로 남아 매일 300회에서 멈추던 것도 함께 바로잡았다(config.yaml).
+    try:
+        newcar = newcar_collect(max_requests=int(config.get("newcar_daily_cap", NEWCAR_DAILY_CAP)), within_days=within_days)
+    except Exception as e:  # noqa: BLE001 — 수집 실패가 갱신 전체를 막지 않도록
+        newcar = {"stopped": f"오류: {str(e)[:60]}", "matched": 0, "remaining": 0}
+    if run_id:
+        # 중단 사유를 기록에 남긴다 — 예전엔 계산만 하고 버려서 매일 예산에서 멈추는데도 '진행 중인 백필'처럼 보였다.
+        _why = newcar_stop_label(newcar)
+        _nc = (f" · 출시가 {newcar.get('matched', 0)}건(대기 {newcar.get('remaining', 0)}{'·' + _why if _why else ''})"
+               if (newcar.get("matched") or newcar.get("remaining") or _why) else "")
+        db.update_run(run_id, status="done", finished_at=_now(), message=f"{_base}{_nc}")
     return {"stored": stored, "analyzed": analyzed, "results": results, "review": review,
             "encar_health": health, "reuse": reuse, "requery": requery, "newcar": newcar, "photos": photos}
+
+
+def newcar_stop_label(res: dict) -> str:
+    """출시가 수집이 멈춘 사유 → 실행 기록용 짧은 표기. 대기열을 다 돌았으면 ''.
+
+    매일 12시 리포트가 '출시가 N건(대기 M·사유)' 한 조각으로 읽으므로 구분자(' · ', '·', 괄호)를 넣지 않는다.
+    """
+    stopped = str((res or {}).get("stopped") or "").strip()
+    if not stopped:
+        return ""
+    m = re.search(r"요청 예산 (\d+) 소진", stopped)
+    if m:
+        return f"예산 {m.group(1)} 소진"
+    if stopped.startswith("차단"):
+        code = re.search(r"\b(\d{3})\b", stopped)
+        return f"⚠차단 HTTP {code.group(1)}" if code else "⚠차단"
+    detail = re.sub(r"[()·]", " ", stopped.removeprefix("오류:").strip())
+    return ("⚠오류 " + re.sub(r"\s+", " ", detail).strip())[:40].strip()
 
 
 def photo_autosort_run(limit: int = 150, timeout: int = 1500) -> dict:
