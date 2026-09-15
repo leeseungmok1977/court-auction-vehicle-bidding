@@ -95,7 +95,9 @@ _TOKENS = [
     ("analyzed", re.compile(r"^분석 (\d+)$")),
     ("reuse", re.compile(r"^동급참조 (\d+)$")),
     ("requery", re.compile(r"^0표본 재조회 (\d+)$")),
-    ("newcar", re.compile(r"^출시가 (\d+)건\(대기 (\d+)\)$")),
+    # 2026-09-16부터 멈춘 사유가 붙는다: '출시가 3건(대기 282·예산 2400 소진)', '…(대기 0·⚠차단 HTTP 403)'
+    ("newcar", re.compile(r"^출시가 (\d+)건\(대기 (\d+)(?:·([^)]+))?\)$")),
+    ("newcar_running", re.compile(r"^출시가 수집 중$")),       # 긴 수집 직전에 먼저 남기는 요약의 꼬리표
     ("photos", re.compile(r"^사진정렬 (\d+)건$")),
     ("photos_skipped", re.compile(r"^⚠사진정렬 건너뜀$")),
     ("results", re.compile(r"^낙찰결과 (\d+)건$")),
@@ -103,8 +105,22 @@ _TOKENS = [
     ("encar", re.compile(r"^⚠엔카 (\S+)\(HTTP ([^)]*)\)$")),
 ]
 
-# 매일 갱신 단계 — daily_update 의 실행 순서 그대로(중단 지점 판정에 순서가 쓰인다)
+# 매일 갱신 단계 — daily_update 의 실행 순서 그대로(중단 지점 판정에 순서가 쓰인다).
+# 2026-09-16: 출시가 수집을 맨 뒤로 옮겼다(상한 2,400회 × 5초 = 최대 3시간 20분이라 앞에 두면 낙찰결과·추천이 늦어진다).
 DAILY_STEPS = [
+    ("list", "입찰예정 목록 수집"),
+    ("encar", "엔카 시세 조회 연결"),
+    ("analyze", "시세 분석"),
+    ("requery", "0표본 차종 재조회"),
+    ("reuse", "동급 시세 참조 보완"),
+    ("photos", "사진 자동 정렬"),
+    ("results", "낙찰결과 반영"),
+    ("review", "무결성 검토"),
+    ("newcar", "당시 출시가 수집"),
+]
+# 그 전 기록(출시가가 동급 참조 바로 다음이던 시절)의 중단 지점은 옛 순서로 판정해야 뒤 단계를 '완료'로 오판하지 않는다.
+# 옛 코드만 '당시 출시가 범위 수집(보배드림)' 진행 메시지를 남겼으므로 그 문구로 구분한다.
+LEGACY_DAILY_STEPS = [
     ("list", "입찰예정 목록 수집"),
     ("encar", "엔카 시세 조회 연결"),
     ("analyze", "시세 분석"),
@@ -132,14 +148,24 @@ _PROGRESS = [
 ]
 
 
+RESTART_SUFFIX = " (서버 재시작으로 중단됨)"      # web/db.py 가 재시작 때 실행 중이던 기록 뒤에 붙이는 문구
+
+
 def is_daily_summary(msg: Optional[str]) -> bool:
     return bool(re.match(r"^입찰예정 \d+ · 분석 \d+", msg or ""))
 
 
 def parse_daily_message(msg: str) -> dict:
-    """매일 갱신 요약 문장 → 단계별 값. 모르는 조각은 unknown 에 모은다(버리지 않는다)."""
+    """매일 갱신 요약 문장 → 단계별 값. 모르는 조각은 unknown 에 모은다(버리지 않는다).
+
+    서버가 재시작되면 마지막 메시지 뒤에 ' (서버 재시작으로 중단됨)'이 붙는다 — 떼어 내고 interrupted 로 표시한다.
+    """
     out: dict = {"unknown": []}
-    for part in (msg or "").split(" · "):
+    text = msg or ""
+    if RESTART_SUFFIX in text:
+        text = text.replace(RESTART_SUFFIX, "")
+        out["interrupted"] = True
+    for part in text.split(" · "):
         part = part.strip()
         if not part:
             continue
@@ -147,10 +173,14 @@ def parse_daily_message(msg: str) -> dict:
             m = rx.match(part)
             if m:
                 g = m.groups()
-                if key == "photos_skipped":
+                if key in ("photos_skipped", "newcar_running"):
                     out[key] = True
                 elif key == "encar":
                     out[key] = (g[0], g[1])
+                elif key == "newcar":
+                    out[key] = (int(g[0]), int(g[1]))
+                    if g[2]:
+                        out["newcar_why"] = g[2].strip()
                 elif len(g) == 1:
                     out[key] = int(g[0])
                 else:
@@ -172,37 +202,52 @@ def _row(key: str, count: str, status: str) -> dict:
     return {"step": _STEP_LABEL[key], "count": count, "status": status}
 
 
+def _newcar_row(p: dict, run_status: Optional[str]) -> dict:
+    """당시 출시가 수집 행. 예산 소진은 백필을 여러 날에 나눠 도는 정상 동작이라 성공, 차단·오류는 실패."""
+    nc, why = p.get("newcar"), p.get("newcar_why") or ""
+    if p.get("newcar_running") and not nc:
+        # 앞 단계 요약은 남았는데 수집이 끝나지 않았다 — 아직 도는 중이거나 재시작으로 끊겼다
+        live = run_status == "running"
+        return _row("newcar", "진행 중" if live else "중단", RUNNING if live else FAIL)
+    if not nc:
+        return _row("newcar", "0건", NA)
+    count = f"{nc[0]}건 (대기 {nc[1]}{' · ' + why if why else ''})"
+    return _row("newcar", count, FAIL if why.startswith("⚠") else OK)
+
+
 def daily_steps(run: dict) -> list[dict]:
     """매일 갱신 1회의 단계별 건수·결과."""
     msg = (run.get("message") or "").strip()
     status = run.get("status")
-    if status == "done" and is_daily_summary(msg):
+    if is_daily_summary(msg):
+        # 요약이 있으면, 끝났든(done) 맨 끝 출시가 수집에서 끊겼든(error·running) 앞 단계 건수는 확정이다
         p = parse_daily_message(msg)
         enc = p.get("encar")
-        nc = p.get("newcar")
         rv = p.get("review")
-        rows = [
+        return [
             _row("list", f"{p.get('stored', 0)}건", OK),
             _row("encar", f"{enc[0]} (HTTP {enc[1]})" if enc else "정상", FAIL if enc else OK),
             # 엔카 연결이 실패한 날에도 분석 건수가 찍힐 수 있다 — 건수는 기록대로 두고 경고로 표시한다
             _row("analyze", f"{p.get('analyzed', 0)}건", WARN if enc else OK),
             _row("requery", f"{p['requery']}건", OK) if p.get("requery") else _row("requery", "0건", NA),
             _row("reuse", f"{p['reuse']}건", OK) if p.get("reuse") else _row("reuse", "0건", NA),
-            (_row("newcar", f"{nc[0]}건 (대기 {nc[1]})", OK) if nc else _row("newcar", "0건", NA)),
             (_row("photos", "건너뜀", FAIL) if p.get("photos_skipped")
              else _row("photos", f"{p['photos']}건", OK) if p.get("photos")
              else _row("photos", "0건", NA)),
             _row("results", f"{p.get('results', 0)}건", OK),
             (_row("review", f"재확인 {rv[0]} · 복원 {rv[1]} · 보류 {rv[2]}", WARN if rv[2] else OK) if rv
              else _row("review", "이상 없음", OK)),
+            _newcar_row(p, status),
         ]
-        return rows
 
+    # 요약 없이 진행 메시지만 남은 실행 — 어느 단계에서 멈췄는지로 판정한다.
+    # 옛 코드만 '당시 출시가 범위 수집(보배드림)' 진행 메시지를 남겼다 → 그 기록은 옛 단계 순서로 읽는다.
+    steps = LEGACY_DAILY_STEPS if "당시 출시가 범위 수집" in msg else DAILY_STEPS
     at = progress_step(msg)
-    keys = [k for k, _ in DAILY_STEPS]
+    keys = [k for k, _ in steps]
     live = status == "running"
     rows = []
-    for i, (k, _label) in enumerate(DAILY_STEPS):
+    for i, (k, _label) in enumerate(steps):
         if at is None:
             rows.append(_row(k, "기록 없음", RUNNING if live else UNKNOWN))
             continue
@@ -218,9 +263,14 @@ def daily_steps(run: dict) -> list[dict]:
 
 def daily_counts(run: dict) -> str:
     msg = (run.get("message") or "").strip()
-    if run.get("status") == "done" and is_daily_summary(msg):
+    if is_daily_summary(msg):
         p = parse_daily_message(msg)
-        return f"입찰예정 {p.get('stored', 0)} · 분석 {p.get('analyzed', 0)} · 낙찰결과 {p.get('results', 0)}"
+        base = f"입찰예정 {p.get('stored', 0)} · 분석 {p.get('analyzed', 0)} · 낙찰결과 {p.get('results', 0)}"
+        if p.get("newcar"):
+            base += f" · 출시가 {p['newcar'][0]}"
+        elif p.get("newcar_running"):
+            base += " · 출시가 수집 중" if run.get("status") == "running" else " · 출시가 수집 중 끊김"
+        return base
     at = progress_step(msg)
     return f"{_STEP_LABEL[at]} 단계에서 멈춤" if at else "건수 기록 없음"
 
@@ -480,6 +530,9 @@ def build_markdown(data: dict) -> str:
             st = sched.get("status")
             if st == "running":
                 status = RUNNING
+            elif st == "error" and is_daily_summary(sched.get("message")):
+                # 앞 단계를 끝내고 요약까지 남긴 뒤 맨 끝 출시가 수집에서 끊겼다 — 갱신 전체를 실패로 적지 않는다
+                status = WARN
             elif st == "error":
                 status = FAIL
             elif any(s["status"] in (FAIL, WARN) for s in step_rows):

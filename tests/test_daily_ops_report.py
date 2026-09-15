@@ -212,3 +212,47 @@ def test_past_date_report_judges_the_tunnel_from_that_days_run_not_from_now():
     d["server"]["runs"] = [_run("2026-09-15 06:30:50", "done", MSG_0913, "2026-09-15 07:02:00")]
     row = next(line for line in R.build_markdown(d).splitlines() if line.startswith("| 집 회선 터널 |"))
     assert "그날 06:30 엔카 정상" in row and row.endswith("✅ 성공 |"), row
+
+
+# ── 2026-09-16 변경: 출시가 수집을 맨 뒤로 + 멈춘 사유 기록 ──
+MSG_NEW_BUDGET = ("입찰예정 450 · 분석 20 · 동급참조 5 · 사진정렬 12건 · 낙찰결과 240건 · "
+                  "출시가 61건(대기 207·예산 2400 소진)")
+MSG_NEW_BLOCKED = "입찰예정 450 · 분석 20 · 낙찰결과 240건 · 출시가 2건(대기 266·⚠차단 HTTP 403)"
+MSG_NEW_COLLECTING = "입찰예정 450 · 분석 20 · 낙찰결과 240건 · 출시가 수집 중"
+
+
+def test_release_price_token_carries_the_stop_reason():
+    p = R.parse_daily_message(MSG_NEW_BUDGET)
+    assert p["newcar"] == (61, 207) and p["newcar_why"] == "예산 2400 소진" and p["unknown"] == []
+    assert R.parse_daily_message(MSG_0913)["newcar"] == (19, 213)          # 옛 형식도 그대로 읽는다
+
+
+def test_budget_exhaustion_is_normal_but_a_block_is_a_failure():
+    """예산 소진은 백필을 여러 날에 나눠 도는 정상 동작 — 차단·오류만 실패."""
+    rows = R.daily_steps(_run("2026-09-17 06:30:10", "done", MSG_NEW_BUDGET, "2026-09-17 09:40:00"))
+    assert rows[-1]["step"] == "당시 출시가 수집", "출시가 수집은 맨 뒤 단계다"
+    assert rows[-1]["status"] == R.OK and "예산 2400 소진" in rows[-1]["count"]
+    blocked = R.daily_steps(_run("2026-09-17 06:30:10", "done", MSG_NEW_BLOCKED, "2026-09-17 07:20:00"))
+    assert blocked[-1]["status"] == R.FAIL and "차단 HTTP 403" in blocked[-1]["count"]
+
+
+def test_run_cut_during_release_price_collection_keeps_earlier_counts():
+    """긴 수집 전에 요약을 먼저 남기므로, 재시작으로 끊겨도 앞 단계 건수는 남는다 — 갱신 전체를 실패로 적지 않는다."""
+    cut = _run("2026-09-16 06:30:10", "error", MSG_NEW_COLLECTING + " (서버 재시작으로 중단됨)", "2026-09-16 08:00:00")
+    rows = R.daily_steps(cut)
+    assert _status(rows, "낙찰결과 반영") == {"step": "낙찰결과 반영", "count": "240건", "status": R.OK}
+    assert _status(rows, "당시 출시가 수집")["status"] == R.FAIL
+    assert R.daily_counts(cut) == "입찰예정 450 · 분석 20 · 낙찰결과 240 · 출시가 수집 중 끊김"
+    d = _data()
+    d["server"]["runs"] = [cut]
+    row = next(line for line in R.build_markdown(d).splitlines() if line.startswith("| 매일 시세·낙찰 갱신 |"))
+    assert row.endswith("⚠️ 경고 |"), row
+
+
+def test_run_still_collecting_at_report_time_is_in_progress():
+    live = _run("2026-09-16 06:30:10", "running", MSG_NEW_COLLECTING)
+    assert _status(R.daily_steps(live), "당시 출시가 수집")["status"] == R.RUNNING
+    d = _data()
+    d["server"]["runs"] = [live]
+    row = next(line for line in R.build_markdown(d).splitlines() if line.startswith("| 매일 시세·낙찰 갱신 |"))
+    assert row.endswith("⏳ 진행 중 |") and "출시가 수집 중" in row, row
