@@ -22,7 +22,9 @@ sys.stdout.reconfigure(encoding="utf-8")
 
 from playwright.async_api import async_playwright  # noqa: E402
 
-OUT = ROOT / "screenshots" / "persona" / "2026-09-14-r4"
+# 회차마다 폴더를 나눈다 — 지난 회차 증거를 덮어쓰면 회차 비교가 불가능해진다.
+# 사용: python scripts/capture_persona_screens.py 2026-09-16-r5
+OUT = ROOT / "screenshots" / "persona" / (sys.argv[1] if len(sys.argv) > 1 else "2026-09-14-r4")
 BASE = "https://naechaget.co.kr"
 WIDTH, HEIGHT = 390, 900
 SPLASH = ("() => { const s = document.getElementById('splash');"
@@ -41,7 +43,9 @@ def _candidates() -> list[str]:
         " AND photo_count >= 5 AND upper_bid IS NOT NULL"
         " AND photo_order IS NOT NULL AND photo_order <> ''"
         " AND (auction_result IS NULL OR auction_result <> '낙찰')"
-        " AND sale_date >= date('now') ORDER BY sale_date LIMIT 40").fetchall()
+        # ⚠ 오늘이 기일인 물건은 입찰 시각이 지나면 '기일 경과 — 결과 확인 전'으로 바뀌고
+        # 입찰 상한선이 사라진다. 3회차에 하필 그런 물건이 뽑혔다 — 내일 이후 기일만 고른다.
+        " AND sale_date > date('now') ORDER BY sale_date LIMIT 40").fetchall()
     return [r["id"] for r in rows]
 
 
@@ -66,6 +70,20 @@ def pick_vehicle() -> str:
             continue
         if html.count('class="sec-no"') < 12:
             print(f"  · {vid} 섹션이 12개가 아님 — 다음 후보")
+            continue
+        # ⚠ 로컬 DB는 하루 이상 낡을 수 있어 판정 상태가 프로덕션과 다르다.
+        # 상세 화면을 직접 받아 예외 상태(수동 검토·기일 경과)를 걸러낸다 — 대표 물건이
+        # 예외이면 18인의 지적이 그 한 건에 쏠린다(2회차 photo_order 사고와 같은 구조).
+        # 다만 '신뢰도 낮음'은 거르지 않는다 — 실제로 존재하는 약점을 숨기는 셈이 된다.
+        try:
+            with urllib.request.urlopen(f"{BASE}/vehicle/{q}", timeout=40) as r:
+                detail = r.read().decode("utf-8")
+        except Exception as e:
+            print(f"  · {vid} 상세 확인 실패({e}) — 다음 후보")
+            continue
+        flags = [t for t in ("수동 검토", "기일 경과") if t in detail]
+        if flags:
+            print(f"  · {vid} 상세가 예외 상태({'·'.join(flags)}) — 다음 후보")
             continue
         return vid
     raise SystemExit("프로덕션에서 리포트가 온전한 물건을 못 찾았다 — 데이터 확인 필요")
@@ -114,8 +132,11 @@ async def main():
                 await Promise.all([...document.images].map(i => i.decode().catch(() => null)));
             }""")
             await pg.wait_for_timeout(300)
-            broken = await pg.evaluate(
-                "() => [...document.images].filter(i => !i.complete || i.naturalWidth === 0).length")
+            # src 가 빈 숨은 이미지(사진 확대 모달의 0x0 자리표시자)는 미로드가 정상이다.
+            # 이걸 세면 매 화면 거짓 경고가 뜨고, 그러면 진짜 깨진 사진을 놓친다.
+            broken = await pg.evaluate("""() => [...document.images]
+                .filter(i => i.currentSrc || i.getAttribute('src'))
+                .filter(i => !i.complete || i.naturalWidth === 0).length""")
             if broken:
                 print(f"  ! {name}: 로드 안 된 이미지 {broken}개 — 캡처를 신뢰하지 말 것")
             dest = OUT / f"{name}.png"

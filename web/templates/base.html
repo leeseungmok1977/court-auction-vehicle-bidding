@@ -254,6 +254,9 @@
   /* 큰글씨에서 용어 ? 원(14px 고정)이 본문 대비 작아지지 않게 — 리포트와 같은 처방 */
   html.nc-large .gloss .q{width:18px;height:18px;font-size:12px}
   html.nc-large .gloss .pop{font-size:16px}
+  /* 큰글씨에서 목록의 필터 카드가 화면 2/3를 먹어 첫 카드의 가격이 폴드 밖으로 나갔다(3회차 패널 4개 맥락).
+     큰글씨에서만 요약줄을 보여 접을 수 있게 한다 — 일반 모드에서는 summary 가 숨겨져 렌더가 그대로다. */
+  html.nc-large #listFilter > summary{display:flex}
   /* 켜짐 = 테두리 + ✓ (리포트 고정 바와 같은 표시. 파란 채움은 주동작 버튼과 구별이 안 됐다) */
   #largeToggle[aria-pressed="true"]{background:#fff;color:#2f5fe0;border:2px solid #2f5fe0}
   #largeToggle[aria-pressed="true"]::before{content:"✓ "}
@@ -507,7 +510,11 @@ window._goBack = function(e){
 
 <!-- 큰글씨(어르신) 모드 토글 — 헤더 '큰글씨' 버튼. 상태는 기기 로컬 저장, 로드 전 <head>에서 선적용(FOUC 방지) -->
 <script>
-function ncToggleLarge(){ try{ var on=document.documentElement.classList.toggle('nc-large'); localStorage.setItem('naechaget:large', on?'1':'0'); var b=document.getElementById('largeToggle'); if(b) b.setAttribute('aria-pressed', on?'true':'false'); }catch(e){} }
+function ncToggleLarge(){ try{ var on=document.documentElement.classList.toggle('nc-large'); localStorage.setItem('naechaget:large', on?'1':'0'); var b=document.getElementById('largeToggle'); if(b) b.setAttribute('aria-pressed', on?'true':'false');
+  /* 목록의 필터 카드는 큰글씨에서만 접힌다. 여기서 같이 동기화하지 않으면 **큰글씨를 끄는 순간
+     summary 가 다시 숨겨지면서 닫힌 details 만 남아** 검색창·정렬·칩이 통째로 사라지고 펼칠 손잡이도
+     없어진다(디자인 검수 차단 지적). 반대로 켤 때도 이 줄이 있어야 즉시 접힌다. */
+  var f=document.getElementById('listFilter'); if(f) f.open=!on; }catch(e){} }
 (function(){ try{ var b=document.getElementById('largeToggle'); if(b) b.setAttribute('aria-pressed', document.documentElement.classList.contains('nc-large')?'true':'false'); }catch(e){} })();
 </script>
 

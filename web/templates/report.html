@@ -761,7 +761,11 @@ document.addEventListener('click', function(e){
   {% set _st = (bidst.state if bidst else 'wait') %}
   {% set _tone = (bidst.tone if bidst else 'wait') %}
   {% set opp = _st in ('resale', 'usepick') %}
-  {% set over_market = _st in ('over_market', 'blocked') %}
+  {# '(시세 초과)'는 예상낙찰가가 **실제로** 시세를 넘을 때만 붙인다. 예전엔 over_market·blocked를
+     한 덩어리로 묶어, 시세의 79%인 물건에도 '(시세 초과)'가 붙었다(3회차 패널 2인 지적 → 코드 확인).
+     같은 state 가 세 가지 이유로 온다 — service.bid_state: exp>med(3640) · 예상 경쟁가가 상한선 초과(3655)
+     · blocked(3633·3638). 이 중 첫째만 '시세 초과'다. #}
+  {% set exceeds_market = (exp and med and exp > med) %}
   {% set thin_margin = upper and exp and exp > upper %}
   <!-- 01 핵심 결론 -->
   <section class="section">
@@ -785,7 +789,8 @@ document.addEventListener('click', function(e){
             {% if use %}사고 감가 <b>{{ (use.accident_rate*100)|round|int }}%</b>
             {%- if use.accident_assumed %}(이력 미확인 — 사고차로 가정)
             {%- elif use.accident_hits is not none %}(확인된 사고 {{ use.accident_hits }}건 기준 · 업계 통용 범위 기반 <b>가정</b>이며 실측값이 아닙니다)
-            {%- endif %} · 정비 충당 <b>{{ use.reserve|won }}원</b>{% endif %}</div>
+            {%- endif %} · 정비 충당 <b>{{ use.reserve|won }}원</b>{% endif %}
+            <span style="display:block">단, <b>유치권(수리비·보관료)·인수부담은 이 값에 반영돼 있지 않습니다</b> — <a href="#sec09">09 리스크</a>에서 확인하세요.</span></div>
           <div class="v-label gloss-row" style="margin-top:14px">예상낙찰가 <span style="font-weight:400">{% if exp %}— 참고({{ ui.gloss('분위수 밴드', '과거 낙찰 결과가 얼마나 흩어졌는지(사분위 폭)를 중심값에 적용한 범위예요. 이 안에 떨어질 가능성이 높다는 뜻이지 보장은 아닙니다.') }}{% if expected.acc %} · 실측 평균오차 ±{{ expected.acc.mae }}%{% elif backtest.mae_pct %} · 실측 평균오차 ±{{ backtest.mae_pct|round(1) }}%{% endif %}){% endif %}</span></div>
           <div class="v-sub" style="font-size:15px"><b class="num">{% if report.lo and report.hi %}{{ (report.lo/10000)|round|int }} ~ {{ (report.hi/10000)|round|int }} 만원{% elif exp %}{{ (exp/10000)|round|int }} 만원{% else %}<b>미산출</b>{% endif %}</b>
             {% if exp %}· 중심값 {{ exp|won }}원 {% endif %}· 재판매 상한가 {% if upper %}{{ upper|won }}원{% else %}미산출{% endif %}
@@ -812,21 +817,31 @@ document.addEventListener('click', function(e){
             {% if use %}사고 감가 <b>{{ (use.accident_rate*100)|round|int }}%</b>
             {%- if use.accident_assumed %}(이력 미확인 — 사고차로 가정)
             {%- elif use.accident_hits is not none %}(확인된 사고 {{ use.accident_hits }}건 기준 · 업계 통용 범위 기반 <b>가정</b>이며 실측값이 아닙니다)
-            {%- endif %} · 정비 충당 <b>{{ use.reserve|won }}원</b>{% endif %}</div>
+            {%- endif %} · 정비 충당 <b>{{ use.reserve|won }}원</b>{% endif %}
+            <span style="display:block">단, <b>유치권(수리비·보관료)·인수부담은 이 값에 반영돼 있지 않습니다</b> — <a href="#sec09">09 리스크</a>에서 확인하세요.</span></div>
           {% endif %}
           {% endif %}
         </div>
         <ul class="vpts">
-          <li>현 최저매각가 <b class="num">{{ floor|won }}원</b> — {% if _st == 'blocked' %}<b style="color:var(--red)">이미 입찰 상한선을 넘습니다. 이번 회차는 입찰 부적합</b>{% elif _st == 'over_market' %}<b style="color:var(--red)">예상낙찰가가 소매 시세를 넘어 입찰을 권하지 않습니다</b>{% elif _st == 'wait' %}{% if exp %}예상낙찰가 초과 — 추가 유찰 대기 권장{% else %}저감가가 공고되지 않아 예상낙찰가를 내지 않았습니다 — 추가 유찰 대기 권장{% endif %}{% elif opp %}예상낙찰가 이하 — 지금 입찰 검토 가능{% else %}시세 신뢰도가 낮아 판정을 보류합니다{% endif %}</li>
+          <li>현 최저매각가 <b class="num">{{ floor|won }}원</b> — {% if _st == 'blocked' %}<b style="color:var(--red)">이미 입찰 상한선을 넘습니다. 이번 회차는 입찰 부적합</b>{% elif _st == 'over_market' %}{% if exceeds_market %}<b style="color:var(--red)">예상낙찰가가 소매 시세를 넘어 입찰을 권하지 않습니다</b>{% else %}<b style="color:var(--red)">예상 경쟁가가 입찰 상한선을 넘어 이번 회차는 권하지 않습니다</b>{% endif %}{% elif _st == 'wait' %}{% if exp %}예상낙찰가 초과 — 추가 유찰 대기 권장{% else %}저감가가 공고되지 않아 예상낙찰가를 내지 않았습니다 — 추가 유찰 대기 권장{% endif %}{% elif opp %}예상낙찰가 이하 — 지금 입찰 검토 가능{% else %}시세 신뢰도가 낮아 판정을 보류합니다{% endif %}</li>
           {# 2026-09-12 수정: 여기 있던 report.discount는 **이 물건이 아니라 모집단 중앙값**이었다.
      "예상낙찰가는 약 73%"로 표시되는데 실제 이 물건은 105%인 사례가 3/3 재현됐다.
      이 물건 값(exp/med)을 쓰고, 모집단 통계는 별도 라벨로 분리한다. #}
-          <li>소매 시세중앙값 <b class="num">{{ med|won }}원</b> 대비 이 물건의 예상낙찰가는 <b{% if over_market %} style="color:var(--amber)"{% endif %}>{{ ('약 ' ~ ((exp/med*100)|round|int) ~ '%') if (med and exp) else '미산출' }}</b>{% if over_market %} <b style="color:var(--amber)">(시세 초과)</b>{% endif %}{% if report.discount %}{% set _db = report.discount_basis %}
+          <li>소매 시세중앙값 <b class="num">{{ med|won }}원</b> 대비 이 물건의 예상낙찰가는 <b{% if exceeds_market %} style="color:var(--amber)"{% endif %}>{{ ('약 ' ~ ((exp/med*100)|round|int) ~ '%') if (med and exp) else '미산출' }}</b>{% if exceeds_market %} <b style="color:var(--amber)">(시세 초과)</b>{% endif %}{% if report.discount %}{% set _db = report.discount_basis %}
             <span style="display:block;font-weight:400">· {{ _db.label }}은 {{ (report.discount*100)|round|int }}%{% if _db.n %}(표본 {{ _db.n }}건){% endif %}입니다{% if _db.kind != 'model' %} — <b>이 차종의 실낙찰 기록이 아니라 전국 통계</b>입니다(05 참조){% endif %}{% if expected and expected.basis and expected.basis.kind == 'min_premium' %}. 이 물건의 예상낙찰가는 이 비율이 아니라 최저매각가 기준으로 냈습니다(10){% endif %}.</span>{% endif %}</li>
           {# 상한가가 미산출이면 "0원 이하로 써라"는 불가능한 지시가 된다 — 육각형 미산출 규칙과 동일하게 문장 자체를 생략(3회차 품질 지적 5). #}
           {% if not upper %}{# 미산출 — 재판매 기준선 문장 없음 #}
           {% elif thin_margin %}<li style="color:var(--amber)"><b style="color:var(--amber)">재판매 부적합 신호</b> — 예상낙찰가가 마진 확보선(<b class="num">{{ upper|won }}원</b>)을 초과해 <b>되팔이 차익은 어렵습니다</b>{% if bidst and bidst.state in ('resale','usepick') %} — 직접 타실 목적이면 검토할 만합니다{% endif %}</li>
           {% else %}<li>재판매 목적이면 마진 확보선 <b class="num">{{ upper|won }}원</b> 이하가 기준 (목표마진 {{ report.target_margin|won }}원)</li>{% endif %}
+          {# 결론의 큰 숫자(상한선)는 '써도 되는 한계'지 '준비할 돈'이 아니다. 3회차 패널 5개 맥락이
+             상한선만 보고 예산을 세웠다 — 총 취득원가와 '전액 현금'이 06·12에 흩어져 있던 탓이다.
+             결론 안에서 한 줄로 만나게 한다. #}
+          {% if report.allin_ref and report.allin_ref.total %}
+          {# 기준 금액은 06 과 **같은 값**을 쓴다 — 여기서만 다른 기준을 쓰면 한 리포트 안에 총액이 둘이 되어
+             지난 회차의 '취득세가 두 값' 문제를 그대로 재현한다. 대신 '가정'임을 문장에 박는다:
+             경고 상태에서는 이 기준가가 우리가 방금 "쓰지 말라"고 한 금액이기 때문이다(디자인 검수 지적 3). #}
+          <li>{{ abasis_ko }} <b class="num">{{ abid|won }}원</b>에 낙찰된다고 가정하면 <b>준비할 현금은 총 <span class="num">{{ report.allin_ref.total|won }}원</span></b>입니다 — 취득세·이전등록·탁송·정비 충당을 더한 실제 지출(<a href="#sec06">06</a>). 차량 경매는 <b>경락잔금대출이 사실상 없어 전액 현금</b>으로 준비해야 합니다(<a href="#sec12">12 낙찰 전후 절차</a>).</li>
+          {% endif %}
           {% if next_min %}<li class="gloss-row">이번 기일에 {{ ui.gloss('유찰', '입찰한 사람이 없어 팔리지 않은 것이에요. 유찰될 때마다 법원이 최저매각가를 낮춰(보통 20~30%) 다음 기일에 다시 내놓습니다.') }}되면 <b>다음 기일 예상 최저가는 <span class="num">{{ next_min.price|won }}원</span></b>({{ ((1-next_min.ratio)*100)|round|int }}% {{ ui.gloss('저감', '유찰 뒤 법원이 최저매각가를 낮추는 것이에요. 저감률은 법원·사건마다 다를 수 있습니다.') }}{% if next_min.basis == 'court' %} · 이 법원 실측 {{ next_min.court_n }}회{% if next_min.share and next_min.share < 0.85 %} 중 {{ (next_min.share*100)|round|int }}%{% endif %}{% else %} · 전국 기준(이 법원 표본 부족){% endif %})</li>{% endif %}
           <li><b>시세 신뢰도 {{ conf }}/100</b> — 이 결론이 딛고 선 <b>소매 시세</b>를 얼마나 믿을 수 있는지의 점수입니다(차량 상태·사고 이력의 확실성은 별개 · 02 참조). 미확정 요소는 현장확인(상태·정비비)뿐이며 결과에 따라 밴드가 조정될 수 있음(09)</li>
         </ul>
@@ -1203,7 +1218,7 @@ document.addEventListener('click', function(e){
       <div class="tscroll"><table class="rowcard">
         <thead><tr><th>항목</th><th>내용</th><th class="c">상태</th></tr></thead>
         <tbody>
-          <tr><td class="k">권리·저당</td><td class="sub">저당권·압류 말소 여부(<b>자동차등록원부</b> 갑·을구) · 정비/보관업자 <b>유치권</b>(수리비·보관료) — 아래 06 총 취득원가에 <b>반영돼 있지 않음</b></td><td class="c tagcell"><span class="chip warn">원부 확인</span></td></tr>
+          <tr><td class="k">권리·저당</td><td class="sub">저당권·압류 말소 여부(<b>자동차등록원부</b> 갑부·을부) · 정비/보관업자 <b>유치권</b>(수리비·보관료) — 아래 06 총 취득원가에 <b>반영돼 있지 않음</b></td><td class="c tagcell"><span class="chip warn">원부 확인</span></td></tr>
           <tr><td class="k">보관료·견인비</td><td class="sub">낙찰 후 인도까지의 보관료는 낙찰자 부담이 될 수 있음 — 보관장소에 금액 문의</td><td class="c tagcell"><span class="chip warn">사전 문의</span></td></tr>
           <tr><td class="k">사고·침수</td><td class="sub">{{ v|accv }}{% if v.accident_hits %} — {{ v.accident_hits|join(', ') }}{% endif %} · 골격 손상 여부 현장 확인</td>{# '이력 미확인'에 초록 ok 칩을 달면 확인하지 못한 것을 확인해서 괜찮은 것처럼
              읽힌다. 이 앱에서 가장 하면 안 되는 종류의 오독이다 — 초록은 이력이 실제로

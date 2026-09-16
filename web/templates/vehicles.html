@@ -4,7 +4,16 @@
 {% block content %}
 
 <!-- 필터 바 -->
-<div class="bg-surface border border-line rounded-lg p-3">
+{# 큰글씨(125%)에서는 이 카드가 화면 2/3를 먹어 첫 물건 카드의 **가격이 폴드 밖으로 밀렸다**
+   (3회차 패널 4개 맥락 — 35·58세: "큰글씨를 켜는 사람한테서 제일 중요한 가격을 뺏어간 셈").
+   큰글씨에서만 접는다. details 를 open 으로 두고 summary 를 숨겨 **일반 모드 렌더는 한 픽셀도
+   바뀌지 않는다**(리포트 nc-large 처방과 같은 방식). 아래 스크립트가 큰글씨일 때만 open 을 뗀다. #}
+<details id="listFilter" open class="bg-surface border border-line rounded-lg p-3">
+  <summary class="hidden cursor-pointer list-none text-sm font-medium text-txt select-none items-center gap-1 py-0.5">
+    {# '총 N건'을 여기 넣었더니 바로 아래 '판정 표시 설명' 줄의 건수와 **두 번 나왔다**(검수 실측).
+       건수는 아래 줄이 이미 갖고 있으므로 여기엔 펼침 표시만 둔다(#listLegend 와 같은 기호). #}
+    <span class="material-symbols-outlined text-[18px] leading-none">filter_list</span>검색 · 필터
+    <span class="material-symbols-outlined ml-auto text-[20px] leading-none text-mut">expand_more</span></summary>
   {# 320×568에서 첫 물건 카드가 폴드 아래로 밀렸다. 필터를 접는 건 검색·정렬이
      이 화면의 존재 이유라 하지 않는다 — 대신 압축한다. 셀렉트 3개가 각자 한 줄을
      쓰면서 오른쪽에 200px씩 빈 공간을 남기고 있었다(가장 넓은 것도 149px).
@@ -94,7 +103,11 @@
        옮겨 자기 줄을 없앤다 — sm 이상에서만 여기 남는다. #}
     <span class="hidden sm:inline text-sm text-mut ml-auto whitespace-nowrap">총 <b class="text-txt">{{ total }}</b>건</span>
   </form>
-</div>
+</details>
+{# 한쪽 방향만 처리하면(접기만) 큰글씨를 끈 뒤 돌아왔을 때 닫힌 채로 남는다 — 양쪽을 다 정한다.
+   같은 동기화가 base.html 의 ncToggleLarge() 에도 있어야 한다(페이지를 떠나지 않고 토글하는 경우). #}
+<script>(function(){var d=document.getElementById('listFilter');
+  if(d) d.open = !document.documentElement.classList.contains('nc-large');})();</script>
 
 <!-- 차종 프리셋 필터(모델명 기준 근사 분류) — 상용·패밀리 등 수요자별 빠른 탐색 -->
 <div class="nc-chiprow flex items-center gap-1.5 text-xs px-1 overflow-x-auto
@@ -371,7 +384,11 @@ d.addEventListener('toggle',function(){try{localStorage.setItem('ncUsepickBasis'
         {% set _cbad = _cover or v.bidst.state in ('blocked','over_market') %}
         <div class="mt-1 flex flex-wrap items-baseline justify-between gap-x-2 text-xs" style="word-break:keep-all">
           {% if v.bidst.exp_pinned %}<span class="text-mut text-[11px]">최저가 기준 — 더 내려가지 않음</span>{% else %}<span></span>{% endif %}
-          {% if v.bidst.max_bid %}<span class="ml-auto whitespace-nowrap font-semibold {{ 'text-rose-600' if _cbad else 'text-mut' }}">입찰 상한 <b class="font-mono tabular-nums {{ 'text-rose-700' if _cbad else 'text-txt' }}">{{ v.bidst.max_bid|won }}</b></span>{% endif %}
+          {# 위 주석의 '무게를 예상낙찰가와 동률로'가 실제 마크업에서는 지켜지지 않고 있었다 —
+             상한 금액만 text-xs(12px)라 카드에서 가장 작은 숫자였다. 3회차 패널 11개 맥락이
+             "정작 입찰표에 적을 금액이 제일 작다"를 지적했다. 숫자만 예상낙찰가와 같은 크기로
+             올린다(라벨은 그대로 작게 — 라벨까지 키우면 줄이 넘친다). #}
+          {% if v.bidst.max_bid %}<span class="ml-auto whitespace-nowrap font-semibold {{ 'text-rose-600' if _cbad else 'text-mut' }}">입찰 상한 <b class="font-mono tabular-nums {{ 'text-rose-700' if _cbad else 'text-txt' }}" style="font-size:min(1.125rem,5.2vw)">{{ v.bidst.max_bid|won }}</b></span>{% endif %}
         </div>
         {% endif %}
         {# 실사용 갈래 태그 — 홈 카드·상세와 같은 문구(service.USE_TIER_LABELS). 초록=지금, 주황=조건부(이 앱의 caution 색).
