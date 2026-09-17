@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import functools
 import json
 import re
 import threading
@@ -3801,10 +3802,14 @@ _IMPORT_BRAND = (
     "람보르기니", "벤틀리", "롤스로이스", "피아트", "FIAT", "BYD", "MAN ", "스카니아", "SCANIA")
 
 
-def is_domestic_maker(v: dict) -> bool:
-    """국산차인가. maker가 손상돼도 **모델명**으로 건질 수 있게 이중으로 본다."""
-    maker = str(v.get("maker") or "")
-    model = str(v.get("model") or "")
+@functools.lru_cache(maxsize=8192)
+def _is_domestic(maker: str, model: str) -> bool:
+    """문자열만 보는 순수 판정 — 캐시할 수 있는 알맹이.
+
+    ⚠ 홈 한 번에 7,616회 불리고 내부 문자열 비교가 365,536회 돌았다(프로파일 실측 0.22s).
+    판정 기준(_IMPORT_BRAND·_DOMESTIC_HINT·_DOMESTIC_MODEL)은 모듈 상수라 런타임에 바뀌지
+    않으므로, 같은 (제조사, 모델) 문자열이면 결과가 항상 같다 — 캐시해도 판정이 달라지지 않는다.
+    """
     blob = f"{maker} {model}"
     if any(k in blob.upper() for k in _IMPORT_BRAND):
         return False
@@ -3812,6 +3817,14 @@ def is_domestic_maker(v: dict) -> bool:
         return True
     up = model.upper().replace(" ", "")
     return any(m.upper().replace(" ", "") in up for m in _DOMESTIC_MODEL if m)
+
+
+def is_domestic_maker(v: dict) -> bool:
+    """국산차인가. maker가 손상돼도 **모델명**으로 건질 수 있게 이중으로 본다."""
+    return _is_domestic(str(v.get("maker") or ""), str(v.get("model") or ""))
+
+
+_ACC_STRATA = {"key": None, "data": None}   # accuracy_strata 메모(낙찰 표본수 기준)
 
 
 def accuracy_strata(bt: Optional[dict] = None) -> list:
@@ -3822,6 +3835,12 @@ def accuracy_strata(bt: Optional[dict] = None) -> list:
     import statistics as _st
     bt = bt if bt is not None else backtest_stats()
     pool = bt.get("pred_pool") or []
+    # ⚠ 홈 한 번에 56회 불린다 — 물건마다 accuracy_for()가 전체 층을 새로 만든다(실측 0.30s).
+    # 낙찰 표본이 같으면 층 계산 결과도 같고, backtest_stats() 자체가 표본수+TTL로 캐시되므로
+    # 그 표본수를 키로 한 번만 만든다. 반환 리스트는 **읽기 전용**으로만 쓴다(호출부는 인덱싱만 한다).
+    _key = (bt.get("sample"), len(pool), bt.get("mae_pct"))
+    if _ACC_STRATA["key"] == _key and _ACC_STRATA["data"] is not None:
+        return _ACC_STRATA["data"]
 
     def price_band(p):
         med = p.get("median_price") or p.get("actual") or 0
@@ -3851,6 +3870,7 @@ def accuracy_strata(bt: Optional[dict] = None) -> list:
                 "mae": round(_st.mean(errs), 1) if enough else None,
                 "within10": round(sum(1 for e in errs if e <= 10) / len(errs) * 100) if enough else None,
             })
+    _ACC_STRATA["key"], _ACC_STRATA["data"] = _key, out
     return out
 
 

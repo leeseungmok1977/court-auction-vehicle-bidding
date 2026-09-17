@@ -297,7 +297,11 @@ def dashboard(request: Request):
     run = db.latest_run()
     # 헤더 "총 N대 모니터링" — 목록과 같은 모수여야 한다. COUNT(*)를 쓰면 1320이라 띄우고
     # 눌러 들어가면 1167이 나온다(2026-09-12 2회차 패널 앱품질 지적 3).
-    total = service.lifecycle_partition()["total"]
+    # ⚠ lifecycle_partition()은 전수 적재 2회 + 전 행 순회다. 같은 요청에서 두 번 부르면
+    # 그게 통째로 두 번 돈다(프로파일 실측 0.31s×2, 홈이 느린 첫째 원인). 헤더의 '총 N대'와
+    # 아래 lifecycle 카드는 어차피 **같은 값**이어야 하므로 한 번만 계산해 나눠 쓴다.
+    lifecycle = service.lifecycle_partition()
+    total = lifecycle["total"]
     # 유망 물건: '높음' 신뢰도 + 오매칭 아님만(median/min 과대 배제) → 예상낙찰가 여유 순.
     # (신뢰 낮은/오매칭 의심 물건이 큰 여유로 상단을 독점하지 않도록 — 실측 신뢰 최우선)
     _bt = service.backtest_stats()
@@ -319,7 +323,7 @@ def dashboard(request: Request):
         "judgments": JUDGMENTS, "settings": db.get_all_settings(),
         "upcoming": db.upcoming_count(30), "pending": db.pending_count(),
         "won": db.won_count(), "backtest": _bt, "review_summary": review_summary,
-        "lifecycle": service.lifecycle_partition(),   # 겹치지 않는 상태 분해(합=총대수)
+        "lifecycle": lifecycle,                       # 겹치지 않는 상태 분해(합=총대수) — 위에서 한 번만 계산
         "use_tier_labels": service.USE_TIER_LABELS,   # 실사용 두 갈래 문구 — 목록·상세와 같은 곳에서
         "alerts": _pv(service.alert_items(3)),
         "top_makers": [dict(name=m, n=n, **brands.brand_asset(m)) for m, n in db.top_makers(8)],
