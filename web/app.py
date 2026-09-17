@@ -313,6 +313,7 @@ def dashboard(request: Request):
     # 시세 대비 절감률 × 신뢰도 순, 캐러셀에 이미 있는 차는 제외(같은 차를 홈에서 두 번 보여주지 않는다).
     # 예전엔 검토가능 7대를 절감액(원) 순으로 보여줘 오늘의 추천 5대와 100% 겹쳤다(2026-09-14).
     candidates = service.promising_rows(_bt, exclude_ids={p["id"] for p in daily_picks}, limit=8)
+    _alerts = service.alert_items(3)          # 헤더 벨 배지도 이 결과를 쓴다(중복 조회 제거)
     _adm = is_admin(request)
     _pv = lambda rows: rows if _adm else [service.public_view(r, False) for r in rows]  # noqa: E731
     return templates.TemplateResponse("dashboard.html", {
@@ -325,7 +326,14 @@ def dashboard(request: Request):
         "won": db.won_count(), "backtest": _bt, "review_summary": review_summary,
         "lifecycle": lifecycle,                       # 겹치지 않는 상태 분해(합=총대수) — 위에서 한 번만 계산
         "use_tier_labels": service.USE_TIER_LABELS,   # 실사용 두 갈래 문구 — 목록·상세와 같은 곳에서
-        "alerts": _pv(service.alert_items(3)),
+        # ⚠ 헤더 벨 배지는 base.html 이 alert_count() 로 **같은 질의를 한 번 더** 돌린다
+        # (list_vehicles(judgment='입찰 검토 가능', upcoming_days=3) — 홈 요청당 6회 중 1회).
+        # 두 함수의 질의·중복제거·날짜필터가 동일함을 코드와 운영 데이터로 확인했으므로
+        # (2026-09-18 실측: alert_count(3)=2, len(alert_items(3))=2, sale_date 파싱실패 0행)
+        # 홈에서는 이미 만든 결과의 개수를 넘겨 중복 조회를 없앤다. 다른 화면은 기존 경로 그대로다.
+        # 유일한 잠재 차이: sale_date 가 깨진 행이 생기면 alert_count 는 1 더 세고 alert_items 는 뺀다.
+        "alerts": _pv(_alerts),
+        "alert_badge": len(_alerts),
         "top_makers": [dict(name=m, n=n, **brands.brand_asset(m)) for m, n in db.top_makers(8)],
         "daily_picks": daily_picks,
     })

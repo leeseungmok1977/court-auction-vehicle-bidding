@@ -376,7 +376,10 @@
     <button type="button" id="largeToggle" aria-pressed="false" onclick="ncToggleLarge()"
             class="shrink-0 text-mut hover:text-txt border border-line px-2.5 py-1 rounded-full hover:bg-line/40 transition-colors font-bold text-[14px] leading-none whitespace-nowrap"
             title="글씨를 크게 봅니다 (다시 누르면 원래대로)" aria-label="큰글씨 모드 전환">큰글씨</button>
-    {% set _ac = alert_count() %}
+    {# 홈은 alert_items() 를 이미 만들었으므로 그 개수를 그대로 쓴다 — 같은 질의를 한 번 더
+       돌리지 않기 위해서다(홈 요청당 list_vehicles 6회 중 1회). alert_badge 를 넘기지 않는
+       다른 화면은 예전처럼 alert_count() 를 부른다 — 동작이 바뀌지 않는다. #}
+    {% set _ac = alert_badge if alert_badge is defined and alert_badge is not none else alert_count() %}
     <a href="/#alerts" class="relative shrink-0 text-mut hover:text-txt p-1.5 rounded-md hover:bg-line/40 transition-colors" title="임박 매각기일 알림 {{ _ac }}건">
       <span class="material-symbols-outlined" style="font-variation-settings:'FILL' {{ 1 if _ac else 0 }}">notifications</span>
       {% if _ac %}<span class="absolute -top-0.5 right-0 min-w-4 h-4 px-1 rounded-full bg-rose-600 text-white text-[10px] font-bold flex items-center justify-center">{{ _ac if _ac < 100 else '99+' }}</span>{% endif %}
