@@ -780,7 +780,7 @@ def in_lifecycle_bucket(v: dict, bucket: str, bt: Optional[dict] = None) -> bool
     return lifecycle_bucket_of(v, bt) == bucket
 
 
-def lifecycle_partition() -> dict:
+def lifecycle_partition(rows: Optional[list] = None) -> dict:
     """전체 물건을 **겹치지 않는 상태**로 분해(합=총대수) — 대시보드 KPI 정합용.
 
     각 칸은 /vehicles 필터로 그대로 재현되고(카드 수 = 목록 수), 나머지는 '기타'가 흡수해
@@ -792,7 +792,10 @@ def lifecycle_partition() -> dict:
     # 카드 수는 목록 필터(lifecycle_bucket_of)를 **그대로 돌려서** 센다 — 두 경로가 갈리면
     # 또 어긋난다. 뺄셈으로 '기타'를 유도하지 않는 이유가 이것이다.
     _bt = backtest_stats()
-    _all = db.list_vehicles(hide_incomplete=True)
+    # rows 를 받으면 재조회하지 않는다 — 홈 한 요청에서 promising_rows 와 **같은 질의**를
+    # 각자 돌리던 중복을 없애기 위한 것이다(2026-09-18 프로파일: 이 적재가 누적 0.53초).
+    # 이 함수는 행을 **읽기만** 한다(_bucket_and_tier 는 튜플만 반환) — 공유해도 오염을 만들지 않는다.
+    _all = rows if rows is not None else db.list_vehicles(hide_incomplete=True)
     n = {b: 0 for b in LIFECYCLE_BUCKETS}
     tiers = {"now": 0, "cheap": 0}
     for v in _all:
@@ -4061,7 +4064,7 @@ PICK_ICONS = {"resale": "check_circle", "now": "directions_car"}   # 두 추천 
 
 
 def promising_rows(bt: Optional[dict] = None, exclude_ids=(), limit: Optional[int] = None,
-                   within_days: Optional[int] = None) -> list:
+                   within_days: Optional[int] = None, rows: Optional[list] = None) -> list:
     """유망 물건 = 시세 신뢰도 '높음' + 오매칭 아님 + (재판매 검토가능 | 실사용 '지금 사면 이득'),
     **시세 대비 절감률 × 시세 신뢰도** 순. 홈은 오늘의 추천 캐러셀에 있는 차를 빼고 상위 8, 목록(?picks=1)은 전부 —
     홈의 8대는 항상 이 목록의 부분집합이다.
@@ -4075,7 +4078,18 @@ def promising_rows(bt: Optional[dict] = None, exclude_ids=(), limit: Optional[in
     out = []
     # 기일 조건은 두 갈래 판정(_review_biddable · personal_use_tier)이 스스로 건다(오늘 이후만) —
     # '지금 입찰 추천' 카드와 같은 모수여야 홈 8대 ⊂ 목록이 성립한다. within_days 는 선택.
-    for v in db.list_vehicles(upcoming_days=within_days, hide_incomplete=True):
+    # rows 를 받으면 같은 질의를 다시 돌리지 않는다(홈 요청당 list_vehicles 1회 절감, 누적 0.58초).
+    # ⚠ 아래에서 v["use_tier"] 와 v.update(...) 로 **행을 직접 수정**하므로 공유 행을 그대로 쓰면
+    #   호출자(라이프사이클 집계)의 행이 오염된다. 수정은 최상위 키 6개(use_tier·expected_win·
+    #   pick_kind·pick_label·pick_disc·pick_score)뿐이고 값은 스칼라이거나 새로 만든 dict 라
+    #   **얕은 복사로 격리된다**(2026-09-18 전수 조사: service.py 에 중첩 제자리 수정 없음).
+    #   이 가정은 tests/test_promising_isolation.py 가 고정한다.
+    # ⚠ within_days 가 지정되면 모수가 달라지므로 재사용하지 않는다.
+    if rows is not None and within_days is None:
+        _src = [dict(v) for v in rows]
+    else:
+        _src = db.list_vehicles(upcoming_days=within_days, hide_incomplete=True)
+    for v in _src:
         if v["id"] in ex or not _promising(v):
             continue
         if v.get("auction_result") in ("낙찰", "종결") or v.get("status") in ("종결", "상세없음"):

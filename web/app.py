@@ -300,7 +300,11 @@ def dashboard(request: Request):
     # ⚠ lifecycle_partition()은 전수 적재 2회 + 전 행 순회다. 같은 요청에서 두 번 부르면
     # 그게 통째로 두 번 돈다(프로파일 실측 0.31s×2, 홈이 느린 첫째 원인). 헤더의 '총 N대'와
     # 아래 lifecycle 카드는 어차피 **같은 값**이어야 하므로 한 번만 계산해 나눠 쓴다.
-    lifecycle = service.lifecycle_partition()
+    # 홈 한 요청에서 lifecycle_partition 과 promising_rows 가 **같은 질의**를 각자 돌렸다
+    # (hide_incomplete=True 전수 적재, 각각 누적 0.53초·0.58초). 한 번만 읽어 둘에 넘긴다.
+    # promising_rows 는 받은 행을 얕은 복사해 쓰므로 이 원본은 오염되지 않는다.
+    _rows = db.list_vehicles(hide_incomplete=True)
+    lifecycle = service.lifecycle_partition(rows=_rows)
     total = lifecycle["total"]
     # 유망 물건: '높음' 신뢰도 + 오매칭 아님만(median/min 과대 배제) → 예상낙찰가 여유 순.
     # (신뢰 낮은/오매칭 의심 물건이 큰 여유로 상단을 독점하지 않도록 — 실측 신뢰 최우선)
@@ -312,7 +316,8 @@ def dashboard(request: Request):
     # 유망 물건 = 두 추천 칸(지금 입찰 추천 · 실사용 '지금 사면 이득')에서 근거가 가장 강한 상위 8 —
     # 시세 대비 절감률 × 신뢰도 순, 캐러셀에 이미 있는 차는 제외(같은 차를 홈에서 두 번 보여주지 않는다).
     # 예전엔 검토가능 7대를 절감액(원) 순으로 보여줘 오늘의 추천 5대와 100% 겹쳤다(2026-09-14).
-    candidates = service.promising_rows(_bt, exclude_ids={p["id"] for p in daily_picks}, limit=8)
+    candidates = service.promising_rows(_bt, exclude_ids={p["id"] for p in daily_picks}, limit=8,
+                                        rows=_rows)
     _alerts = service.alert_items(3)          # 헤더 벨 배지도 이 결과를 쓴다(중복 조회 제거)
     _adm = is_admin(request)
     _pv = lambda rows: rows if _adm else [service.public_view(r, False) for r in rows]  # noqa: E731
