@@ -75,54 +75,10 @@
   <div id="pickDots" class="flex justify-center gap-1.5 mt-2">
     {% for v in daily_picks %}<span class="pick-dot h-1.5 w-1.5 rounded-full bg-line transition-all"></span>{% endfor %}
   </div>
-  <script>
-  (function(){
-    var t=document.getElementById('pickTrack'); if(!t) return;
-    var dots=[].slice.call(document.querySelectorAll('#pickDots .pick-dot'));
-    var n=dots.length; if(n<=1) return;
-    // 끊김 없는 무한 정방향 루프: 첫 슬라이드 클론을 끝에 붙이고, 클론까지 부드럽게 간 뒤
-    // 스크롤이 멈추면 순간 리셋(behavior:auto)로 진짜 첫 슬라이드로 복귀 → '빠른 되감기' 없음.
-    if(t.children.length===n){ t.appendChild(t.children[0].cloneNode(true)); }
-    var paused=false;
-    /* ⚠ 예전엔 scroll 이벤트마다 getBoundingClientRect()로 슬라이드 폭을 다시 읽고(강제 레이아웃)
-       점 전부의 className을 재대입했다. 자동 넘김이 smooth 라 스크롤 이벤트가 프레임마다 쏟아지고,
-       읽기(레이아웃)와 쓰기(클래스)가 번갈아 일어나 레이아웃이 반복 무효화됐다.
-       2026-09-17 모바일 실측(운영, CPU 1/4): 홈 전환 클릭→완료 1.6초 중 응답 이후가 약 0.9초였고,
-       이 cur() 가 앱 코드 중 자기 시간 1위(165ms)였다.
-       → 폭은 한 번만 재서 캐시(창 크기 바뀔 때만 무효화), 점은 **인덱스가 실제로 바뀔 때만**
-         손대고 그 갱신도 requestAnimationFrame 한 번으로 묶는다. 동작은 그대로다. */
-    var slideW=0, idx=-1, ticking=false;
-    function w(){
-      if(!slideW){ var f=t.firstElementChild;
-        slideW = (f ? f.getBoundingClientRect().width + 12 : t.clientWidth) || 1; }
-      return slideW;
-    }
-    function cur(){ return Math.round(t.scrollLeft / w()); }
-    function paint(){
-      ticking=false;
-      var i=cur()%n; if(i===idx) return;          // 바뀐 게 없으면 DOM을 건드리지 않는다
-      idx=i;
-      dots.forEach(function(d,k){ d.className='pick-dot h-1.5 rounded-full transition-all '+(k===i?'w-4 bg-primary':'w-1.5 bg-line'); });
-    }
-    function marks(){ if(ticking) return; ticking=true; requestAnimationFrame(paint); }
-    // scrollLeft 직접 대입 = 항상 즉시 이동(CSS scroll-behavior:smooth 무시) → 되감기 애니 없음
-    function reset(){ if(cur()>=n){ t.scrollLeft = 0; } }
-    function go(){
-      if(paused || document.hidden) return;       // 화면에 없을 땐 CPU·배터리를 쓰지 않는다
-      var next=cur()+1;
-      t.scrollTo({left: next*w(), behavior:'smooth'});
-      if(next>=n){                       // 클론 도달 → 멈춘 뒤 즉시 리셋(멱등). scrollend + 폴백 타임아웃
-        if('onscrollend' in window){ t.addEventListener('scrollend', reset, {once:true}); }
-        setTimeout(reset, 900);
-      }
-    }
-    t.addEventListener('scroll', marks, {passive:true});
-    window.addEventListener('resize', function(){ slideW=0; });   // 폭은 창이 바뀔 때만 다시 잰다
-    ['pointerdown','touchstart','mouseenter'].forEach(function(e){ t.addEventListener(e, function(){paused=true;}, {passive:true}); });
-    ['pointerup','touchend','mouseleave'].forEach(function(e){ t.addEventListener(e, function(){paused=false;}, {passive:true}); });
-    paint(); setInterval(go, 3000);
-  })();
-  </script>
+  {# 캐러셀 초기화 스크립트는 **문서 최하단(block script)** 으로 옮겼다 — 아래 이유.
+     여기(문서 중간)에서 실행하면 파서가 멈춘 뒤 getBoundingClientRect() 가 그 시점까지 만들어진
+     DOM 전체의 레이아웃을 강제한다. 2026-09-18 트레이스 실측: EvaluateScript 130.2ms 직후
+     Layout 304.7ms(dirty=281/total=556), 그 뒤로도 Layout 이 20회 반복됐다. #}
   {% endif %}
 </section>
 {% endif %}
@@ -562,4 +518,68 @@
   </div>
 </details>
 {% endif %}{# /운영 도구 관리자 전용 #}
+{% endblock %}
+
+{# ── 오늘의 추천 캐러셀 — 문서 최하단에서 초기화 ───────────────────────────────
+   위치를 옮긴 이유(2026-09-18 운영 트레이스, 모바일·CPU 1/4):
+     · 문서 중간에서 실행될 때 EvaluateScript 130.2ms + 직후 Layout 304.7ms(dirty=281/total=556)
+     · 파싱이 끝나기 전에 전체 레이아웃을 강제해, 이후 문서가 자라며 Layout 이 20회 반복됐다
+   로직·마크업·스타일은 그대로다. 바뀐 것은 **실행 시점**뿐이다:
+     ① 스크립트를 block script(</body> 직전)로 이동
+     ② 최초 측정(paint → cur → w → getBoundingClientRect)을 requestAnimationFrame 뒤로
+   ⚠ 조건(daily_picks 2건 이상)은 점(dots) 마크업과 반드시 같아야 한다 — 다르면 점이 없는데
+     스크립트가 돌거나 그 반대가 된다. #}
+{% block script %}
+{% if daily_picks and daily_picks|length > 1 %}
+<script>
+(function(){
+  var t=document.getElementById('pickTrack'); if(!t) return;
+  var dots=[].slice.call(document.querySelectorAll('#pickDots .pick-dot'));
+  var n=dots.length; if(n<=1) return;
+  // 끊김 없는 무한 정방향 루프: 첫 슬라이드 클론을 끝에 붙이고, 클론까지 부드럽게 간 뒤
+  // 스크롤이 멈추면 순간 리셋(behavior:auto)로 진짜 첫 슬라이드로 복귀 → '빠른 되감기' 없음.
+  if(t.children.length===n){ t.appendChild(t.children[0].cloneNode(true)); }
+  var paused=false;
+  /* ⚠ 예전엔 scroll 이벤트마다 getBoundingClientRect()로 슬라이드 폭을 다시 읽고(강제 레이아웃)
+     점 전부의 className을 재대입했다. 자동 넘김이 smooth 라 스크롤 이벤트가 프레임마다 쏟아지고,
+     읽기(레이아웃)와 쓰기(클래스)가 번갈아 일어나 레이아웃이 반복 무효화됐다.
+     2026-09-17 모바일 실측(운영, CPU 1/4): 이 cur() 가 앱 코드 중 자기 시간 1위(165ms)였다.
+     → 폭은 한 번만 재서 캐시(창 크기 바뀔 때만 무효화), 점은 **인덱스가 실제로 바뀔 때만**
+       손대고 그 갱신도 requestAnimationFrame 한 번으로 묶는다. 동작은 그대로다. */
+  var slideW=0, idx=-1, ticking=false;
+  function w(){
+    if(!slideW){ var f=t.firstElementChild;
+      slideW = (f ? f.getBoundingClientRect().width + 12 : t.clientWidth) || 1; }
+    return slideW;
+  }
+  function cur(){ return Math.round(t.scrollLeft / w()); }
+  function paint(){
+    ticking=false;
+    var i=cur()%n; if(i===idx) return;          // 바뀐 게 없으면 DOM을 건드리지 않는다
+    idx=i;
+    dots.forEach(function(d,k){ d.className='pick-dot h-1.5 rounded-full transition-all '+(k===i?'w-4 bg-primary':'w-1.5 bg-line'); });
+  }
+  function marks(){ if(ticking) return; ticking=true; requestAnimationFrame(paint); }
+  // scrollLeft 직접 대입 = 항상 즉시 이동(CSS scroll-behavior:smooth 무시) → 되감기 애니 없음
+  function reset(){ if(cur()>=n){ t.scrollLeft = 0; } }
+  function go(){
+    if(paused || document.hidden) return;       // 화면에 없을 땐 CPU·배터리를 쓰지 않는다
+    var next=cur()+1;
+    t.scrollTo({left: next*w(), behavior:'smooth'});
+    if(next>=n){                       // 클론 도달 → 멈춘 뒤 즉시 리셋(멱등). scrollend + 폴백 타임아웃
+      if('onscrollend' in window){ t.addEventListener('scrollend', reset, {once:true}); }
+      setTimeout(reset, 900);
+    }
+  }
+  t.addEventListener('scroll', marks, {passive:true});
+  window.addEventListener('resize', function(){ slideW=0; });   // 폭은 창이 바뀔 때만 다시 잰다
+  ['pointerdown','touchstart','mouseenter'].forEach(function(e){ t.addEventListener(e, function(){paused=true;}, {passive:true}); });
+  ['pointerup','touchend','mouseleave'].forEach(function(e){ t.addEventListener(e, function(){paused=false;}, {passive:true}); });
+  /* ⚠ 최초 측정만 한 프레임 뒤로 — paint() → cur() → w() 가 getBoundingClientRect() 를 부른다.
+     여기서 동기로 부르면 그 시점의 레이아웃을 강제한다. 값과 동작은 같고 첫 점 표시만 1프레임 늦다. */
+  requestAnimationFrame(paint);
+  setInterval(go, 3000);
+})();
+</script>
+{% endif %}
 {% endblock %}
