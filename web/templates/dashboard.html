@@ -84,13 +84,31 @@
     // 스크롤이 멈추면 순간 리셋(behavior:auto)로 진짜 첫 슬라이드로 복귀 → '빠른 되감기' 없음.
     if(t.children.length===n){ t.appendChild(t.children[0].cloneNode(true)); }
     var paused=false;
-    function w(){ return t.firstElementChild ? t.firstElementChild.getBoundingClientRect().width + 12 : t.clientWidth; }
+    /* ⚠ 예전엔 scroll 이벤트마다 getBoundingClientRect()로 슬라이드 폭을 다시 읽고(강제 레이아웃)
+       점 전부의 className을 재대입했다. 자동 넘김이 smooth 라 스크롤 이벤트가 프레임마다 쏟아지고,
+       읽기(레이아웃)와 쓰기(클래스)가 번갈아 일어나 레이아웃이 반복 무효화됐다.
+       2026-09-17 모바일 실측(운영, CPU 1/4): 홈 전환 클릭→완료 1.6초 중 응답 이후가 약 0.9초였고,
+       이 cur() 가 앱 코드 중 자기 시간 1위(165ms)였다.
+       → 폭은 한 번만 재서 캐시(창 크기 바뀔 때만 무효화), 점은 **인덱스가 실제로 바뀔 때만**
+         손대고 그 갱신도 requestAnimationFrame 한 번으로 묶는다. 동작은 그대로다. */
+    var slideW=0, idx=-1, ticking=false;
+    function w(){
+      if(!slideW){ var f=t.firstElementChild;
+        slideW = (f ? f.getBoundingClientRect().width + 12 : t.clientWidth) || 1; }
+      return slideW;
+    }
     function cur(){ return Math.round(t.scrollLeft / w()); }
-    function marks(){ var i=cur()%n; dots.forEach(function(d,k){ d.className='pick-dot h-1.5 rounded-full transition-all '+(k===i?'w-4 bg-primary':'w-1.5 bg-line'); }); }
+    function paint(){
+      ticking=false;
+      var i=cur()%n; if(i===idx) return;          // 바뀐 게 없으면 DOM을 건드리지 않는다
+      idx=i;
+      dots.forEach(function(d,k){ d.className='pick-dot h-1.5 rounded-full transition-all '+(k===i?'w-4 bg-primary':'w-1.5 bg-line'); });
+    }
+    function marks(){ if(ticking) return; ticking=true; requestAnimationFrame(paint); }
     // scrollLeft 직접 대입 = 항상 즉시 이동(CSS scroll-behavior:smooth 무시) → 되감기 애니 없음
     function reset(){ if(cur()>=n){ t.scrollLeft = 0; } }
     function go(){
-      if(paused) return;
+      if(paused || document.hidden) return;       // 화면에 없을 땐 CPU·배터리를 쓰지 않는다
       var next=cur()+1;
       t.scrollTo({left: next*w(), behavior:'smooth'});
       if(next>=n){                       // 클론 도달 → 멈춘 뒤 즉시 리셋(멱등). scrollend + 폴백 타임아웃
@@ -99,9 +117,10 @@
       }
     }
     t.addEventListener('scroll', marks, {passive:true});
+    window.addEventListener('resize', function(){ slideW=0; });   // 폭은 창이 바뀔 때만 다시 잰다
     ['pointerdown','touchstart','mouseenter'].forEach(function(e){ t.addEventListener(e, function(){paused=true;}, {passive:true}); });
     ['pointerup','touchend','mouseleave'].forEach(function(e){ t.addEventListener(e, function(){paused=false;}, {passive:true}); });
-    marks(); setInterval(go, 3000);
+    paint(); setInterval(go, 3000);
   })();
   </script>
   {% endif %}
