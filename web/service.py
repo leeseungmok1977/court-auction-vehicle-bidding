@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import functools
 import json
+import os
 import re
 import threading
 import time
@@ -1867,6 +1868,45 @@ def start_daily(within_days: int = 30, analyze: bool = True,
 
 # --- 내장 스케줄러 (앱 실행 중 매일 지정 시각 1회) ---
 _scheduler_started = False
+_PROC_START = time.monotonic()
+
+# OS 자동 보안 업데이트(apt-daily-upgrade)가 패키지를 올리며 서비스를 재시작해, 매일 갱신이
+# 한가운데서 끊기는 일이 반복됐다 — 2026-09-14 06:32, 2026-09-17 06:42(낙찰결과 반영에서 멈춰
+# 무결성 검토·출시가 수집이 통째로 누락됐다). 타이머는 새벽 3시로 옮겼지만 재시작은 배포·패치로
+# 언제든 다시 일어난다 → 끊긴 런을 스스로 한 번 더 돌린다.
+# daily_update 는 각 단계가 증분·멱등이라(다음 날 아침 다시 도는 것과 같다) 재실행이 안전하다.
+RESTART_MARK = "서버 재시작으로 중단됨"   # db.clear_orphaned_runs 가 남기는 표식
+RESUME_MAX_PER_DAY = 2                    # 재시작이 반복돼도 무한 재시도하지 않는다
+RESUME_COOLDOWN_SEC = 300                 # 업그레이드가 여러 패키지를 연달아 올리는 동안은 기다린다
+
+
+def _resume_count(s: dict, today: str) -> int:
+    """오늘 이미 몇 번 재개했나(날짜가 바뀌면 0부터)."""
+    if s.get("daily_resume_date") != today:
+        return 0
+    try:
+        return int(s.get("daily_resume_count") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _should_resume(s: dict, today: str) -> bool:
+    """재시작 때문에 끊긴 오늘 런이 있으면 재개 대상이다.
+
+    ① 오늘 갱신이 이미 시작됐고(last_run_date=오늘 → 정상 트리거는 다시 안 뜬다)
+    ② 오늘의 마지막 런이 **재시작 표식**과 함께 error 로 닫혔고(진짜 오류는 재시도하지 않는다)
+    ③ 재개 한도가 남았고 ④ 프로세스가 뜬 지 충분히 지났다.
+    """
+    if s.get("last_run_date") != today:
+        return False
+    if time.monotonic() - _PROC_START < RESUME_COOLDOWN_SEC:
+        return False
+    if _resume_count(s, today) >= RESUME_MAX_PER_DAY:
+        return False
+    run = db.latest_run()
+    if not run or (run.get("started_at") or "")[:10] != today:
+        return False
+    return run.get("status") == "error" and RESTART_MARK in (run.get("message") or "")
 
 
 def _scheduler_loop() -> None:
@@ -1877,18 +1917,32 @@ def _scheduler_loop() -> None:
                 now = datetime.now()
                 hhmm = now.strftime("%H:%M")
                 today = now.strftime("%Y-%m-%d")
+                _args = (int(s.get("daily_within", "30")),)
+                _kw = {"analyze": s.get("daily_analyze", "1") == "1",
+                       "analyze_limit": int(s.get("daily_analyze_limit", "0"))}
                 if hhmm >= s.get("daily_time", "06:00") and s.get("last_run_date") != today:
                     db.set_setting("last_run_date", today)
-                    start_daily(int(s.get("daily_within", "30")),
-                                analyze=s.get("daily_analyze", "1") == "1",
-                                analyze_limit=int(s.get("daily_analyze_limit", "0")))
+                    start_daily(*_args, **_kw)
+                elif _should_resume(s, today):
+                    # 재개 횟수를 **먼저** 기록한다 — 시작 직후 또 재시작당해도 한도가 유지된다.
+                    db.set_setting("daily_resume_date", today)
+                    db.set_setting("daily_resume_count", str(_resume_count(s, today) + 1))
+                    start_daily(*_args, **_kw)
         except Exception:  # noqa: BLE001
             pass
         time.sleep(60)
 
 
 def start_scheduler() -> None:
+    """매일 갱신 스케줄러를 켠다. ``NC_NO_SCHEDULER=1`` 이면 켜지 않는다.
+
+    ⚠ 2026-09-17 사고: 성능 측정용으로 띄운 **로컬 개발 서버**가 이 스케줄러를 켜서
+    승인 없는 외부 수집을 시작했다(실행 #61, 시세 분석 27/80 시도 — C.4-6 위반).
+    개발·테스트로 앱을 띄울 때는 NC_NO_SCHEDULER=1 로 끈다.
+    """
     global _scheduler_started
+    if os.environ.get("NC_NO_SCHEDULER") == "1":
+        return
     if _scheduler_started:
         return
     _scheduler_started = True
