@@ -278,7 +278,10 @@
 {% endif %}
 
 <!-- 유망 물건 (인사이트 우선) -->
-<div class="bg-surface border border-line rounded-lg p-5">
+{# nc-defer: 초기 Layout 병목 **검증용**(2026-09-18). 이 섹션 하나가 홈 DOM 637개 중 208개(33%)이고
+   첫 화면에서 1,557px 아래에 있다. content-visibility 로 화면 밖 동안 레이아웃을 건너뛰게 해서
+   "초기 Layout 비용이 이 섹션 때문인가"를 가린다. 최적화 확정이 아니라 가설 검증이다. #}
+<div class="nc-defer bg-surface border border-line rounded-lg p-5">
   <div class="flex items-center justify-between mb-1">
     <div class="flex items-center gap-2">
       <span class="material-symbols-outlined text-emerald-600">check_circle</span>
