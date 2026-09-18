@@ -73,6 +73,7 @@ def run(max_items: int = 3, scan_limit: int = 15, repair_cost: int = 500_000,
             res = encar.search(es, manufacturer=mp["manufacturer"],
                                model_group=mp["model_group"], car_type=mp.get("car_type", "Y"),
                                premium=mp.get("premium", False),
+                               truck=mp.get("truck", False), form=mp.get("form"),
                                year_from=yf, year_to=yt, limit=100)
             listings = encar.normalize(res["results"])
             stats = summarize(listings, form_year=item.year, mileage_km=detail.mileage_km,

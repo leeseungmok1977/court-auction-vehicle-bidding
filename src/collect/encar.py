@@ -22,6 +22,9 @@ import requests
 
 API = "https://api.encar.com/search/car/list/general"          # 국산
 API_PREMIUM = "https://api.encar.com/search/car/list/premium"  # 수입
+# 화물·특장·버스는 **엔드포인트가 다르다**(2026-09-19 브라우저 실측, capture/E4_truck_general.txt).
+# 포터·봉고가 계속 '동급 표본 없음'이던 진짜 원인이 이것이다 — 승용 서랍만 열고 "없다"고 했다.
+API_TRUCK = "https://api.encar.com/search/truck/list/general"
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/126.0 Safari/537.36")
 REQUEST_DELAY_SEC = 5  # 저속
@@ -263,6 +266,58 @@ KOREAN_MODEL_MAKER = {
 }
 
 
+# ── 화물(1톤 경상용) 매핑 ────────────────────────────────────────────────
+# 포터·봉고는 **화물 엔드포인트**에 있다. 표기는 규칙이 아니라 개별 실측값이다
+# (2026-09-19): 포터는 '포터 Ⅱ'(로마숫자 앞 **공백 있음**), 봉고는 '봉고Ⅲ'(**공백 없음**).
+# 건수: 포터 Ⅱ 5,141(카고 3,240·윙바디/탑 1,729) · 봉고Ⅲ 1,691(카고 921·윙바디/탑 553).
+#
+# ⚠ 여기에 넣는 것은 **포터·봉고뿐**이다. 덤프트럭·굴착기·지게차·탱크로리 같은 중장비·특장은
+#   계속 매핑하지 않는다 — 시세가 있어도 개체차가 커서 동급 비교가 성립하지 않는다는
+#   기존 판단(tests/test_encar_map.py 가 고정)을 뒤집지 않는다.
+TRUCK_MODELS = {
+    "포터": ("현대", "포터 Ⅱ"),
+    "porter": ("현대", "포터 Ⅱ"),
+    "봉고": ("기아(아시아)", "봉고Ⅲ"),
+    "bongo": ("기아(아시아)", "봉고Ⅲ"),
+}
+# 형식(Form) 판별 — 모델명에 적재함 형태가 적혀 있을 때만 쓴다.
+# ⚠ '1톤'은 형식이 아니라 **적재량**이다. 냉동탑차도 1톤이라 이걸로 카고라 단정하면
+#   탑차를 카고 시세로 평가하게 된다(초안에서 실제로 저지른 실수).
+TRUCK_FORM_WORDS = (
+    ("윙바디/탑", ("냉동탑", "냉통탑", "내장탑", "하이탑", "윙바디", "탑차", "냉동", "냉장", "보냉")),
+    ("카고(화물)트럭", ("카고", "화물트럭", "평판")),
+)
+
+
+def truck_form(car_nm: Optional[str]) -> Optional[str]:
+    """차명에서 적재함 형식을 읽는다. 적혀 있지 않으면 None(= 시세를 내지 않는다).
+
+    형식을 모르는 채 모델만으로 조회하면 카고와 탑차가 섞인 시세가 나온다.
+    잘못된 시세는 시세 없음보다 나쁘다 — 그래서 모르면 포기한다."""
+    s = re.sub(r"\([^)]*\)", "", car_nm or "").replace(" ", "")
+    for form, words in TRUCK_FORM_WORDS:
+        if any(w in s for w in words):
+            return form
+    return None
+
+
+def truck_map(court_maker: Optional[str], car_nm: Optional[str]) -> Optional[dict]:
+    """포터·봉고면 화물 조회용 매핑을, 아니면 None.
+
+    형식을 읽을 수 없으면 **매핑하지 않는다**(호출부는 '시세 없음'으로 남긴다)."""
+    s = re.sub(r"\([^)]*\)", "", car_nm or "").replace(" ", "").lower()
+    if not s:
+        return None
+    for key, (man, model) in TRUCK_MODELS.items():
+        if key in s:
+            form = truck_form(car_nm)
+            if not form:
+                return None
+            return {"truck": True, "car_type": "Y", "manufacturer": man,
+                    "model_group": model, "form": form}
+    return None
+
+
 def maker_from_model(car_nm: Optional[str]) -> Optional[str]:
     """차명으로 국산 제조사 추정 — 법원 제조사가 비었거나 법인명/오타일 때의 폴백.
     실측 예: '기차|K7'(오타)→기아, '(빈값)|렉스턴스포츠'→KG모빌리티."""
@@ -278,6 +333,12 @@ def maker_from_model(car_nm: Optional[str]) -> Optional[str]:
 def auto_map(court_maker: Optional[str], car_nm: Optional[str],
              car_type: str = "Y") -> Optional[dict]:
     """법원 물건의 제조사·차명으로 엔카 매핑 자동 추정. 국산 우선, 이어서 수입."""
+    # 0) 화물(포터·봉고) — **엔드포인트가 다르므로** 승용 매핑보다 먼저 가른다.
+    #    그러지 않으면 clean_model_group 이 '포터Ⅱ'를 만들어 승용 경로로 새고 0건이 난다
+    #    (2026-09-19 실측: 포터·봉고 21건이 전부 '동급 표본 없음'이던 원인).
+    tm = truck_map(court_maker, car_nm)
+    if tm:
+        return tm
     mg = clean_model_group(car_nm)
     if not mg:
         return None
@@ -323,15 +384,37 @@ def new_session() -> requests.Session:
     return s
 
 
+def q_escape(value: str) -> str:
+    """질의 값에 괄호가 있으면 **닫는 괄호 앞에 `_`** 를 넣는다.
+
+    실측(2026-09-19): `Manufacturer.기아(아시아_).` · `Form.카고(화물_)트럭.` ·
+    `Model.포레스트 (포터Ⅱ_).` — 엔카 질의 문법에서 `)` 는 블록 종료라 그대로 두면 깨진다."""
+    return (value or "").replace(")", "_)")
+
+
 def build_q(manufacturer: str, model_group: Optional[str] = None,
             car_type: str = "Y", year_from: Optional[int] = None,
-            year_to: Optional[int] = None) -> str:
-    """엔카 검색 쿼리 조립. year_from/to 는 YYYYMM(첫등록 기준)."""
-    if model_group:
-        maker_block = f"(C.Manufacturer.{manufacturer}._.ModelGroup.{model_group}.)"
+            year_to: Optional[int] = None, truck: bool = False,
+            form: Optional[str] = None) -> str:
+    """엔카 검색 쿼리 조립. year_from/to 는 YYYYMM(첫등록 기준).
+
+    승용: (And.Hidden.N._.(C.CarType.Y._.(C.Manufacturer.현대._.ModelGroup.쏘나타.))_.Year.range(…).)
+    화물: (And.Hidden.N._.(C.Manufacturer.현대._.Model.포터 Ⅱ.)_.Form.카고(화물_)트럭._.Year.range(…).)
+      · 화물은 **CarType 축이 없다**(엔드포인트가 차종을 가른다)
+      · 모델 축 이름이 ModelGroup 이 아니라 **Model**
+      · 형식(Form)으로 카고/탑차를 가를 수 있다 — 섞으면 시세가 왜곡된다
+    """
+    man = q_escape(manufacturer)
+    mg = q_escape(model_group) if model_group else None
+    if truck:
+        block = f"(C.Manufacturer.{man}._.Model.{mg}.)" if mg else f"Manufacturer.{man}."
+        q = f"(And.Hidden.N._.{block}"
+        if form:
+            q += f"_.Form.{q_escape(form)}."
     else:
-        maker_block = f"Manufacturer.{manufacturer}."
-    q = f"(And.Hidden.N._.(C.CarType.{car_type}._.{maker_block})"
+        maker_block = (f"(C.Manufacturer.{man}._.ModelGroup.{mg}.)" if mg
+                       else f"Manufacturer.{man}.")
+        q = f"(And.Hidden.N._.(C.CarType.{car_type}._.{maker_block})"
     if year_from and year_to:
         q += f"_.Year.range({year_from}..{year_to})."
     q += ")"
@@ -341,12 +424,18 @@ def build_q(manufacturer: str, model_group: Optional[str] = None,
 def search(session: requests.Session, manufacturer: str,
            model_group: Optional[str] = None, car_type: str = "Y",
            year_from: Optional[int] = None, year_to: Optional[int] = None,
-           limit: int = 100, offset: int = 0, premium: bool = False) -> dict:
-    """동급 매물 목록 조회 (1회 호출). premium=True면 수입 엔드포인트 사용."""
-    q = build_q(manufacturer, model_group, car_type, year_from, year_to)
+           limit: int = 100, offset: int = 0, premium: bool = False,
+           truck: bool = False, form: Optional[str] = None) -> dict:
+    """동급 매물 목록 조회 (1회 호출).
+
+    premium=True 면 수입 엔드포인트, truck=True 면 **화물 엔드포인트**를 쓴다.
+    응답 키(Count·SearchResults)는 셋 다 같아서 이후 파싱은 공통이다."""
+    q = build_q(manufacturer, model_group, car_type, year_from, year_to,
+                truck=truck, form=form)
     params = {"count": "true", "q": q, "sr": f"|ModifiedDate|{offset}|{limit}"}
     time.sleep(REQUEST_DELAY_SEC)
-    r = session.get(API_PREMIUM if premium else API, params=params, timeout=25)
+    endpoint = API_TRUCK if truck else (API_PREMIUM if premium else API)
+    r = session.get(endpoint, params=params, timeout=25)
     if r.status_code in (403, 429):
         raise RuntimeError(f"엔카 차단 상태코드 {r.status_code} — 중단")
     r.raise_for_status()

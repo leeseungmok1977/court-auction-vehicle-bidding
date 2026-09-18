@@ -127,8 +127,12 @@ def test_recompute_caps_groups_and_keeps_target_order(monkeypatch):
     """그룹 1개 = 엔카 요청 1회. 상한에 잘려도 호출자가 정한 순서(기일 임박)가 먼저 조회돼야 한다(C.4-1)."""
     calls = []
 
+    # ⚠ 가짜 함수의 시그니처가 실제 encar.search 와 어긋나면 호출 시점에 TypeError 가 나고,
+    #   재교정 루프의 except 가 그걸 삼켜 **조회 0회**가 된다(calls == []). 실패 메시지는
+    #   "순서가 틀렸다"처럼 보이지만 실제로는 호출 자체가 없었던 것이다(2026-09-19 실제 발생).
+    #   화물 지원으로 truck·form 이 추가됐으므로 여기도 같이 받는다.
     def fake_search(es, manufacturer, model_group, car_type="Y", year_from=None, year_to=None,
-                    limit=100, offset=0, premium=False):
+                    limit=100, offset=0, premium=False, truck=False, form=None):
         calls.append(model_group)
         return {"count": 0, "results": [], "q": ""}
 
@@ -147,6 +151,42 @@ def test_recompute_caps_groups_and_keeps_target_order(monkeypatch):
     n = service.recompute_all_market(targets=targets, max_requests=2, finalize=False)
     assert calls == ["카니발", "쏘나타"], "넘긴 순서대로 2그룹만"
     assert n == 2
+
+
+def test_재교정이_화물을_승용으로_조회하지_않는다(monkeypatch):
+    """포터·봉고는 **엔드포인트가 다르다**. 그룹 키에 truck·form 이 없으면 두 가지가 깨진다.
+
+    ① 승용 엔드포인트로 조회돼 0건 — 신규 수집으로 살린 시세를 재교정이 도로 지운다.
+    ② 카고와 냉동탑차가 한 그룹으로 묶여 **섞인 시세**가 된다
+       (실측 2026-09-19: 포터 Ⅱ 5,141 = 카고 3,240 + 윙바디·탑 1,729).
+    그래서 형식이 다르면 요청도 달라야 한다.
+    """
+    seen = []
+
+    def fake_search(es, manufacturer, model_group, car_type="Y", year_from=None, year_to=None,
+                    limit=100, offset=0, premium=False, truck=False, form=None):
+        seen.append({"man": manufacturer, "model": model_group, "truck": truck, "form": form})
+        return {"count": 0, "results": [], "q": ""}
+
+    monkeypatch.setattr(service.encar, "search", fake_search)
+    monkeypatch.setattr(service.encar, "new_session", lambda: None)
+    monkeypatch.setattr(service.kcar, "new_session", lambda: None)
+    monkeypatch.setattr(service.db, "update_fields", lambda vid, **f: None)
+    monkeypatch.setattr(service, "_kcar_cross_live", lambda *a, **k: (a[6], {}, False))
+    common = {"mileage_km": 50000, "photo_count": 3, "status": "완료"}
+    service.recompute_all_market(targets=[
+        {"id": "top", "year": 2022, "maker": "현대자동차",
+         "model": "포터Ⅱ 냉동탑차 (PORTERⅡ)", "sale_date": "2999-01-01", **common},
+        {"id": "cargo", "year": 2022, "maker": "현대자동차",
+         "model": "포터Ⅱ 카고 1톤", "sale_date": "2999-01-01", **common},
+    ], finalize=False)
+
+    assert len(seen) == 2, f"형식이 다르면 그룹도 달라야 한다: {seen}"
+    for s in seen:
+        assert s["truck"] is True, "화물 엔드포인트로 가지 않았다 — 승용으로 조회하면 0건이다"
+        assert s["model"] == "포터 Ⅱ", "표기가 한 글자만 달라도 0건이 난다(공백 포함)"
+    assert {s["form"] for s in seen} == {"윙바디/탑", "카고(화물)트럭"}, (
+        "카고와 탑차가 같은 형식으로 조회되면 섞인 시세가 된다")
 
 
 def test_daily_update_requeries_before_reuse_with_a_cap():

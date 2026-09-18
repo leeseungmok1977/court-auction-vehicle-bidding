@@ -160,6 +160,7 @@ def _analyze_item(cs, es, raw: dict, item, config: dict, repair_cost: int,
             yt = ((item.year + 1) * 100 + 99) if item.year else None
             res = encar.search(es, manufacturer=mp["manufacturer"], model_group=mp["model_group"],
                                car_type=mp.get("car_type", "Y"), premium=mp.get("premium", False),
+                               truck=mp.get("truck", False), form=mp.get("form"),
                                year_from=yf, year_to=yt, limit=100)
             # 감정가는 상세(aeeEvlAmt, 권위값)를 가드 소스로 전달 — 신뢰도 가드는 summarize 내부에서 통합
             _mh = encar.model_hint(item.model)   # 픽업/SUV/EV 혼입 그룹은 Model 명으로 가른다
@@ -4569,8 +4570,12 @@ def recompute_all_market(run_id: Optional[int] = None, finalize: bool = True,
         mp = _resolve_encar(_rebuild_item(v), config, None)
         if not mp:
             continue
+        # ⚠ 화물(포터·봉고)은 **엔드포인트와 형식까지** 키에 넣는다. 빼면 두 가지가 깨진다.
+        #   ① 승용 엔드포인트로 조회돼 0건 — 신규 수집으로 살린 시세를 재교정이 도로 지운다
+        #   ② 카고와 냉동탑차가 한 그룹으로 묶여 섞인 시세가 된다(2026-09-19 실측 근거)
         key = (mp["manufacturer"], mp["model_group"], mp.get("car_type", "Y"),
-               bool(mp.get("premium", False)), int(v["year"]))
+               bool(mp.get("premium", False)), int(v["year"]),
+               bool(mp.get("truck", False)), mp.get("form"))
         groups.setdefault(key, []).append(v)
 
     keys = list(groups.keys())         # targets 를 준 순서(=호출자가 정한 우선순위)가 그룹 순서다
@@ -4596,7 +4601,7 @@ def recompute_all_market(run_id: Optional[int] = None, finalize: bool = True,
     consecutive_fail = 0
     kcar_blocked = False
     for i, key in enumerate(keys):
-        man, mg, ct, prem, year = key
+        man, mg, ct, prem, year, is_truck, form = key
         if run_id:
             _kmsg = f" · 케이카 {kreq['n']}회" if ks else ""
             db.update_run(run_id, scanned=i + 1,
@@ -4605,7 +4610,8 @@ def recompute_all_market(run_id: Optional[int] = None, finalize: bool = True,
         query_ok = True
         try:
             res = encar.search(es, manufacturer=man, model_group=mg, car_type=ct,
-                               premium=prem, year_from=yf, year_to=yt, limit=100)
+                               premium=prem, truck=is_truck, form=form,
+                               year_from=yf, year_to=yt, limit=100)
             listings = encar.normalize(res["results"])
             consecutive_fail = 0
         except RuntimeError as e:
@@ -4889,6 +4895,7 @@ def kcar_crosscheck(vid: str, config: dict | None = None) -> dict:
     try:
         eres = encar.search(es, manufacturer=mp["manufacturer"], model_group=mp["model_group"],
                             car_type=mp.get("car_type", "Y"), premium=mp.get("premium", False),
+                            truck=mp.get("truck", False), form=mp.get("form"),
                             year_from=yf, year_to=yt, limit=100)
     except Exception as e:  # noqa: BLE001
         if _is_block(e):
