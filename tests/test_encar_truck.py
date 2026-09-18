@@ -91,6 +91,34 @@ def test_형식을_모르면_매핑하지_않는다(model):
     assert encar.truck_map("현대", model) is None
 
 
+@pytest.mark.parametrize("maker,model", [
+    ("현대자동차", "포터Ⅱ (PORTERⅡ)"),
+    ("기아자동차", "봉고Ⅲ 1톤"),
+    ("기아", "봉고3 1톤"),
+    ("기아(주)", "봉고 III 1톤 EV"),
+    ("현대", "포터Ⅱ 일렉트릭 (PORTERⅡ ELECTRIC)"),
+])
+def test_형식_미상_포터봉고는_승용으로_새지_않는다(maker, model):
+    """`truck_map` 이 None 이라고 아래 승용 경로로 흘려보내면 안 된다.
+
+    운영 실측(2026-09-19): 그렇게 흘러가 '기아/봉고'·'기아/봉고3' 같은 매핑이 만들어졌다.
+    지금은 승용 쪽에 그 모델이 없어 0건이라 결과적으로 무해하지만 **우연히 무해한 것**이다.
+    게다가 requery_missing_market 은 auto_map 이 None 이 아니면 재조회 대상으로 집으므로
+    (service.py 의 '매핑 자체가 없으면 물어도 의미 없다' 분기), 이 물건들이 매일 요청을
+    태우면서 영원히 0건을 받는다. 형식을 모르면 매핑하지 않는 것이 맞다.
+    """
+    assert encar.is_truck_model(model) is True
+    assert encar.truck_map(maker, model) is None
+    assert encar.auto_map(maker, model) is None, "승용 매핑으로 새고 있다"
+
+
+def test_형식이_적힌_포터봉고는_여전히_auto_map_으로_잡힌다():
+    """차단이 과해지면 살릴 수 있는 것까지 막는다 — 경계를 함께 고정한다."""
+    r = encar.auto_map("현대자동차", "포터Ⅱ 냉동탑차 (PORTERⅡ)")
+    assert r is not None and r.get("truck") is True
+    assert r["model_group"] == "포터 Ⅱ" and r["form"] == "윙바디/탑"
+
+
 # ── 경계: 중장비·특장은 계속 막는다 ────────────────────────────────
 @pytest.mark.parametrize("maker,model", [
     ("에이치디건설기계(주)", "굴착기"),

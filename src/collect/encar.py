@@ -289,6 +289,12 @@ TRUCK_FORM_WORDS = (
 )
 
 
+def is_truck_model(car_nm: Optional[str]) -> bool:
+    """포터·봉고인가(형식 판별 여부와 무관). 승용 경로로 새는 것을 막는 데 쓴다."""
+    s = re.sub(r"\([^)]*\)", "", car_nm or "").replace(" ", "").lower()
+    return bool(s) and any(k in s for k in TRUCK_MODELS)
+
+
 def truck_form(car_nm: Optional[str]) -> Optional[str]:
     """차명에서 적재함 형식을 읽는다. 적혀 있지 않으면 None(= 시세를 내지 않는다).
 
@@ -339,6 +345,12 @@ def auto_map(court_maker: Optional[str], car_nm: Optional[str],
     tm = truck_map(court_maker, car_nm)
     if tm:
         return tm
+    if is_truck_model(car_nm):
+        # 포터·봉고인데 형식을 못 읽었다 → **여기서 끝낸다**. 아래 승용 경로로 내려보내면
+        # '기아/봉고'·'기아/봉고3' 같은 엉뚱한 매핑이 만들어지고(운영 실측 2026-09-19),
+        # requery_missing_market 이 "매핑이 있다"고 판단해 매일 재조회 대상으로 집는다
+        # — 요청만 태우고 영원히 0건이다. 형식을 모르면 조회하지 않는 것이 맞다.
+        return None
     mg = clean_model_group(car_nm)
     if not mg:
         return None
