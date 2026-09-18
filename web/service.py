@@ -735,7 +735,7 @@ def personal_use_tier(v: dict, bt: Optional[dict] = None, today=None) -> Optiona
 # 대시보드 카드 ↔ 목록 필터를 **같은 함수**로 묶는다. 카드에서 usepick을 빼놓고 링크는
 # 안 빼서 "387대"를 눌렀더니 469건이 나오던 문제를 구조적으로 막는다
 # (2026-09-12 2회차 패널 앱품질 지적 3).
-LIFECYCLE_BUCKETS = ("won", "review", "usepick", "wait", "lowconf", "other")
+LIFECYCLE_BUCKETS = ("won", "review", "usepick", "wait", "nomarket", "lowconf", "other")
 
 
 def _review_biddable(v: dict, today=None) -> bool:
@@ -769,6 +769,16 @@ def _bucket_and_tier(v: dict, bt: Optional[dict] = None) -> tuple:
     tier = personal_use_tier(v, bt if bt is not None else backtest_stats())
     if tier:                       # 두 갈래(now·cheap) 모두 이 칸 — '유찰 대기'에서 빠져 나온다
         return "usepick", tier
+    # 동급 시세가 성립하지 않는 물건(선박·건설기계·차종 미상)은 '유찰 대기'보다 앞서 가른다 —
+    # "비교할 대상이 없다"가 "유찰을 기다린다"보다 앞선 사실이고, 섞어 두면 물량이 적은
+    # 이유가 화면 어디에도 설명되지 않는다(2026-09-19 원인 조사).
+    # ⚠ 단, **이미 끝난 물건은 넣지 않는다.** won 은 auction_result='낙찰'만 보므로 판정이
+    #   '종결'인 물건은 예전부터 조용히 '기타'로 갔는데, 이 분기가 그것들을 가로챘다.
+    #   운영 데이터에 대입해 보니 새 칸 109건 중 **53건이 종결**이었다 — 사용자가 이 칸을
+    #   누르면 앞으로 입찰할 물건이 아니라 끝난 경매가 절반이나 나온다(테스트로는 안 잡혔다).
+    if (no_market_reason(v) and j != "종결"
+            and (v.get("auction_result") or "") not in ("낙찰", "종결")):
+        return "nomarket", None
     if j == "유찰 대기":
         return "wait", None
     if j == "시세 신뢰도 낮음, 수동 검토":
@@ -806,7 +816,7 @@ def lifecycle_partition(rows: Optional[list] = None) -> dict:
     total, won, review = len(_all), n["won"], n["review"]
     usepick, wait_only, lc_only, other = n["usepick"], n["wait"], n["lowconf"], n["other"]
     return {"total": total, "won": won, "review": review, "wait": wait_only, "lowconf": lc_only,
-            "usepick": usepick, "other": other,
+            "usepick": usepick, "other": other, "nomarket": n["nomarket"],
             # 실사용 추천 소계 — 큰 숫자만 보면 '전부 지금 싸다'로 읽히므로 카드가 항상 같이 보여준다
             "usepick_now": tiers["now"], "usepick_cheap": tiers["cheap"],
             # 신뢰도 낮음 + 기타를 한 줄로 묶어 보여주기 위한 합계(사용자 지시 2026-09-12)
@@ -1292,6 +1302,38 @@ def newcar_skip(v: dict) -> bool:
         return True
     ton = NEWCAR_TON_RE.search(m)
     return bool(ton and float(ton.group(1)) >= 2)
+
+
+# ── 동급 시세가 성립하지 않는 물건 ──────────────────────────────────────────
+# '시세 신뢰도 낮음'과 성격이 다르다. 그쪽은 "비교했는데 못 믿겠다"이고, 이쪽은
+# **"비교할 대상이 애초에 없다"**이다. 둘을 한 칸에 섞어 두면 사용자에게는 똑같이
+# '사라진 물건'으로만 보이고, 물량이 적은 이유가 화면 어디에도 설명되지 않는다.
+#
+# 2026-09-19 운영 실측:
+#   · 기일 미도래 419건 중 중장비·특장 단어가 걸리는 52건은 **표본이 전부 0**이었고,
+#     같은 단어에 걸리면서 표본 3건 이상인 물건은 **0건** — 오분류 위험이 사실상 없다.
+#   · 법원 목록에는 자동차가 아닌 **선박**이 섞여 들어온다(미도래 21건은 사진으로 전부 확인).
+#
+# ⚠ 근거 없이 이름 붙이지 않는다. **양성 근거가 있을 때만** 이 칸에 넣는다.
+#   한때 "제조사·모델이 둘 다 비었으면 차종 확인 불가"라는 갈래를 두었다가 철회했다 —
+#   표기가 없다는 건 *우리가 모른다*는 뜻이지 비교 대상이 아니라는 뜻이 아니고, 수집 직후
+#   표기가 아직 없는 미분석 물건까지 끌어왔다(tests/test_usepick_tiers.py 가 잡아냈다).
+#   운영에서 그 갈래로 얻는 건 1건뿐인데 잃는 건 구조적이었다. 표기만 빈 물건은
+#   예전처럼 '신뢰도 낮음·기타'에 남는다.
+NO_MARKET_HEAVY_WORDS = NEWCAR_SKIP_WORDS + ("천공기", "윙바디", "카고트럭", "벌크")
+NO_MARKET_SHIP_WORDS = ("선박", "어업허가권", "의장품", "선체")
+
+
+def no_market_reason(v: dict) -> Optional[str]:
+    """동급 시세를 구할 수 없는 물건이면 그 **이유**를, 아니면 None.
+
+    반환값이 그대로 화면 문구가 된다(칸 이름·칩 문구가 갈리지 않도록 한 곳에서만 정한다)."""
+    m = (v.get("model") or "").replace(" ", "")
+    if m and any(w in m for w in NO_MARKET_HEAVY_WORDS):
+        return "건설기계·특장"
+    if any(w in (v.get("spec_remark") or "") for w in NO_MARKET_SHIP_WORDS):
+        return "선박"
+    return None
 
 
 def newcar_pool(vehicles: list, cutoff: str, vehicle_ids: Optional[list] = None) -> list:

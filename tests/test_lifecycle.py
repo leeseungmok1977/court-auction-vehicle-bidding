@@ -30,9 +30,31 @@ def test_partition_sums_to_total(dbmod):
        min_sale_price=800, sale_date="2020-01-01", median_price=1000)
     _v(dbmod, "O1", judgment="입찰 보류", median_price=500, mileage_km=100)   # 기타
     p = service.lifecycle_partition()
-    assert p["review"] + p["wait"] + p["lowconf"] + p["won"] + p["other"] == p["total"]
+    # 칸을 하나라도 빠뜨리면 합계가 조용히 어긋난다 — 전 칸을 명시적으로 더한다.
+    assert (p["review"] + p["usepick"] + p["wait"] + p["nomarket"]
+            + p["lowconf"] + p["won"] + p["other"]) == p["total"]
     assert p["total"] == 6
     assert p["won"] == 1 and p["wait"] == 2 and p["lowconf"] == 1 and p["other"] == 1
+
+
+def test_끝난_물건은_시세비교대상아님_칸에_들어가지_않는다(dbmod):
+    """이 칸은 **앞으로 입찰할 수 있는** 물건만 담아야 한다.
+
+    2026-09-19 실측: 칸을 넣고 운영 데이터에 대입하니 109건 중 53건이 '종결'이었다.
+    won 버킷이 auction_result='낙찰'만 보기 때문에, 판정만 '종결'인 물건이 이 분기에
+    가로채인 것이다. 사용자가 칸을 눌렀을 때 끝난 경매가 절반이면 칸이 거짓말을 한다.
+    단위 테스트로는 못 잡혔다 — 판별 함수 자체는 종결 여부를 모르기 때문이다.
+    """
+    from web import service
+    _v(dbmod, "H1", model="굴착기", judgment="시세 신뢰도 낮음, 수동 검토",
+       mileage_km=100, photo_count=3)
+    _v(dbmod, "H2", model="굴착기", judgment="종결", mileage_km=100, photo_count=3)
+    _v(dbmod, "H3", model="굴착기", judgment="유찰 대기", auction_result="낙찰",
+       winning_price=1200, min_sale_price=800, sale_date="2020-01-01",
+       mileage_km=100, photo_count=3)
+    p = service.lifecycle_partition()
+    assert p["nomarket"] == 1, "끝난 물건(종결·낙찰)이 새 칸에 섞였다"
+    assert p["total"] == 3
 
 
 def test_reconcile_won_judgment(dbmod):

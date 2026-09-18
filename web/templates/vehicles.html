@@ -73,7 +73,10 @@
       <span aria-hidden="true">🔖</span> 검색 저장</button>
     {% if usepick %}<a href="/vehicles" class="text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full px-3 py-1 inline-flex items-center gap-1 whitespace-nowrap shrink-0" title="실사용 추천 해제"><span class="material-symbols-outlined text-[13px] leading-none">directions_car</span>실사용 추천{% if usepick_val in ('now', 'cheap') %} · {{ use_tier_labels[usepick_val] }}{% endif %} ✕</a>{% endif %}
     {% if picks %}<a href="/vehicles" class="text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full px-3 py-1 inline-flex items-center gap-1 whitespace-nowrap shrink-0" title="유망 물건 해제"><span class="material-symbols-outlined text-[13px] leading-none">check_circle</span>유망 물건 {{ total }} ✕</a>{% endif %}
-    {% if bucket %}{% set _bkl = {'wait':'유찰 대기','lowconf':'신뢰도 낮음','other':'기타·미분석'} %}
+    {# ⚠ 이 이름표는 service.LIFECYCLE_BUCKETS 와 따로 관리된다 — 버킷을 늘리면서 여기를
+       잊으면 아래 폴백이 걸려 **영문 키가 그대로 칩에 찍힌다**(2026-09-19 실제 발생:
+       'filter_alt nomarket 1 ✕'). tests/test_bucket_labels.py 가 이 누락을 잡는다. #}
+    {% if bucket %}{% set _bkl = {'wait':'유찰 대기','lowconf':'신뢰도 낮음','nomarket':'건설기계·선박 등','other':'기타·미분석'} %}
     <a href="/vehicles{% if qs_no_bucket %}?{{ qs_no_bucket }}{% endif %}" class="text-xs bg-sky-50 text-sky-700 border border-sky-200 rounded-full px-3 py-1 inline-flex items-center gap-1" title="{{ _bkl.get(bucket, bucket) }} 필터 해제"><span class="material-symbols-outlined text-[13px] leading-none">filter_alt</span>{{ _bkl.get(bucket, bucket) }} {{ total }} ✕</a>{% endif %}
     {% if result %}<a href="/vehicles" class="text-xs bg-sky-50 text-sky-700 border border-sky-200 rounded-full px-3 py-1">결과={{ result }} ✕</a>{% endif %}
     {% if date %}<a href="/vehicles" class="text-xs bg-primary/10 text-primary border border-primary/20 rounded-full px-3 py-1 inline-flex items-center gap-1" title="날짜 필터 해제"><span class="material-symbols-outlined text-[13px] leading-none">event</span>{{ date }} 매각 ✕</a>{% endif %}
@@ -154,6 +157,18 @@ d.addEventListener('toggle',function(){try{localStorage.setItem('ncListLegend',d
 {# 홈 '유망 물건 → 전체 보기'. 홈의 8대는 이 목록의 상위(오늘의 추천 제외) — 같은 함수(service.promising_rows). #}
 <div class="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2" style="word-break:keep-all">
   <b>유망 물건</b> — {{ pick_subtitle[0] }}<b>{{ pick_subtitle[1] }}</b>{{ pick_subtitle[2] }} 보여줍니다. 홈의 8대는 이 목록의 상위(오늘의 추천 5대 제외)입니다.
+</div>
+{% endif %}
+{% if bucket == 'nomarket' %}
+{# 이 목록은 **예상낙찰가가 전부 비어 있다** — 설명이 없으면 "앱이 고장났다"로 읽히는 자리다
+   (2026-09-19 디자인 검수 지적). 게다가 이 물건들의 판정은 여전히 '시세 신뢰도 낮음'이라
+   아래 판정 설명에는 "표본이 부족해"가 붙는데, 실제로는 **비교 대상 자체가 없다** —
+   뜻이 어긋나므로 여기서 바로잡는다. 권유가 아니라 안내라서 추천용 emerald 가 아닌 sky 를 쓴다.
+   ⚠ 표기는 정본 '예상낙찰가'(붙여쓰기) — 한 화면에 두 철자가 섞이면 다른 숫자로 오해된다
+     (tests/test_terms.py 가 강제한다. 실제로 여기서 한 번 어겨 걸렸다). #}
+<div class="text-xs text-sky-800 bg-sky-50 border border-sky-200 rounded-lg px-3 py-2" style="word-break:keep-all">
+  <b>건설기계·선박 등</b> — 동급 중고차가 없어 <b>시세와 예상낙찰가를 내지 않습니다.</b>
+  감정가·최저매각가·사진 등 법원 자료는 그대로 확인할 수 있습니다.
 </div>
 {% endif %}
 {% if usepick %}

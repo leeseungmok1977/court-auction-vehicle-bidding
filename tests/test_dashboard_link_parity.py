@@ -61,6 +61,10 @@ def client(tmp_path, monkeypatch):
         dict(base, id="P1_1", case_no="2026타경18", min_sale_price=10000000,
              appraisal_value=12000000, median_price=13000000, sale_date="2020-01-01",
              market_confidence_label="높음", judgment="입찰 검토 가능"),
+        # 시세 비교 대상 아님(건설기계) — 전에는 '신뢰도 낮음'에 섞여 보이지 않았다
+        dict(base, id="NM1_1", case_no="2026타경20", model="굴착기",
+             min_sale_price=10000000, appraisal_value=12000000,
+             judgment="시세 신뢰도 낮음, 수동 검토"),
         dict(base, id="O1_1", case_no="2026타경15", min_sale_price=10000000,
              appraisal_value=12000000, judgment="입찰 보류", accident_grade="flood"),
         dict(base, id="O2_1", case_no="2026타경16", min_sale_price=10000000,
@@ -110,7 +114,7 @@ def _list_count(client, href: str) -> int:
 def test_partition_sums_to_total(client):
     from web import service
     lc = service.lifecycle_partition()
-    assert (lc["won"] + lc["review"] + lc["usepick"] + lc["wait"]
+    assert (lc["won"] + lc["review"] + lc["usepick"] + lc["wait"] + lc["nomarket"]
             + lc["lowconf"] + lc["other"]) == lc["total"]
 
 
@@ -119,6 +123,7 @@ def test_partition_sums_to_total(client):
     ("usepick_now", "/vehicles?usepick=now"),
     ("usepick_cheap", "/vehicles?usepick=cheap"),
     ("wait", "/vehicles?bucket=wait"),
+    ("nomarket", "/vehicles?bucket=nomarket"),
     ("lowconf", "/vehicles?bucket=lowconf"),
     ("other", "/vehicles?bucket=other"),
     ("review", "/vehicles?judgment=입찰 검토 가능&sort=expected"),
