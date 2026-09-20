@@ -37,8 +37,13 @@ def _resolve_patch() -> Path:
 def apply_patch(patch: dict, force: bool = False) -> dict:
     """패치 주입. 순서 없음 → 채움, src='auto'(로컬 모델) → 비전으로 덮어씀, src='vision' → force일 때만."""
     db.init_db()  # photo_order·photo_order_src 컬럼 보장
-    c = {"applied": 0, "overwrote_auto": 0, "skipped": 0, "missing": 0}
-    for vid, order in patch.items():
+    c = {"applied": 0, "overwrote_auto": 0, "skipped": 0, "missing": 0, "forms": 0}
+    for vid, entry in patch.items():
+        # 구형 패치 = [파일명…] · 신형 패치 = {"order":[…], "truck_form": "…"}
+        if isinstance(entry, dict):
+            order, form = entry.get("order"), (entry.get("truck_form") or "")
+        else:
+            order, form = entry, ""
         if not isinstance(order, list) or not order:
             continue
         v = db.get_vehicle(vid)
@@ -49,9 +54,19 @@ def apply_patch(patch: dict, force: bool = False) -> dict:
             if (v.get("photo_order_src") or "") == "auto":
                 c["overwrote_auto"] += 1
             else:
+                # 순서는 보존하되 **적재함 형식은 따로 채운다**. 형식은 순서와 다른 정보이고,
+                # 형식만 새로 물은 재분류 물건은 이미 src='vision'이라 전부 이 가지로 떨어진다
+                # — 여기서 같이 건너뛰면 형식이 영원히 VM에 닿지 않는다.
+                if form and not (v.get("truck_form") or ""):
+                    db.update_fields(vid, truck_form=form)
+                    c["forms"] += 1
                 c["skipped"] += 1
                 continue
-        db.update_fields(vid, photo_order=order, photo_order_src="vision")
+        fields = {"photo_order": order, "photo_order_src": "vision"}
+        if form and not (v.get("truck_form") or ""):
+            fields["truck_form"] = form
+            c["forms"] += 1
+        db.update_fields(vid, **fields)
         c["applied"] += 1
     return c
 
@@ -65,7 +80,8 @@ def main() -> int:
     patch = json.loads(patch_path.read_text(encoding="utf-8"))
     c = apply_patch(patch, force=force)
     print(f"적용 {c['applied']}(자동정렬 덮어씀 {c['overwrote_auto']}) · 스킵(비전 순서 보존) {c['skipped']} "
-          f"· VM에 없는 물건 {c['missing']} (총 패치 {len(patch)}건, force={force})")
+          f"· 적재함 형식 채움 {c['forms']} · VM에 없는 물건 {c['missing']} "
+          f"(총 패치 {len(patch)}건, force={force})")
     return 0
 
 

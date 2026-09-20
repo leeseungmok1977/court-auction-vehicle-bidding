@@ -287,6 +287,8 @@ TRUCK_FORM_WORDS = (
     ("윙바디/탑", ("냉동탑", "냉통탑", "내장탑", "하이탑", "윙바디", "탑차", "냉동", "냉장", "보냉")),
     ("카고(화물)트럭", ("카고", "화물트럭", "평판")),
 )
+# 허용되는 형식 값 — 사진 비전이 읽어 저장한 값(vehicles.truck_form)을 검증할 때도 쓴다.
+TRUCK_FORMS = tuple(f for f, _ in TRUCK_FORM_WORDS)
 
 
 def is_truck_model(car_nm: Optional[str]) -> bool:
@@ -307,16 +309,23 @@ def truck_form(car_nm: Optional[str]) -> Optional[str]:
     return None
 
 
-def truck_map(court_maker: Optional[str], car_nm: Optional[str]) -> Optional[dict]:
+def truck_map(court_maker: Optional[str], car_nm: Optional[str],
+              form_hint: Optional[str] = None) -> Optional[dict]:
     """포터·봉고면 화물 조회용 매핑을, 아니면 None.
 
-    형식을 읽을 수 없으면 **매핑하지 않는다**(호출부는 '시세 없음'으로 남긴다)."""
+    형식을 읽을 수 없으면 **매핑하지 않는다**(호출부는 '시세 없음'으로 남긴다).
+
+    `form_hint` 는 사진을 본 비전 검수가 저장해 둔 적재함 형식(vehicles.truck_form)이다.
+    법원 차명에 형식이 안 적힌 물건이 대부분이라(실측 23건 중 16건) 차명만으로는 카고와
+    탑차를 가를 수 없었다 — 사진에는 적재함이 찍혀 있으니 그 답을 받아 쓴다.
+    **차명에 적힌 형식이 우선**이다(법원 문서가 사진 판독보다 앞선 근거).
+    허용 목록에 없는 값은 무시한다 — 모르는 채로 두는 편이 틀린 시세보다 낫다."""
     s = re.sub(r"\([^)]*\)", "", car_nm or "").replace(" ", "").lower()
     if not s:
         return None
     for key, (man, model) in TRUCK_MODELS.items():
         if key in s:
-            form = truck_form(car_nm)
+            form = truck_form(car_nm) or (form_hint if form_hint in TRUCK_FORMS else None)
             if not form:
                 return None
             return {"truck": True, "car_type": "Y", "manufacturer": man,
@@ -337,12 +346,14 @@ def maker_from_model(car_nm: Optional[str]) -> Optional[str]:
 
 
 def auto_map(court_maker: Optional[str], car_nm: Optional[str],
-             car_type: str = "Y") -> Optional[dict]:
-    """법원 물건의 제조사·차명으로 엔카 매핑 자동 추정. 국산 우선, 이어서 수입."""
+             car_type: str = "Y", form_hint: Optional[str] = None) -> Optional[dict]:
+    """법원 물건의 제조사·차명으로 엔카 매핑 자동 추정. 국산 우선, 이어서 수입.
+
+    `form_hint` = 사진 비전이 읽어 둔 적재함 형식(포터·봉고에만 의미가 있다)."""
     # 0) 화물(포터·봉고) — **엔드포인트가 다르므로** 승용 매핑보다 먼저 가른다.
     #    그러지 않으면 clean_model_group 이 '포터Ⅱ'를 만들어 승용 경로로 새고 0건이 난다
     #    (2026-09-19 실측: 포터·봉고 21건이 전부 '동급 표본 없음'이던 원인).
-    tm = truck_map(court_maker, car_nm)
+    tm = truck_map(court_maker, car_nm, form_hint)
     if tm:
         return tm
     if is_truck_model(car_nm):

@@ -91,7 +91,9 @@ def test_vision_patch_overwrites_auto_but_keeps_vision(env):
     mk("U1", ["a.gif", "b.gif"])
     from scripts.apply_photo_order_patch import apply_patch
     c = apply_patch({"A1": ["a.gif", "b.gif"], "V1": ["a.gif", "b.gif"], "U1": ["a.gif", "b.gif"], "Z9": ["a.gif"]})
-    assert c == {"applied": 2, "overwrote_auto": 1, "skipped": 1, "missing": 1}
+    # forms = 적재함 형식(truck_form)을 채운 건수. 이 패치에는 형식이 없어 0 —
+    # 형식이 들어간 패치의 동작은 tests/test_photo_truck_form.py 가 따로 고정한다.
+    assert c == {"applied": 2, "overwrote_auto": 1, "skipped": 1, "missing": 1, "forms": 0}
     a = db.get_vehicle("A1")
     assert a["photo_order"] == ["a.gif", "b.gif"] and a["photo_order_src"] == "vision"
     assert db.get_vehicle("V1")["photo_order"] == ["b.gif", "a.gif"]   # 비전 순서는 force 없이 보존

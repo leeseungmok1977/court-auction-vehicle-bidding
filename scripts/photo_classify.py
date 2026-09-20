@@ -25,6 +25,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from src.collect import encar  # noqa: E402
 from src.parse.photo_montage import DATA_DIR, build_montage, list_photos  # noqa: E402
 from web import db  # noqa: E402
 
@@ -55,12 +56,53 @@ def _unclassified(status: str | None, limit: int | None):
     return [dict(r) for r in conn.execute(sql, params).fetchall()]
 
 
+def _truck_form_unknown(status: str | None, limit: int | None):
+    """포터·봉고인데 **적재함 형식을 아직 모르는** 물건.
+
+    법원 차명에 형식이 안 적힌 물건이 많다(2026-09-20 실측 23건 중 16건). 형식을 모르면
+    카고와 탑차가 섞인 시세가 나오므로 조회 자체를 포기하고 있었고, 그래서 이 물건들은
+    영원히 '동급 시세 없음'이었다. 사진에는 적재함이 그대로 찍혀 있으니 비전에 물어본다.
+
+    이 선택자는 `_NEEDS_VISION` 과 **겹치지 않게 별도로** 둔다. 그쪽 조건(미분류 또는 auto)은
+    이미 비전 분류가 끝난 물건을 제외하는데, 형식 미상 물건 대부분이 거기 해당해 재분류
+    대상에서 빠진다(16건 중 14건). 그렇다고 조건을 풀면 사진 보유 물건 전체가 대상이 돼
+    비전 요청이 수백 건 나가고 이미 맞는 정렬까지 흔든다 — 그래서 **대상을 좁혀서** 부른다.
+    """
+    db.init_db()
+    conn = db.connect()
+    sql = ("SELECT id, folder_key, model, status FROM vehicles "
+           "WHERE COALESCE(photo_count,0) > 0 "
+           "AND (truck_form IS NULL OR truck_form = '') "
+           # 이미 끝난 물건(종결·낙찰·상세없음)은 제외한다. 시세를 새로 내봐야 쓸 데가 없고
+           # 비전 요청만 태운다 — 로컬 실측 65건 중 17건이 여기 해당했다.
+           "AND COALESCE(status,'') NOT IN ('종결','상세없음') "
+           "AND COALESCE(auction_result,'') NOT IN ('낙찰','종결')")
+    params: list = []
+    if status:
+        sql += " AND status = ?"
+        params.append(status)
+    sql += " ORDER BY collected_at DESC"
+    rows = [dict(r) for r in conn.execute(sql, params).fetchall()]
+    # 차명으로 형식을 읽을 수 있으면 물어볼 필요가 없다 — 비전 요청을 아낀다.
+    rows = [r for r in rows
+            if encar.is_truck_model(r.get("model")) and not encar.truck_form(r.get("model"))]
+    return rows[:int(limit)] if limit else rows
+
+
 def cmd_prep(args) -> int:
     WORK.mkdir(parents=True, exist_ok=True)
     # 이전 실행 잔여 몽타주 정리(인덱스 재사용 혼선 방지)
     for old in WORK.glob("*.png"):
         old.unlink()
     rows = _unclassified(args.status, args.limit)
+    extra = 0
+    if getattr(args, "truck_form", False):
+        # 형식만 새로 묻는 물건을 **더한다**(대체가 아니다). 비전은 한 번에 순서와 형식을 함께
+        # 답하므로, 미분류 배치가 대기 중인데 그걸 버리고 형식용으로 새로 돌릴 이유가 없다.
+        seen = {r["id"] for r in rows}
+        add = [r for r in _truck_form_unknown(args.status, None) if r["id"] not in seen]
+        rows += add
+        extra = len(add)
     manifest = []
     skipped = 0
     for r in rows:
@@ -83,7 +125,8 @@ def cmd_prep(args) -> int:
     base = str(WORK).replace("\\", "/")
     ARGS.write_text(json.dumps({"base": base, "total": len(manifest)}, ensure_ascii=False),
                     encoding="utf-8")
-    print(f"미분류 대상 {len(rows)}건 중 몽타주 {len(manifest)}건 생성 (사진없음/실패 {skipped}건).")
+    what = f"미분류 {len(rows) - extra}건" + (f" + 형식 미상 화물차 {extra}건" if extra else "")
+    print(f"대상 {what} 중 몽타주 {len(manifest)}건 생성 (사진없음/실패 {skipped}건).")
     print(f"  manifest: {MANIFEST}")
     print(f"  args    : {ARGS.read_text(encoding='utf-8')}")
     if manifest:
@@ -95,12 +138,23 @@ def cmd_apply(args) -> int:
     if not RESULTS.exists():
         print(f"results.json 이 없습니다: {RESULTS}", file=sys.stderr)
         return 1
+    # ⚠ 옛 결과를 새 배치에 적용하지 않는다. idx 는 배치마다 0001부터 다시 매겨지고 결과에는
+    #   vid 가 없어 **idx 로만** 맞춘다 — 남아 있던 옛 results 를 새 manifest 에 적용하면
+    #   엉뚱한 차량에 남의 사진 순서가 조용히 덮인다(2026-09-20 실측: 9일 지난 결과 90건의
+    #   idx 0001~0023 이 그날 새 배치 23건과 완전히 겹쳐 있었다).
+    if (MANIFEST.exists() and RESULTS.stat().st_mtime < MANIFEST.stat().st_mtime
+            and not getattr(args, "force", False)):
+        print("results.json 이 manifest 보다 오래됐습니다 — 이전 배치의 결과로 보입니다.\n"
+              "  idx 는 배치마다 다시 매겨지므로 그대로 적용하면 다른 차량에 붙습니다.\n"
+              f"  이번 배치를 다시 분류해 ingest 하거나, 확신하면 --force 로 실행하세요.\n"
+              f"  results: {RESULTS}\n  manifest: {MANIFEST}", file=sys.stderr)
+        return 1
     db.init_db()  # photo_order 등 컬럼 마이그레이션 보장
     mlist = json.loads(MANIFEST.read_text(encoding="utf-8"))
     by_idx = {m["idx"]: m for m in mlist}
     by_vid = {m["vid"]: m for m in mlist}
     results = json.loads(RESULTS.read_text(encoding="utf-8"))
-    applied, low = 0, []
+    applied, low, forms, unsure = 0, [], 0, 0
     for r in results:
         m = by_idx.get(str(r.get("idx"))) or by_vid.get(r.get("vid"))  # idx 우선, vid 폴백
         if not m:
@@ -110,11 +164,27 @@ def cmd_apply(args) -> int:
         seen = set(order)
         order += [i for i in range(1, len(files) + 1) if i not in seen]  # 누락 셀 보충
         photo_order = [files[c - 1] for c in order]
-        db.update_fields(m["vid"], photo_order=photo_order, photo_order_src="vision")
+        fields = {"photo_order": photo_order, "photo_order_src": "vision"}
+        # 적재함 형식은 **답이 있을 때만** 쓴다. 비전이 생략했다는 건 사진으로 알 수 없다는 뜻이고,
+        # 그때 추측해서 채우면 틀린 형식 → 틀린 시세가 된다(모르는 채로 두는 편이 낫다).
+        form = (r.get("truck_form") or "").strip()
+        if form and not r.get("confident", True):
+            # 저확신 몽타주의 형식은 쓰지 않는다. 2026-09-20 실측에서 저확신 건은 대개
+            # **한 몽타주에 여러 차량이 섞였거나**(계기판 4종·싼타페+포터+세단) 외관 컷이
+            # 한 장뿐이었다 — 거기 보이는 적재함이 이 차의 것이라는 보장이 없다.
+            # 순서는 틀려도 사진을 다시 보면 되지만, 틀린 형식은 곧 틀린 시세가 된다.
+            unsure += 1
+        elif form in encar.TRUCK_FORMS:
+            fields["truck_form"] = form
+            forms += 1
+        elif form:
+            print(f"  ! 알 수 없는 형식 값 무시: {m['vid']} {form!r}", file=sys.stderr)
+        db.update_fields(m["vid"], **fields)
         applied += 1
         if not r.get("confident", True):
             low.append((m["vid"], m.get("model"), r.get("note", "")))
-    print(f"적용 완료: {applied}건")
+    print(f"적용 완료: {applied}건" + (f" (적재함 형식 {forms}건 확인)" if forms else "")
+          + (f" · 저확신이라 형식 보류 {unsure}건" if unsure else ""))
     if low:
         print(f"검수 필요(저확신) {len(low)}건 — 대개 원본에 순수 측면/실내 컷이 없는 경우:")
         for vid, model, note in low:
@@ -163,7 +233,12 @@ def cmd_export_patch(args) -> int:
     patch = {}
     for m in mlist:
         v = db.get_vehicle(m["vid"])
-        if v and v.get("photo_order"):
+        if not v or not v.get("photo_order"):
+            continue
+        # 적재함 형식이 있으면 **순서와 함께** 나른다(구형 패치는 리스트, 새 패치는 dict — 양쪽 다 읽힌다).
+        if v.get("truck_form"):
+            patch[m["vid"]] = {"order": v["photo_order"], "truck_form": v["truck_form"]}
+        else:
             patch[m["vid"]] = v["photo_order"]
     PATCH.write_text(json.dumps(patch, ensure_ascii=False), encoding="utf-8")
     print(f"패치 생성: {PATCH} ({len(patch)}건)")
@@ -177,11 +252,17 @@ def main() -> int:
     p = sub.add_parser("prep", help="미분류 물건 몽타주 + args.json 생성")
     p.add_argument("--status", default=None, help="특정 status만 (예: 검토가능). 기본=전체 미분류")
     p.add_argument("--limit", type=int, default=None, help="최대 건수(부하 통제)")
-    p.set_defaults(func=cmd_prep)
+    p.add_argument("--truck-form", action="store_true", dest="truck_form",
+                   help="'포터·봉고인데 적재함 형식 미상' 물건을 대상에 **추가**한다"
+                        " (이미 비전 분류가 끝난 물건도 포함 — 순서는 그대로 두고 형식만 새로 묻는다)")
+    p.set_defaults(func=cmd_prep, truck_form=False)
     s = sub.add_parser("status", help="미분류 건수 확인(루틴 진입점)")
     s.set_defaults(func=cmd_status)
     a = sub.add_parser("apply", help="results.json → DB photo_order 반영")
-    a.set_defaults(func=cmd_apply)
+    a.add_argument("--force", action="store_true",
+                   help="results 가 manifest 보다 오래돼도 적용(위험: idx 는 배치마다 다시"
+                        " 매겨지므로 다른 차량에 붙을 수 있다)")
+    a.set_defaults(func=cmd_apply, force=False)
     ig = sub.add_parser("ingest", help="워크플로 출력 JSON → results.json 추출")
     ig.add_argument("path", help="워크플로 출력 파일 경로(task .output)")
     ig.set_defaults(func=cmd_ingest)

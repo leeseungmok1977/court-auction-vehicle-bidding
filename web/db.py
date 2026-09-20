@@ -236,6 +236,11 @@ def init_db() -> None:
             conn.execute("ALTER TABLE vehicles ADD COLUMN spec_remark TEXT")
         for col in ("inspection_to", "condition_level", "condition_flags", "runnable", "photo_order",
                     "photo_order_src",                       # 'vision'(Claude 비전) / 'auto'(로컬 모델 자동 정렬)
+                    # 적재함 형태(화물차) — 비전 검수가 사진을 보고 읽어 둔다.
+                    # 법원 차명에 형식이 안 적힌 물건이 많아(실측 23건 중 16건) 모델명만으로는
+                    # 카고와 탑차를 가를 수 없고, 섞인 시세는 틀린 시세가 된다(2026-09-20).
+                    # 값은 엔카 Form 표기 그대로: '카고(화물)트럭' | '윙바디/탑'
+                    "truck_form",
                     "market_ref_date", "market_ref_id",     # 동급참조 시세의 출처(정직 표기·추적)
                     "newcar_model", "newcar_release", "newcar_checked_at"):   # 당시 출시가(보배드림) 표기
             if col not in cols:

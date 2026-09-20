@@ -59,8 +59,13 @@ def _now() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
-def _resolve_encar(item, config: dict, search: Optional[dict]):
-    """엔카 매핑 결정: ① config.model_mapping ② 검색 차명 ③ 국산 자동매핑."""
+def _resolve_encar(item, config: dict, search: Optional[dict], form_hint: Optional[str] = None):
+    """엔카 매핑 결정: ① config.model_mapping ② 검색 차명 ③ 국산 자동매핑.
+
+    `form_hint` = 사진 비전이 읽어 둔 적재함 형식(vehicles.truck_form). 포터·봉고는 형식을
+    모르면 매핑을 만들지 않으므로(카고와 탑차가 섞인 시세는 틀린 시세다), 법원 차명에 형식이
+    안 적힌 물건은 이 힌트가 있어야 비로소 시세를 낼 수 있다. `item`(VehicleItem)은 법원 목록
+    파서의 레코드라 거기에 필드를 더하지 않고 **DB 행을 아는 호출부가 넘겨 준다**."""
     key, mp = resolve_mapping(item.model, config)
     if mp:
         return mp
@@ -71,7 +76,7 @@ def _resolve_encar(item, config: dict, search: Optional[dict]):
             return {"car_type": search.get("encar_car_type", "Y"),
                     "manufacturer": man, "model_group": search["encar_model_group"]}
     # 국산 자동매핑 (전체 스캔 포함)
-    return encar.auto_map(item.maker, item.model)
+    return encar.auto_map(item.maker, item.model, form_hint=form_hint)
 
 
 def _analyze_item(cs, es, raw: dict, item, config: dict, repair_cost: int,
@@ -1484,7 +1489,7 @@ def newcar_collect(max_requests: int = NEWCAR_DAILY_CAP, max_models: Optional[in
         for v in pool:
             if max_models and len(models_seen) >= max_models:
                 break
-            mp = encar.auto_map(v.get("maker"), v.get("model"))
+            mp = encar.auto_map(v.get("maker"), v.get("model"), form_hint=v.get("truck_form"))
             names = NEWCAR_MAKER_ALIAS.get(mp["manufacturer"]) if mp else None
             maker_nos = [makers[n] for n in (names or []) if n in makers]
             if not maker_nos:
@@ -1542,7 +1547,7 @@ REUSE_PLATFORM = "동급참조"   # market_platform 값: 실측(encar)이 아니
 
 
 def _reuse_key(v: dict):
-    mp = encar.auto_map(v.get("maker"), v.get("model"))
+    mp = encar.auto_map(v.get("maker"), v.get("model"), form_hint=v.get("truck_form"))
     return (mp["manufacturer"], mp["model_group"]) if mp else None
 
 
@@ -4589,7 +4594,7 @@ def recompute_all_market(run_id: Optional[int] = None, finalize: bool = True,
         # 상세가 없는(종결·조회불가) 물건엔 시세를 만들지 않음 (주행거리 없이 연식만 매칭=부정확)
         if v.get("mileage_km") is None and not v.get("photo_count"):
             continue
-        mp = _resolve_encar(_rebuild_item(v), config, None)
+        mp = _resolve_encar(_rebuild_item(v), config, None, form_hint=v.get("truck_form"))
         if not mp:
             continue
         # ⚠ 화물(포터·봉고)은 **엔드포인트와 형식까지** 키에 넣는다. 빼면 두 가지가 깨진다.
@@ -4738,7 +4743,8 @@ def requery_missing_market(within_days: int = 30, max_requests: int = 20, min_ag
             continue                                  # 시세가 있는 물건은 대상이 아니다(동급참조 포함)
         if v.get("status") in ("종결", "상세없음") or v.get("auction_result") in ("낙찰", "종결"):
             continue
-        if v.get("year") is None or not encar.auto_map(v.get("maker"), v.get("model")):
+        if v.get("year") is None or not encar.auto_map(v.get("maker"), v.get("model"),
+                                                       form_hint=v.get("truck_form")):
             continue                                  # 매핑 자체가 없으면 물어도 의미 없다(중장비 등)
         if str(v.get("analyzed_at") or v.get("collected_at") or "")[:10] > cutoff:
             continue                                  # 최근에 물었다 — 백오프
@@ -4909,7 +4915,7 @@ def kcar_crosscheck(vid: str, config: dict | None = None) -> dict:
             pass
 
     # 1) 엔카 재조회(신뢰도 재계산용 원표본) — 매핑 → 연식범위 쿼리
-    mp = _resolve_encar(_rebuild_item(v), config, None)
+    mp = _resolve_encar(_rebuild_item(v), config, None, form_hint=v.get("truck_form"))
     if not mp:
         return {"ok": False, "msg": "엔카 매핑 불가 — 교차검증 대상 아님"}
     es = encar.new_session()
