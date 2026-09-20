@@ -450,7 +450,12 @@ def test_stale_floor_blocks_expected_price():
     assert service.personal_use_max_bid(stale, BT) is not None
     st = service.bid_state(stale, BT)
     assert st["tone"] != "ok", "가격을 못 믿는데 초록불이면 안 된다"
-    assert st["state"] == "lowconf"
+    # 2026-09-20 2차: 예측을 내지 않는다는 이 테스트의 본래 의도(위 두 줄)는 그대로 두고,
+    # **상태·라벨만** 바로잡았다. 저감가 미공고는 "시세를 못 믿겠다"가 아니라 "다음 기일
+    # 최저가를 기다린다"이다 — 운영 74건이 신뢰도 높음(49)·보통(25)인데 신뢰도 탓을 듣고
+    # 있었고, 상세 화면은 이미 정확한 말을 하고 있었다.
+    assert st["state"] == "wait"
+    assert "신뢰도" not in st["label"], f"신뢰도 탓을 하고 있다: {st['label']}"
     # 정상 물건은 그대로 산출된다
     ok = v(appraisal_value=120_000_000, min_sale_price=84_000_000,
            fail_count=1, median_price=100_000_000)

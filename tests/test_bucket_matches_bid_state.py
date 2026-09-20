@@ -84,3 +84,74 @@ def test_라이프사이클_합계가_여전히_총대수와_같다(dbmod):
     p = service.lifecycle_partition()
     assert (p["review"] + p["usepick"] + p["wait"] + p["nomarket"]
             + p["lowconf"] + p["won"] + p["other"]) == p["total"]
+
+
+# ── 2026-09-20 2차: nomarket 하나만 맞춰 놓았더니 나머지가 그대로 어긋나 있었다 ──────
+#
+# 운영 교차표(목록 1,244건)를 떠 보고 알았다. '신뢰도 낮음' 칸 257건 중 판정이 실제로
+# lowconf 인 것은 67건뿐이고, 184건은 '유찰 대기', 6건은 '이번 회차 부적합'이었다.
+# 거꾸로 '유찰 대기' 505건 안에는 lowconf 93건이 섞여 있었다. 칸 이름과 카드 배지가
+# 같은 물건에 대해 다른 말을 한 것이다 — 9/20 오전에 nomarket 에서 고친 바로 그 결함이
+# 다른 칸에 남아 있었다. 그래서 대응표를 **전 상태에 대해** 고정한다.
+BUCKET_OF_STATE = {
+    "nomarket": "nomarket",
+    "lowconf": "lowconf",
+    "wait": "wait",
+    "blocked": "wait",        # '이번 회차 입찰 부적합' — 뜻이 "이번 회차는 아니다"로 같다
+    "over_market": "wait",    # '시세 초과' — 마찬가지
+}
+# 앞선 분기(낙찰·큐레이션·실사용 갈래)가 먼저 가져가는 칸. 이 칸에 들어간 물건은
+# 판정과 무관하게 배정되므로 대응표의 적용 대상이 아니다.
+_CLAIMED_FIRST = ("won", "review", "usepick")
+
+
+def test_모든_상태에서_칸과_판정이_같은_말을_한다(dbmod):
+    rows = [
+        _v(dbmod, "NM", model="굴착기"),                                    # nomarket
+        _v(dbmod, "PAST", model="쏘나타", sale_date="2020-01-01"),           # wait(지난 기일)
+        _v(dbmod, "FLOOD", model="쏘나타", accident_grade="flood"),          # blocked
+        _v(dbmod, "DEAD", model="쏘나타", runnable="no"),                    # lowconf
+        _v(dbmod, "NOMED", model="쏘나타", median_price=None),               # lowconf(시세 없음)
+        _v(dbmod, "LOWC", model="쏘나타", median_price=13_000_000,           # lowconf(진짜)
+           market_confidence_label="낮음"),
+        _v(dbmod, "STALE", model="쏘나타", median_price=18_000_000,          # 저감가 미공고
+           market_confidence_label="높음", appraisal_value=20_000_000,
+           min_sale_price=20_000_000, fail_count=1),
+        _v(dbmod, "OK", model="쏘나타", median_price=13_000_000,             # 평범한 승용차
+           market_confidence_label="높음"),
+    ]
+    for r in rows:
+        bucket = service.lifecycle_bucket_of(r, BT)
+        if bucket in _CLAIMED_FIRST:
+            continue
+        state = service.bid_state(r, BT)["state"]
+        assert bucket == BUCKET_OF_STATE.get(state, "other"), (
+            f"{r['id']}({r['model']}): 판정={state} 인데 칸={bucket} — "
+            f"칸 이름과 카드 배지가 다른 말을 하게 된다")
+
+
+def test_저감가_미공고를_신뢰도_탓으로_돌리지_않는다(dbmod):
+    """실측 74건. 신뢰도 높음 49·보통 25, 표본 수 중앙값 19 — 시세는 멀쩡했다.
+
+    유찰됐는데 법원이 저감가를 아직 공고하지 않으면 예상낙찰가를 **일부러** 내지 않는다
+    (낡은 출발선으로 만든 예측은 지어낸 값이라서다). 그건 시세를 못 믿겠다는 뜻이 아니다.
+    상세 화면은 이미 "다음 기일 최저가가 공고되면 자동 반영됩니다"라고 정확히 말하고
+    있었는데 목록 카드만 "시세 신뢰도 낮음"이라고 했다 — 74건 전부 기일이 남은,
+    사용자가 지금 실제로 검토하는 물건이었다."""
+    r = _v(dbmod, "SF", model="쏘나타", median_price=18_000_000,
+           market_confidence_label="높음", sample_count=19,
+           appraisal_value=20_000_000, min_sale_price=20_000_000, fail_count=1)
+    st = service.bid_state(r, BT)
+    assert st["exp"] is None, "저감가 미공고면 예상낙찰가는 내지 않는다(기존 설계)"
+    assert st["state"] == "wait"
+    assert "신뢰도" not in st["label"], f"신뢰도 탓을 하고 있다: {st['label']}"
+    assert service.lifecycle_bucket_of(r, BT) == "wait"
+
+
+def test_신뢰도가_실제로_낮으면_그대로_신뢰도_낮음이다(dbmod):
+    """고치면서 반대쪽을 지우면 안 된다 — 진짜 신뢰도 낮음 36건은 그대로 남아야 한다."""
+    r = _v(dbmod, "LC", model="쏘나타", median_price=13_000_000,
+           market_confidence_label="낮음")
+    st = service.bid_state(r, BT)
+    assert st["state"] == "lowconf" and "신뢰도" in st["label"]
+    assert service.lifecycle_bucket_of(r, BT) == "lowconf"

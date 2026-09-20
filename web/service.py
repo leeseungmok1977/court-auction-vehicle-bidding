@@ -784,12 +784,26 @@ def _bucket_and_tier(v: dict, bt: Optional[dict] = None) -> tuple:
     #   실제로 나온 물건이라 '동급 시세 없음'이라 하면 거짓말이었다.
     #   → 기준을 하나로 합친다. 판정은 bid_state 한 곳에서만 내리고 버킷은 그 결과를 쓴다.
     #     (tests/test_bucket_matches_bid_state.py 가 두 기준의 일치를 고정한다.)
-    if bid_state(v, bt if bt is not None else backtest_stats())["state"] == "nomarket":
+    #
+    # 2026-09-20 2차: 남아 있던 두 갈래(유찰 대기·신뢰도 낮음)도 **판정 기준으로 옮긴다.**
+    #   운영 교차표(목록 1,244건)가 어긋남을 그대로 보여줬다.
+    #     · '신뢰도 낮음' 257건 중 판정이 실제 lowconf 인 것은 67건뿐 — 184건은 '유찰 대기',
+    #       6건은 '이번 회차 부적합'이었다(칸 이름이 그 물건들에 대해 거짓말을 하고 있었다).
+    #     · '유찰 대기' 505건 안에는 거꾸로 lowconf 93건이 섞여 있었다.
+    #   원인은 이 두 줄이 **DB 의 judgment 컬럼**(저장된 옛 분석 결과)을 보는데 카드 배지는
+    #   bid_state(실시간 판정)를 그려서다. 같은 물건이 칸 이름과 배지에서 다른 말을 한다.
+    #   won(401=closed)·nomarket(21)은 이미 정확히 일치했다 — 어긋난 곳만 맞춘다.
+    st = bid_state(v, bt if bt is not None else backtest_stats())["state"]
+    if st == "nomarket":
         return "nomarket", None
-    if j == "유찰 대기":
+    # blocked('이번 회차 입찰 부적합')·over_market('시세 초과')은 새 칸을 만들지 않고 이 칸에 둔다.
+    # 뜻이 "이번 회차는 아니다"로 같고, 실제로 오늘도 대부분 이 칸에 들어와 있었다(113+23).
+    if st in ("wait", "blocked", "over_market"):
         return "wait", None
-    if j == "시세 신뢰도 낮음, 수동 검토":
+    if st == "lowconf":
         return "lowconf", None
+    # 남는 것: 낙찰 표기가 없는 '종결'(closed), 그리고 앞선 두 분기가 가져가지 않은
+    # usepick·resale. 운영 실측에서는 둘 다 0건이지만 뺄셈으로 유도하지 않고 명시해 둔다.
     return "other", None
 
 
@@ -3745,8 +3759,22 @@ def bid_state(v: dict, bt: Optional[dict] = None, config: Optional[dict] = None)
     #   (배너 "이 58건이 무엇인가" vs 배지 "이 한 대가 무엇인가" — 층 구분은 유지).
     if no_market_reason(v) and not exp:
         return out("nomarket", "동급 시세 없음", "wait")
-    if not exp or not med or v.get("market_confidence_label") == "낮음":
+    # ⚠ 예전엔 세 가지를 한 문장에 묶어 **전부 "시세 신뢰도 낮음"** 이라고 말했다.
+    #   2026-09-20 운영 실측: 그 라벨이 붙은 152건 중 **74건은 신뢰도가 높음(49)·보통(25)** 이고
+    #   표본 수 중앙값이 19건이었다 — 시세는 충분히 믿을 만한데 "시세를 못 믿겠다"고 적힌 것이다.
+    #   게다가 74건 **전부 매각기일이 남은** 물건, 즉 사용자가 지금 실제로 검토하는 물건이었다.
+    #   진짜 이유는 stale_floor(유찰됐는데 법원이 저감가를 아직 공고 안 함)라서 예측을
+    #   **일부러 내지 않는 것**이고(expected_for 의 설계), 상세 화면은 이미 그 말을 정확히
+    #   하고 있었다(detail.html: "다음 기일 최저가가 공고되면 자동 반영됩니다"). 목록 카드만
+    #   다른 말을 했다 — 9/20 에 고친 '목록과 상세가 다른 말' 과 같은 계열이다.
+    if not med or v.get("market_confidence_label") == "낮음":
         return out("lowconf", "시세 신뢰도 낮음 — 판정 보류", "wait")
+    if not exp:
+        if stale_floor(v):
+            return out("wait", "다음 기일 최저가 공고 대기", "wait")
+        # 시세·신뢰도는 멀쩡하고 저감가 문제도 아닌데 예측이 없는 경우 — 실측 0건이지만
+        # 남겨 둔다. 여기서 '신뢰도'를 탓하면 또 틀린 이유를 말하게 된다.
+        return out("lowconf", "예상낙찰가 산출 불가 — 판정 보류", "wait")
     if not (floor and floor <= exp):
         # ⚠ 예전엔 여기서 바로 반환해 손익분기를 아예 보지 않았다. 그래서 최저가가
         # 상한선을 62% 넘는 물건이 2% 넘는 물건(blocked)보다 **약한 경고**를 받았다
