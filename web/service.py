@@ -770,15 +770,16 @@ def _bucket_and_tier(v: dict, bt: Optional[dict] = None) -> tuple:
     tier = personal_use_tier(v, bt if bt is not None else backtest_stats())
     if tier:                       # 두 갈래(now·cheap) 모두 이 칸 — '유찰 대기'에서 빠져 나온다
         return "usepick", tier
-    # 동급 시세가 성립하지 않는 물건(선박·건설기계·차종 미상)은 '유찰 대기'보다 앞서 가른다 —
-    # "비교할 대상이 없다"가 "유찰을 기다린다"보다 앞선 사실이고, 섞어 두면 물량이 적은
-    # 이유가 화면 어디에도 설명되지 않는다(2026-09-19 원인 조사).
-    # ⚠ 단, **이미 끝난 물건은 넣지 않는다.** won 은 auction_result='낙찰'만 보므로 판정이
-    #   '종결'인 물건은 예전부터 조용히 '기타'로 갔는데, 이 분기가 그것들을 가로챘다.
-    #   운영 데이터에 대입해 보니 새 칸 109건 중 **53건이 종결**이었다 — 사용자가 이 칸을
-    #   누르면 앞으로 입찰할 물건이 아니라 끝난 경매가 절반이나 나온다(테스트로는 안 잡혔다).
-    if (no_market_reason(v) and j != "종결"
-            and (v.get("auction_result") or "") not in ("낙찰", "종결")):
+    # 동급 시세가 성립하지 않는 물건은 **판정(bid_state)이 그렇게 말할 때만** 이 칸에 담는다.
+    #
+    # ⚠ 예전엔 여기서 no_market_reason(v) 를 직접 봤다. 그 결과 버킷이 판정보다 느슨해져
+    #   **같은 물건이 목록에서는 '건설기계·선박 등', 상세에서는 다른 말**을 했다
+    #   (2026-09-20 운영 실측: 55건 중 34건 불일치). 내역을 보니 32건은 지난 기일·침수·
+    #   시동 불가처럼 **시세와 무관한 더 앞선 사실**이라 판정 쪽이 옳았고, 2건은 시세가
+    #   실제로 나온 물건이라 '동급 시세 없음'이라 하면 거짓말이었다.
+    #   → 기준을 하나로 합친다. 판정은 bid_state 한 곳에서만 내리고 버킷은 그 결과를 쓴다.
+    #     (tests/test_bucket_matches_bid_state.py 가 두 기준의 일치를 고정한다.)
+    if bid_state(v, bt if bt is not None else backtest_stats())["state"] == "nomarket":
         return "nomarket", None
     if j == "유찰 대기":
         return "wait", None
