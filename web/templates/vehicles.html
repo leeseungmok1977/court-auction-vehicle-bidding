@@ -77,7 +77,15 @@
        잊으면 아래 폴백이 걸려 **영문 키가 그대로 칩에 찍힌다**(2026-09-19 실제 발생:
        'filter_alt nomarket 1 ✕'). tests/test_bucket_labels.py 가 이 누락을 잡는다. #}
     {% if bucket %}{% set _bkl = {'wait':'유찰 대기','lowconf':'신뢰도 낮음','nomarket':'건설기계·선박 등','other':'기타·미분석'} %}
-    <a href="/vehicles{% if qs_no_bucket %}?{{ qs_no_bucket }}{% endif %}" class="text-xs bg-sky-50 text-sky-700 border border-sky-200 rounded-full px-3 py-1 inline-flex items-center gap-1" title="{{ _bkl.get(bucket, bucket) }} 필터 해제"><span class="material-symbols-outlined text-[13px] leading-none">filter_alt</span>{{ _bkl.get(bucket, bucket) }} {{ total }} ✕</a>{% endif %}
+    {# ⚠ nowrap 이 없으면 좁은 폭에서 이름이 3줄로 접혀 칩 높이가 58px 이 된다(이웃 칩 40px).
+       필터 바 한 줄만 기형적으로 커지고 옆 칩이 잘린다(2026-09-20 실측 320~430px).
+       이 바는 원래 **가로 스크롤**로 넘치는 칩을 처리하므로(위 overflow-x) 한 줄을 유지한다.
+       범위 층 이름("이 58건이 무엇인가")은 정보라서 줄이지 않는다 — 줄바꿈만 막는다. #}
+    {# ⚠ 아이콘을 빼서 폭을 줄인다. 한 줄로 만들자 163px 이 되어 320px 에서 해제 버튼 ✕ 가
+       화면 밖으로 밀렸다 — 필터를 푸는 유일한 손잡이가 첫 화면에서 사라지는 것은
+       이 앱이 이미 한 번 겪은 블로커다(큰글씨 모드에서 필터가 사라진 건). 이름은
+       범위 층 정보라 줄이지 않고, 아이콘만 뺀다(옆 칩들도 아이콘 없이 텍스트만 쓴다). #}
+    <a href="/vehicles{% if qs_no_bucket %}?{{ qs_no_bucket }}{% endif %}" class="text-xs bg-sky-50 text-sky-700 border border-sky-200 rounded-full px-3 py-1 inline-flex items-center gap-1 whitespace-nowrap shrink-0" title="{{ _bkl.get(bucket, bucket) }} 필터 해제">{{ _bkl.get(bucket, bucket) }} {{ total }} ✕</a>{% endif %}
     {% if result %}<a href="/vehicles" class="text-xs bg-sky-50 text-sky-700 border border-sky-200 rounded-full px-3 py-1">결과={{ result }} ✕</a>{% endif %}
     {% if date %}<a href="/vehicles" class="text-xs bg-primary/10 text-primary border border-primary/20 rounded-full px-3 py-1 inline-flex items-center gap-1" title="날짜 필터 해제"><span class="material-symbols-outlined text-[13px] leading-none">event</span>{{ date }} 매각 ✕</a>{% endif %}
     {% if court %}<a href="/courts" class="text-xs bg-primary/10 text-primary border border-primary/20 rounded-full px-3 py-1 inline-flex items-center gap-1" title="법원 선택으로"><span class="material-symbols-outlined text-[13px] leading-none">gavel</span>{% if ',' in court %}법원 {{ court.split(',')|length }}곳{% else %}{{ court|replace('지방법원','지법') }}{% endif %} ✕</a>{% endif %}
@@ -140,6 +148,9 @@
   {{ ui.gloss('검토 가능', '지금 가격이 적정해 바로 입찰을 검토할 수 있는 물건이에요.', q=false, cls='font-bold text-emerald-700') }}
   {{ ui.gloss('유찰 대기', '아직 최저가가 시세보다 높아, 유찰로 더 내려가길 기다리는 편이 나은 물건이에요.', q=false, cls='font-bold text-amber-700') }}
   {{ ui.gloss('신뢰도 낮음', '동급 시세 표본이 부족해 예상낙찰가를 믿기 어려운 물건이에요. 직접 시세 확인이 필요합니다.', q=false, cls='font-bold text-sky-700') }}
+  {# '비교할 대상이 없다'와 '비교했는데 못 믿겠다'는 다른 말이다 — 둘을 한 설명으로 묶으면
+     곧 표본이 생길 것처럼 읽힌다(생기지 않는다). 배너·배지와 같은 문구를 쓴다. #}
+  {{ ui.gloss('건설기계·선박 등', '동급으로 비교할 중고차가 없어 시세와 예상낙찰가를 내지 않는 물건이에요. 감정가·최저매각가·사진은 그대로 보실 수 있습니다.', q=false, cls='font-bold text-sky-700') }}
   {{ ui.gloss('입찰 보류', '사고·침수·시세 괴리 등 위험 신호가 있어 입찰을 보류하는 편이 좋은 물건이에요.', q=false, cls='font-bold text-rose-600') }}
   {{ ui.gloss('종결·미분석', '이미 매각이 끝났거나(종결) 아직 분석 전(미분석)인 물건이에요.', q=false, cls='font-bold text-slate-600') }}
   {# 이어지는 줄이 '·' 불릿과 같은 기준선에서 시작하면 새 항목처럼 읽힌다 → 행잉 인덴트.
@@ -363,7 +374,19 @@ d.addEventListener('toggle',function(){try{localStorage.setItem('ncUsepickBasis'
            배경 + 아웃라인이라 중립 정보(D-11·유찰 1회)보다 조용했다. stop/wait는
            솔리드로 올려 눈이 먼저 닿게 한다. (5회차 디자인 2차) #}
         {% set _tone = v.bidst.tone if v.bidst else '' %}
-        <span class="nc-judge ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap {% if _tone == 'stop' %}bg-rose-600 text-white shadow-sm{% elif _tone == 'wait' %}bg-amber-500 text-white shadow-sm{% else %}{{ _tone|tcls }}{% endif %}">{{ v.bidst.label if v.bidst else (v.judgment|jshort if v.judgment else v.status|sstat) }}</span>
+        {# '동급 시세 없음'은 경고가 아니라 **해당 없음**이다. tone 이 wait 이라 앰버 솔리드로
+           나가면 같은 사진 안의 '외관손상'(진짜 차량 상태 경고)과 같은 색이 되어 경고가
+           희석되고, 상세에서는 같은 사실이 sky 라 색이 뜻을 못 나른다(2026-09-20 검수).
+           → 이것만 sky 솔리드로 뗀다. 일정=보라 / 상태경고=앰버 / 해당없음=sky 로 갈린다. #}
+        {% set _nm = v.bidst and v.bidst.state == 'nomarket' %}
+        {# ⚠ sky-600 솔리드로 뒀더니 **사진 하늘에 녹아 안 읽혔다**(2026-09-20 재검수).
+           이 물건들은 대표사진 상단이 하늘인 경우가 많다 — 같은 사진 속 '외관손상'(앰버)은
+           또렷한데 이것만 흰 글자가 떠 있는 꼴이었다. 크기가 아니라 대비 문제다.
+           → 같은 카드의 '유찰 N회'가 이미 쓰는 검증된 패턴(어두운 반투명 + blur)으로 바꾼다.
+           경고가 아닌 채로 또렷해야 한다 — 조용한 게 목적이 아니었다.
+           무채색 바탕 + sky 글자는 "해당 없음"이라는 뜻과도 맞고, 보라(일정)·앰버(상태경고)와
+           충돌하지 않는다. #}
+        <span class="nc-judge ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap {% if _nm %}bg-black/55 text-sky-200 backdrop-blur-sm{% elif _tone == 'stop' %}bg-rose-600 text-white shadow-sm{% elif _tone == 'wait' %}bg-amber-500 text-white shadow-sm{% else %}{{ _tone|tcls }}{% endif %}">{{ v.bidst.label if v.bidst else (v.judgment|jshort if v.judgment else v.status|sstat) }}</span>
         </div>
         {# gap-2 + min-w-0 + 접힘: 왼쪽 정보(연식·주행·외관손상·사진 혼재)가 길면 카메라 아이콘이 카드 밖으로 밀려 잘렸다(큰글씨 320px 실측) #}
         <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent px-3 pt-6 pb-2 flex items-end justify-between gap-2">
@@ -387,7 +410,13 @@ d.addEventListener('toggle',function(){try{localStorage.setItem('ncUsepickBasis'
           </div>
           <div class="text-right">
             <div class="text-[10px] text-primary">AI 예상낙찰가</div>
-            <div class="font-mono font-bold tnum whitespace-nowrap {{ 'text-mut' if closed else 'text-mut' if (lowconf or exp_far) else 'text-primary' }}" style="font-size:min(1.125rem,5.2vw)">{{ v.expected_win|won if v.expected_win else '—' }}{% if v.expected_win and not closed and lowconf %}<span class="text-rose-500 text-[11px] align-top">*</span>{% elif v.expected_win and not closed and exp_far %}<span class="text-mut text-[11px] align-top">↑</span>{% endif %}</div>
+            {# 맨 '—' 는 "로딩 실패·버그"로 읽힌다(2026-09-20 검수). 숫자를 지어내지 않는다는
+               원칙은 그대로 두되 **빈칸에 이름을 붙인다** — 리포트 육각형의 '미산출'과 같은 말.
+               ⚠ 다만 값이 없을 때 보라+bold+최대 글씨를 그대로 쓰면, 카드에 있는 **유일한 실제
+                 숫자**(최저매각가)보다 '없다'는 말이 강해진다. 보라는 이 앱에서 "AI가 낸 값"의
+                 색이라 한순간 "예상가가 나왔다"로 읽힌다(같은 검수 2번 지적).
+                 → 값이 없으면 한 단계 낮춘다. 위계 조정일 뿐 표기 원칙과는 무관하다. #}
+            <div class="font-mono tnum whitespace-nowrap {{ 'font-semibold text-mut' if not v.expected_win else 'font-bold text-mut' if (closed or lowconf or exp_far) else 'font-bold text-primary' }}" style="font-size:{{ 'min(0.95rem,4.4vw)' if not v.expected_win else 'min(1.125rem,5.2vw)' }}">{{ v.expected_win|won if v.expected_win else '미산출' }}{% if v.expected_win and not closed and lowconf %}<span class="text-rose-500 text-[11px] align-top">*</span>{% elif v.expected_win and not closed and exp_far %}<span class="text-mut text-[11px] align-top">↑</span>{% endif %}</div>
           </div>
         </div>
         {# '얼마까지 써도 되나'를 카드에 둔다 — 카드에서 가장 큰 숫자(예상낙찰가)를 '써도 되는 금액'으로

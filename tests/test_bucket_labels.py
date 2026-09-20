@@ -78,12 +78,21 @@ def test_버킷_칩에_영문_키가_노출되지_않는다(client, bucket):
 
 
 @pytest.mark.parametrize("bucket", _CHIP_BUCKETS)
-def test_버킷_칩이_한글_이름을_보여준다(client, bucket):
-    """이름표가 비어 칩이 통째로 사라지는 것도 같은 결함이다(해제할 방법이 없어진다)."""
+def test_버킷_칩으로_필터를_풀_수_있다(client, bucket):
+    """이름표가 비어 칩이 통째로 사라지는 것도 같은 결함이다(해제할 방법이 없어진다).
+
+    ⚠ 예전엔 아이콘 이름(`filter_alt`)이 있는지로 확인했는데, 그건 **장식**이라
+      아이콘을 빼자 테스트가 무너졌다(2026-09-20). 320px 에서 칩이 길어 해제 버튼 ✕ 가
+      화면 밖으로 밀리길래 아이콘을 뺀 것인데, 정작 지켜야 할 것은 아이콘이 아니라
+      **"필터를 풀 손잡이가 화면에 있는가"** 다. 그래서 해제 링크 자체를 본다.
+    """
     html = client.get(f"/vehicles?bucket={bucket}", headers=_PUBLIC).text
-    assert "filter_alt" in html, (
-        f"bucket={bucket} 에 필터 해제 칩이 없다 — 사용자가 필터를 풀 방법이 사라진다"
-    )
+    text = _visible_text(html)
+    assert "✕" in text, (
+        f"bucket={bucket} 에 필터 해제 표시(✕)가 없다 — 사용자가 필터를 풀 방법이 사라진다")
+    # 해제 링크는 bucket 파라미터가 빠진 /vehicles 로 가야 한다(다른 필터는 유지).
+    assert re.search(r'href="/vehicles(?:\?(?![^"]*bucket=)[^"]*)?"[^>]*>[^<]*✕', html), (
+        f"bucket={bucket} 해제 링크가 bucket 을 그대로 달고 있다 — 눌러도 안 풀린다")
 
 
 def test_시세를_낼_수_없는_목록은_그_이유를_먼저_말한다(client):

@@ -19,7 +19,12 @@
       {% set _name = car_name(v.maker, v.model) %}
       <h1 class="text-2xl font-bold">{% if _name %}{{ _name }}{% else %}<span class="text-mut">차명 미상</span>{% endif %}</h1>
       <span class="text-sm text-mut border border-line rounded px-2 py-0.5">{{ v.year or '—' }}년식</span>
-      {% if v.judgment %}<span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-semibold {{ v.judgment|bcls }}">{{ v.judgment }}</span>{% endif %}
+      {# ⚠ 이 칩이 상세에서 **가장 먼저 읽히는 자리**다. judgment 를 그대로 찍으면
+         건설기계·선박이 "시세 신뢰도 낮음, 수동 검토"로 보이는데, 목록 배지·배너는
+         "동급 시세 없음"이라고 말한다 — 같은 물건에 두 설명(2026-09-19 육안 검수).
+         '비교 대상이 없다'는 판정은 bid_state 가 단일 진실원천이므로 그 label 을 쓴다. #}
+      {% if bidst and bidst.state == 'nomarket' %}<span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-semibold bg-sky-50 text-sky-700 border border-sky-200">{{ bidst.label }}</span>
+      {% elif v.judgment %}<span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-semibold {{ v.judgment|bcls }}">{{ v.judgment }}</span>{% endif %}
     </div>
     <p class="text-sm text-mut mt-1">{{ v.court }} · 사건 {{ v.case_no }} · 물건 {{ v.item_no }}</p>
   </div>
@@ -820,6 +825,16 @@
                                         and expected.basis.kind == 'min_premium') %}
       <div class="text-center bg-background border border-line rounded-lg py-4 mb-4">
         <div class="text-sm text-mut">분석 전 — 상단 [이 물건 분석]으로 산정하세요</div>
+      </div>
+      {% elif bidst and bidst.state == 'nomarket' %}
+      {# ⚠ 이 분기는 아래 'median_price is none' **앞**에 와야 한다. 건설기계·선박은 시세가
+         없으므로 그쪽이 먼저 잡아채 "자동 동급 매칭이 되지 않아"라는 옛 문구를 내보낸다
+         — 목록 배너는 "동급 중고차가 없다"인데 여기만 다른 말을 하게 된다(2026-09-19).
+         문구는 배너·판정 문장과 한 글자도 다르지 않게 맞춘다. #}
+      <div class="text-center bg-sky-50 border border-sky-200 rounded-lg py-4 mb-4">
+        <div class="text-xs text-sky-700 mb-1 font-semibold">{{ bidst.label }}</div>
+        <div class="text-sm text-mut px-4">동급으로 비교할 중고차가 없어 <b class="text-txt">시세와 예상낙찰가를 내지 않습니다.</b>
+          감정가·최저매각가·사진 등 법원 자료는 그대로 확인하실 수 있습니다.</div>
       </div>
       {% elif v.median_price is none %}
       <div class="text-center bg-sky-50 border border-sky-200 rounded-lg py-4 mb-4">

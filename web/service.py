@@ -3672,7 +3672,8 @@ def backfill_sale_results() -> int:
 #   · 리포트 §01: "낙찰 가능성은 낮습니다" + "실사용 목적에 적합"이 동시 출현(46건 중 28건)
 #   · 최저매각가가 이미 입찰 상한선을 넘었는데도 상세는 그보다 비싼 3개 전략을 제시
 # 판정을 한 곳에서만 계산하고 모든 화면이 이 값을 쓴다.
-BID_STATES = ("closed", "lowconf", "wait", "blocked", "over_market", "usepick", "resale")
+BID_STATES = ("closed", "nomarket", "lowconf", "wait", "blocked", "over_market",
+              "usepick", "resale")
 
 
 def bid_state(v: dict, bt: Optional[dict] = None, config: Optional[dict] = None) -> dict:
@@ -3724,6 +3725,20 @@ def bid_state(v: dict, bt: Optional[dict] = None, config: Optional[dict] = None)
     # 떠 있으면 실무자는 앱의 기일 표기 전체를 못 믿는다(2회차 패널 48세, 단일 결격 사유).
     if len(_sd) == 10 and _sd == date.today().isoformat() and sale_time_passed(v):
         return out("wait", "기일 경과 — 결과 확인 전", "wait")
+    # 동급 시세가 **성립하지 않는** 물건(건설기계·선박)은 '신뢰도 낮음'과 다른 말을 해야 한다.
+    # 신뢰도 낮음은 "비교했는데 못 믿겠다", 이쪽은 "비교할 대상이 없다"다. 섞어 두면
+    # 목록 배너는 "동급 중고차가 없다"인데 카드 배지는 "표본이 부족하다"라고 말한다
+    # (2026-09-19 디자인 검수에서 스크린샷을 눈으로 보고 발견).
+    # ⚠ 톤은 wait(회색) — 경고가 아니라 **해당 없음**이다. 빨강·앰버를 쓰면 같은 화면의
+    #   실제 경고가 희석된다(과거 '빨간 칩 2개로 경고색 희석' 교훈).
+    # ⚠ 라벨에 **분류를 단정하지 않는다.** '카고트럭'이라는 낱말 하나로 4.5톤 화물차를
+    #   "건설기계·특장"이라 불렀고, 같은 화면의 제목(…4.5톤극플러스카고트럭)·차종 필터
+    #   (상용·화물)와 정면으로 충돌했다(2026-09-20 디자인 검수에서 적발).
+    #   분류는 틀릴 수 있어도 **"동급 시세가 없다"는 검증된 사실**이다 — 사실만 말한다.
+    #   이유(no_market_reason)는 버킷 이름·목록 배너 같은 **범위 층**에서만 쓴다
+    #   (배너 "이 58건이 무엇인가" vs 배지 "이 한 대가 무엇인가" — 층 구분은 유지).
+    if no_market_reason(v) and not exp:
+        return out("nomarket", "동급 시세 없음", "wait")
     if not exp or not med or v.get("market_confidence_label") == "낮음":
         return out("lowconf", "시세 신뢰도 낮음 — 판정 보류", "wait")
     if not (floor and floor <= exp):
@@ -3780,6 +3795,12 @@ def plain_verdict(v: dict, expected: Optional[dict],
 
     if st["state"] == "closed":
         return {"tone": "closed", "text": "이미 매각이 끝난 물건입니다 (참고용)."}
+    if st["state"] == "nomarket":
+        # 비교 대상이 없다는 것과 비교해 보니 못 믿겠다는 것은 다른 말이다.
+        # 여기서 "표본이 부족하다"고 하면 곧 표본이 생길 것처럼 읽힌다 — 생기지 않는다.
+        return {"tone": "wait",
+                "text": ("동급으로 비교할 중고차가 없어 시세와 예상낙찰가를 내지 않습니다. "
+                         "감정가·최저매각가·사진 등 법원 자료는 그대로 확인하실 수 있습니다.")}
     if st["state"] == "lowconf":
         # ⚠ 판정을 못 해도 **산술은 말할 수 있다.** 18인 패널 실측: 예상낙찰가가
         #   시세의 221%인 물건에 "참고용입니다"만 내보내, 초보가 그 221%를 혼자
