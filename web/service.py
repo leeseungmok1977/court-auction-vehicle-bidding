@@ -2233,7 +2233,10 @@ def _appraisal_signals(text: str, config: Optional[dict] = None,
         "condition_flags": p["condition"]["damage"] or None,
         # 시동·운행 여부는 실사용 추천의 하드 배제 조건이라 별도 컬럼으로 보존한다.
         # 키워드 부재를 '운행 가능'으로 단정하지 않는다 → unknown.
-        "runnable": {True: "yes", False: "no"}.get(run, "unknown"),
+        # 'jump' = 자체 시동은 안 되지만 점프·충전·용역으로 **실제로 걸린** 차.
+        # '불가'라 부르면 원문이 걸었다고 적은 것을 뒤집는 말이 되고, '가능'이라 부르면
+        # 자체 시동이 안 된 사실이 사라진다 — 그래서 값을 따로 둔다(2026-09-20 사용자 결정).
+        "runnable": {True: "yes", False: "no", "jump": "jump"}.get(run, "unknown"),
     }
 
 

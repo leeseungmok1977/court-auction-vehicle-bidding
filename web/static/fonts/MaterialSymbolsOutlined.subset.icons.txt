@@ -5,6 +5,7 @@ assignment
 autorenew
 balance
 bar_chart
+bolt
 bookmark_add
 build
 calendar_month
@@ -20,6 +21,7 @@ do_not_disturb_on
 donut_small
 error
 event
+event_busy
 event_repeat
 event_upcoming
 expand_more

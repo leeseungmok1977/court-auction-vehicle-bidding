@@ -1044,6 +1044,12 @@ document.addEventListener('click', function(e){
         {% set c = asum.condition %}
         {% if c.major or c.poor %}<span class="abadge risk">외관·상태 손상 언급</span>{% elif c.minor %}<span class="abadge warn">외관 손상 언급</span>{% endif %}
         {% if c.runnable == false %}<span class="abadge risk">시동·운행 불가 언급</span>{% endif %}
+        {# 점프·충전·용역으로 실제로 걸린 차 — 위험(risk)이 아니라 주의(warn)다.
+           문구 순서는 상세와 같다: 확인된 사실 먼저, 제약은 뒤. 앞부분만 읽혀 '불가'로
+           오독되는 것을 막는다(2026-09-20 디자인 검수 지적 1). #}
+        {# 톤은 중립(기본 abadge) — 경고가 아니라 **사실 기록**이다. 상태 차감을 넣지 않기로
+           했으므로(사용자 결정 2026-09-21) 경고색을 쓰면 색과 금액이 어긋난다. #}
+        {% if c.runnable == 'jump' %}<span class="abadge">점프로 시동 확인 · 자체 시동 불가</span>{% endif %}
       </div>
       {% if asum.note_lines %}<ul style="margin:0 0 10px;padding-left:16px;font-size:12.5px;color:var(--ink-soft);line-height:1.65">{% for ln in asum.note_lines[:6] %}<li>{{ ln }}</li>{% endfor %}</ul>{% endif %}
       {% if asum.options %}<div style="margin-bottom:10px">{% for o in asum.options[:12] %}<span class="abadge" style="margin:0 5px 5px 0;display:inline-block">{{ o }}</span>{% endfor %}</div>{% endif %}
