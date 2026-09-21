@@ -2921,7 +2921,7 @@ def backfill_multilot_mileage() -> dict:
     return out
 
 
-def backfill_accident_grades() -> int:
+def backfill_accident_grades(force: bool = False) -> int:
     """저장된 감정요항(appraisal.txt) + 매각물건명세(spec_remark)로 사고판정을 재도출(무네트워크).
 
     기존엔 매각물건명세에만 있던 사고이력('내차 피해 6회…')을 놓쳐 '무사고'로 오판한 물건이 있었다.
@@ -2944,7 +2944,11 @@ def backfill_accident_grades() -> int:
         if not atxt and not spec:
             continue
         grade, acc_hits, _fld, hist = grade_accident(atxt, spec, config)
-        if grade == (v.get("accident_grade") or "none") and hist == (v.get("insurance_history") or {}):
+        # force=True 는 **등급이 그대로인 물건도** 다시 산정한다. 2026-09-21 에 아래 버그로
+        # 감가율이 옛 등급(flood=1.0) 기준으로 박힌 행들이 생겼는데, 등급은 이미 내려가 있어
+        # 이 skip 에 걸려 영영 못 고치는 상태였다(상한가가 음수로 잠김).
+        if not force and grade == (v.get("accident_grade") or "none") \
+                and hist == (v.get("insurance_history") or {}):
             continue                                  # 변화 없음 → 건너뜀
         fields = {"accident_grade": grade, "accident_hits": acc_hits, "insurance_history": hist}
         # 사고감가 정합성: 저장 시세가 있으면 로컬 재산정(외부요청 없음 — 상한가·판정·근거 동기화)
@@ -2955,7 +2959,13 @@ def backfill_accident_grades() -> int:
                           platform=v.get("market_platform") or "encar",
                           accident_grade=grade, repair_cost=v.get("repair_cost") or 500000,
                           appraisal_text=atxt, photo_count=v.get("photo_count"))
-            bid = calculate(apply_accident_rate(bi, v, config), tax_config_for(v, config))
+            # ⚠ **갱신될 값**으로 감가율을 정한다. 예전엔 옛 행 `v` 를 그대로 넘겨,
+            #   등급을 flood → none 으로 내려도 use_accident_rate 가 v 의 옛 'flood' 를 보고
+            #   감가율 1.0(시세 전액)을 돌려줬다 — 등급만 바뀌고 값은 안 바뀌는 상태였다
+            #   (2026-09-21 실측: C220d 등급 none 인데 breakdown 사고감가율 1.0 ·
+            #    상한가 -561만. '사고표기: 침수의심' 이 옛 v 를 봤다는 흔적이었다).
+            bid = calculate(apply_accident_rate(bi, {**v, **fields}, config),
+                            tax_config_for(v, config))
             fields.update(upper_bid=bid.upper_bid, lower_bound=bid.lower_bound,
                           judgment=_final_judgment(bid.judgment, v.get("market_confidence_label")),
                           breakdown=bid.breakdown)
