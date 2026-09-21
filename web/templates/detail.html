@@ -74,9 +74,16 @@
 {% endif %}
 
 {# 물건 정보 — 사진 바로 아래(예측 카드 위) #}
-<div class="bg-surface border border-line rounded-lg p-5">
+<div class="nc-kv-host bg-surface border border-line rounded-lg p-5">
   <h3 class="text-lg font-semibold mb-3">물건 정보</h3>
-  <dl class="grid grid-cols-[130px_1fr] gap-y-2.5 text-sm">
+  {# nc-kv = 큰글씨·좁은 폭에서 1열로 스택시키기 위한 훅(base.html). 라벨 130px 고정 +
+     값의 최소 폭이 카드 안쪽을 넘겨 값이 화면 밖으로 밀리는 것을 막는다. #}
+  {# ⚠ 라벨 트랙은 rem 이어야 한다(px 고정이면 큰글씨·OS 확대에서 값만 커져 rem 임계가
+     무의미해진다). 다만 **여기 클래스로는 못 바꾼다** — 이 앱은 Tailwind 를 정적 빌드하므로
+     템플릿에 새 임의값 클래스를 써도 app.css 에 규칙이 생기지 않고, 그러면 열 정의가 통째로
+     사라진다(실측: 320·360px 일반 모드까지 1열이 됐다). 실제 rem 트랙은 base.html 의
+     `.nc-kv` 인라인 규칙이 정의하고, 이 클래스는 **이미 빌드된 폴백**으로 남긴다. #}
+  <dl class="nc-kv grid grid-cols-[130px_1fr] gap-y-2.5 text-sm">
     <dt class="text-mut">주행거리</dt><dd class="font-mono">{{ v.mileage_km|won }} km</dd>
     <dt class="text-mut">배기량</dt><dd class="font-mono">{{ v.displacement_cc or '—' }} cc</dd>
     <dt class="text-mut">{{ ui.gloss('감정가', '법원이 감정평가사를 통해 매긴 차량 가치예요. 최저매각가와 낙찰가율(낙찰가÷감정가)의 기준이 됩니다.') }}</dt><dd class="font-mono">{{ v.appraisal_value|won }} 원</dd>
@@ -97,13 +104,17 @@
     {% endif %}
     {% if next_min %}
     <dt class="text-mut">{{ ui.gloss('다음 기일 예상 최저가', '이번 기일에 유찰되면 다음 기일은 이 금액부터 시작합니다. 법원마다 저감 비율이 달라(대부분 30%, 일부 20%) 우리 기일내역 실측값으로 계산했습니다.') }}</dt>
+    {# ⚠ 보조설명은 block 으로 내린다. 인라인이면 1열(큰글씨·좁은 폭)에서 값 뒤에 올라타
+       **1행이 '·' 로 끝나** 오타처럼 보이고, "18,900,000 원 · 30%"가 한 덩어리 값으로 읽힌다
+       (2026-09-21 디자인 검수 지적 2 — 1열로 세우며 드러났다). 선행 '·' 도 뺀다.
+       같은 카드 아래 '이 시세의 근거' 표가 이미 쓰는 하우스 패턴이다(block text-mut text-xs). #}
     <dd class="font-mono text-txt tnum"><span class="nc-unit">{{ next_min.price|won }} 원</span>
-      <span class="text-mut text-xs font-sans not-italic">· {{ ((1-next_min.ratio)*100)|round|int }}% 저감{% if next_min.basis == 'court' %} · 이 법원 {{ next_min.court_n }}회 중 {{ ((next_min.share or 1)*100)|round|int }}%{% else %} · 전국 기준(이 법원 표본 부족){% endif %}</span>
+      <span class="block text-mut text-xs font-sans not-italic mt-0.5">{{ ((1-next_min.ratio)*100)|round|int }}% 저감{% if next_min.basis == 'court' %} · 이 법원 {{ next_min.court_n }}회 중 {{ ((next_min.share or 1)*100)|round|int }}%{% else %} · 전국 기준(이 법원 표본 부족){% endif %}</span>
       {% if next_min.alt_price %}<div class="text-[11px] text-mut font-sans not-italic mt-0.5">이 법원은 저감률이 일정하지 않아 {{ next_min.alt_price|won }}원이 될 수도 있습니다.</div>{% endif %}</dd>
     {% endif %}
     <dt class="text-mut">{{ ui.gloss('매각 일시', '이 날짜·시각에 법원에서 입찰(기일입찰)이 열려요. 정해진 매각 장소에서 직접 또는 대리인이 입찰합니다.') }}</dt>
     {% set awaiting = v.sale_date and today and v.sale_date < today and v.auction_result not in ('낙찰','종결') and v.judgment != '종결' %}
-    <dd class="font-mono">{% if awaiting %}<span class="text-amber-700 not-italic font-sans">다음 기일 미정</span> <span class="text-mut text-xs">· 지난 {{ v.sale_date }} 유찰, 법원 재공고 후 자동 반영</span>{% else %}{{ v.sale_date or '—' }}{% if v.sale_time %} <span class="font-semibold text-txt">{{ v.sale_time }}</span> <span class="text-mut text-xs not-italic font-sans">입찰</span>{% endif %}{% endif %}</dd>
+    <dd class="font-mono">{% if awaiting %}<span class="text-amber-700 not-italic font-sans">다음 기일 미정</span> <span class="block text-mut text-xs mt-0.5">지난 {{ v.sale_date }} 유찰, 법원 재공고 후 자동 반영</span>{% else %}{{ v.sale_date or '—' }}{% if v.sale_time %} <span class="font-semibold text-txt">{{ v.sale_time }}</span> <span class="text-mut text-xs not-italic font-sans">입찰</span>{% endif %}{% endif %}</dd>
     {% if v.sale_place and not awaiting %}
     <dt class="text-mut">매각 장소</dt><dd class="not-italic">{% if v.court %}<b class="text-txt">{{ v.court }}</b> {% endif %}{{ v.sale_place }}</dd>
     {% endif %}
@@ -124,7 +135,11 @@
       <a href="#" onclick="openLB({{ map_idx - 1 }});return false"
          class="text-primary underline underline-offset-2 whitespace-nowrap">위치도 {{ map_idx }}번 사진에서 보기</a>
       <span class="text-mut text-xs">— 법원이 주소 대신 지도로 제공{% if map_n > 1 %} · 총 {{ map_n }}장{% endif %}</span>
-    {%- else %}<span class="text-mut">확인되지 않음 <span class="text-mut text-xs">— 현장 확인 필요</span></span>{% endif %}</dd>
+    {# ⚠ 라벨도 값도 text-mut 이면 1열에서 **회색 두 줄**이 연달아 놓여 라벨이 둘인 것처럼
+       읽힌다(2열에서는 좌우 위치가 위계를 알려줬지만 1열에는 그 단서가 없다).
+       하필 이 값은 "현물을 볼 수 없다"는 리스크 신호다 — 화면에서 가장 약한 색일 자리가
+       아니다(2026-09-21 디자인 검수 지적 3). 앰버로 올린다(로즈는 '입찰 보류'급 예약색). #}
+    {%- else %}<span class="text-amber-800">확인되지 않음 <span class="text-amber-800/85 text-xs">— 현장 확인 필요</span></span>{% endif %}</dd>
     {% if is_admin(request) %}{# 목록상 주소는 대개 채무자 주소(개인정보) → 관리자만 표시 #}
     <dt class="text-mut">목록상 주소</dt>
     <dd>{{ v.location or '—' }}{% if v.location %}<span class="block text-mut text-xs mt-0.5">※ 법원 목록 표시주소(대개 <b>채무자 주소</b>) — 차량 실제 위치와 다를 수 있음</span>{% endif %}</dd>
@@ -658,7 +673,7 @@
   <div class="space-y-6">
     {# SK엔카 원자료(시세 소스·개별 동급 매물·감사)는 관리자 전용 — 일반 사용자는 반영된 결과만 본다 #}
     {% if is_admin(request) %}
-    <div class="bg-surface border border-line rounded-lg p-5">
+    <div class="nc-kv-host bg-surface border border-line rounded-lg p-5">
       <div class="flex items-center justify-between mb-3">
         <h3 class="text-lg font-semibold">시세 <span class="text-mut text-sm font-normal">(SK엔카)</span></h3>
         {% if v.median_price is not none and v.market_confidence_label %}
@@ -672,7 +687,9 @@
         </span>
         {% endif %}
       </div>
-      <dl class="grid grid-cols-[130px_1fr] gap-y-2.5 text-sm">
+      {# 현재 데이터로는 넘치지 않지만 구조가 위 '물건 정보'와 같다(130px 고정 + 1fr).
+         값이 길어지면 같은 일이 생기므로 같은 훅을 붙여 함께 보호한다. #}
+      <dl class="nc-kv grid grid-cols-[130px_1fr] gap-y-2.5 text-sm">
         <dt class="text-mut">시세 소스</dt>
         <dd class="text-xs">
           {% set cs = v.cross_source_status %}
