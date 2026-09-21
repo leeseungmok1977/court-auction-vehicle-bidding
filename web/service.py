@@ -769,10 +769,20 @@ def _bucket_and_tier(v: dict, bt: Optional[dict] = None) -> tuple:
     """(버킷, 실사용 갈래 dict|None) — 카드 소계(지금 사면/싸게 낙찰되면)를 위해 갈래를 한 번만 계산한다."""
     if v.get("auction_result") == "낙찰":
         return "won", None
+    _bt = bt if bt is not None else backtest_stats()
+    st = bid_state(v, _bt)["state"]
     j = v.get("judgment")
-    if j == "입찰 검토 가능" and _review_biddable(v):
+    # ⚠ judgment 컬럼(저장된 옛 분석 결과)만 믿으면 **판정이 반대인 물건이 추천 칸에 들어간다.**
+    #   2026-09-21 운영 실측: '지금 입찰 추천' 13대 중 3대가 그랬다.
+    #     · 카니발 2025타경9181 — runnable='no'(시동·운행 불가), 톤 stop, **기일이 다음 날**.
+    #       시세 1,220만 / 최저가 588만이라 목록에서 가장 싸 보이는 자리였다.
+    #     · 쏘나타·스파크 — '기일 경과 — 결과 확인 전'. 입찰 자체가 불가능하다.
+    #   이 칸의 뜻은 카드 문구 그대로 "되팔아도 남는 가격 — 바로 검토"다. 판정이 그렇게
+    #   말할 때만 담는다. 9/20 에 버킷을 bid_state 로 통일하면서 won·review·usepick 을
+    #   예외로 남겼는데, 그 예외 안에서 정확히 이 일이 벌어졌다.
+    if j == "입찰 검토 가능" and _review_biddable(v) and st in ("resale", "usepick"):
         return "review", None
-    tier = personal_use_tier(v, bt if bt is not None else backtest_stats())
+    tier = personal_use_tier(v, _bt)
     if tier:                       # 두 갈래(now·cheap) 모두 이 칸 — '유찰 대기'에서 빠져 나온다
         return "usepick", tier
     # 동급 시세가 성립하지 않는 물건은 **판정(bid_state)이 그렇게 말할 때만** 이 칸에 담는다.
@@ -793,7 +803,8 @@ def _bucket_and_tier(v: dict, bt: Optional[dict] = None) -> tuple:
     #   원인은 이 두 줄이 **DB 의 judgment 컬럼**(저장된 옛 분석 결과)을 보는데 카드 배지는
     #   bid_state(실시간 판정)를 그려서다. 같은 물건이 칸 이름과 배지에서 다른 말을 한다.
     #   won(401=closed)·nomarket(21)은 이미 정확히 일치했다 — 어긋난 곳만 맞춘다.
-    st = bid_state(v, bt if bt is not None else backtest_stats())["state"]
+    # st 는 위에서 한 번만 계산한다 — 여기서 다시 부르면 홈 한 요청에서 1,244행 × 2회가 되어
+    # 9/20 에 줄여 놓은 TTFB(1.53초 → 0.32초)를 되돌린다.
     if st == "nomarket":
         return "nomarket", None
     # blocked('이번 회차 입찰 부적합')·over_market('시세 초과')은 새 칸을 만들지 않고 이 칸에 둔다.

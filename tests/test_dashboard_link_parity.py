@@ -126,7 +126,9 @@ def test_partition_sums_to_total(client):
     ("nomarket", "/vehicles?bucket=nomarket"),
     ("lowconf", "/vehicles?bucket=lowconf"),
     ("other", "/vehicles?bucket=other"),
-    ("review", "/vehicles?judgment=입찰 검토 가능&sort=expected"),
+    # 2026-09-21: 카드는 bid_state 기준 버킷으로 세는데 링크가 judgment 컬럼으로 열어
+    # 카드 10 / 목록 12 로 갈렸다. 링크도 같은 필터(bucket)를 타게 바꿨다.
+    ("review", "/vehicles?bucket=review&sort=expected"),
 ])
 def test_card_number_equals_what_the_link_opens(client, key, href):
     from web import service

@@ -39,10 +39,14 @@ def test_partition_sums_to_total(dbmod):
     # 운영 교차표에서 그 기준이 카드 배지와 어긋나 있었다 — '신뢰도 낮음' 257건 중 진짜
     # lowconf 는 67건뿐이었다. 그래서 숫자를 다시 박지 않고 **어느 물건이 왜 그 칸인지**를
     # 적는다(숫자만 고치면 다음에 또 무슨 뜻이었는지 알 수 없다).
-    #   R1 판정=검토 가능(큐레이션 칸이 먼저 가져감) · N1 낙찰 · O1 '입찰 보류'→blocked
+    #   N1 낙찰 · O1 '입찰 보류'→blocked
     #   W1·W2 는 judgment 가 '유찰 대기'지만 판정은 예상낙찰가를 못 내 lowconf 다.
+    # 2026-09-21: R1 도 더는 review 가 아니다. judgment 가 '입찰 검토 가능'이어도 **판정이
+    #   추천(resale·usepick)일 때만** 그 칸에 담는다 — 운영에서 시동 불가·기일 경과 물건이
+    #   '지금 입찰 추천'에 올라 있었다(13대 중 3대). R1 은 백테스트가 비어 예상낙찰가를
+    #   못 내므로 lowconf 다.
     b = lambda i: service.lifecycle_bucket_of(dbmod.get_vehicle(i))  # noqa: E731
-    assert b("R1") == "review" and b("N1") == "won"
+    assert b("R1") == "lowconf" and b("N1") == "won"
     assert b("O1") == "wait", "'이번 회차는 아니다'(blocked)는 유찰 대기 칸"
     assert {b("W1"), b("W2"), b("L1")} == {"lowconf"}
     assert p["other"] == 0, "뺄셈 칸이 비었다 — 모든 물건이 판정으로 설명된다"

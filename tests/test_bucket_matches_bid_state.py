@@ -148,6 +148,38 @@ def test_저감가_미공고를_신뢰도_탓으로_돌리지_않는다(dbmod):
     assert service.lifecycle_bucket_of(r, BT) == "wait"
 
 
+def test_추천_칸에는_판정이_추천인_물건만_들어간다(dbmod):
+    """★ 2026-09-21 운영 실측: '지금 입찰 추천' 13대 중 3대가 판정과 반대였다.
+
+    이 칸은 카드 문구 그대로 "되팔아도 남는 가격 — 바로 검토"다. 그런데 버킷이
+    `judgment` 컬럼(저장된 옛 분석 결과)만 보고 담아서 판정이 아래인 물건까지 들어왔다.
+      · 시동·운행 불가(톤 stop) 1대 — **기일이 다음 날**이고 목록에서 가장 싸 보였다
+        (시세 1,220만 / 최저가 588만)
+      · '기일 경과 — 결과 확인 전' 2대 — 입찰 자체가 불가능하다
+    9/20 에 버킷을 bid_state 로 통일하면서 won·review·usepick 을 예외로 남겼는데,
+    그 예외 안에서 정확히 이 일이 벌어졌다. **예외를 둘 거면 그 안도 고정해야 한다.**
+    """
+    for vid, kw in (("RV_DEAD", {"runnable": "no"}),
+                    ("RV_PAST", {"sale_date": "2020-01-01"}),
+                    ("RV_FLOOD", {"accident_grade": "flood"})):
+        r = _v(dbmod, vid, model="쏘나타", judgment="입찰 검토 가능",
+               median_price=13_000_000, market_confidence_label="높음", **kw)
+        state = service.bid_state(r, BT)["state"]
+        assert service.lifecycle_bucket_of(r, BT) != "review", (
+            f"{vid}: 판정이 '{state}' 인데 '지금 입찰 추천' 칸에 들어갔다 — "
+            f"카드 문구('되팔아도 남는 가격')가 거짓말이 된다")
+
+
+def test_판정이_추천이면_추천_칸에_남는다(dbmod):
+    """반대쪽을 지우면 안 된다 — 진짜 추천 물건은 그대로 이 칸이어야 한다."""
+    r = _v(dbmod, "RV_OK", model="쏘나타", judgment="입찰 검토 가능",
+           min_sale_price=8_000_000, appraisal_value=12_000_000,
+           median_price=13_000_000, upper_bid=14_000_000,
+           market_confidence_label="높음")
+    assert service.bid_state(r, BT)["state"] in ("resale", "usepick")
+    assert service.lifecycle_bucket_of(r, BT) == "review"
+
+
 def test_신뢰도가_실제로_낮으면_그대로_신뢰도_낮음이다(dbmod):
     """고치면서 반대쪽을 지우면 안 된다 — 진짜 신뢰도 낮음 36건은 그대로 남아야 한다."""
     r = _v(dbmod, "LC", model="쏘나타", median_price=13_000_000,

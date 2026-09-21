@@ -76,7 +76,10 @@
     {# ⚠ 이 이름표는 service.LIFECYCLE_BUCKETS 와 따로 관리된다 — 버킷을 늘리면서 여기를
        잊으면 아래 폴백이 걸려 **영문 키가 그대로 칩에 찍힌다**(2026-09-19 실제 발생:
        'filter_alt nomarket 1 ✕'). tests/test_bucket_labels.py 가 이 누락을 잡는다. #}
-    {% if bucket %}{% set _bkl = {'wait':'유찰 대기','lowconf':'신뢰도 낮음','nomarket':'건설기계·선박 등','other':'기타·미분석'} %}
+    {# 2026-09-21: review·usepick·won 이 빠져 있어 `?bucket=review` 로 열면 칩에 **영문 키가
+       그대로** 찍혔다("review 13 ✕"). 주석이 경고한 그대로 당했다 — 대시보드 추천 카드 링크를
+       bucket 기준으로 바꾸면서 이 경로가 사용자에게 열렸다. 이름은 카드 문구와 맞춘다. #}
+    {% if bucket %}{% set _bkl = {'wait':'유찰 대기','lowconf':'신뢰도 낮음','nomarket':'건설기계·선박 등','other':'기타·미분석','review':'지금 입찰 추천','usepick':'실사용 추천','won':'낙찰·종결'} %}
     {# ⚠ nowrap 이 없으면 좁은 폭에서 이름이 3줄로 접혀 칩 높이가 58px 이 된다(이웃 칩 40px).
        필터 바 한 줄만 기형적으로 커지고 옆 칩이 잘린다(2026-09-20 실측 320~430px).
        이 바는 원래 **가로 스크롤**로 넘치는 칩을 처리하므로(위 overflow-x) 한 줄을 유지한다.

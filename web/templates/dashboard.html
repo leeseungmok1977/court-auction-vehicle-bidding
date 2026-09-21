@@ -132,7 +132,10 @@
   <div class="relative overflow-hidden rounded-2xl p-5 text-white tabular-nums" style="background:linear-gradient(150deg,#16305e 0%,#0f2247 55%,#0b1730 100%)">
     <div class="absolute -right-8 -top-10 w-40 h-40 rounded-full bg-amber-400/10 blur-2xl pointer-events-none"></div>
     <div class="relative grid grid-cols-2 gap-3">
-      <a href="/vehicles?judgment=입찰 검토 가능&sort=expected" class="rounded-xl bg-amber-400 p-3.5 block hover:bg-amber-300 transition shadow-lg shadow-amber-500/20">
+      {# ⚠ 링크는 **카드를 센 것과 같은 필터**여야 한다. 카드는 lifecycle_partition(=bid_state
+         기준 버킷)으로 세는데 링크가 judgment 컬럼으로 열면 둘이 갈린다 — 2026-09-21 에
+         실제로 카드 10 / 목록 12 로 어긋났다(이 앱이 지켜 온 "카드 수 = 목록 수" 위반). #}
+      <a href="/vehicles?bucket=review&sort=expected" class="rounded-xl bg-amber-400 p-3.5 block hover:bg-amber-300 transition shadow-lg shadow-amber-500/20">
         <div class="nc-blink inline-flex items-center gap-1.5 text-emerald-900 mb-1.5"><span class="material-symbols-outlined text-lg" style="font-variation-settings:'FILL' 1">check_circle</span><span class="text-xs font-extrabold">지금 입찰 추천</span></div>
         <div class="flex items-baseline gap-1"><span class="font-mono text-3xl font-extrabold text-[#0b142b] leading-none" id="kpi-ok">{{ lifecycle.review }}</span><span class="text-base text-[#0b142b]/70 font-semibold">대</span></div>
         <div class="text-[11px] text-[#0b142b]/70 mt-1.5 leading-snug font-medium">되팔아도 남는 가격 — 바로 검토</div>
