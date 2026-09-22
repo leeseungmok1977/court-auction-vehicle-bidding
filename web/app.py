@@ -74,6 +74,18 @@ templates.env.globals["user_tier"] = auth.user_tier
 templates.env.globals["adsense_client"] = lambda: db.get_setting("adsense_client", "")
 
 
+# 공유 미리보기(og)·canonical 은 **절대 주소**여야 한다 — 상대 주소는 무시된다.
+def _abs_url(request: Request, path: str = "") -> str:
+    p = str(path or "")
+    if p.startswith("http"):
+        return p
+    return public_origin(request) + ("" if p.startswith("/") else "/") + p
+
+
+templates.env.globals["abs_url"] = _abs_url
+templates.env.globals["canonical_url"] = lambda request: _abs_url(request, request.url.path)
+
+
 def _require_admin(request: Request) -> None:
     """운영 엔드포인트 보호 — 공개 도메인엔 존재 자체를 숨긴다(404). 터널에서만 동작."""
     from fastapi import HTTPException
@@ -143,6 +155,71 @@ def service_worker():
 def assetlinks():
     return FileResponse(BASE / "static" / ".well-known" / "assetlinks.json",
                         media_type="application/json")
+
+
+# ── 밖에서 들어오는 문(검색) ──────────────────────────────────────────────
+# 2026-09-22 실측: robots.txt·sitemap.xml 이 둘 다 404 라 물건 페이지 1,278개가
+# 검색에 **한 건도** 안 잡혔고, 12일간 외부 유입이 34건(하루 2.8건)뿐이었다.
+def public_origin(request: Request) -> str:
+    """공개 주소(스킴+호스트). 사이트맵·og 는 절대 주소여야 하고, 상대 주소면 무시된다.
+
+    ⚠ 리버스 프록시 뒤라 request.url.scheme 이 http 로 보일 수 있다 —
+    X-Forwarded-Proto 를 우선해야 https 주소가 나간다.
+    """
+    proto = (request.headers.get("x-forwarded-proto") or "").split(",")[0].strip()
+    host = (request.headers.get("x-forwarded-host") or request.headers.get("host") or "").strip()
+    if not host:
+        return str(request.base_url).rstrip("/")
+    return f"{proto or request.url.scheme}://{host}"
+
+
+@app.get("/robots.txt", include_in_schema=False)
+def robots_txt(request: Request):
+    # ⚠ /static/frame.html 은 데스크톱에서 앱을 감싸는 폰 프레임이다(base.html 상단 스크립트).
+    #   크롤러가 그 경로를 집으면 **본문 67자짜리 껍데기**가 색인된다 — 같은 날 내 측정
+    #   도구가 정확히 그 함정에 빠져 "본문 67자"를 읽었다. 반드시 막는다.
+    body = "\n".join([
+        "User-agent: *",
+        "Allow: /",
+        "Disallow: /static/frame.html",
+        "Disallow: /run/",
+        "Disallow: /api/",
+        "Disallow: /admin",
+        "",
+        f"Sitemap: {public_origin(request)}/sitemap.xml",
+        "",
+    ])
+    return PlainTextResponse(body, media_type="text/plain; charset=utf-8")
+
+
+@app.get("/sitemap.xml", include_in_schema=False)
+def sitemap_xml(request: Request):
+    """검색엔진에 알릴 주소 목록.
+
+    **아직 입찰할 수 있는 물건만** 넣는다(기일 미도래 + 낙찰·종결 아님 — 2026-09-22 실측 354건).
+    끝난 경매를 검색에 흘리면 들어온 사람이 **입찰할 수 없는 차**를 보게 된다.
+    """
+    import datetime as _dt
+    import urllib.parse as _up
+    from xml.sax.saxutils import escape as _esc
+
+    origin = public_origin(request)
+    today = _dt.date.today().isoformat()
+    rows = [f"  <url><loc>{_esc(origin + p)}</loc><changefreq>{c}</changefreq></url>"
+            for p, c in (("/", "daily"), ("/landing", "weekly"), ("/vehicles", "daily"),
+                         ("/calendar", "daily"), ("/accuracy", "weekly"))]
+    for v in db.list_vehicles(hide_incomplete=True):
+        if (v.get("sale_date") or "") < today:
+            continue
+        if (v.get("auction_result") or "") in ("낙찰", "종결"):
+            continue
+        loc = origin + "/vehicle/" + _up.quote(str(v.get("id") or ""), safe="")
+        rows.append(f"  <url><loc>{_esc(loc)}</loc><changefreq>daily</changefreq></url>")
+    xml = ('<?xml version="1.0" encoding="UTF-8"?>\n'
+           '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+           + "\n".join(rows) + "\n</urlset>\n")
+    return PlainTextResponse(xml, media_type="application/xml; charset=utf-8")
+
 
 from src.paths import DATA_DIR  # noqa: E402  (배포 시 DATA_DIR 환경변수로 영속 볼륨 지정)
 

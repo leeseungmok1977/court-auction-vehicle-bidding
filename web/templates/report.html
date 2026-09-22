@@ -5,6 +5,21 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>{{ v.model|mdl }} 분석 리포트 · {{ v.case_no }}</title>
 <meta name="description" content="{{ v.model|mdl }} 법원경매 분석 리포트 — 예상낙찰가·추천 입찰가·시세 대비·유사 낙찰 실적을 담은 경매로 내차GET 리포트."/>
+{# 공유 미리보기 — 이 문서는 base.html 을 상속하지 않는 독립 페이지라 og 를 여기에 직접 쓴다.
+   규칙은 상세와 **같다**: 카드는 캐시되어 박제되므로 법원 공시 사실만 싣고, 예상낙찰가·입찰
+   상한·시세·적중률과 'D-6' 같은 상대 날짜는 넣지 않는다. 끝난 경매는 제목이 그렇게 말한다. #}
+{% set _done = v.auction_result in ('낙찰', '종결') %}
+{% set _nm = v.model|mdl %}
+<link rel="canonical" href="{{ canonical_url(request) }}"/>
+<meta property="og:url" content="{{ canonical_url(request) }}"/>
+<meta property="og:site_name" content="경매로 내차GET"/>
+<meta property="og:locale" content="ko_KR"/>
+<meta property="og:type" content="article"/>
+<meta name="twitter:card" content="summary_large_image"/>
+<meta property="og:title" content="{% if _done %}[매각 종료] {% endif %}{{ _nm if _nm != '—' else '법원경매 차량' }}{% if v.year %} {{ v.year }}년{% endif %} 분석 리포트 · {{ v.court }} {{ v.case_no }}"/>
+<meta property="og:description" content="{% if v.min_sale_price %}최저매각가 {{ v.min_sale_price|won }}{% endif %}{% if v.fail_count %} · 유찰 {{ v.fail_count }}회{% endif %}{% if v.sale_date %} · 매각기일 {{ v.sale_date }}{% endif %}{% if v.mileage_km %} · 주행 {{ (v.mileage_km/10000)|round(1) }}만km{% endif %}"/>
+{% if photos %}<meta property="og:image" content="{{ abs_url(request, '/thumb/' ~ (v.folder_key or v.id) ~ '/' ~ photos[0] ~ '?w=800') }}"/>
+{% else %}<meta property="og:image" content="{{ abs_url(request, '/static/icons/apple-touch-180.png') }}"/>{% endif %}
 <script>try{ if(localStorage.getItem("naechaget:large")==="1") document.documentElement.classList.add("nc-large");
   if(localStorage.getItem("naechaget:rmode")==="resale") document.documentElement.classList.add("rmode-resale"); }catch(e){}</script>
 <link rel="stylesheet" href="/static/app.css?v={{ css_v }}"/>

@@ -28,6 +28,24 @@
 {% endif %}
 <title>{% block title %}법원경매 차량 입찰가 산정{% endblock %}</title>
 <meta name="description" content="{% block meta_desc %}법원 경매 차량을 AI가 분석합니다. 감정평가·사고이력·주행거리와 동급 중고차 시세를 비교해 예상낙찰가와 추천 입찰가를 알려주는 경매로 내차GET.{% endblock %}"/>
+<!-- 공유 미리보기(og) — 링크를 카톡·오픈채팅에 붙였을 때 뜨는 카드.
+     2026-09-22 실측: og 태그가 0건이라 제목도 썸네일도 안 떴고, 공유 버튼조차 없었다.
+     ⚠ 카드는 **캐시되어 박제**되는데 화면의 11px 회색 단서는 따라가지 않는다. 그래서
+     시간이 지나면 거짓이 되는 값(예상낙찰가·입찰 상한·시세·적중률·D-day)은 **싣지 않는다.**
+     최저매각가만 예외인 이유는 틀리는 방향이 하나뿐이기 때문이다 — 회차 안에서 불변이고
+     유찰되면 내려가기만 해서, 낡은 카드는 '실제보다 비싸게' 적힌 쪽으로만 틀린다. -->
+<link rel="canonical" href="{{ canonical_url(request) }}"/>
+<meta property="og:url" content="{{ canonical_url(request) }}"/>
+<meta property="og:site_name" content="경매로 내차GET"/>
+<meta property="og:locale" content="ko_KR"/>
+<meta name="twitter:card" content="summary_large_image"/>
+{% block og %}
+<meta property="og:type" content="website"/>
+<meta property="og:title" content="법원경매 차량, 얼마에 낙찰될지 데이터로 먼저"/>
+<meta property="og:description" content="전국 법원경매 차량을 자동 수집·분석하고, 과거 실제 낙찰가로 검증한 예상낙찰가를 제공합니다. 가입 없이 무료."/>
+<meta property="og:image" content="{{ abs_url(request, '/static/icons/apple-touch-180.png') }}"/>
+{% endblock %}
+
 <!-- PWA(설치형 모바일앱) -->
 <link rel="manifest" href="/static/manifest.webmanifest"/>
 <meta name="theme-color" content="#0b142b"/>
