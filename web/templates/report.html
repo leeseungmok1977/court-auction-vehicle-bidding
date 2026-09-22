@@ -144,9 +144,12 @@ table, thead, tbody, tr, th, td { word-break: keep-all; overflow-wrap: break-wor
    버튼 묶음과 섹션칩이 좌우로 나란히 붙는다(2026-09-12 실측으로 발견). */
 .rtop-btns{display:flex;justify-content:flex-start;gap:8px;flex-wrap:wrap}
 .rtop .btn{padding:7px 14px}
-/* 좁은 화면에서는 눌리지도 않는 '보관·구매 준비 중'을 고정 바에서 뺀다.
-   두 줄로 접히면서 고정 바가 142px(화면의 17%)를 상시 차지했다. 데스크톱은 한 줄이라 그대로 둔다. */
-@media (max-width:520px){ .rtop .btn-soon{display:none} }
+/* '보관·구매 준비 중' 칩을 2026-09-22 통째로 걷어냈다(오너 결정). 되살리지 말 것.
+   ① 아직 없는 기능을 화면이 미리 광고하고 있었다. ② 스토어 등록정보가 "가입·로그인·결제·
+   광고 없이 이용"이라고 말하는데 심사자가 이 칩을 보면 미신고 인앱결제로 읽힐 수 있다.
+   숨김 규칙도 같이 지웠다 — 기준이 max-width:520px 이라 실제 폰(360·390·430)에서는 이미
+   안 보였고, 하필 스토어 캡처 폭(540px)만 20px 차이로 그 사이에 떨어져 칩이 찍혔다.
+   결제를 실제로 준비할 때 칩과 규칙을 함께 되살리면 된다. */
 /* 가로 스크롤을 쓰면 마지막 칩이 잘린 채 보이고 스크롤 가능하다는 힌트도 없다
    (2026-09-12 사용자 제보). 줄바꿈으로 바꿔 화면 밖으로 나가는 요소를 아예 없앤다. */
 /* 칩 5개 합(일반 337px·큰글씨 386px)이 320~390px 폭을 넘어 두 줄로 접혔고, 버튼 두 줄과 합쳐
@@ -719,7 +722,8 @@ document.addEventListener('click', function(e){
        기본은 실사용, 누르면 되팔기 계산이 나온다. #}
     <button type="button" id="rptResale" class="btn" aria-pressed="false" onclick="rptToggleResale()"
             title="되팔기 계산(수익 시뮬레이션·민감도·반복 매매)을 함께 봅니다" aria-label="되팔기 계산 표시 전환">되팔기 계산</button>
-    <span class="btn btn-soon" style="opacity:.5;cursor:not-allowed;gap:6px" title="곧 제공 — 리포트를 계정에 보관하고 건당 구매(현재 무료·인쇄로 저장하세요)" aria-disabled="true"><span class="material-symbols-outlined" style="font-size:18px">bookmark_add</span> 보관·구매 <span style="font-size:10px;background:var(--line);color:var(--ink-soft);padding:1px 6px;border-radius:99px">준비 중</span></span>
+    {# '보관·구매 (준비 중)' 칩이 여기 있었다 — 2026-09-22 제거(오너 결정). 위 CSS 주석 참조.
+       없는 기능을 미리 광고하지 않는다. 결제 준비 시점에 되살린다. #}
   </div>
 
   {# 본문(01~12)이 통째로 없는 미산정 리포트에서는 탭도 내린다 —
