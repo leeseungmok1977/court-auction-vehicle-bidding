@@ -22,6 +22,18 @@
   h1 span{color:var(--cobalt)}
   .meta{font-size:12px;color:var(--faint);font-variant-numeric:tabular-nums}
   .meta b{color:var(--soft);font-weight:600}
+  /* ★ 오너 지적(2026-09-23): "움직이는 효과가 아무것도 없네. 모든 화면이 가만히 있네."
+     폴링은 10초 간격으로 정상 동작하고 있었다(실측: 요청 3건, 간격 10.0초). 그러니 정지는
+     고장이 아니라 **사실을 비춘 것**이었다 — 지금 아무 에이전트도 안 돌고 있으니까.
+     그런데 화면에서 그 둘을 **구분할 수 없다는 것 자체가 결함**이다. 심장이 뛰는지 보이지
+     않으면 멈춘 것과 같다. 그래서 가짜 애니메이션 대신 **맥박 하나**를 둔다 —
+     새로고침이 성공할 때마다 뛰고, 실패하면 빨갛게 굳는다. 움직이는 것은 이것뿐이어야 한다. */
+  .beat{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--good);
+    margin-right:6px;vertical-align:1px;box-shadow:0 0 0 0 rgba(63,185,80,.5)}
+  .beat.on{animation:beat 1s ease-out}
+  .beat.dead{background:var(--bad);animation:none;box-shadow:0 0 0 3px rgba(248,81,73,.2)}
+  @keyframes beat{0%{box-shadow:0 0 0 0 rgba(63,185,80,.55)}100%{box-shadow:0 0 0 9px rgba(63,185,80,0)}}
+  @media (prefers-reduced-motion:reduce){ .beat.on{animation:none} }
 
   /* KPI — 숫자가 아니라 '무엇을 어떤 조건에서 센 것인지'를 함께 적는다 */
   .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-bottom:18px}
@@ -164,7 +176,7 @@ function render(d){
   const k = d.kpi;
 
   $('#meta').innerHTML =
-    `<b>${hhmm(d.generated_at)}</b> 기준 · 세션 기록 ${d.source.logs}개 ·
+    `<span class="beat" id="beat"></span><b>${hhmm(d.generated_at)}</b> 기준 · 세션 기록 ${d.source.logs}개 ·
      ${Number(d.source.lines_parsed).toLocaleString()}줄 읽음 ·
      파싱 실패 <b>${d.source.parse_failed}</b> ·
      Claude Code ${esc((d.source.cc_versions||[]).slice(0,3).join(', ') || '—')}`;
@@ -198,9 +210,14 @@ function render(d){
           ? ` · 조직도 밖 ${d.outside_roster.reduce((s,o)=>s+o.calls,0)}회 별도` : '')),
     kpi('마지막 호출', lc ? hhmm(lc.ts) : '없음',
         lc ? `${lc.agent}${lc.desc ? ' · ' + lc.desc : ''}` : '기록 없음'),
+    // ★ 2026-09-23 정정: '한 번도 실행 안 됨'을 붉은 경고로 띄웠더니 **내가 그걸 보고**
+    //   오너에게 "예약 작업 2개가 한 번도 안 돌았다"고 잘못 경고했다. 실제로는 주간(9/26)·
+    //   월간(10/1) 트리거가 아직 안 온 것이고 스크립트는 멀쩡했다(dry-run 으로 확인).
+    //   화면이 사람을 오판하게 만들면 그건 화면의 결함이다. 대기와 실패를 가른다.
     kpi('정기 작업', `${k.sched_total}개`,
-        k.sched_never ? `${k.sched_never}개가 한 번도 실행되지 않음` :
-        (k.sched_bad ? `${k.sched_bad}개 실패` : '정상'),
+        k.sched_never ? `${k.sched_never}개가 실행된 적도 예정도 없음` :
+        (k.sched_bad ? `${k.sched_bad}개 실패` :
+        (k.sched_pending ? `${k.sched_pending}개는 첫 실행 대기(예정일 있음)` : '정상')),
         k.sched_never > 0 || k.sched_bad > 0),
   ].join('');
 
@@ -228,7 +245,10 @@ function render(d){
     <tr><th>작업</th><th>상태</th><th>마지막 실행</th><th>다음</th></tr>
     ${d.schedule.map(s => `<tr class="${(s.never_ran || !s.ok) ? 'bad' : ''}">
       <td>${esc(s.name)}</td>
-      <td>${s.never_ran ? '<span class="pill bad">한 번도 실행 안 됨</span>'
+      <td>${s.never_ran
+            ? (s.next_run
+                ? '<span class="pill warn">아직 때가 안 됨</span>'
+                : '<span class="pill bad">실행된 적 없음 · 예정도 없음</span>')
             : (s.running ? '<span class="pill warn">실행 중</span>'
             : (s.ok ? '<span class="pill ok">정상</span>'
                     : `<span class="pill bad">실패 · 결과 ${esc(s.last_result)}</span>`))}</td>
@@ -279,13 +299,22 @@ function render(d){
     이 화면은 127.0.0.1 에만 열리고, 대화 내용은 읽지도 내보내지도 않는다(시각·도구명·에이전트명·짧은 작업 라벨만).`;
 }
 
+// 갱신이 성공하면 맥박이 한 번 뛴다. 실패하면 빨갛게 굳고 언제부터 못 받았는지 말한다 —
+// '아무 일도 없다' 와 '멈췄다' 를 화면만 보고 가를 수 있어야 한다.
+let lastOk = Date.now();
 async function tick(){
   try{
     const r = await fetch('/api/state', {cache:'no-store'});
     if(!r.ok) throw new Error('HTTP ' + r.status);
     render(await r.json());
+    lastOk = Date.now();
+    const b = $('#beat');
+    if(b){ b.classList.remove('on'); void b.offsetWidth; b.classList.add('on'); }
   }catch(e){
-    $('#meta').innerHTML = `<span style="color:var(--bad)">수집기에서 받지 못했다: ${esc(e.message)}</span>`;
+    const sec = Math.round((Date.now() - lastOk)/1000);
+    $('#meta').innerHTML = `<span class="beat dead"></span>`
+      + `<span style="color:var(--bad)">수집기에서 받지 못했다 — ${esc(e.message)} · `
+      + `마지막 성공 ${sec}초 전</span>`;
   }
 }
 tick();

@@ -606,7 +606,13 @@ def build_state(rescan: bool = False) -> dict:
             "calls_7d": calls_7d,
             "last_call": (stats["calls"][-1] if stats["calls"] else None),
             "sched_total": len(sched),
-            "sched_never": sum(1 for s in sched if s["never_ran"]),
+            # ★ 2026-09-23 정정: '한 번도 실행 안 됨' 을 고장으로 세면 안 된다.
+            #   주간(9/26)·월간(10/1) 은 **트리거가 아직 안 온 것**이지 실패가 아니다.
+            #   내가 이 표시를 보고 "예약 작업 2개가 한 번도 안 돌았다"고 오너에게 경고했는데,
+            #   실제로 dry-run 을 돌려 보니 스크립트는 멀쩡했다. 화면이 나를 오판하게 만든 것이다.
+            #   다음 실행 시각이 잡혀 있으면 '대기', 없으면 그때야 '확인 필요'다.
+            "sched_never": sum(1 for s in sched if s["never_ran"] and not s.get("next_run")),
+            "sched_pending": sum(1 for s in sched if s["never_ran"] and s.get("next_run")),
             "sched_bad": sum(1 for s in sched if not s["ok"] and not s["never_ran"]),
             # ★ 훅이 없으면 None 이다. 0 이 아니다 — '아무도 안 돈다'와 '재지 않았다'는 다르다.
             "running_now": len(live.get("running", [])) if live.get("enabled") else None,
