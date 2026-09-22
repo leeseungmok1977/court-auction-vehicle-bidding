@@ -441,7 +441,10 @@ function render(d){
 let lastOk = Date.now();
 async function tick(){
   try{
-    const r = await fetch('/api/state', {cache:'no-store'});
+    // 사내망에 열어 둔 경우 주소의 열쇠를 그대로 API 에도 붙인다(없으면 로컬 전용이라 불필요)
+    const K = new URLSearchParams(location.search).get('k');
+    const r = await fetch('/api/state' + (K ? '?k=' + encodeURIComponent(K) : ''),
+                          {cache:'no-store'});
     if(!r.ok) throw new Error('HTTP ' + r.status);
     render(await r.json());
     lastOk = Date.now();

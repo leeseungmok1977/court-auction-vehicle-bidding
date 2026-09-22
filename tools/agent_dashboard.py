@@ -44,7 +44,11 @@ Claude Code 세션이 떠 있을 때만 움직인다. 그 화면을 그대로 �
 
 이 파일들에는 대화 전문이 들어 있다. 이 도구는 **구조만** 읽는다 — 시각, 도구 이름,
 `subagent_type`, 그리고 우리가 직접 붙인 짧은 작업 설명뿐이다. 프롬프트·응답 본문은
-읽지도 내보내지도 않는다. 서버는 **127.0.0.1 에만** 바인딩한다.
+읽지도 내보내지도 않는다. 서버는 **기본값이 127.0.0.1 전용**이다.
+
+사내망의 다른 PC 에서 보려면 `--host 0.0.0.0` 으로 연다. 그때는 **열쇠(토큰)가 반드시 붙는다** —
+안 주면 자동으로 만든다. 이 화면에는 로그인이 없어서, 열쇠가 없으면 같은 망의 누구나
+회사 내부 상태(조직·배포 이력·물건 수)를 그냥 읽게 된다. 인증 없이 여는 경로는 두지 않는다.
 """
 from __future__ import annotations
 
@@ -81,9 +85,11 @@ AGENT_DIR = ROOT / ".claude" / "agents"
 ORG_MD = ROOT / "docs" / "ORG.md"
 CACHE = ROOT / "data" / "agent_dashboard_cache.json"        # data/ 는 git 제외
 EVENTS = ROOT / "data" / "agent-events.jsonl"               # .claude/hooks/agent-log.ps1 이 쓴다
+TOKEN_FILE = ROOT / "data" / "dashboard_token.txt"          # 사내망 열쇠 — data/ 는 git 제외
 UTIL_MD = ROOT / "docs" / "agent-utilization.md"           # 유휴 판정·리듬 정의(사람이 쓴다)
 HTML = Path(__file__).with_name("agent_dashboard.html")
 PORT = 8765
+TOKEN = ""            # 빈 문자열이면 로컬 전용 — 검사하지 않는다. main() 에서만 채운다.
 
 # Claude Code 세션 기록. 슬러그는 작업 디렉터리에서 만들어진다 — 고정값을 박지 않고 찾는다.
 PROJECTS = Path(os.environ.get("USERPROFILE", str(Path.home()))) / ".claude" / "projects"
@@ -879,7 +885,18 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self) -> None:                                # noqa: N802
-        path = self.path.split("?")[0]
+        path, _, qs = self.path.partition("?")
+        # ★ 열쇠는 **밖에 열어 둘 때만** 검사한다(로컬 전용이면 TOKEN 이 빈 문자열이라 통과).
+        #   이 화면에는 로그인이 없다. 열쇠까지 없으면 같은 망의 누구나 읽는다.
+        if TOKEN:
+            given = ""
+            for part in qs.split("&"):
+                if part.startswith("k="):
+                    given = part[2:]
+                    break
+            if given != TOKEN:
+                self._send(403, "열쇠가 없다".encode(), "text/plain; charset=utf-8")
+                return
         if path in ("/", "/index.html"):
             if not HTML.exists():
                 self._send(500, f"{HTML.name} 이 없다".encode(), "text/plain; charset=utf-8")
@@ -901,7 +918,33 @@ def main(argv=None) -> int:
     ap.add_argument("--once", action="store_true", help="JSON 한 번만 출력하고 끝")
     ap.add_argument("--rescan", action="store_true", help="캐시를 버리고 전수 재스캔")
     ap.add_argument("--port", type=int, default=PORT)
+    ap.add_argument("--host", default="127.0.0.1",
+                    help="기본값은 이 PC 에서만 열린다. 사내망에 열려면 0.0.0.0")
+    ap.add_argument("--token", default="",
+                    help="밖에 열 때 요구할 열쇠. 안 주면 자동 생성한다")
     a = ap.parse_args(argv)
+
+    # ★ 인증 없이 밖에 여는 경로를 아예 만들지 않는다. 열쇠를 깜빡하는 쪽이
+    #   자연스러운 실수이므로, 깜빡하면 막지 말고 **대신 만들어 준다.**
+    global TOKEN                                             # noqa: PLW0603
+    TOKEN = a.token
+    if a.host not in ("127.0.0.1", "localhost", "::1") and not TOKEN:
+        # ★ 켤 때마다 열쇠가 바뀌면 사람이 주소를 매번 다시 받아야 한다. 그게 귀찮아지면
+        #   결국 열쇠를 빼고 열게 된다 — 불편한 안전장치는 무력화된다.
+        #   그래서 한 번 만들어 data/ 에 남기고 재사용한다. data/ 는 .gitignore 대상이라
+        #   저장소에 들어가지 않는다(C.4 ④: 세션값·비밀정보를 코드에 두지 않는다).
+        try:
+            TOKEN = TOKEN_FILE.read_text(encoding="utf-8").strip()
+        except OSError:
+            TOKEN = ""
+        if not TOKEN:
+            TOKEN = os.urandom(9).hex()
+            try:
+                TOKEN_FILE.parent.mkdir(parents=True, exist_ok=True)
+                TOKEN_FILE.write_text(TOKEN, encoding="utf-8")
+            except OSError as e:                             # noqa: BLE001
+                print(f"  ⚠ 열쇠를 파일에 남기지 못했다({type(e).__name__}) — "
+                      "이번 실행에만 쓰이는 열쇠다", file=sys.stderr)
 
     if a.rescan and CACHE.exists():
         CACHE.unlink()
@@ -940,11 +983,18 @@ def main(argv=None) -> int:
         pass                                                 # 아무도 없다 — 정상 경로
 
     try:
-        srv = HTTPServer(("127.0.0.1", a.port), Handler)     # 로컬에만 바인딩한다
+        srv = HTTPServer((a.host, a.port), Handler)
     except OSError as e:
         print(f"\n  ★ 포트 {a.port} 를 열지 못했다: {e}", file=sys.stderr)
         return 1
-    print(f"\n  http://127.0.0.1:{a.port}  — Ctrl+C 로 종료", file=sys.stderr)
+    key = f"/?k={TOKEN}" if TOKEN else ""
+    print(f"\n  http://127.0.0.1:{a.port}{key}  — Ctrl+C 로 종료", file=sys.stderr)
+    if TOKEN:
+        print(f"  사내망에 열려 있다(바인딩 {a.host}). 다른 PC 는 이 PC 의 IP 로 접속한다:",
+              file=sys.stderr)
+        print(f"      http://<이 PC 의 IP>:{a.port}/?k={TOKEN}", file=sys.stderr)
+        print("  열쇠 없는 요청은 403 으로 막는다. 열쇠는 켤 때마다 새로 생긴다"
+              " — 고정하려면 --token 으로 직접 준다.", file=sys.stderr)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
