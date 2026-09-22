@@ -4,6 +4,12 @@
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>법원경매 차량, 얼마에 낙찰될지 데이터로 봅니다</title>
+{# 이 문서는 base.html 을 상속하지 않아 파비콘 선언이 통째로 빠져 있었다 — 브라우저가 기본
+   경로 /favicon.ico 를 찾다 404 를 받고 콘솔에 오류가 찍혔다(2026-09-23 qa 실측).
+   경로는 base.html:57~59 의 실제 값을 그대로 쓴다. #}
+<link rel="icon" href="/static/icons/favicon.ico" sizes="16x16 32x32 48x48"/>
+<link rel="icon" type="image/png" sizes="32x32" href="/static/icons/favicon-32.png"/>
+<link rel="icon" type="image/png" sizes="16x16" href="/static/icons/favicon-16.png"/>
 <meta name="description" content="전국 법원경매 차량을 자동 수집하고 실제 낙찰가로 검증한 예상낙찰가·종합 리포트를 제공합니다."/>
 <link rel="stylesheet" href="/static/app.css?v={{ css_v }}"/>
 </head>
@@ -128,7 +134,11 @@
       <span class="text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full px-3 py-1">지금 이용 가능</span>
     </div>
     <ul class="mt-6 space-y-2.5 text-sm">
-      {% for f in ['11개 섹션 종합 분석 리포트 (인쇄·PDF)','검증된 예상낙찰가 + 시세 분포','총 취득원가·수익 시뮬레이션·민감도','법원 감정평가서 원본 연결'] %}
+      {# ⚠ 섹션 수를 여기 박지 않는다(2026-09-23 qa 지적). '11개'라고 적혀 있었는데 리포트는
+         **12개 섹션**이고, 기본(실사용) 모드에서는 되팔기 전용 3개(07·08·11)가 감춰져
+         **9개만 보인다**(report.html:212 `[data-resale]{display:none}`). 어느 숫자를 적어도
+         셋 중 둘과 어긋난다 — 세는 기준이 셋이나 되는 값은 문구에 넣지 않는 편이 정직하다. #}
+      {% for f in ['종합 분석 리포트 (인쇄·PDF)','검증된 예상낙찰가 + 시세 분포','총 취득원가·수익 시뮬레이션·민감도','법원 감정평가서 원본 연결'] %}
       <li class="flex items-start gap-2"><span class="material-symbols-outlined text-emerald-600 text-lg">check_circle</span><span class="text-txt">{{ f }}</span></li>
       {% endfor %}
     </ul>
