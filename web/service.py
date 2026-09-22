@@ -4201,12 +4201,14 @@ def _promising(v: dict) -> bool:
 
 
 # 홈 '유망 물건' — 두 추천 칸(지금 입찰 추천 · 실사용 '지금 사면 이득')에서 근거가 가장 강한 물건. 문구는 카드와 같게.
-PICK_LABELS = {"resale": "되팔아도 남음", "now": USE_TIER_LABELS["now"]}
+PICK_LABELS = {"resale": "되팔아도 남음", "now": USE_TIER_LABELS["now"],
+               "cheap": USE_TIER_LABELS["cheap"]}
 # 유망 물건 설명 한 문장(홈 부제·목록 배너가 같은 문장을 쓴다). 카드에 실제로 보이는 낱말만 —
 # "절감률 × 신뢰도 순" 같은 독스트링 문장은 처음 보는 사람이 카드 어디에 있는지 모른다(디자인 검수).
 # (앞, 굵게, 뒤) 세 조각: 굵은 조각이 카드의 '시세보다 −N%'와 우상단 '신뢰 N'에 1:1로 대응한다.
 PICK_SUBTITLE = ("지금 입찰 추천·실사용 추천 가운데 ", "시세보다 많이 싸고 시세 신뢰도가 높은", " 차부터")
-PICK_ICONS = {"resale": "check_circle", "now": "directions_car"}   # 두 추천 카드와 같은 아이콘 — 연결은 색이 아니라 아이콘이 맡는다
+PICK_ICONS = {"resale": "check_circle", "now": "directions_car",
+              "cheap": "directions_car"}   # 두 추천 카드와 같은 아이콘 — 연결은 색이 아니라 아이콘이 맡는다
 
 
 def promising_rows(bt: Optional[dict] = None, exclude_ids=(), limit: Optional[int] = None,
@@ -4323,6 +4325,10 @@ def _pick_dict(v: dict, bt: dict) -> dict:
     # '시세보다 −37%'의 분모를 화면에 같이 보낸다 — 기준이 없으면 "안 싼 걸로 친다"(2회차 패널 55세)
     d["disc_base"] = med if d.get("disc_pct") else None
     d["photo_url"] = _pick_photo_url(v)
+    # '싸게 낙찰되면 이득'은 **조건부** 판정이다 — 목록 카드는 "…만원까지"로 그 조건을 말한다.
+    # 캐러셀에서만 조건이 벗겨진 채 확정 추천과 나란히 놓이면 6장이 전부 "추천"으로 읽힌다
+    # (2026-09-22 디자인 검수 1). 같은 값을 실어 첫 화면에서도 조건을 밝힌다.
+    d["max_bid"] = personal_use_max_bid(v, bt)
     try:
         d["dday"] = (datetime.date.fromisoformat(v["sale_date"]) - datetime.date.today()).days
     except (TypeError, ValueError, KeyError):
@@ -4331,35 +4337,70 @@ def _pick_dict(v: dict, bt: dict) -> dict:
 
 
 def compute_daily_picks(n: int = 5) -> list:
-    """오늘의 추천 물건 id 선정(매일 아침 갱신용) — 검토가능·사진·예측 있는 물건 중
-    시세 대비 차익(할인) 큰 순, 제조사 다양성 확보해 상위 n건 id."""
+    """오늘의 추천 물건 선정(매일 아침 갱신용). 반환: [{"id", "kind"}...]
+
+    모수는 **두 추천 칸 전부**다 — 되팔아도 남는 물건('입찰 검토 가능')과 실사용 추천
+    (지금 사면 이득 · 싸게 낙찰되면 이득). 예전에는 앞쪽만 담아서 검토 가능이 5대뿐인 날엔
+    캐러셀이 **2장에서 끝났다**(2026-09-22 실측: 모수 5대 → 두 축 합치면 33대).
+
+    두 축은 **다른 질문**의 답이라(되팔아 남는가 / 내가 타면 싼가) 섞지 않고 `kind`를 실어
+    카드마다 어느 축인지 밝힌다. 자격(`_promising`: 시세 신뢰도 '높음' + 오매칭 제외)은
+    **그대로 둔다** — 보여줄 것을 늘리되 기준은 1mm도 낮추지 않는다.
+    """
+    import datetime
     bt = backtest_stats()
-    cand = []
-    for v in db.list_vehicles(judgment="입찰 검토 가능"):
+    today = datetime.date.today().isoformat()
+    cand, seen = [], set()
+
+    def _add(v, kind):
+        if v["id"] in seen:
+            return                        # 한 물건이 두 축에 걸리면 먼저 잡힌 축으로 둔다
         if not (v.get("photo_count") and v.get("median_price") and v.get("min_sale_price")):
-            continue
+            return
         if not _promising(v):
-            continue
+            return
+        # ⚠ judgment 만 보면 안 된다. '입찰 검토 가능'인데 bid_state 가 stop 인 물건이
+        #   실제로 홈 첫 화면 캐러셀에 올라 있었다(2026-09-22 실측: 시동 불가 카니발 —
+        #   tone=stop 이라 할인 배지조차 안 붙는데 '되팔아도 남음'으로 진열됐다).
+        #   같은 날 '지금 입찰 추천' 칸에서 고친 것과 같은 계열이다. 판정은 bid_state 를 따른다.
+        if (bid_state(v, bt) or {}).get("tone") == "stop":
+            return
         exp, med = expected_for(v, bt), effective_median(v)
         if not exp or not med:
+            return
+        seen.add(v["id"])
+        cand.append((med - exp, v, kind))  # 시세 대비 차익(할인액) 큰 순
+
+    for v in db.list_vehicles(judgment="입찰 검토 가능"):
+        _add(v, "resale")
+    # 실사용 추천은 judgment 가 '유찰 대기'인 경우가 많아 위 질의에 안 걸린다 — 따로 훑는다.
+    # ⚠ 기일 창(upcoming_days)으로 좁히지 않는다. personal_use_tier 는 '기일이 지나지
+    #   않았는가'만 보는데 여기서 60일 창을 걸었더니 **판정보다 좁은 기준이 하나 더** 생겨
+    #   61일 뒤 기일 물건이 조용히 빠졌다. 모수는 lifecycle_partition 과 같게 둔다.
+    #   전수 순회는 홈이 이미 매 요청 하고 있고(_bucket_and_tier), 이 함수는 하루 1회다.
+    for v in db.list_vehicles(hide_incomplete=True):
+        if (v.get("sale_date") or "") < today:
             continue
-        cand.append((med - exp, v))       # 시세 대비 차익(할인액) 큰 순
+        t = personal_use_tier(v, bt)
+        if t:
+            _add(v, t["tier"])
     cand.sort(key=lambda x: -x[0])
-    ids, makers = [], set()
-    for _, v in cand:                     # 제조사 다양성 우선
+    picks, makers = [], set()
+    for _, v, kind in cand:               # 제조사 다양성 우선
         mk = v.get("maker") or ""
         if mk in makers:
             continue
-        makers.add(mk); ids.append(v["id"])
-        if len(ids) >= n:
+        makers.add(mk); picks.append({"id": v["id"], "kind": kind})
+        if len(picks) >= n:
             break
-    if len(ids) < n:                      # 부족하면 다양성 무시하고 채움
-        for _, v in cand:
-            if v["id"] not in ids:
-                ids.append(v["id"])
-            if len(ids) >= n:
+    if len(picks) < n:                    # 부족하면 다양성 무시하고 채움
+        have = {p["id"] for p in picks}
+        for _, v, kind in cand:
+            if v["id"] not in have:
+                picks.append({"id": v["id"], "kind": kind}); have.add(v["id"])
+            if len(picks) >= n:
                 break
-    return ids
+    return picks
 
 
 def refresh_daily_picks(n: int = 5) -> list:
@@ -4386,15 +4427,33 @@ def get_daily_picks(n: int = 5) -> list:
         ids = refresh_daily_picks(n)
     bt = backtest_stats()
     out = []
-    for vid in ids:
+    for item in ids:
+        # 옛 저장분은 id 문자열만 들어 있다(형식 변경 전) — 그때는 재판매 축으로 본다.
+        vid, kind = (item, "resale") if isinstance(item, str) else (item.get("id"), item.get("kind") or "resale")
         v = db.get_vehicle(vid)
-        if not v or v.get("judgment") != "입찰 검토 가능" or v.get("status") == "상세없음":
+        if not v or v.get("status") == "상세없음":
             continue
         if v.get("auction_result") in ("낙찰", "종결"):
             continue
         if not v.get("sale_date") or v["sale_date"] < today:
             continue
-        out.append(_pick_dict(v, bt))
+        # ⚠ **여전히 그 축의 추천인가**를 다시 확인한다 — 아침에 고른 뒤 값이 바뀌었을 수 있다.
+        #   판정은 bid_state/personal_use_tier 한 곳에서만 한다(축을 새로 만들지 않는다).
+        # ⚠⚠ 게이트를 compute 쪽에만 걸었더니 **캐시 경로로 시동 불가 차가 계속 떴다**
+        #    (2026-09-22 실측: 새로 계산하면 빠지는데 오늘 저장분에는 tone=stop 카니발이 3번에
+        #    그대로 남아 있었다). 저장분은 하루를 버티므로 여기서도 같은 게이트를 건다.
+        if (bid_state(v, bt) or {}).get("tone") == "stop":
+            continue
+        if kind == "resale":
+            if v.get("judgment") != "입찰 검토 가능":
+                continue
+        else:
+            t = personal_use_tier(v, bt)
+            if not t or t["tier"] != kind:
+                continue
+        d = _pick_dict(v, bt)
+        d["pick_kind"] = kind
+        out.append(d)
     return out
 
 

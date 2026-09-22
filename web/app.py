@@ -345,16 +345,27 @@ def dashboard(request: Request):
 
 
 @app.get("/landing", response_class=HTMLResponse)
+@app.get("/about", response_class=HTMLResponse)     # 소개를 /about 으로 찾는 사람이 많다(404였다)
 def landing(request: Request):
-    """가치제안 랜딩(무료 유입) — 검증된 정확도로 세일즈, 결제는 보류(설계상 건당 리포트)."""
+    """가치제안 랜딩(무료 유입) — 검증된 정확도로 세일즈, 결제는 보류(설계상 건당 리포트).
+
+    ⚠ 숫자는 **홈과 같은 한 소스**에서 온다. 예전엔 이 라우트만 `len(db.list_vehicles())`로
+    따로 세서 랜딩 1,455 / 홈 1,278 이 동시에 떠 있었고, 오차도 여기만 반올림해
+    ±9% / ±9.3% 로 갈렸다(2026-09-22 실측). 같은 뜻의 수가 화면마다 다르면
+    이 앱이 파는 '정직'이 하필 **첫인상에서** 무너진다 — 그래서 유입·공유·검색을 늘리는
+    어떤 작업보다 이것이 먼저다.
+    """
     bt = service.backtest_stats()
+    lc = service.lifecycle_partition(rows=db.list_vehicles(hide_incomplete=True))
     ctx = {
         "request": request,
-        "total": len(db.list_vehicles()),
-        "won": db.won_count(),
-        "upcoming": db.upcoming_count(30),
-        "sample": bt.get("sample") or 0,
-        "mae": round(bt.get("mae_pct")) if bt.get("mae_pct") else None,
+        "total": lc["total"],        # 홈 헤더 '총 N대 모니터링'과 같은 모수(hide_incomplete)
+        "won": lc["won"],            # 홈 '낙찰·종결'과 같은 값 — won_count()는 COUNT(*)라 숨김 물건까지 센다
+        "upcoming": lc["upcoming30"],
+        # ⚠ '누적 낙찰'과 '실제로 예측-실제를 대조한 건수'는 다른 수다. 여기는 후자를 쓴다
+        #   (적중률 페이지의 '검증 표본'과 같은 값).
+        "sample": bt.get("pred_n") or 0,
+        "mae": bt.get("mae_pct"),    # round() 금지 — 적중률 페이지와 같은 표기여야 한다
         "discount": round(bt.get("discount_median") * 100) if bt.get("discount_median") else None,
     }
     return templates.TemplateResponse("landing.html", ctx)

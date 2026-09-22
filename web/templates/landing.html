@@ -40,7 +40,9 @@
       <a href="/vehicles?judgment=입찰 검토 가능&sort=expected" class="btn-ghost">지금 검토 가능한 물건 →</a>
     </div>
     <div class="mt-6 text-sm text-mut">
-      가입·결제 없이 바로 이용 · 실제 낙찰 <b class="text-txt">{{ won }}건</b> 검증 · 현재 <b class="text-txt">{{ total }}건</b> 분석 중
+      {# '낙찰 이력'과 '그중 실제로 대조한 건수'는 다른 수다 — 한 낱말로 뭉치면 413과 249 중
+         어느 게 검증인지 알 수 없다(2026-09-22). 두 수를 그대로 구분해 적는다. #}
+      가입·결제 없이 바로 이용 · 낙찰 이력 <b class="text-txt">{{ won }}건</b>{% if sample %}, 그중 <b class="text-txt">{{ sample }}건</b>으로 정확도 검증{% endif %} · 현재 <b class="text-txt">{{ total }}건</b> 분석 중
     </div>
   </div>
 </section>
@@ -49,7 +51,7 @@
 <section class="border-y border-line bg-surface">
   <div class="max-w-6xl mx-auto px-5 py-8 grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
     <div><div class="text-3xl font-bold font-mono">{{ total }}</div><div class="text-sm text-mut mt-1">전국 물건 분석</div></div>
-    <div><div class="text-3xl font-bold font-mono">{{ won }}</div><div class="text-sm text-mut mt-1">실제 낙찰 검증{% if sample %} <span class="text-mut">({{ sample }}건 대조)</span>{% endif %}</div></div>
+    <div><div class="text-3xl font-bold font-mono">{{ won }}</div><div class="text-sm text-mut mt-1">낙찰 이력{% if sample %} <span class="text-mut">({{ sample }}건 대조)</span>{% endif %}</div></div>
     <div><div class="text-3xl font-bold font-mono">{% if discount %}{{ discount }}%{% else %}—{% endif %}</div><div class="text-sm text-mut mt-1">평균 낙찰률 <span class="text-mut">(낙찰가/시세)</span></div></div>
     <div><div class="text-3xl font-bold font-mono text-amber-600">{% if mae %}±{{ mae }}%{% else %}—{% endif %}</div><div class="text-sm text-mut mt-1">예상 오차 <span class="text-mut">(정직 공개)</span></div></div>
   </div>

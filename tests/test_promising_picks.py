@@ -79,8 +79,13 @@ def test_home_excludes_carousel_and_caps_at_eight(client):
 
 
 def test_labels_match_the_two_cards():
-    assert service.PICK_LABELS == {"resale": "되팔아도 남음", "now": "지금 사면 이득"}
-    assert service.PICK_LABELS["now"] == service.USE_TIER_LABELS["now"], "실사용 갈래와 같은 문구"
+    # 홈 '유망 물건'이 쓰는 두 축은 그대로다 — 문구가 카드와 갈리면 한 물건이 두 이름을 갖는다.
+    assert service.PICK_LABELS["resale"] == "되팔아도 남음"
+    assert service.PICK_LABELS["now"] == service.USE_TIER_LABELS["now"] == "지금 사면 이득"
+    # 2026-09-22 홈 캐러셀을 두 축으로 넓히며 'cheap'이 들어왔다(유망 물건은 여전히 두 축만 쓴다).
+    # 새 라벨도 **실사용 갈래와 같은 문구**여야 한다 — 화면마다 다른 이름을 붙이지 않는다.
+    assert service.PICK_LABELS["cheap"] == service.USE_TIER_LABELS["cheap"], "실사용 갈래와 같은 문구"
+    assert set(service.PICK_LABELS) == {"resale", "now", "cheap"}, "축이 말없이 늘지 않게 고정한다"
 
 
 def test_dashboard_section_explains_itself_on_mobile_and_links_to_the_full_list(client):

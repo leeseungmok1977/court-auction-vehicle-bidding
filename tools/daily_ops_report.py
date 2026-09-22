@@ -374,6 +374,46 @@ out["certbot"] = {"started": log.count("Starting certbot.service"),
                   "failed": log.count("Failed with result")}
 out["service"] = {"active": sh(["systemctl", "is-active", "naechaget"]).strip(),
                   "since": sh(["systemctl", "show", "naechaget", "-p", "ActiveEnterTimestamp", "--value"]).strip()}
+
+# 방문자 기준선 — 화면을 고쳐도 효과를 못 재면 고쳤는지조차 알 수 없다(2026-09-22).
+# 추적 스크립트가 0개라 접속 로그가 유일한 근거다. IP 는 **세기만 하고 내보내지 않는다**.
+import re as _re, glob as _glob, gzip as _gzip, collections as _c
+_BOT = _re.compile(r"bot|crawl|spider|slurp|preview|facebookexternalhit|python-requests"
+                   r"|curl/|Go-http|wget|monitor|uptime|scan|headless", _re.I)
+_LN = _re.compile(r'^(\S+) \S+ \S+ \[(\d{2})/(\w{3})/(\d{4}):[^\]]*\] "(\S+) (\S+)[^"]*" (\d+) ')
+_UA = _re.compile(r'"([^"]*)"\s*$')
+_MON = {m: i for i, m in enumerate("Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split(), 1)}
+# 상태 폴링(/run/*)과 정적 리소스를 빼야 '사람이 본 페이지'가 된다 — 폴링이 전체 요청의 절반이다.
+_SKIP = _re.compile(r"^/(static|thumb|photo|sw\.js|favicon|\.well-known|manifest|run/|api/)"
+                    r"|\.(png|jpg|gif|css|js|woff2?|ico|json)$")
+try:
+    _days = _c.defaultdict(lambda: _c.defaultdict(int))
+    for _f in sorted(_glob.glob("/var/log/nginx/access.log*")):
+        _op = _gzip.open if _f.endswith(".gz") else open
+        with _op(_f, "rt", errors="ignore") as _fh:
+            for _l in _fh:
+                _m = _LN.match(_l); _u = _UA.search(_l)
+                if not _m or not _u:
+                    continue
+                _ip, _d, _mo, _y, _meth, _p, _st = _m.groups()
+                _date = "%s-%02d-%s" % (_y, _MON.get(_mo, 0), _d)
+                if not (SINCE[:10] <= _date <= UNTIL[:10]):
+                    continue
+                if _BOT.search(_u.group(1)) or _meth != "GET" or _st not in ("200", "304"):
+                    continue
+                if _SKIP.search(_p.split("?")[0]):
+                    continue
+                _days[_date][_ip] += 1
+    _v = {}
+    for _date, _ips in _days.items():
+        _n = len(_ips)
+        _v[_date] = {"visitors": _n,
+                     "bounce_pct": round(sum(1 for c in _ips.values() if c == 1) / _n * 100),
+                     "deep_pct": round(sum(1 for c in _ips.values() if c >= 3) / _n * 100)}
+    out["visits"] = _v
+except Exception as _e:
+    out["visits"] = {"error": type(_e).__name__}
+
 print(json.dumps(out, ensure_ascii=True))
 '''
 
@@ -658,6 +698,22 @@ def build_markdown(data: dict) -> str:
         L += [f"| {_cell(m['start'])} | {_cell(m['kind'])} | {_cell(m['count'])} | {m['status']} |" for m in manual_rows]
     else:
         L.append("없음" if not server.get("error") else "서버를 읽지 못해 확인할 수 없습니다.")
+    # 방문자 — 화면 개선의 효과를 재는 **유일한 선행지표**다(추적 스크립트가 0개).
+    # 2026-09-22 기준선: 하루 28~81명 · 1페이지 이탈 67% · 2일 이상 재방문 8%.
+    # 유입을 늘려도 이탈이 그대로면 실사용자는 늘지 않는다 — 그래서 둘을 같이 본다.
+    vis = server.get("visits") or {}
+    if vis and not vis.get("error"):
+        L += ["", "## 방문자", "",
+              "| 날짜 | 방문자 | 1페이지만 보고 나감 | 3페이지 이상 |",
+              "|---|---:|---:|---:|"]
+        for d in sorted(vis)[-3:]:
+            r = vis[d]
+            L.append(f"| {d} | {r['visitors']} | {r['bounce_pct']}% | {r['deep_pct']}% |")
+        L += ["", "> 봇·정적파일·상태폴링을 뺀 **사람이 본 페이지** 기준. "
+                  "IP 는 세기만 하고 저장하지 않는다."]
+    elif vis.get("error"):
+        unknown_notes.append(f"방문자 집계: {_cell(vis['error'])}")
+
     if unknown_notes:
         L += ["", "## 확인 불가", ""] + [f"- {_cell(n)}" for n in unknown_notes]
     L += ["", "---", "",
