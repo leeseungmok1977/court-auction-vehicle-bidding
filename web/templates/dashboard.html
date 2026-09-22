@@ -82,7 +82,21 @@
           {# 라벨은 그라디언트가 가장 옅은 맨 위에 놓여 밝은 차 사진과 겹치면 회색으로 읽혔다 →
              자체 스크림을 준다. 그리고 '싸게 낙찰되면 이득'은 조건부라 나머지 둘과 **색으로 떼고**
              목록과 같은 "…만원까지"를 붙여 조건을 첫 화면에서도 말한다(디자인 검수 1). #}
-          {% if v.pick_kind and pick_labels.get(v.pick_kind) %}<div class="text-[10px] font-semibold mb-1 inline-flex items-center gap-1 rounded px-1.5 py-0.5 bg-black/45 {{ 'text-amber-300' if v.pick_kind == 'cheap' else 'text-white' }}"><span class="material-symbols-outlined text-[13px]">{{ pick_icons.get(v.pick_kind, 'check_circle') }}</span>{{ pick_labels[v.pick_kind] }}{% if v.pick_kind == 'cheap' and v.max_bid %} · {{ v.max_bid|man }}까지{% endif %}</div>{% endif %}
+          {# ⚠ '싸게 낙찰되면 이득'은 **조건부**다. 상한만 적으면 카드가 "770만까지 쓰면 이득"이라
+             말하면서 바로 아래에서 "예상낙찰가 820만"을 보여주는 자기모순이 된다(2026-09-22 실측:
+             쏘렌토 상한 770만 < 예상 820만). 목록 카드는 title 로 "예상 경쟁가는 그 위라 낙찰
+             가능성은 낮습니다"를 말하는데 스와이프하는 사람은 툴팁을 보지 않는다.
+             줄을 늘리지 않고 라벨 안에서 관계를 말한다 — 카드는 이미 꽉 차 세 번 터진 전례가 있다. #}
+          {% if v.pick_kind and pick_labels.get(v.pick_kind) %}
+          {% set _over = v.pick_kind == 'cheap' and v.max_bid and v.expected_win and v.expected_win > v.max_bid %}
+          {# ⚠ inline-flex 로 두면 줄바꿈될 때 **검은 스크림이 첫 줄만 덮어** 둘째 줄이 사진 위에
+             맨몸으로 떠 읽히지 않는다(2026-09-22 큰글씨 320px 육안). inline(박스가 줄을 따라감)
+             + box-decoration-break 로 두 줄 모두 배경을 갖게 한다. #}
+          <div class="mb-1 leading-relaxed">
+            <span class="text-[10px] font-semibold rounded px-1.5 py-0.5 bg-black/60 {{ 'text-amber-300' if v.pick_kind == 'cheap' else 'text-white' }}"
+                  style="box-decoration-break:clone;-webkit-box-decoration-break:clone"
+                  {% if _over %}title="{{ v.max_bid|man }} 이하로 낙찰될 때만 소매보다 쌉니다. 예상 경쟁가는 그 위라 낙찰 가능성은 낮습니다."{% endif %}><span class="material-symbols-outlined text-[13px] align-middle">{{ pick_icons.get(v.pick_kind, 'check_circle') }}</span> {{ pick_labels[v.pick_kind] }}{% if v.pick_kind == 'cheap' and v.max_bid %} · {{ v.max_bid|man }}까지{% if _over %} <span class="font-normal text-white/80">(예상가는 그 위)</span>{% endif %}{% endif %}</span>
+          </div>{% endif %}
           <div class="font-bold text-base leading-tight truncate">{{ v.model|mdl }}{% if v.year %} <span class="font-normal text-white/70 text-sm">{{ v.year }}년</span>{% endif %}</div>
           <div class="text-[11px] text-white/60 mt-0.5">{{ (v.court or '')|replace('지방법원','지법') }}{% if v.mileage_km %} · {{ (v.mileage_km/10000)|round(1) }}만km{% endif %}</div>
         </div>
