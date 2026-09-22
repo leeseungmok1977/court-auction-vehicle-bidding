@@ -1,0 +1,37 @@
+{
+  "$comment": [
+    "조직 가드레일 — docs/ORG.md §3 '오너 승인이 필요한 것'을 도구 수준에서 막는다.",
+    "페르소나에 '하지 마라'고 쓰는 것보다 권한을 안 주는 쪽이 확실하다.",
+    "개인 허용 목록은 settings.local.json(git 제외)에 둔다."
+  ],
+  "permissions": {
+    "deny": [
+      "Bash(git push:*)",
+      "Bash(gh release:*)",
+      "Bash(gh pr merge:*)",
+      "Bash(npm publish:*)",
+      "Bash(pip install:*)",
+      "Bash(npm install -g:*)",
+      "Bash(schtasks /delete:*)",
+      "Bash(sudo systemctl stop:*)",
+      "Bash(sudo systemctl disable:*)",
+      "Bash(rm -rf:*)",
+      "Read(./capture/**)",
+      "Read(./docs/.env)",
+      "Read(**/*.pem)",
+      "Read(**/id_rsa*)",
+      "Read(**/*.keystore)",
+      "Read(**/*.jks)"
+    ],
+    "ask": [
+      "Bash(ssh:*)",
+      "Bash(scp:*)",
+      "Bash(git commit:*)",
+      "Bash(schtasks /create:*)",
+      "Bash(schtasks /change:*)",
+      "Write(./config.yaml)",
+      "Edit(./config.yaml)",
+      "Write(./.claude/settings.json)"
+    ]
+  }
+}

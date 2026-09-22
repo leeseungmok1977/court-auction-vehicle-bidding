@@ -16,26 +16,42 @@
 
 ## 1. 조직도
 
-오너 1인 + 에이전트 14종. 부서는 **일의 성격**으로 나눈다(사람 수가 아니라).
+오너 1인 + **Steward(메인 세션)** + 서브에이전트 15종.
 
 ```
-                          오너 (의사결정·승인)
-                               │
-                        제품기획 (pm-orchestrator)
-                               │
-      ┌──────────────┬─────────┴────────┬──────────────┐
-      │              │                  │              │
-    개발부        데이터신뢰부         성장부        운영준법부
+                     오너 (방향·최종 승인권)
+                            │  보고 / 승인 요청
+                     ┌──────▼──────────────┐
+                     │ Steward — CLAUDE.md │  우선순위·자원배분·최종 판단
+                     │  (Claude Code 메인)  │  ★ 오너와 소통하는 유일한 층
+                     └──┬───────────────┬──┘
+        [작업 지시서] ↓            ↑ reports/ 에 파일로 보고
+      ┌────────────┬──────────────┼──────────────┬────────────┐
+   제품기획       개발부      데이터신뢰부       성장부      운영준법부
 ```
+
+> **왜 Steward가 메인 세션인가**: Claude Code 서브에이전트는 **다른 서브에이전트를 호출할 수
+> 없고** 부모 세션의 대화도 보지 못한다. Steward를 서브에이전트로 만들면 아무도 지휘할 수 없다.
+> 그래서 Steward 페르소나는 메인 세션이 읽는 `CLAUDE.md`에 둔다.
+> 페르소나 원본: [`docs/agent-persona.md`](agent-persona.md)
 
 | 부서 | 구성원 | 맡는 일 |
 |---|---|---|
-| **제품기획** | `pm-orchestrator` | 티켓 분해·배분·검수, 부서 간 조정, 오너 보고 |
+| **제품기획** | `pm-orchestrator` | 티켓 분해·배분·검수, 부서 간 조정 |
 | **개발부** | `backend-engineer` `frontend-engineer` `qa-engineer` | 구현과 테스트 게이트 |
-| **데이터신뢰부** | `auction-expert` `usedcar-expert` `app-qa-auditor` `photo-classifier` | 숫자가 진실인지 검증, 도메인 현실 반영 |
-| **성장부** | `growth-marketer` `customer-voice` | 유입·이탈·리텐션, 고객의 소리 |
+| **데이터신뢰부** | `insight` `auction-expert` `usedcar-expert` `app-qa-auditor` `photo-classifier` | 숫자를 세고, 그 숫자가 진실인지 검증 |
+| **성장부** | `growth` `voice` | 유입·이탈·리텐션 / 고객의 소리 |
 | **운영준법부** | `compliance-officer` `monetization-engineer` | 법적 리스크, 수익 모델 |
 | **디자인(겸임)** | `app-design-expert` `design-critic` | 화면 검수 — 제품기획 직할 |
+
+**서브에이전트끼리는 직접 대화하지 못한다.** 협업은 [`reports/`](../reports/)에 파일로 남기고
+Steward가 다음 담당에게 그 파일을 읽으라고 지시해 연결한다.
+
+**가드레일은 도구 권한으로 건다.** 페르소나에 "하지 마라"고 쓰는 것보다 `tools`를 좁게 주는
+쪽이 확실하다 — `insight`·`voice`에는 `WebFetch`·`WebSearch`조차 주지 않았고, 배포·지출
+계열 명령은 [`.claude/settings.json`](../.claude/settings.json)에서 막았다.
+
+**슬래시 커맨드**: `/daily-check`(일간 점검) · `/weekly-report`(주간 보고).
 
 ## 2. 부서 간 소통 규약
 

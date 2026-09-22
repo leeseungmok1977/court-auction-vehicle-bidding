@@ -41,9 +41,11 @@ screenshots/
 image_ex/
 dashboard_ex/
 
-# Claude Code 로컬 설정(에이전트 정의 .claude/agents 는 커밋)
+# Claude Code — 개인 설정만 제외한다.
+#   .claude/agents·commands·settings.json 은 **커밋한다**: 에이전트 정의·슬래시 커맨드와
+#   조직 가드레일(docs/ORG.md §3 '오너 승인 필요')은 저장소에 남아야 다음 세션·다른 환경에서도
+#   같은 권한 정책이 걸린다. settings.local.json 은 개인 허용 목록이라 제외.
 .claude/settings.local.json
-.claude/settings.json
 
 # 스토어 자산(생성물·바이너리 — scripts/gen_store_assets.py로 재생성)
 store_assets/
