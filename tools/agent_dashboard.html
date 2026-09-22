@@ -463,10 +463,40 @@ async function tick(){
 // ★ 맥박을 계속 뛰게 두면 안 된다. 굳은 숫자를 살아 있는 것처럼 보여주는 셈이라
 //   "회사가 지금 이렇다"로 읽힌다. 대신 **언제 구운 것인지**를 못 놓치게 적는다.
 if (window.__SNAPSHOT__) {
-  render(window.__SNAPSHOT__);
-  const t = window.__SNAPSHOT_AT__ || '';
-  $('#meta').innerHTML = `<span class="beat dead" style="background:var(--warn);box-shadow:none"></span>`
-    + `<b>${esc(hhmm(t))}</b> 에 구운 스냅샷 — 실시간이 아니다`;
+  // 첫 그림은 박혀 있는 값으로 즉시 그린다. 그다음부터는 같은 폴더의 JSON 만 받아 갱신한다.
+  // ★ 나이를 **초 단위로 정직하게** 적는다. 집 PC 가 꺼지면 갱신이 멈추는데, 그때 화면이
+  //   조용히 옛 숫자를 보여주면 "지금 이렇다"로 읽힌다. 그래서 늙으면 색이 변한다.
+  let at = window.__SNAPSHOT_AT__ || '';
+  const src = window.__SNAPSHOT_JSON__ || '';
+  const STALE = 180;                                   // 3분 넘게 안 바뀌면 멈춘 것으로 본다
+
+  function freshness(){
+    const sec = Math.max(0, Math.round((Date.now() - new Date(at).getTime())/1000));
+    const dead = sec > STALE;
+    const ago = sec < 60 ? `${sec}초 전` : `${Math.floor(sec/60)}분 ${sec%60}초 전`;
+    $('#meta').innerHTML =
+      `<span class="beat${dead ? ' dead' : ''}" id="beat"${dead ? '' :
+        ' style="background:var(--warn)"'}></span>`
+      + `<b>${esc(hhmm(at))}</b> 기준 · ${ago} 갱신`
+      + (dead ? ` <span style="color:var(--bad)">— 집 PC 가 새 자료를 안 올리고 있다</span>`
+              : ` <span style="color:var(--faint)">— 집 PC 가 올린 값을 받아 본다</span>`);
+  }
+  render(window.__SNAPSHOT__); freshness();
+
+  if (src) setInterval(async () => {
+    try {
+      const r = await fetch(src + '?t=' + Date.now(), {cache:'no-store'});
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const d = await r.json();
+      if (d && d.at && d.at !== at) {                  // 새 자료일 때만 다시 그린다
+        at = d.at; render(d.state);
+        const b = $('#beat');
+        if (b) { b.classList.remove('on'); void b.offsetWidth; b.classList.add('on'); }
+      }
+    } catch (e) { /* 받지 못하면 나이가 늘어 저절로 붉어진다 */ }
+    freshness();
+  }, 30000);
+  setInterval(freshness, 5000);                        // 안 받아도 나이는 계속 센다
 } else {
   tick();
   setInterval(tick, 10000);

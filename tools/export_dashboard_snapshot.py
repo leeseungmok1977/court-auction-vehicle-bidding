@@ -66,12 +66,19 @@ def snapshot_name() -> str:
     return name
 
 
-def build(state: dict, when: str) -> str:
-    """대시보드 HTML 에 상태를 통째로 박아 넣는다 — 서버 없이 혼자 뜨게."""
+def build(state: dict, when: str, json_name: str = "") -> str:
+    """대시보드 HTML 에 상태를 통째로 박아 넣는다 — 서버 없이 혼자 뜨게.
+
+    ★ 데이터를 **JSON 으로도 따로** 내보내고 그 파일명을 심는다. 화면은 첫 그림을
+      박혀 있는 값으로 즉시 그리고(느린 회선에서도 바로 보인다), 그다음부터는 그 JSON 만
+      주기적으로 받아 다시 그린다. 53KB 전체가 아니라 17KB 만 오간다.
+      보안 성격은 그대로다 — 여전히 정적 파일 두 장이고, 집 PC 로 들어오는 길은 없다.
+    """
     html = dash.HTML.read_text(encoding="utf-8")
     payload = json.dumps(state, ensure_ascii=False).replace("</", "<\\/")
     inject = (f"<script>window.__SNAPSHOT__={payload};"
-              f"window.__SNAPSHOT_AT__={json.dumps(when)};</script>\n")
+              f"window.__SNAPSHOT_AT__={json.dumps(when)};"
+              f"window.__SNAPSHOT_JSON__={json.dumps(json_name)};</script>\n")
     # ★ 앱 스크립트보다 **앞에** 둬야 한다. 뒤에 두면 부트스트랩이 이미 돌아
     #   /api/state 를 부르고(없는 서버로) 빈 화면이 된다.
     marker = "<script>\nconst $ = s => document.querySelector(s);"
@@ -95,14 +102,21 @@ def main(argv=None) -> int:
 
     when = datetime.now().isoformat(timespec="seconds")
     state = dash.build_state()
-    html = build(state, when)
+    json_name = name[:-5] + ".json" if name.endswith(".html") else name + ".json"
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
+    # ★ 데이터를 먼저 쓴다. HTML 은 그 파일명을 품고 나가므로, 순서가 뒤집히면
+    #   화면이 아직 없는 파일을 가리키는 순간이 생긴다.
+    jpath = OUT_DIR / json_name
+    jpath.write_text(json.dumps({"at": when, "state": state}, ensure_ascii=False),
+                     encoding="utf-8")
     path = OUT_DIR / name
-    path.write_text(html, encoding="utf-8")
+    path.write_text(build(state, when, json_name), encoding="utf-8")
 
-    kb = path.stat().st_size / 1024
-    print(f"  구움: {path.relative_to(ROOT).as_posix()}  ({kb:.0f} KB · {when})")
+    print(f"  구움: {path.relative_to(ROOT).as_posix()}  "
+          f"({path.stat().st_size/1024:.0f} KB · {when})")
+    print(f"        {jpath.relative_to(ROOT).as_posix()}  "
+          f"({jpath.stat().st_size/1024:.0f} KB · 화면이 30초마다 이것만 받는다)")
     print(f"  주소: {PUBLIC_BASE}/{name}")
     # 읽지 못한 곳이 있으면 숨기지 않는다 — 0 으로 채운 화면을 올리지 않기 위해서다
     for p in state.get("problems", []) or []:

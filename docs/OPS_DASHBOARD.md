@@ -26,14 +26,14 @@ python tools/agent_dashboard.py --host 0.0.0.0     # 같은 망에 열기 — �
   ```
   **회사 PC 는 다른 망이라 이 규칙으로는 안 된다** — §2 를 쓴다.
 
-## 2. 회사 PC 에서 (5분 지연 스냅샷)
+## 2. 회사 PC 에서 (1분 갱신 스냅샷)
 
 집 PC 의 `127.0.0.1` 은 밖에서 닿지 않는다. 길은 둘이었다.
 
 | | ㉮ 실시간 중계 | ㉯ 산출물만 올리기 ← **채택** |
 |---|---|---|
 | 방식 | 기존 역방향 SSH 터널로 운영 서버가 집 PC 안을 중계 | 화면을 HTML 한 장으로 구워 운영 서버에 올림 |
-| 신선도 | 실시간 | 5분 지연 |
+| 신선도 | 실시간(초 단위) | **최대 1분 지연** — 화면이 30초마다 스스로 받아 온다 |
 | 열쇠가 샜을 때 | **집 PC 로 가는 통로**가 열림 | 5분 지난 현황판 한 장 |
 
 ㉯ 를 택한 이유:
@@ -49,19 +49,31 @@ python tools/agent_dashboard.py --host 0.0.0.0     # 같은 망에 열기 — �
 
 ```
 집 PC  python tools/export_dashboard_snapshot.py
-         → web/static/ops/<128비트 난수>.html   (자체 완결 · git 제외 · 파일명이 곧 열쇠)
-       scp → ubuntu@43.202.126.180:/home/ubuntu/app/web/static/ops/
-회사 PC  https://naechaget.co.kr/static/ops/<그 파일명>
+         → web/static/ops/<128비트 난수>.html   (첫 그림이 박혀 있어 즉시 뜬다 · 56KB)
+         → web/static/ops/<같은 난수>.json     (데이터만 · 24KB)
+       scp → ubuntu@43.202.126.180:/home/ubuntu/app/web/static/ops/   (둘을 한 번에)
+회사 PC  https://naechaget.co.kr/static/ops/<그 파일명>.html
+         └ 화면이 30초마다 같은 폴더의 .json 만 받아 다시 그린다
 ```
+
+**왜 둘로 쪼갰나**: 한 장에 데이터를 박아 두면 갱신할 때마다 56KB 전체가 오간다.
+데이터만 따로 내보내면 **24KB** 만 움직이므로 1분 간격으로 올려도 부담이 없고,
+화면은 첫 그림을 박혀 있는 값으로 즉시 그려 느린 회선에서도 빈 화면을 보이지 않는다.
+**보안 성격은 그대로다** — 여전히 정적 파일 두 장이고, 집 PC 로 들어오는 길은 없다.
 
 - **서버 설정을 건드리지 않는다.** 앱이 이미 `/static` 을 서빙하고(`web/app.py:37`),
   배포는 `git pull` 이라 **추적되지 않는 이 파일은 배포해도 지워지지 않는다.**
 - 색인 차단은 서버(robots)가 아니라 **파일 안의 `noindex,nofollow` 메타**로 한다.
 - 주소는 `python tools/export_dashboard_snapshot.py --print-url` 로 확인한다.
-- 자동 갱신: 예약 작업 `naechaget-ops-snapshot` (5분) → `tools/publish_dashboard_snapshot.ps1`.
-  로그 `%LOCALAPPDATA%\naechaget\snapshot.log`.
-- 스냅샷 화면은 **맥박이 멈춰 있고 상단에 "…에 구운 스냅샷 — 실시간이 아니다"** 라고 적는다.
-  굳은 숫자를 살아 있는 것처럼 보여주면 "회사가 지금 이렇다"로 읽힌다.
+- 자동 갱신: 예약 작업 `naechaget-ops-snapshot` (**1분**) → `tools/publish_dashboard_snapshot.ps1`.
+  로그 `%LOCALAPPDATA%\naechaget\snapshot.log`. 한 사이클 **실측 2.7~3.2초**
+  (굽기 2.1초 + 전송 0.8초)라 1분 간격에 57초가 남는다. `MultipleInstances=IgnoreNew` 로
+  겹침도 막아 뒀다.
+- 스냅샷 화면은 **나이를 초 단위로 적고**(`… 기준 · 7초 전 갱신`), 새 자료를 받을 때마다
+  맥박이 한 번 뛴다. **3분 넘게 새 자료가 안 오면 붉게 굳고 "집 PC 가 새 자료를 안 올리고
+  있다"고 적는다.** 집 PC 가 꺼졌는데 옛 숫자를 '지금'처럼 보여주면 안 되기 때문이다.
+- 실측(2026-09-23): 공개본에서 JSON 폴링 발생 확인, 기준 시각이 **08:37 → 08:38 로 스스로
+  앞당겨짐**, JS 오류 0건. 로컬 대시보드(127.0.0.1)도 같은 HTML 을 쓰므로 함께 확인했다.
 
 ### 한계 (감추지 않는다)
 

@@ -55,12 +55,18 @@ $src  = Join-Path $proj ("web\static\ops\" + $name)
 if (-not (Test-Path $src)) { Write-Log ("baked file missing: " + $src); exit 1 }
 $kb = [int]((Get-Item $src).Length / 1KB)
 
+# The page reloads only this JSON every 30s (17KB instead of the whole 53KB page),
+# so the office view stays about a minute behind instead of five. Ship both in ONE
+# scp call - a separate call would mean a second SSH handshake every minute.
+$srcJson = [IO.Path]::ChangeExtension($src, '.json')
+if (-not (Test-Path $srcJson)) { Write-Log ("baked json missing: " + $srcJson); exit 1 }
+
 # 2) upload. No mkdir here on purpose - the directory is created once during
 #    setup. If it is gone, the scp error is the signal, and silently recreating
 #    it would hide that someone removed the page deliberately.
 if (-not (Test-Path $key)) { Write-Log ("ssh key missing: " + $key); exit 1 }
-$scpOut = & scp -i $key -o BatchMode=yes -o ConnectTimeout=20 $src ($target + ':' + $remote) 2>&1
+$scpOut = & scp -i $key -o BatchMode=yes -o ConnectTimeout=20 $src $srcJson ($target + ':' + $remote) 2>&1
 if ($LASTEXITCODE -ne 0) { Write-Log ("scp FAILED (" + $kb + "KB): " + ($scpOut -join ' | ')); exit 1 }
 
-Write-Log ("published " + $name + " (" + $kb + "KB)")
+Write-Log ("published " + $name + " + json (" + $kb + "KB)")
 exit 0
