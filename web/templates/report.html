@@ -77,8 +77,19 @@ body{background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:
 .btn{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:8px 16px;font-size:13px;font-weight:600;border:1px solid var(--line);background:#fff;color:var(--ink);cursor:pointer;text-decoration:none}
 .btn.pri{background:var(--cobalt);color:#fff;border-color:var(--cobalt)}
 /* 켜짐을 파란 채움으로 표시하면 옆의 주동작(인쇄, 코발트 채움)과 구별이 안 됐다(디자인 검수) */
-#rptLarge[aria-pressed="true"],#rptResale[aria-pressed="true"]{background:#fff;color:var(--cobalt);border:2px solid var(--cobalt)}
+/* ★ 2026-09-22 실측: 켜짐이 **버튼 폭을 바꾸면 안 된다.**
+   되팔기를 켜면 버튼이 +19px 늘었다 — ✓ 글리프 17px + 테두리 1→2px 2px. 그 결과 360px 에서
+   버튼 행이 1줄→2줄로 접히고 고정 바가 152→202px 로 뛰었다. 하필 "토글이 켜졌는지 보려고
+   바를 쳐다보는 순간" 바가 뛰는 셈이라 체감이 가장 나쁘고, 방금 되찾은 45px 이 기능을 켜는
+   순간 사라진다. 360px 은 갤럭시 A 계열 폭이라 테스터 다수가 여기 해당한다.
+     ① 테두리 굵기 대신 inset box-shadow 로 같은 두께를 그린다 — 그림자는 레이아웃을 안 바꾼다.
+     ② 좁은 폭에서는 ✓ 를 빼고 색·윤곽만으로 켜짐을 말한다. aria-pressed 는 그대로라
+        스크린리더에 들리는 내용은 달라지지 않는다. */
+#rptLarge[aria-pressed="true"],#rptResale[aria-pressed="true"]{background:#fff;color:var(--cobalt);border-color:var(--cobalt);box-shadow:inset 0 0 0 1px var(--cobalt)}
 #rptLarge[aria-pressed="true"]::before,#rptResale[aria-pressed="true"]::before{content:"✓"}
+@media (max-width:460px){
+  #rptLarge[aria-pressed="true"]::before,#rptResale[aria-pressed="true"]::before{content:none}
+}
 .masthead{background:var(--cobalt-deep);color:#fff;border-radius:14px;padding:28px 32px 24px}
 .mh-top{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap}
 .brand{display:flex;align-items:center;gap:10px}
@@ -144,6 +155,25 @@ table, thead, tbody, tr, th, td { word-break: keep-all; overflow-wrap: break-wor
    버튼 묶음과 섹션칩이 좌우로 나란히 붙는다(2026-09-12 실측으로 발견). */
 .rtop-btns{display:flex;justify-content:flex-start;gap:8px;flex-wrap:wrap}
 .rtop .btn{padding:7px 14px}
+/* 좁은 폭에서 버튼 4개를 **한 줄에** 넣는다. 2026-09-22 실측(디자인 검수 지적):
+   360px 에서 필요 369px / 자리 320px 로 49px 부족해 `되팔기 계산` 이 혼자 둘째 줄에 남았고,
+   그 자리가 방금 걷어낸 비활성 칩과 정확히 같아 **모드 토글이 남은 잔재처럼** 읽혔다.
+   줄 하나가 고정 바의 45px(190→145)이다.
+   가로 패딩 14→10(버튼당 8px×4)과 gap 8→6 으로 38px 을 벌고, 라벨 축약(아래 .bl-short)이
+   나머지를 맡는다. 세로 높이는 건드리지 않아 탭 영역이 줄지 않는다.
+   ⚠ 320px 은 이래도 25px 부족해 2줄로 남는다 — 거기서 더 밀어넣으면 탭 영역이 위태로워진다.
+      큰글씨 360px 도 마찬가지다. 글자를 키워 달라고 한 사람에게서 글자를 뺏지 않는다. */
+@media (max-width:460px){
+  .rtop .btn{padding:7px 10px;min-height:44px}
+  .rtop-btns{gap:6px}
+}
+/* min-height 를 붙인 이유(2026-09-22 실측, 디자인 검수 2회차): 일반 모드 버튼 높이가 **37px**
+   인데 큰글씨는 아래 screen 블록에서 44px 을 보장한다. 같은 손가락에 다른 기준을 적용하고
+   있었다 — 그 블록 주석이 스스로 "탭 타깃을 34~38px 로 두면 손떨림이 있는 바로 그 사용자에게
+   가장 작은 조작 대상을 남긴다"고 적어 뒀는데, 정작 일반 모드가 37px 이었다.
+   세로만 7px 늘고 **가로는 1px 도 더 쓰지 않으므로** 방금 되찾은 한 줄은 그대로다.
+   터치 관련 규칙을 좁은 폭에만 거는 이 파일의 방식(test_large_mode_button_padding_is_screen_only)
+   을 따라 ≤460px 로 한정한다. */
 /* '보관·구매 준비 중' 칩을 2026-09-22 통째로 걷어냈다(오너 결정). 되살리지 말 것.
    ① 아직 없는 기능을 화면이 미리 광고하고 있었다. ② 스토어 등록정보가 "가입·로그인·결제·
    광고 없이 이용"이라고 말하는데 심사자가 이 칩을 보면 미신고 인앱결제로 읽힐 수 있다.
@@ -170,9 +200,14 @@ table, thead, tbody, tr, th, td { word-break: keep-all; overflow-wrap: break-wor
   font-size:18px;color:var(--ink-faint);pointer-events:none;display:none;line-height:1}
 .secnav-wrap.can-scroll .secnav-more{display:block}
 .secnav::-webkit-scrollbar{display:none}
-/* 인쇄 버튼 라벨: 일반 모드는 ≤380px 에서만 짧게(390px 은 전체 라벨이 40px 여유로 들어간다).
+/* 버튼 라벨 축약: 일반 모드 ≤400px, 큰글씨는 아래 screen 블록에서 ≤430px.
    짧은 라벨은 '인쇄·PDF'가 아니라 'PDF 저장' — 프린터 아이콘이 이미 인쇄를 말하고, 이 버튼의 주 용도는
-   파일로 남겨 자식·법무사에게 보내는 것이다(디자인 검수). 큰글씨는 screen 블록에서 ≤430px. */
+   파일로 남겨 자식·법무사에게 보내는 것이다(디자인 검수).
+   ★ 기준을 380→400 으로 올린 이유(2026-09-22 실측): 380 이면 **390px 이 360px 보다 더 부족했다**
+     (52px vs 49px). 화면이 넓어졌는데 긴 라벨 `인쇄 / PDF 저장`(137px, 짧은 쪽보다 33px 넓다)이
+     되살아나 필요 폭이 함께 늘어난 탓이다. 이전 주석은 "390px 은 전체 라벨이 40px 여유로 들어간다"고
+     적었는데, 버튼 하나가 아니라 **행 전체**로 재면 사실이 아니었다.
+     430px 은 긴 라벨로도 26px 남으므로 그대로 둔다 — 들어가는 곳에서까지 줄이지 않는다. */
 /* 실사용 모드(기본)에서는 되팔기 전용 섹션을 감춘다. 인쇄도 화면과 같게 — 본 것이 인쇄돼야 한다. */
 html:not(.rmode-resale) [data-resale]{display:none}
 .rmode-hint{margin:0 0 18px;font-size:12.5px;color:var(--ink-faint)}
@@ -197,7 +232,7 @@ html.rmode-resale .rtoc-resale a::after{content:""}
 @media (max-width:430px){ .rtoc ol{columns:1} }
 html.rmode-resale .rmode-hint{display:none}
 .rtop .bl-short{display:none}
-@media (max-width:380px){ .rtop .bl-full{display:none} .rtop .bl-short{display:inline} }
+@media (max-width:400px){ .rtop .bl-full{display:none} .rtop .bl-short{display:inline} }
 @media screen and (max-width:430px){ html.nc-large .rtop .bl-full{display:none} html.nc-large .rtop .bl-short{display:inline} }
 /* 고정 바 높이만큼 여유를 둬 점프 시 제목이 가리지 않게 한다 */
 /* 앵커 여백은 고정 바의 **실제 높이**를 따라간다.
@@ -207,6 +242,50 @@ html.rmode-resale .rmode-hint{display:none}
 .sec-head[id]{scroll-margin-top:var(--rtop-h,150px)}
 .secnav a{flex:none;font-size:12px;font-weight:700;color:var(--ink-soft);text-decoration:none;
   padding:7px 11px;border-radius:99px;background:#F4F6F9;border:1px solid var(--line);white-space:nowrap}
+/* 좁은 폭에서 칩 5개를 다 넣어 **낱말 중간에서 잘리는 일**을 없앤다.
+   2026-09-22 실측(디자인 검수 지적): 360px 에서 내용 356px / 보이는 폭 320px 로 36px 넘쳐
+   `낙찰 절차` 가 18px 잘린 '낙찰 절' 로 보였다. 이 저장소는 이미 '⚠ 리스' 사례에서
+   **미완성 낱말은 '더 있음'이 아니라 렌더링 사고로 읽힌다**는 기준을 세웠다(위 페이드 주석).
+   가로 패딩 11→8(칩당 6px×5=30px) · gap 6→4(2px×4=8px) = 38px 을 벌어
+   360px 은 317px / 320px 로 들어간다. 세로 패딩 7px 은 그대로라 탭 높이가 줄지 않는다.
+   ⚠ 오른쪽 여백 18px 은 **건드리지 않는다.** 처음엔 12px 로 줄여 4px 을 더 벌었는데, 그건
+      "끝까지 밀었을 때 마지막 칩이 페이드 밖으로 나와야 한다"는 기존 불변식을 깬다
+      (tests/test_panel_r3_bar.py). 여백이 12px 이면 24px 페이드 안에 칩 끝이 걸린다.
+      그 테스트는 기반 규칙만 문자열로 보므로 통과했겠지만 의도는 깨진 상태였다 — gap 으로 대신 벌었다.
+   ⚠ 320px(내용 317 / 자리 280)과 큰글씨 320·360px 은 **이래도 넘친다.** 거기서는 페이드와 › 로
+      '더 있음'을 알리는 원래 설계대로 둔다 — 칩을 더 조이면 12px 글자에 좌우 여백이 거의 없어진다.
+      고치지 않은 것이지 못 본 것이 아니다. 다 해결한 척하지 않는다. */
+@media (max-width:400px){
+  .secnav a{padding:7px 8px}
+  .secnav{gap:4px}
+}
+/* 큰글씨는 칩 글자가 12→15px 이라 같은 폭에서 더 넘친다. 라벨 축약이 이미 큰글씨용으로
+   별도 기준(≤430px)을 쓰는 것과 같은 방식으로 맞춘다.
+   ★ 재측정에서 나온 새 사실: 큰글씨 430px 은 칩이 **14px 넘치는데 페이드가 꺼져 있었다** —
+     잘렸는데 '더 있음' 신호가 없는 상태다. 조여서 들어가게 하면 이 어긋남도 같이 사라진다. */
+@media screen and (max-width:460px){
+  html.nc-large .secnav a{padding:7px 8px}
+  html.nc-large .secnav{gap:4px}
+}
+/* 320px 에 남은 `낙찰 절차` 낱말 중간 잘림 — 패딩·gap 을 이미 조였고 오른쪽 여백 18px 은
+   페이드 불변식이라 못 건드린다. **남은 레버는 라벨 길이 하나뿐**이다(디자인 검수 2회차).
+   `절차` 는 온전한 낱말이라 이 저장소가 세운 기준("미완성 낱말은 '더 있음'이 아니라 고장으로
+   읽힌다")에 걸리지 않고, 애초에 잘리지도 않는다.
+   ⚠ 버튼용 `.bl-*` 를 그대로 쓰면 안 된다 — `.secnav` 도 `.rtop` 안이라 같은 기준(≤400px)에
+     걸려 360·390px 에서까지 줄어든다. 거기선 `낙찰 절차` 가 온전히 들어가므로 정보를 잃을
+     이유가 없다. 그래서 칩 전용 클래스와 **더 좁은 기준**을 따로 둔다. */
+.secnav .cl-short{display:none}
+@media (max-width:340px){ .secnav .cl-full{display:none} .secnav .cl-short{display:inline} }
+/* 큰글씨는 칩 글자가 12→15px 이라 **360px 에서도** `낙찰 절차` 가 28px 잘린다(실측 + 캡처
+   narrow_360_large.png 로 육안 확인). 처음엔 기준을 ≤340px 로만 잡아 이 조합을 놓쳤다.
+   버튼 라벨이 큰글씨용 별도 기준(≤430px)을 쓰는 것과 같은 방식으로 ≤400px 로 넓힌다.
+   ⚠ 큰글씨 320px 은 이래도 넘친다(68px 잘림). 거기선 페이드와 › 가 '더 있음'을 말하는
+      원래 설계대로 둔다 — 칩 5개를 280px 에 넣으려면 글자를 줄여야 하는데, 큰글씨를 켠
+      사람에게서 글자를 뺏는 일이 된다. */
+@media screen and (max-width:400px){
+  html.nc-large .secnav .cl-full{display:none}
+  html.nc-large .secnav .cl-short{display:inline}
+}
 .secnav a:hover{color:var(--ink);background:#E9EEF5}
 .secnav a.warn{color:#7A2B2A;background:var(--red-tint);border-color:#F2C8C8}
 @media print{ .rtop{display:none} }
@@ -721,7 +800,7 @@ document.addEventListener('click', function(e){
        빨간 숫자가 "이 차가 나쁘다"로 읽혀 정작 자기 결론(총 취득원가·입찰 상한선)을 못 찾았다(2회차 패널 5인).
        기본은 실사용, 누르면 되팔기 계산이 나온다. #}
     <button type="button" id="rptResale" class="btn" aria-pressed="false" onclick="rptToggleResale()"
-            title="되팔기 계산(수익 시뮬레이션·민감도·반복 매매)을 함께 봅니다" aria-label="되팔기 계산 표시 전환">되팔기 계산</button>
+            title="되팔기 계산(수익 시뮬레이션·민감도·반복 매매)을 함께 봅니다" aria-label="되팔기 계산 표시 전환"><span class="bl-full">되팔기 계산</span><span class="bl-short">되팔기</span></button>
     {# '보관·구매 (준비 중)' 칩이 여기 있었다 — 2026-09-22 제거(오너 결정). 위 CSS 주석 참조.
        없는 기능을 미리 광고하지 않는다. 결제 준비 시점에 되살린다. #}
   </div>
@@ -733,7 +812,7 @@ document.addEventListener('click', function(e){
   <nav class="secnav" aria-label="섹션 바로가기">
     <a href="#sec01">결론</a><a href="#sec05">시세비교</a>
     <a href="#sec06">취득원가</a><a href="#sec09" class="warn">⚠ 리스크</a>
-    <a href="#sec12">낙찰 절차</a>
+    <a href="#sec12"><span class="cl-full">낙찰 절차</span><span class="cl-short">절차</span></a>
   </nav>
   <i class="secnav-more material-symbols-outlined" aria-hidden="true">chevron_right</i>
   </div>
