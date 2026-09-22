@@ -457,6 +457,18 @@ async function tick(){
       + `마지막 성공 ${sec}초 전</span>`;
   }
 }
-tick();
-setInterval(tick, 10000);
+// ── 스냅샷 모드 ────────────────────────────────────────────────────────────
+// 집 PC 밖(회사 PC)에서 보려고 이 화면을 **자체 완결 HTML 한 장**으로 구워 올릴 때가 있다.
+// 그때는 데이터가 파일 안에 박혀 있으므로 /api/state 를 부르지 않는다 — 부를 서버가 없다.
+// ★ 맥박을 계속 뛰게 두면 안 된다. 굳은 숫자를 살아 있는 것처럼 보여주는 셈이라
+//   "회사가 지금 이렇다"로 읽힌다. 대신 **언제 구운 것인지**를 못 놓치게 적는다.
+if (window.__SNAPSHOT__) {
+  render(window.__SNAPSHOT__);
+  const t = window.__SNAPSHOT_AT__ || '';
+  $('#meta').innerHTML = `<span class="beat dead" style="background:var(--warn);box-shadow:none"></span>`
+    + `<b>${esc(hhmm(t))}</b> 에 구운 스냅샷 — 실시간이 아니다`;
+} else {
+  tick();
+  setInterval(tick, 10000);
+}
 </script>

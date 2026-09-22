@@ -63,3 +63,8 @@ android/build/
 # PWABuilder zip 해제 폴더(어떤 이름으로 풀든 걸리게)
 **/signing.keystore
 **/app-release-signed.aab
+
+# 사내 현황판 스냅샷(회사 PC 조회용) — 5분마다 새로 구워 운영 서버로 올린다.
+# web/static/ 은 52개가 git 추적 중이라 제외 규칙이 없으면 생성물이 저장소를 오염시킨다.
+# 파일명이 곧 열쇠라 커밋되면 안 된다.
+web/static/ops/
