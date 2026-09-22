@@ -36,13 +36,24 @@
   @media (prefers-reduced-motion:reduce){ .beat.on{animation:none} }
 
   /* KPI — 숫자가 아니라 '무엇을 어떤 조건에서 센 것인지'를 함께 적는다 */
-  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-bottom:18px}
+  /* ★ auto-fit 에 맡기면 폭에 따라 7+1 로 접혀 **한 장이 혼자 남는다**(1500px 실측).
+     부서 카드에서 이미 같은 것을 고쳤는데 타일에서 또 낼 뻔했다. 타일은 8장이고
+     8 은 4·2·1 로 나누어떨어지므로 열 수를 고정한다.
+     ⚠ 타일을 늘리거나 줄일 때는 이 나눗셈부터 확인할 것. */
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:18px}
+  @media (max-width:1040px){ .kpis{grid-template-columns:repeat(2,1fr)} }
+  @media (max-width:560px){ .kpis{grid-template-columns:1fr} }
   .kpi{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:13px 15px}
   .kpi .k{font-size:11.5px;color:var(--faint)}
   .kpi .v{font-size:27px;font-weight:700;margin-top:3px;font-variant-numeric:tabular-nums;letter-spacing:-.5px}
   .kpi .s{font-size:11.5px;color:var(--soft);margin-top:2px}
   .kpi.alert{border-color:#5c2a2a;background:#1d1414}
   .kpi.alert .v{color:var(--bad)}
+  /* ★ 빨강과 주황을 가른다. design-critic 검수(2026-09-23): 첫 화면에 빨강이 8곳이라
+     "지금 조치" 라는 뜻이 사라졌다. **오늘 손대야 하는 사건**만 빨강이고, 몇 주째 이어진
+     구조 상태(편중·미배분)는 주황이다. 빨간불을 남발하면 진짜 빨간불을 못 본다. */
+  .kpi.warn{border-color:#5c4a1e;background:#1d1a12}
+  .kpi.warn .v{color:var(--warn)}
 
   .band{background:#1d1414;border:1px solid #5c2a2a;border-radius:10px;padding:12px 15px;
     margin-bottom:18px;font-size:13px;color:#ffb3ad}
@@ -89,17 +100,55 @@
   .ag.never .cnt{color:var(--bad)}
   .ag .cnt i{display:block;font-style:normal;color:var(--faint);font-size:10.5px}
 
+  /* 판정 배지 — docs/agent-utilization.md §2 에서 읽은 값을 그대로 띄운다.
+     ★ '호출 0' 을 전부 빨갛게 칠하지 않는다. 2026-09-23 점검에서 미호출 5종 중
+       `구조대기`(출시 전이라 일이 존재할 수 없음)·`우회됨`(파이프라인이 다른 길로 감)은
+       잘못이 아니라는 게 확인됐다. 빨간불을 남발하면 진짜 빨간불을 못 본다. */
+  .vd{display:inline-block;padding:0 6px;border-radius:4px;font-size:10px;font-weight:700;
+    margin-left:6px;vertical-align:1px;white-space:nowrap}
+  .vd.ok{background:#12291a;color:var(--good)}
+  .vd.hot{background:#2a2113;color:var(--warn)}
+  /* `리듬중단` 배지 3개는 **원인이 하나**(이그레스 403)인데 화면에서 세 번 반복된다.
+     빨강으로 두면 체감 심각도가 3배로 부풀려진다 — 실제 조치 지점은 리듬 감시 표 한 줄이다. */
+  .vd.gap,.vd.cut{background:#2a2113;color:var(--warn)}
+  .ag.never.v-gap .cnt,.ag.never.v-cut .cnt{color:var(--warn)}
+  .ag.never.v-gap .dot,.ag.never.v-cut .dot{background:#2a2113;box-shadow:inset 0 0 0 1px var(--warn)}
+  .vd.by,.vd.wait{background:#1f2430;color:var(--soft)}
+  .ag.never.v-wait .cnt,.ag.never.v-by .cnt{color:var(--faint)}
+  .ag.never.v-wait .dot,.ag.never.v-by .dot{background:#2a3441;box-shadow:none}
+
+  /* 업무 분포 — 편중을 숫자가 아니라 길이로 본다 */
+  .shr{display:grid;gap:6px;background:var(--panel);border:1px solid var(--line);
+    border-radius:10px;padding:13px 15px}
+  .shr .row{display:grid;grid-template-columns:150px 1fr 86px;gap:10px;align-items:center;font-size:12px}
+  .shr .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .shr .row.zero .nm{color:var(--faint)}
+  .shr .track{height:9px;background:var(--panel2);border-radius:99px;overflow:hidden}
+  /* ★ display:block 이 빠지면 막대가 **통째로 안 그려진다.** `.track` 은 `.row` 의 그리드
+     자식이라 자동으로 블록이 되지만(그래서 1116px 을 받는다), 그 안의 `.fill` 은 여전히
+     인라인 span 이라 width:100% 가 무시돼 0px 이 된다. 트랙만 남아 '옅은 막대'처럼 보이므로
+     축소된 스크린샷으로는 구분이 안 된다 — 2026-09-23 계산된 스타일을 직접 재서 잡았다. */
+  .shr .fill{display:block;height:100%;background:var(--cobalt);border-radius:99px}
+  .shr .row.hot .fill{background:var(--warn)}
+  .shr .n{text-align:right;color:var(--soft);font-variant-numeric:tabular-nums;font-size:11.5px}
+  @media (max-width:620px){ .shr .row{grid-template-columns:108px 1fr 68px} }
+
   /* 표 */
   table{width:100%;border-collapse:collapse;background:var(--panel);
     border:1px solid var(--line);border-radius:10px;overflow:hidden;font-size:12.5px}
-  th,td{padding:8px 12px;text-align:left;border-top:1px solid var(--line)}
+  th,td{padding:8px 12px;text-align:left;border-top:1px solid var(--line);overflow-wrap:anywhere}
   th{background:var(--panel2);color:var(--soft);font-weight:600;font-size:11.5px;border-top:0}
   td.num{text-align:right;font-variant-numeric:tabular-nums}
   tr.bad td{background:#1d1414}
+  /* '늦음'은 '끊김'이 아니다 — 행 배경도 칩과 같은 심각도를 써야 한다. 타일에서 고친
+     어휘·색 불일치가 표 안에 그대로 남아 있었다(2026-09-23 육안 확인에서 발견). */
+  tr.late td{background:#1d1a12}
   .pill{display:inline-block;padding:1px 7px;border-radius:99px;font-size:11px;font-weight:600}
   .pill.ok{background:#12291a;color:var(--good)}
   .pill.bad{background:#2b1414;color:var(--bad)}
   .pill.warn{background:#2a2113;color:var(--warn)}
+  /* 표 칸 안의 보조 설명 — 무엇을 어떤 기준으로 쟀는지 숫자 옆에 같이 적는다 */
+  td .sb{display:block;font-style:normal;color:var(--faint);font-size:10.5px;margin-top:2px}
 
   /* 활동량 막대 — 숫자를 그대로 곁들인다 */
   .bars{display:flex;gap:5px;align-items:flex-end;height:96px;background:var(--panel);
@@ -115,6 +164,12 @@
 
   .cols{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
   @media (max-width:900px){ .cols{grid-template-columns:1fr} }
+  /* ★ 그리드 자식의 기본값은 min-width:auto 라 **안에 든 표의 최소폭이 칸을 밀어낸다.**
+     320px 실측(2026-09-23): 리듬 표의 긴 경로(`docs/reviews/persona/*.md`) 때문에 칸이
+     324px 로 벌어지면서 같은 칸의 h2 까지 따라 늘어나 화면 밖 32건·가로 스크롤이 생겼다.
+     칸을 줄어들게 풀어 주고, 긴 문자열은 잘라내지 말고 **줄바꿈**시킨다 — 내부 도구라도
+     숨겨진 가로 스크롤은 사람이 못 찾는다. */
+  .cols>*{min-width:0}
   .empty{color:var(--faint);font-size:12.5px;padding:10px 2px}
   footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);
     font-size:11.5px;color:var(--faint);line-height:1.7}
@@ -131,6 +186,23 @@
 
   <h2>조직도 <small>docs/ORG.md 부서표에서 읽는다 — 문서를 고치면 이 화면이 따라온다</small></h2>
   <div class="org" id="org"></div>
+
+  <!-- ★ 순서는 위 KPI 타일과 같아야 한다 — '쏠렸다 → 끊겼다 → 안 맡겼다'.
+       전에는 본문이 거꾸로였다: 타일에서 편중 63.9% 를 보고 근거를 찾아 내려가면 표 두 개를
+       먼저 지나쳐야 했다. 오너 질문 1번의 근거가 맨 아래 있으면 안 된다. -->
+  <h2>업무 분포 <small>로스터 호출 점유율 — 편중을 길이로 본다</small></h2>
+  <div class="shr" id="share"></div>
+
+  <div class="cols" style="margin-top:22px">
+    <div>
+      <h2>리듬 감시 <small>정해진 주기보다 산출물이 늙었는가 — docs/agent-utilization.md §3</small></h2>
+      <div id="rhythm"></div>
+    </div>
+    <div>
+      <h2>일이 있던 구역 vs 담당 호출 <small>최근 30일 git 커밋</small></h2>
+      <div id="deleg"></div>
+    </div>
+  </div>
 
   <div class="cols" style="margin-top:22px">
     <div>
@@ -166,9 +238,17 @@ const $ = s => document.querySelector(s);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => (
   {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const hhmm = ts => ts ? String(ts).slice(0,16).replace('T',' ') : '—';
+// 판정값 → CSS 클래스. 한글을 클래스명으로 쓰지 않는 이유는 단순하다 — 오타가 나도
+// 조용히 무시돼서 배지 색만 사라지고 아무도 모른다. 매핑에 없으면 배지를 안 그린다.
+const VDC = {'정상':'ok','과부하':'hot','미배분':'gap','리듬중단':'cut','우회됨':'by','구조대기':'wait'};
+// 리듬 상태 → 행 배경 / 칩 색. **빨강은 '끊김'·'없음'에만.** '늦음'과 '대기'는 주황이다.
+const RCLS = s => (s === '끊김' || s === '없음') ? 'bad' : (s === '늦음' ? 'late' : '');
+const RPILL = s => s === '정상' ? 'ok' : ((s === '끊김' || s === '없음') ? 'bad' : 'warn');
 
-function kpi(k, v, s, alert){
-  return `<div class="kpi${alert ? ' alert' : ''}"><div class="k">${esc(k)}</div>
+// level: true|'alert' = 빨강(오늘 조치) · 'warn' = 주황(구조 상태) · 그 밖 = 무채색
+function kpi(k, v, s, level){
+  const cls = (level === true || level === 'alert') ? ' alert' : (level === 'warn' ? ' warn' : '');
+  return `<div class="kpi${cls}"><div class="k">${esc(k)}</div>
     <div class="v">${esc(v)}</div><div class="s">${esc(s)}</div></div>`;
 }
 
@@ -200,9 +280,25 @@ function render(d){
 
   $('#kpis').innerHTML = [
     liveTile,
+    // ★ 미호출 수를 더는 붉게 칠하지 않는다. 2026-09-23 점검 결과 5종 중 3종은
+    //   '아직 일이 존재할 수 없는' 자리였다. 경고는 아래 세 타일이 대신 맡는다.
     kpi('실제로 일한 에이전트', `${k.agents_used} / ${k.agents_total}`,
-        k.agents_never ? `${k.agents_never}종은 한 번도 호출된 적 없음` : '전원 가동 이력 있음',
-        k.agents_never > 0),
+        k.agents_never ? `${k.agents_never}종 미호출 — 사유는 조직도 카드에 적었다`
+                       : '전원 가동 이력 있음'),
+    // 편중은 몇 주째 이어진 **구조 상태**다 — 오늘 손댈 사건이 아니므로 주황이다.
+    kpi('업무 편중', k.top1_share ? k.top1_share + '%' : '—',
+        k.top1 ? `최다 ${k.top1} · 상위 3인 ${k.top3_share}%` : '호출 기록 없음',
+        (k.top1_share || 0) >= 50 ? 'warn' : ''),
+    // ★ 타일 이름과 표의 어휘를 맞춘다. 전에는 타일이 '끊긴 리듬'(빨강)인데 표에는
+    //   '끊김' 행이 없고 '늦음'(주황)만 있었다 — 내려와서 찾다가 못 찾는다.
+    //   색도 표의 **최고 심각도**를 그대로 따른다.
+    kpi('리듬 이상', `${k.rhythm_broken ?? '—'} / ${k.rhythm_total ?? '—'}`,
+        k.rhythm_broken ? `가장 나쁜 상태: ${k.rhythm_worst}` : '정해진 주기를 모두 지키는 중',
+        k.rhythm_worst === '끊김' ? 'alert' : (k.rhythm_broken > 0 ? 'warn' : '')),
+    // 일은 있었는데 담당을 안 부른 구역. '호출 0' 을 '일이 없었다' 로 읽지 않기 위한 타일이다.
+    kpi('일만 있고 담당 없음', `${k.unstaffed ?? '—'}구역`,
+        k.unstaffed ? '그 일을 담당이 아니라 Steward 가 했다' : '담당 구역의 일이 담당에게 갔다',
+        k.unstaffed > 0 ? 'warn' : ''),
     // ★ 로스터(우리 15종) 호출만 센다. general-purpose 같은 기본 에이전트는 따로 적는다 —
     //   합쳐 놓으면 '우리 조직이 얼마나 일했나'를 부풀리게 된다.
     kpi('우리 조직 호출', `${k.calls_total}회`,
@@ -227,11 +323,13 @@ function render(d){
       <h3><span>${esc(dep.name)}</span><em>${dep.members.length}명</em></h3>
       <div class="role">${esc(dep.role)}</div>
       <ul>${dep.members.map(a => `
-        <li class="ag ${a.running ? 'running' : (a.calls > 0 ? 'used' : 'never')}">
+        <li class="ag ${a.running ? 'running' : (a.calls > 0 ? 'used' : 'never')} v-${VDC[a.verdict] || 'none'}">
           <span class="dot"></span>
           <span style="min-width:0">
-            <span class="nm">${esc(a.name)}</span>
-            <span class="sub">${esc(a.last_desc || a.description || '')}</span>
+            <span class="nm">${esc(a.name)}${a.verdict && VDC[a.verdict]
+              ? `<span class="vd ${VDC[a.verdict]}">${esc(a.verdict)}</span>` : ''}</span>
+            <span class="sub">${esc(a.calls > 0 ? (a.last_desc || a.description || '')
+                                                : (a.why || a.description || ''))}</span>
           </span>
           <span class="cnt">${a.calls > 0 ? a.calls + '회' : '호출 없음'}
             <i>${a.calls > 0
@@ -261,6 +359,45 @@ function render(d){
     ${d.recent.map(c => `<tr><td>${hhmm(c.ts)}</td><td>${esc(c.agent)}</td>
       <td>${esc(c.desc || '—')}</td></tr>`).join('')}
     </table>` : '<div class="empty">호출 기록이 없다.</div>';
+
+  // 리듬 — 산출물이 기대 주기보다 늙었는가. '대기'(시작일 전)는 실패가 아니다.
+  const rh = d.rhythm || [];
+  $('#rhythm').innerHTML = rh.length ? `<table>
+    <tr><th>산출물</th><th>상태</th><th>마지막</th><th>주기</th></tr>
+    ${rh.map(r => `<tr class="${RCLS(r.state)}">
+      <td>${esc(r.glob)}<i class="sb">${esc(r.impact)}</i></td>
+      <td><span class="pill ${RPILL(r.state)}">${esc(r.state)}</span></td>
+      <td>${esc(r.last || '—')}${r.age != null ? ` · ${r.age}일 전` : ''}
+        <i class="sb">${esc(r.how || '')} 기준 · ${r.count}건</i></td>
+      <td class="num">${r.period}일</td></tr>`).join('')}
+    </table>` : '<div class="empty">리듬 정의를 읽지 못했다 — docs/agent-utilization.md §3</div>';
+
+  // 배분 — 담당 구역에 일이 있었는데 담당 호출이 0이면, 그 일은 Steward 가 직접 한 것이다.
+  const dg = d.delegation || [];
+  $('#deleg').innerHTML = dg.length ? `<table>
+    <tr><th>구역</th><th>커밋</th><th>담당</th><th>호출</th></tr>
+    ${dg.map(x => `<tr class="${(x.calls === 0 && (x.commits || 0) > 0) ? 'bad' : ''}">
+      <td>${esc(x.area)}<i class="sb">${esc(x.label)}</i></td>
+      <td class="num">${x.commits == null ? '—' : x.commits}</td>
+      <td>${esc(x.owner)}</td>
+      <td class="num">${x.calls}</td></tr>`).join('')}
+    </table>
+    <div class="legend">최근 ${dg[0].days}일. 커밋은 있는데 호출이 0이면
+      <b>그 일을 담당이 아니라 Steward 가 했다</b>는 뜻이다.</div>`
+    : '<div class="empty">배분을 재지 못했다.</div>';
+
+  // 업무 분포 — 막대 길이는 최다 인원 대비 비율이다(절대 %가 아니라는 뜻이 아니라, 축이 최댓값).
+  const cc = d.concentration || {};
+  const rk = cc.ranked || [];
+  const mxs = Math.max(1, ...rk.map(x => x.share));
+  $('#share').innerHTML = rk.length
+    ? rk.map(x => `<div class="row ${x.share >= 30 ? 'hot' : (x.calls === 0 ? 'zero' : '')}">
+        <span class="nm" title="${esc(x.dept)}${x.verdict ? ' · ' + esc(x.verdict) : ''}">${esc(x.name)}</span>
+        <span class="track"><span class="fill" style="width:${(x.share / mxs * 100).toFixed(1)}%"></span></span>
+        <span class="n">${x.calls}회 ${x.share}%</span></div>`).join('')
+      + `<div class="legend">허핀달 지수 <b>${cc.hhi}</b> — 15종이 고르게 나누면 0.067,
+         한 사람이 전부 하면 1.000. 총 ${cc.total}회 기준.</div>`
+    : '<div class="empty">호출 기록이 없다.</div>';
 
   // 활동량
   const acts = d.activity || [];

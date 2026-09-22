@@ -81,6 +81,7 @@ AGENT_DIR = ROOT / ".claude" / "agents"
 ORG_MD = ROOT / "docs" / "ORG.md"
 CACHE = ROOT / "data" / "agent_dashboard_cache.json"        # data/ 는 git 제외
 EVENTS = ROOT / "data" / "agent-events.jsonl"               # .claude/hooks/agent-log.ps1 이 쓴다
+UTIL_MD = ROOT / "docs" / "agent-utilization.md"           # 유휴 판정·리듬 정의(사람이 쓴다)
 HTML = Path(__file__).with_name("agent_dashboard.html")
 PORT = 8765
 
@@ -518,6 +519,198 @@ def read_product() -> tuple[dict, str | None]:
         return {}, f"DB 읽기 실패: {type(e).__name__}"
 
 
+# ── 편중·유휴 판정·리듬 ──────────────────────────────────────────────────────
+# 2026-09-23 오너 지시로 추가. 그때까지 이 화면은 '누가 몇 번 일했나'까지만 말했고
+# ① 업무가 한쪽으로 쏠렸는지 ② 정해진 리듬이 끊겼는지는 보지 못했다.
+# 실제로 docs/reviews/ 가 11일째 멈춰 있었는데 화면은 전부 초록이었다.
+
+def _md_rows(text: str, section: str, ncells: int) -> list[list[str]]:
+    """`## <section>` 구간 안의 표에서 셀 수가 맞는 행만 돌려준다.
+
+    ⚠ 구간을 안 자르면 다른 절의 표까지 먹는다 — read_departments 에서 실제로 당했다.
+      첫 칸이 백틱으로 감싸인 행만 데이터로 본다(머리글·구분선은 그래서 저절로 빠진다).
+    """
+    out, inside = [], False
+    for line in text.splitlines():
+        s = line.strip()
+        if s.startswith("## "):
+            inside = s.startswith(section)
+            continue
+        if not inside or not s.startswith("|"):
+            continue
+        cells = [c.strip() for c in s.strip("|").split("|")]
+        if len(cells) != ncells or not cells[0].startswith("`"):
+            continue
+        out.append(cells)
+    return out
+
+
+_TICK = re.compile(r"^`([^`]+)`$")
+_D_DAY = re.compile(r"(20\d\d)-([01]\d)-([0-3]\d)")
+_D_WEEK = re.compile(r"(20\d\d)-W([0-5]\d)")
+_D_MONTH = re.compile(r"(20\d\d)-([01]\d)(?!\d)")
+
+
+def _file_date(f: Path) -> tuple[object, str]:
+    """이 파일이 '언제 것'인지 — **이름에 적힌 날짜를 mtime 보다 먼저 믿는다.**
+
+    ★ 이름에 날짜가 없으면 mtime 으로 떨어지는데, 그러면 나중에 문서를 손대는 순간
+      '방금 돈 것'으로 보인다. 2026-09-23 실측: 주간 보고서의 오타 한 글자를 고쳤더니
+      리듬이 곧바로 '0일 전 · 정상'으로 바뀌었다. mtime 을 믿지 말라고 주석까지 달아 놓고
+      정작 `2026-W39.md`·`2026-09.md` 는 빠져나가게 뒀다 — 감시 대상이 바로 그 둘이다.
+    ★ 주차·월 표기는 **그 구간의 첫날**로 잡는다. 실제보다 늙게 잡는 쪽이 안전하다 —
+      늦은 것을 정상으로 보는 오류가, 정상을 늦었다고 보는 오류보다 비싸다.
+    """
+    n = f.name
+    m = _D_DAY.search(n)
+    if m:
+        try:
+            return datetime(int(m[1]), int(m[2]), int(m[3])).date(), "파일명(일)"
+        except ValueError:
+            pass
+    m = _D_WEEK.search(n)
+    if m:
+        try:
+            return datetime.fromisocalendar(int(m[1]), int(m[2]), 1).date(), "파일명(주차)"
+        except ValueError:
+            pass
+    m = _D_MONTH.search(n)
+    if m:
+        try:
+            return datetime(int(m[1]), int(m[2]), 1).date(), "파일명(월)"
+        except ValueError:
+            pass
+    try:
+        return datetime.fromtimestamp(f.stat().st_mtime).date(), "수정시각"
+    except OSError:
+        return None, ""
+
+
+def read_utilization() -> tuple[dict, list[dict], str | None]:
+    """`docs/agent-utilization.md` 의 §2 판정표·§3 리듬표를 읽는다.
+
+    판정을 코드에 박지 않는 이유: 판정은 **사람이 내리는 것**이고 자주 바뀐다.
+    문서를 고치면 화면이 따라오게 해 둬야, 문서만 고치고 코드는 방치되는 일이 없다.
+    """
+    if not UTIL_MD.exists():
+        return {}, [], "docs/agent-utilization.md 가 없다 — 유휴 판정과 리듬을 재지 못한다"
+    text = UTIL_MD.read_text(encoding="utf-8")
+
+    verdicts: dict[str, dict] = {}
+    for c in _md_rows(text, "## 2.", 4):
+        m = _TICK.match(c[0])
+        if m:
+            verdicts[m.group(1)] = {"verdict": c[1].strip("`"), "why": c[2], "when": c[3]}
+
+    rhythms: list[dict] = []
+    for c in _md_rows(text, "## 3.", 5):
+        m = _TICK.match(c[0])
+        if not m:
+            continue
+        try:
+            period = int(c[1])
+        except ValueError:                                   # 주기가 숫자가 아니면 리듬이 아니다
+            continue
+        rhythms.append({"glob": m.group(1), "period": period, "since": c[2],
+                        "owner": c[3], "impact": c[4]})
+
+    err = None
+    if not verdicts and not rhythms:
+        err = "agent-utilization.md 의 §2·§3 표를 찾지 못했다 — 표 형식이 바뀌었는지 확인할 것"
+    return verdicts, rhythms, err
+
+
+def check_rhythms(rhythms: list[dict]) -> list[dict]:
+    """산출물이 기대 주기보다 늙었는지 잰다 — 끊긴 리듬을 사람 대신 본다.
+
+    ★ 파일 `mtime` 이 아니라 **파일명의 날짜**를 우선 쓴다. 나중에 문서를 손보면 mtime 이
+      갱신돼 '방금 돈 것'처럼 보이기 때문이다. 어느 쪽으로 쟀는지 화면에 함께 적는다.
+    ★ '시작' 이전에는 없는 게 정상이다 — 첫 실행 전인 것을 실패로 세면 안 된다.
+      2026-09-23 에 주간·월간 예약을 그렇게 오판해 오너에게 잘못 보고했다.
+    """
+    today = datetime.now().date()
+    out = []
+    for r in rhythms:
+        files = [f for f in ROOT.glob(r["glob"]) if f.is_file() and f.name != "README.md"]
+        best, how = None, ""
+        for f in files:
+            d, h = _file_date(f)
+            if d is None:
+                continue
+            if best is None or d > best:
+                best, how = d, h
+        try:
+            since = datetime.fromisoformat(r["since"]).date()
+        except ValueError:
+            since = None
+        age = (today - best).days if best else None
+        if best is None:
+            state = "대기" if (since and today < since) else "없음"
+        elif age <= r["period"]:
+            state = "정상"
+        elif age <= r["period"] * 2:
+            state = "늦음"
+        else:
+            state = "끊김"
+        out.append({**r, "last": best.isoformat() if best else "", "how": how,
+                    "age": age, "count": len(files), "state": state})
+    return out
+
+
+# 담당 구역과 그 주인. ORG.md §1 은 '누가 무엇을 맡는가'를 정하지만 '그 구역에 일이
+# 얼마나 있었나'는 거기 없다 — git 이 유일한 실측 출처다.
+DELEGATION = [("web/", "frontend-engineer", "화면·템플릿"),
+              ("src/", "backend-engineer", "수집·산정 로직"),
+              ("tests/", "qa-engineer", "테스트")]
+
+
+def read_delegation(calls: list[dict], days: int = 30) -> tuple[list[dict], str | None]:
+    """담당 구역에 일이 있었는데 담당을 안 불렀는지 본다.
+
+    ★ 2026-09-23 실측: 9/12 이후 `web/` 132커밋·`src/` 24커밋이 있었는데 두 담당의 호출은
+      **0회**였다. '호출 0' 을 '일이 없었다' 로 읽으면 정반대 결론이 나온다 —
+      실제로 내가 그렇게 읽었고, 그래서 "출시 전이라 일이 없다"고 보고했다. 틀렸다.
+    """
+    since = (datetime.now() - timedelta(days=days)).date().isoformat()
+    out: list[dict] = []
+    err = None
+    for area, owner, label in DELEGATION:
+        commits = None
+        try:
+            p = subprocess.run(["git", "log", f"--since={since}", "--format=%H", "--", area],
+                               cwd=str(ROOT), capture_output=True, text=True,
+                               encoding="utf-8", errors="replace", timeout=30)
+            if p.returncode == 0:
+                commits = len([x for x in (p.stdout or "").splitlines() if x.strip()])
+        except Exception:                                    # noqa: BLE001
+            commits = None
+        if commits is None and err is None:
+            err = f"git 이력을 읽지 못해 '{label}' 구역의 배분을 재지 못했다"
+        n = sum(1 for c in calls if c["agent"] == owner and str(c.get("ts", ""))[:10] >= since)
+        out.append({"area": area, "owner": owner, "label": label,
+                    "commits": commits, "calls": n, "days": days})
+    return out, err
+
+
+def concentration(roster: list[dict]) -> dict:
+    """편중도 — 일이 한 사람에게 얼마나 쏠렸는가."""
+    total = sum(a["calls"] for a in roster)
+    ranked = sorted(roster, key=lambda a: -a["calls"])
+    if not total:
+        return {"total": 0, "top1": None, "top1_share": 0.0,
+                "top3_share": 0.0, "hhi": 0.0, "ranked": []}
+    return {
+        "total": total,
+        "top1": ranked[0]["name"], "top1_share": round(ranked[0]["calls"] / total * 100, 1),
+        "top3_share": round(sum(a["calls"] for a in ranked[:3]) / total * 100, 1),
+        # 허핀달 지수 — 1/N 이면 완전히 고르고, 1 이면 한 사람이 전부 한 것이다
+        "hhi": round(sum((a["calls"] / total) ** 2 for a in roster), 3),
+        "ranked": [{"name": a["name"], "dept": a["dept"], "calls": a["calls"],
+                    "share": round(a["calls"] / total * 100, 1),
+                    "verdict": a.get("verdict", "")} for a in ranked],
+    }
+
+
 # ── 조립 ────────────────────────────────────────────────────────────────────
 def build_state(rescan: bool = False) -> dict:
     problems: list[str] = []
@@ -538,6 +731,13 @@ def build_state(rescan: bool = False) -> dict:
     if e:
         problems.append(e)
     product, e = read_product()
+    if e:
+        problems.append(e)
+    verdicts, rhythms, e = read_utilization()
+    if e:
+        problems.append(e)
+    rhythm = check_rhythms(rhythms)
+    deleg, e = read_delegation(stats["calls"])
     if e:
         problems.append(e)
 
@@ -586,6 +786,23 @@ def build_state(rescan: bool = False) -> dict:
     used = [a for a in roster if a["calls"] > 0]
     never = [a for a in roster if a["calls"] == 0]
 
+    # 판정을 붙인다. 판정표에 없는 자리는 **조용히 넘기지 않는다** — 조직이 바뀌었는데
+    # 문서가 안 따라온 상태이고, 그 자리는 아무도 평가하지 않는 사각지대가 된다.
+    total_calls = sum(a["calls"] for a in roster)
+    unjudged = []
+    for a in roster:
+        a["share"] = round(a["calls"] / total_calls * 100, 1) if total_calls else 0.0
+        v = verdicts.get(a["name"])
+        if v is None:
+            unjudged.append(a["name"])
+        a["verdict"] = (v or {}).get("verdict", "")
+        a["why"] = (v or {}).get("why", "")
+        a["when"] = (v or {}).get("when", "")
+    if unjudged:
+        problems.append(f"판정표에 없는 자리 {len(unjudged)}종({', '.join(unjudged)}) — "
+                        "docs/agent-utilization.md §2 에 추가할 것")
+    conc = concentration(roster)
+
     # 우리 15종 밖에서 불린 것(general-purpose 등)도 숨기지 않는다
     known = {a["name"] for a in roster}
     outside = sorted(((k, v) for k, v in per_agent.items() if k not in known),
@@ -616,6 +833,17 @@ def build_state(rescan: bool = False) -> dict:
             "sched_bad": sum(1 for s in sched if not s["ok"] and not s["never_ran"]),
             # ★ 훅이 없으면 None 이다. 0 이 아니다 — '아무도 안 돈다'와 '재지 않았다'는 다르다.
             "running_now": len(live.get("running", [])) if live.get("enabled") else None,
+            # 편중 — 최다 1인이 몇 %를 가져갔나
+            "top1": conc["top1"], "top1_share": conc["top1_share"],
+            "top3_share": conc["top3_share"],
+            # 리듬 — 정해진 주기를 넘긴 산출물. '대기'(시작 전)는 세지 않는다
+            "rhythm_total": len(rhythm),
+            "rhythm_broken": sum(1 for r in rhythm if r["state"] in ("늦음", "끊김", "없음")),
+            # 타일 색을 표의 **최고 심각도**에 묶는다 — 타일과 표가 다른 말을 하면 안 된다
+            "rhythm_worst": ("끊김" if any(r["state"] in ("끊김", "없음") for r in rhythm)
+                             else ("늦음" if any(r["state"] == "늦음" for r in rhythm) else "정상")),
+            # 배분 — 담당 구역에 커밋이 있었는데 담당 호출이 0인 구역
+            "unstaffed": sum(1 for d in deleg if d["calls"] == 0 and (d["commits"] or 0) > 0),
         },
         "live": live,
         "departments": dept_out,
@@ -624,6 +852,9 @@ def build_state(rescan: bool = False) -> dict:
         "recent": list(reversed(stats["calls"][-20:])),
         "activity": activity,
         "schedule": sched,
+        "concentration": conc,
+        "rhythm": rhythm,
+        "delegation": deleg,
         "artifacts": read_artifacts(),
         "git": git,
         "product": product,
