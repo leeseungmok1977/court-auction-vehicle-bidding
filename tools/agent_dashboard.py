@@ -61,18 +61,26 @@ from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
-# Windows 콘솔 기본 인코딩은 cp949 라 '—'·'★' 에서 UnicodeEncodeError 로 죽는다.
-for _s in ("stdout", "stderr"):
-    try:
-        setattr(sys, _s, io.TextIOWrapper(getattr(sys, _s).buffer,
-                                          encoding="utf-8", errors="replace"))
-    except Exception:                                        # noqa: BLE001
-        pass
+def _wrap_console() -> None:
+    """Windows 콘솔 기본 인코딩은 cp949 라 '—'·'★' 에서 UnicodeEncodeError 로 죽는다.
+
+    ★ 이 일을 **모듈 수준에서 하면 안 된다.** import 만으로 남의 sys.stdout 을 갈아치우는
+      셈이고, 그러면 import 이전에 버퍼에 쌓인 출력이 통째로 사라진다. 2026-09-23 하루에
+      이 함정에 **네 번** 걸렸다(weekly_report·monthly_report 에서 두 번, 여기서 두 번).
+      라이브러리는 import 만으로 호출자의 환경을 바꾸지 않는다 — main() 에서만 부른다.
+    """
+    for _s in ("stdout", "stderr"):
+        try:
+            setattr(sys, _s, io.TextIOWrapper(getattr(sys, _s).buffer,
+                                              encoding="utf-8", errors="replace"))
+        except Exception:                                    # noqa: BLE001
+            pass
 
 ROOT = Path(__file__).resolve().parents[1]
 AGENT_DIR = ROOT / ".claude" / "agents"
 ORG_MD = ROOT / "docs" / "ORG.md"
 CACHE = ROOT / "data" / "agent_dashboard_cache.json"        # data/ 는 git 제외
+EVENTS = ROOT / "data" / "agent-events.jsonl"               # .claude/hooks/agent-log.ps1 이 쓴다
 HTML = Path(__file__).with_name("agent_dashboard.html")
 PORT = 8765
 
@@ -146,7 +154,27 @@ def read_agent_defs() -> dict[str, dict]:
 
 
 # ── 호출 이력: 세션 기록을 **증분으로** 읽는다 ──────────────────────────────
-CACHE_SCHEMA = 2      # 집계 방식을 바꾸면 올린다 — 옛 캐시를 그대로 쓰면 숫자가 섞인다
+CACHE_SCHEMA = 3      # 집계 방식을 바꾸면 올린다 — 옛 캐시를 그대로 쓰면 숫자가 섞인다
+
+
+def _local_iso(ts: str) -> str:
+    """세션 기록의 시각을 **로컬로 맞춘다.**
+
+    ★ 2026-09-23 실측 버그: 세션 기록은 UTC(끝에 `Z`)이고 훅 기록은 로컬 시각인데 그대로
+      한 표에 섞었더니 **9시간이 어긋났다.** 9분 전에 돈 에이전트가 '2026-09-22 19:24' 로
+      떠서 전날 저녁 일처럼 보였고, 'N일 전' 과 날짜별 막대까지 UTC 날짜로 묶여 새벽 작업이
+      전날 칸으로 밀렸다. 이 도구의 핵심 질문이 '누가 언제 마지막으로 일했나' 인데 그 답이
+      틀리면 나머지가 다 무의미하다. 그래서 **받는 즉시** 로컬로 바꿔 저장한다.
+    """
+    if not ts:
+        return ""
+    try:
+        d = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        if d.tzinfo is not None:
+            d = d.astimezone().replace(tzinfo=None)
+        return d.isoformat(timespec="seconds")
+    except Exception:                                        # noqa: BLE001
+        return ts[:19]
 
 
 def _empty_stats() -> dict:
@@ -248,7 +276,7 @@ def scan_sessions(rescan: bool = False) -> tuple[dict, str | None]:
                     continue
                 if o.get("version"):
                     versions[str(o["version"])] += 1
-                ts = str(o.get("timestamp") or "")
+                ts = _local_iso(str(o.get("timestamp") or ""))   # UTC → 로컬. 훅 기록과 맞춘다
                 day = ts[:10]
                 msg = o.get("message")
                 if not isinstance(msg, dict):
@@ -367,6 +395,77 @@ def read_schedule() -> tuple[list[dict], str | None]:
 
 
 # ── 산출물·배포·제품 ────────────────────────────────────────────────────────
+def read_agent_events() -> dict:
+    """훅이 남긴 시작·종료 기록을 읽는다 — **'지금 실행 중'을 지어내지 않고 아는 유일한 길**.
+
+    시작(SubagentStart) 기록은 있는데 같은 `aid` 의 종료(SubagentStop) 기록이 없으면
+    그 에이전트는 가동 중이다. 영상의 'Active N' 타일을 정직하게 만드는 방법이 이것뿐이다.
+
+    ⚠ 훅이 설치되기 **전**에는 이 파일이 없다. 그때 실행 중 0명이라고 표시하면 안 된다 —
+      0 은 '아무도 안 돈다'가 아니라 '재지 않았다'이다. `enabled: False` 로 구분해 화면이
+      '훅 미설치'라고 말하게 한다.
+
+    ⚠ PowerShell 5.1 의 `-Encoding utf8` 은 파일 첫머리에 BOM 을 붙인다 → utf-8-sig 로 읽는다.
+    """
+    if not EVENTS.exists():
+        return {"enabled": False, "running": [], "recent": [], "durations": {}, "count": 0}
+    starts: dict[str, dict] = {}
+    done: dict[str, float] = collections.defaultdict(float)
+    n_done: dict[str, int] = collections.defaultdict(int)
+    recent: list[dict] = []
+    bad = 0
+    try:
+        with open(EVENTS, "r", encoding="utf-8-sig", errors="replace") as f:
+            for ln in f:
+                ln = ln.strip()
+                if not ln:
+                    continue
+                try:
+                    o = json.loads(ln)
+                except Exception:                            # noqa: BLE001
+                    bad += 1
+                    continue
+                ev, aid = str(o.get("event", "")), str(o.get("aid", ""))
+                recent.append({"ts": o.get("ts", ""), "event": ev, "agent": o.get("agent", "")})
+                if ev == "SubagentStart":
+                    starts[aid] = o
+                elif ev == "SubagentStop":
+                    s = starts.pop(aid, None)
+                    if s:
+                        try:
+                            d = (datetime.fromisoformat(str(o.get("ts"))[:19])
+                                 - datetime.fromisoformat(str(s.get("ts"))[:19])).total_seconds()
+                            if 0 <= d < 24 * 3600:
+                                agent = str(s.get("agent") or "")
+                                done[agent] += d
+                                n_done[agent] += 1
+                        except Exception:                    # noqa: BLE001
+                            pass
+    except Exception as e:                                   # noqa: BLE001
+        return {"enabled": True, "error": f"이벤트 로그 읽기 실패: {type(e).__name__}",
+                "running": [], "recent": [], "durations": {}, "count": 0}
+
+    # ★ Stop 이 유실되면 그 에이전트는 **영원히 '실행 중'** 으로 남는다. 없는 상태를 지어내지
+    #   않겠다고 만든 도구가 정확히 그 짓을 하게 된다. 그래서 너무 오래된 시작은 실행 중으로
+    #   치지 않고 'stale' 로 따로 뺀다 — 서브에이전트가 30분 넘게 도는 일은 우리 작업에 없었다
+    #   (2026-09-22 기준 가장 긴 것이 6분대였다). 모르면 '실행 중'이 아니라 '모름'이다.
+    STALE_SEC = 30 * 60
+    now = datetime.now()
+    running, stale = [], []
+    for aid, s in starts.items():
+        row = {"agent": str(s.get("agent") or "?"), "since": s.get("ts", ""), "aid": aid}
+        try:
+            age = (now - datetime.fromisoformat(str(s.get("ts"))[:19])).total_seconds()
+        except Exception:                                    # noqa: BLE001
+            age = None
+        (stale if (age is None or age > STALE_SEC) else running).append(row)
+    running.sort(key=lambda r: r["since"])
+    stale.sort(key=lambda r: r["since"])
+    return {"enabled": True, "running": running, "recent": recent[-20:][::-1],
+            "durations": {k: round(done[k] / n_done[k]) for k in n_done if n_done[k]},
+            "count": len(recent), "bad": bad}
+
+
 def read_artifacts() -> list[dict]:
     out = []
     for pat in ("reports/*.md", "docs/reviews/*.md",
@@ -442,6 +541,11 @@ def build_state(rescan: bool = False) -> dict:
     if e:
         problems.append(e)
 
+    live = read_agent_events()
+    if live.get("error"):
+        problems.append(live["error"])
+    running_now = {r["agent"] for r in live.get("running", [])}
+
     per_agent = stats["per_agent"]
     last_by_agent: dict[str, dict] = {}
     for c in stats["calls"]:
@@ -461,6 +565,8 @@ def build_state(rescan: bool = False) -> dict:
         return {"name": name, "dept": dept, "calls": per_agent.get(name, 0),
                 "last_ts": (last or {}).get("ts", ""), "last_desc": (last or {}).get("desc", ""),
                 "days_since": days, "defined": name in defs,
+                "running": name in running_now,               # 훅이 알려준 '지금 가동 중'
+                "avg_sec": live.get("durations", {}).get(name),
                 "description": d.get("description", "")[:120],
                 "tools": d.get("tools", ""), "model": d.get("model", "")}
 
@@ -502,7 +608,10 @@ def build_state(rescan: bool = False) -> dict:
             "sched_total": len(sched),
             "sched_never": sum(1 for s in sched if s["never_ran"]),
             "sched_bad": sum(1 for s in sched if not s["ok"] and not s["never_ran"]),
+            # ★ 훅이 없으면 None 이다. 0 이 아니다 — '아무도 안 돈다'와 '재지 않았다'는 다르다.
+            "running_now": len(live.get("running", [])) if live.get("enabled") else None,
         },
+        "live": live,
         "departments": dept_out,
         "never_used": [a["name"] for a in never],
         "outside_roster": [{"name": k, "calls": v} for k, v in outside],
@@ -550,6 +659,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main(argv=None) -> int:
+    _wrap_console()          # ★ 여기서만 감싼다 — 모듈 수준에서 하면 import 한 쪽 출력이 사라진다
     ap = argparse.ArgumentParser(description="에이전트 현황 대시보드(로컬 전용)")
     ap.add_argument("--once", action="store_true", help="JSON 한 번만 출력하고 끝")
     ap.add_argument("--rescan", action="store_true", help="캐시를 버리고 전수 재스캔")
@@ -573,7 +683,30 @@ def main(argv=None) -> int:
         for p in s["problems"]:
             print(f"  ⚠ {p}", file=sys.stderr)
 
-    srv = HTTPServer(("127.0.0.1", a.port), Handler)         # 로컬에만 바인딩한다
+    # ★ 바인딩 실패에 기대면 안 된다. HTTPServer 는 allow_reuse_address=1 이고,
+    #   **Windows 의 SO_REUSEADDR 는 리눅스와 달리 이미 쓰는 주소에도 바인딩을 허용한다.**
+    #   2026-09-23 실측: 8765 를 쓰는 중에 또 띄웠더니 에러 없이 둘 다 떠서, 요청이 어느
+    #   쪽으로 갈지 알 수 없는 상태가 됐다(한쪽은 옛 코드를 서빙한다). 자동 시작을 걸면
+    #   로그온마다 이게 일어난다. 그래서 먼저 접속해 보고 응답이 있으면 물러난다.
+    #   TIME_WAIT 소켓은 접속을 받지 않으므로 재시작 직후에 헛걸리지도 않는다.
+    import socket
+    try:
+        with socket.create_connection(("127.0.0.1", a.port), timeout=0.8):
+            pass
+        print(f"\n  ★ 포트 {a.port} 에 이미 대시보드가 떠 있다 — 두 번 띄우지 않는다.",
+              file=sys.stderr)
+        print(f"  브라우저에서 http://127.0.0.1:{a.port} 를 열면 된다.", file=sys.stderr)
+        print(f"  굳이 따로 띄우려면: python tools/agent_dashboard.py --port {a.port + 1}",
+              file=sys.stderr)
+        return 1
+    except OSError:
+        pass                                                 # 아무도 없다 — 정상 경로
+
+    try:
+        srv = HTTPServer(("127.0.0.1", a.port), Handler)     # 로컬에만 바인딩한다
+    except OSError as e:
+        print(f"\n  ★ 포트 {a.port} 를 열지 못했다: {e}", file=sys.stderr)
+        return 1
     print(f"\n  http://127.0.0.1:{a.port}  — Ctrl+C 로 종료", file=sys.stderr)
     try:
         srv.serve_forever()

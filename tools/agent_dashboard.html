@@ -60,6 +60,14 @@
   .dot{width:7px;height:7px;border-radius:50%;margin-top:6px;flex:none;background:var(--faint)}
   .ag.used .dot{background:var(--good)}
   .ag.never .dot{background:#3a2020;box-shadow:inset 0 0 0 1px var(--bad)}
+  /* '지금 가동 중' — 훅이 알려준 것만 표시한다. 시작 기록은 있고 종료 기록이 없는 상태다.
+     추정이 아니라 사실이라서 유일하게 깜빡여도 되는 표시다. */
+  .ag.running{background:#10231a}
+  .ag.running .dot{background:var(--good);box-shadow:0 0 0 3px rgba(63,185,80,.25);
+    animation:pulse 1.6s ease-in-out infinite}
+  .ag.running .nm::after{content:" 실행 중";color:var(--good);font-size:10.5px;font-weight:600}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
+  @media (prefers-reduced-motion:reduce){ .ag.running .dot{animation:none} }
   .ag .nm{font-size:12.5px;font-weight:600}
   .ag.never .nm{color:var(--soft)}
   .ag .sub{font-size:11px;color:var(--faint);margin-top:2px;
@@ -169,7 +177,17 @@ function render(d){
     : '';
 
   const lc = k.last_call;
+  const live = d.live || {};
+  // ★ 훅이 없으면 '0명'이 아니라 '재지 않았다'로 적는다. 둘은 다른 말이다.
+  const liveTile = (k.running_now === null || k.running_now === undefined)
+    ? kpi('지금 실행 중', '—', '훅 미설치 — 실시간 상태를 재지 않는다')
+    : kpi('지금 실행 중', `${k.running_now}명`,
+          k.running_now
+            ? live.running.map(r => esc(r.agent)).join(', ')
+            : `훅 기록 ${live.count || 0}건 · 가동 중 없음`);
+
   $('#kpis').innerHTML = [
+    liveTile,
     kpi('실제로 일한 에이전트', `${k.agents_used} / ${k.agents_total}`,
         k.agents_never ? `${k.agents_never}종은 한 번도 호출된 적 없음` : '전원 가동 이력 있음',
         k.agents_never > 0),
@@ -192,7 +210,7 @@ function render(d){
       <h3><span>${esc(dep.name)}</span><em>${dep.members.length}명</em></h3>
       <div class="role">${esc(dep.role)}</div>
       <ul>${dep.members.map(a => `
-        <li class="ag ${a.calls > 0 ? 'used' : 'never'}">
+        <li class="ag ${a.running ? 'running' : (a.calls > 0 ? 'used' : 'never')}">
           <span class="dot"></span>
           <span style="min-width:0">
             <span class="nm">${esc(a.name)}</span>
