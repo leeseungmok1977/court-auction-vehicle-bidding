@@ -2,9 +2,14 @@
 """주간 보고서 → docs/weekly-reports/YYYY-Www.md
 
 일일 리포트가 "어제 작업이 제대로 돌았는가"를 본다면, 주간은 **"제품이 나아지고 있는가"**를 본다.
-하루 단위로는 방문자가 28~81명을 오르내려 추세가 안 보이고, 화면을 고친 효과도 하루로는 못 잰다.
+하루 단위로는 숫자가 오르내려 추세가 안 보이고, 화면을 고친 효과도 하루로는 못 잰다.
 
-담는 것: 성장(접속 로그) · 제품(운영 DB) · 품질(전문가 패널) · 배포(git) · 고객의 소리(오너 입력)
+담는 것: 제품(운영 DB) · 품질(전문가 패널) · 배포(git) · 성장·고객의 소리(오너 입력)
+
+⚠ 접속 로그 기반 성장 지표(방문자·이탈률·유입 출처)는 **2026-09-22 제거했다**(오너 결정).
+  IP 로 묶어 방문자를 세는 것은 Play '앱 상호작용' 수집이고, 이 앱은 '수집된 데이터 없음'으로
+  신고돼 있다. 출시 후에는 Play Console·Search Console 이 우리 서버에서 아무것도 모으지 않고
+  같은 질문에 답한다 — 그 값은 오너가 기입한다.
 
 정직 규칙(docs/ORG.md §4):
   - 0건을 성공으로 부풀리지 않는다. 읽지 못한 곳은 '확인 불가'로 적는다.
@@ -63,60 +68,13 @@ def week_range(anchor: date) -> tuple[date, date]:
 # ── 운영 서버에서 읽기 전용으로 긁어올 스크립트 ────────────────────────────
 # 날짜는 JSON 문자열 리터럴로만 끼워 넣는다(주입·따옴표 사고 방지).
 _REMOTE = r'''
-import json, os, re, glob, gzip, collections, sys, datetime
+import json, sys, datetime
 sys.path.insert(0, ".")
-SINCE = __SINCE__
-UNTIL = __UNTIL__
 out = {}
 
-# ── 성장: 접속 로그(봇·정적·상태폴링 제외). IP 는 세기만 하고 내보내지 않는다 ──
-BOT = re.compile(r"bot|crawl|spider|slurp|preview|facebookexternalhit|python-requests"
-                 r"|curl/|Go-http|wget|monitor|uptime|scan|headless", re.I)
-LN = re.compile(r'^(\S+) \S+ \S+ \[(\d{2})/(\w{3})/(\d{4}):[^\]]*\] "(\S+) (\S+)[^"]*" (\d+) ')
-UA = re.compile(r'"([^"]*)"\s*$')
-MON = {m: i for i, m in enumerate("Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split(), 1)}
-SKIP = re.compile(r"^/(static|thumb|photo|sw\.js|favicon|\.well-known|manifest|run/|api/)"
-                  r"|\.(png|jpg|gif|css|js|woff2?|ico|json)$")
-try:
-    days = collections.defaultdict(lambda: collections.defaultdict(int))
-    ext = collections.Counter()
-    for f in sorted(glob.glob("/var/log/nginx/access.log*")):
-        op = gzip.open if f.endswith(".gz") else open
-        with op(f, "rt", errors="ignore") as fh:
-            for l in fh:
-                m = LN.match(l); u = UA.search(l)
-                if not m or not u: continue
-                ip, d, mo, y, meth, p, st = m.groups()
-                dt = "%s-%02d-%s" % (y, MON.get(mo, 0), d)
-                if not (SINCE <= dt <= UNTIL): continue
-                if BOT.search(u.group(1)) or meth != "GET" or st not in ("200", "304"): continue
-                path = p.split("?")[0]
-                if SKIP.search(path): continue
-                days[dt][ip] += 1
-                rf = re.search(r'"([^"]*)" "[^"]*"\s*$', l)
-                r = rf.group(1) if rf else ""
-                if r and r != "-" and "naechaget" not in r and not r.startswith("android-app"):
-                    host = r.split("/")[2] if "//" in r else r
-                    if "43.202" not in host and "127.0.0.1" not in host:
-                        ext[host] += 1
-    tot = {}
-    allip = collections.defaultdict(int)
-    for dt, ips in days.items():
-        n = len(ips)
-        tot[dt] = {"visitors": n,
-                   "bounce_pct": round(sum(1 for c in ips.values() if c == 1) / n * 100) if n else None,
-                   "deep_pct": round(sum(1 for c in ips.values() if c >= 3) / n * 100) if n else None}
-        for ip, c in ips.items():
-            allip[ip] += c
-    uniq = len(allip)
-    out["growth"] = {
-        "by_day": tot, "uniq": uniq, "days_seen": len(tot),
-        "bounce_pct": round(sum(1 for c in allip.values() if c == 1) / uniq * 100) if uniq else None,
-        "deep_pct": round(sum(1 for c in allip.values() if c >= 3) / uniq * 100) if uniq else None,
-        "ext": dict(ext.most_common(8)), "ext_total": sum(ext.values()),
-    }
-except Exception as e:
-    out["growth"] = {"error": type(e).__name__}
+# ⚠ 접속 로그 집계(방문자·이탈률·유입 출처)를 2026-09-22 제거했다 — 오너 결정. 되살리지 말 것.
+#   IP 로 묶어 방문자를 세는 것은 Play '앱 상호작용' 수집이고, 이 앱은 '수집된 데이터 없음'
+#   으로 신고했다. 되돌리려면 신고 변경과 개인정보처리방침 수정이 함께 가야 한다.
 
 # ── 제품: 운영 DB(읽기 전용) ──────────────────────────────────────────────
 try:
@@ -143,16 +101,15 @@ print(json.dumps(out, ensure_ascii=True))
 '''
 
 
-def collect_server(since: date, until: date) -> dict:
+def collect_server() -> dict:
+    """제품 지표는 '지금' 값이라 기간이 필요 없다 — 접속 로그를 읽지 않게 되면서 기간 인자가 사라졌다."""
     ssh = shutil.which("ssh") or os.path.join(
         os.environ.get("WINDIR", r"C:\Windows"), "System32", "OpenSSH", "ssh.exe")
-    script = (_REMOTE.replace("__SINCE__", json.dumps(since.isoformat()))
-                     .replace("__UNTIL__", json.dumps(until.isoformat())))
     cmd = [ssh, "-o", "BatchMode=yes", "-o", "ConnectTimeout=20",
            "-o", "StrictHostKeyChecking=accept-new", "-i", str(KEY), SERVER,
            "cd ~/app && .venv/bin/python -"]
     try:
-        p = subprocess.run(cmd, input=script, capture_output=True, text=True,
+        p = subprocess.run(cmd, input=_REMOTE, capture_output=True, text=True,
                            encoding="utf-8", errors="replace", timeout=240)
     except Exception as e:                                   # noqa: BLE001
         return {"error": _scrub(e)}
@@ -197,33 +154,13 @@ def collect_panel(since: date, until: date) -> dict:
     return {"files": got}
 
 
-def _prev_week_visitors(since: date) -> Optional[int]:
-    """지난주 보고서에서 방문자 수를 읽어 증감을 낸다(없으면 None)."""
-    prev = since - timedelta(days=7)
-    y, w, _ = prev.isocalendar()
-    f = OUT_DIR / f"{y}-W{w:02d}.md"
-    if not f.exists():
-        return None
-    m = re.search(r"주간 방문자[^\d]*([\d,]+)", f.read_text(encoding="utf-8"))
-    return int(m.group(1).replace(",", "")) if m else None
-
-
-def _delta(now: Optional[int], before: Optional[int]) -> str:
-    if now is None or before is None:
-        return ""
-    d = now - before
-    return f" <sup>{d:+d}</sup>" if d else " <sup>±0</sup>"
-
-
 def build_markdown(since: date, until: date, server: dict, git: dict, panel: dict) -> str:
-    growth = server.get("growth") or {}
     product = server.get("product") or {}
     unknown: list[str] = []
     if server.get("error"):
         unknown.append(f"운영 서버: {_scrub(server['error'])}")
-    for key, label in (("growth", "성장 지표"), ("product", "제품 지표")):
-        if (server.get(key) or {}).get("error"):
-            unknown.append(f"{label}: {_scrub(server[key]['error'])}")
+    if product.get("error"):
+        unknown.append(f"제품 지표: {_scrub(product['error'])}")
     if git.get("error"):
         unknown.append(f"배포 내역: {_scrub(git['error'])}")
 
@@ -233,30 +170,13 @@ def build_markdown(since: date, until: date, server: dict, git: dict, panel: dic
          "> 일일 리포트가 '어제 작업이 돌았는가'라면, 이 보고서는 **'제품이 나아지고 있는가'**를 본다.", ""]
 
     # ── 성장 ───────────────────────────────────────────────
-    L += ["## 성장", ""]
-    if growth and not growth.get("error"):
-        uniq = growth.get("uniq")
-        prev = _prev_week_visitors(since)
-        L += ["| 지표 | 이번 주 | 뜻 |", "|---|---:|---|",
-              f"| 주간 방문자 | **{uniq:,}명**{_delta(uniq, prev)} | 봇·정적·상태폴링 제외, 사람이 본 페이지 기준 |",
-              f"| 1페이지만 보고 나감 | {growth.get('bounce_pct')}% | 낮을수록 첫 화면이 붙잡은 것 |",
-              f"| 3페이지 이상 | {growth.get('deep_pct')}% | 실제로 물건을 들여다본 사람 |",
-              f"| 외부 유입 | {growth.get('ext_total', 0)}건 | 검색·공유로 들어온 횟수 |", ""]
-        by_day = growth.get("by_day") or {}
-        if by_day:
-            L += ["<details><summary>날짜별</summary>", "",
-                  "| 날짜 | 방문자 | 1페이지 이탈 | 3페이지 이상 |", "|---|---:|---:|---:|"]
-            for d in sorted(by_day):
-                r = by_day[d]
-                L.append(f"| {d} | {r['visitors']} | {r['bounce_pct']}% | {r['deep_pct']}% |")
-            L += ["", "</details>", ""]
-        ext = growth.get("ext") or {}
-        if ext:
-            L += ["외부 유입 출처: " + " · ".join(f"{k} {v}건" for k, v in ext.items()), ""]
-        else:
-            L += ["외부에서 링크를 타고 들어온 기록이 **없다**.", ""]
-    else:
-        L += ["확인 불가 — 접속 로그를 읽지 못했다.", ""]
+    L += ["## 성장", "",
+          "**우리 서버에서는 측정하지 않는다.** 방문자·이탈률은 접속 로그를 IP 로 묶어야 나오는데,",
+          "그것은 Play 데이터 안전의 '앱 상호작용' 수집에 해당한다. '수집된 데이터 없음' 신고와",
+          "개인정보처리방침을 지키는 쪽을 택했다(2026-09-22 오너 결정).", "",
+          "- **Play Console**(설치·순증·유지율)과 **Search Console**(검색 노출·클릭)은 우리 서버가",
+          "  아무것도 모으지 않고도 같은 질문에 답한다 — 오너가 확인해 아래에 적는다.",
+          "- 이번 주 설치·노출: _(오너 기입 — 없으면 '없음')_", ""]
 
     # ── 제품 ───────────────────────────────────────────────
     L += ["## 제품", ""]
@@ -300,7 +220,8 @@ def build_markdown(since: date, until: date, server: dict, git: dict, panel: dic
           "두지 않기로 한 결정(2026-09-22)에 따른 것이며, Play '수집된 데이터 없음' 신고를 지키기 위함이다.", "",
           "- 이번 주 들어온 말: _(오너 기입 — 없으면 '없음')_",
           "- 갈래별 분류·우선순위: `customer-voice` 에이전트에 붙여넣어 받는다.", "",
-          "> 말이 없어도 **행동 데이터는 위 성장 표에 있다.** 리뷰 0건이 문제 0건을 뜻하지 않는다.", ""]
+          "> 리뷰 0건이 문제 0건을 뜻하지 않는다. 우리는 행동 데이터를 모으지 않으므로, 말이 없으면",
+          "> **정말로 모른다** — 그래서 위 성장 칸을 오너가 직접 채워야 한다.", ""]
 
     if unknown:
         L += ["## 확인 불가", ""] + [f"- {u}" for u in unknown] + [""]
@@ -321,7 +242,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     since, until = week_range(anchor)
     print(f"[주간 보고서] {since} ~ {until} 수집 중…", file=sys.stderr)
 
-    server = collect_server(since, until)
+    server = collect_server()
     git = collect_git(since, until)
     panel = collect_panel(since, until)
     md = build_markdown(since, until, server, git, panel)

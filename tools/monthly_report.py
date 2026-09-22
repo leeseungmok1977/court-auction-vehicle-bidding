@@ -3,10 +3,10 @@
 
 오너가 **다음 달 우선순위를 정하는 데** 쓰는 문서다.
 
-⚠ 이 도구는 접속 로그를 직접 읽지 않는다. 운영 nginx 로그는 `rotate 14`(일 단위, 14개)라
-한 달 전 로그는 이미 지워지고 없다. 그래서 월간 성장 지표는 **일일 리포트에 이미 기록된
-`## 방문자` 표를 읽어 누적**한다 — 일일 리포트는 저장소에 영구 보존되므로 이 방법만이
-사실을 말할 수 있다. 일일 리포트가 빠진 날은 추정으로 메우지 않고 '기록 없음'으로 적는다.
+⚠ 이 도구는 접속 로그를 읽지 않는다. 방문자·이탈률 누적을 **2026-09-22 제거했다**(오너 결정) —
+IP 로 묶어 방문자를 세는 것은 Play 데이터 안전의 '앱 상호작용' 수집이고, 이 앱은 '수집된
+데이터 없음'으로 신고돼 있다. 출시 후 유입 수치는 Play Console·Search Console 에서
+오너가 확인해 기입한다. 되살리려면 신고 변경과 개인정보처리방침 수정이 먼저다.
 
     python tools/monthly_report.py           # 지난달
     python tools/monthly_report.py 2026-09   # 특정 월
@@ -37,7 +37,6 @@ for _stream in ("stdout", "stderr"):
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT_DIR = ROOT / "docs" / "monthly-reports"
-DAILY_DIR = ROOT / "docs" / "daily-reports"
 WEEKLY_DIR = ROOT / "docs" / "weekly-reports"
 REVIEW_DIR = ROOT / "docs" / "reviews"
 SERVER = "ubuntu@43.202.126.180"
@@ -54,37 +53,6 @@ def _scrub(text) -> str:
 def month_range(ym: str) -> tuple[date, date]:
     y, m = (int(x) for x in ym.split("-"))
     return date(y, m, 1), date(y, m, calendar.monthrange(y, m)[1])
-
-
-# ── 일일 리포트에서 방문자 표를 읽는다(월간 성장의 유일한 정직한 출처) ────────
-_ROW = re.compile(r"^\|\s*(\d{4}-\d{2}-\d{2})\s*\|\s*(\d+)\s*\|\s*(\d+)%\s*\|\s*(\d+)%\s*\|")
-
-
-def read_daily_visitors(since: date, until: date) -> dict:
-    """일일 리포트의 `## 방문자` 표를 모은다. 같은 날짜가 여러 리포트에 있으면 나중 것을 쓴다."""
-    seen: dict[str, dict] = {}
-    missing_files = 0
-    if not DAILY_DIR.exists():
-        return {"days": {}, "files": 0, "missing_files": 0}
-    files = 0
-    d = since
-    while d <= until:
-        f = DAILY_DIR / f"{d.isoformat()}.md"
-        if f.exists():
-            files += 1
-            body = f.read_text(encoding="utf-8")
-            sec = body.split("## 방문자", 1)
-            if len(sec) == 2:
-                for line in sec[1].splitlines():
-                    m = _ROW.match(line.strip())
-                    if m:
-                        day, v, b, dp = m.groups()
-                        if since.isoformat() <= day <= until.isoformat():
-                            seen[day] = {"visitors": int(v), "bounce_pct": int(b), "deep_pct": int(dp)}
-        else:
-            missing_files += 1
-        d += timedelta(days=1)
-    return {"days": seen, "files": files, "missing_files": missing_files}
 
 
 # ── 제품·수익 현황은 '지금' 값이므로 운영에서 한 번 읽는다 ──────────────────
@@ -175,11 +143,10 @@ def collect_panel(since: date, until: date) -> list[str]:
     return got
 
 
-def build_markdown(ym: str, since: date, until: date, vis: dict,
+def build_markdown(ym: str, since: date, until: date,
                    server: dict, git: dict, panels: list[str]) -> str:
     product = (server or {}).get("product") or {}
     billing = (server or {}).get("billing") or {}
-    days = vis.get("days") or {}
     unknown: list[str] = []
     if server.get("error"):
         unknown.append(f"운영 서버: {_scrub(server['error'])}")
@@ -188,29 +155,19 @@ def build_markdown(ym: str, since: date, until: date, vis: dict,
     if git.get("error"):
         unknown.append(f"배포 내역: {_scrub(git['error'])}")
 
-    total_days = (until - since).days + 1
     L = [f"# 월간 보고서 {ym}", "",
          f"기간 **{since} ~ {until}** · 생성 {datetime.now():%Y-%m-%d %H:%M}", "",
          "> 오너가 **다음 달 우선순위를 정하는 데** 쓰는 문서다. "
          "고객가치 지표가 먼저, 수익이 나중이다.", ""]
 
     # ── 고객 유입 ─────────────────────────────────────────
-    L += ["## 고객 유입", ""]
-    if days:
-        vals = [r["visitors"] for r in days.values()]
-        bounces = [r["bounce_pct"] for r in days.values()]
-        deeps = [r["deep_pct"] for r in days.values()]
-        L += ["| 지표 | 값 | 비고 |", "|---|---:|---|",
-              f"| 기록된 날 | {len(days)}일 / {total_days}일 | 일일 리포트가 있는 날만 셌다 |",
-              f"| 일평균 방문자 | {sum(vals) / len(vals):.0f}명 | 최소 {min(vals)} · 최대 {max(vals)} |",
-              f"| 1페이지 이탈 | 평균 {sum(bounces) / len(bounces):.0f}% | 낮을수록 첫 화면이 붙잡은 것 |",
-              f"| 3페이지 이상 | 평균 {sum(deeps) / len(deeps):.0f}% | 실제로 들여다본 사람 |", ""]
-        if len(days) < total_days:
-            L += [f"> ⚠ **{total_days - len(days)}일치 기록이 없다.** 추정으로 메우지 않았다 — "
-                  "그날의 방문자는 알 수 없다.", ""]
-    else:
-        L += ["이 달의 일일 리포트에 방문자 기록이 **없다.** 접속 로그는 14일만 보존되므로 "
-              "지난 달 수치는 복구할 수 없다.", ""]
+    L += ["## 고객 유입", "",
+          "**우리 서버에서는 측정하지 않는다.** 방문자·이탈률은 접속 로그를 IP 로 묶어야 나오는데,",
+          "그것은 Play 데이터 안전의 '앱 상호작용' 수집에 해당한다. '수집된 데이터 없음' 신고와",
+          "개인정보처리방침을 지키는 쪽을 택했다(2026-09-22 오너 결정).", "",
+          "- **Play Console**(설치·순증·유지율)과 **Search Console**(검색 노출·클릭)은 우리 서버가",
+          "  아무것도 모으지 않고도 같은 질문에 답한다.",
+          "- 이 달 설치·순증·유지율: _(오너 기입 — 없으면 '없음')_", ""]
 
     # ── 고객가치 ─────────────────────────────────────────
     L += ["## 고객가치", ""]
@@ -266,8 +223,8 @@ def build_markdown(ym: str, since: date, until: date, vis: dict,
         L += ["## 확인 불가", ""] + [f"- {u}" for u in unknown] + [""]
 
     L += ["---", "",
-          "`tools/monthly_report.py` 가 만듭니다. 성장 지표는 접속 로그가 14일만 보존되므로 "
-          "**일일 리포트에 기록된 값을 누적**합니다 — 기록이 없는 날은 빈칸으로 둡니다.", ""]
+          "`tools/monthly_report.py` 가 만듭니다. **접속 로그는 읽지 않습니다** — 유입 수치는 "
+          "Play Console·Search Console 에서 오너가 확인해 채웁니다.", ""]
     return "\n".join(L)
 
 
@@ -285,11 +242,10 @@ def main(argv: Optional[list[str]] = None) -> int:
     since, until = month_range(ym)
     print(f"[월간 보고서] {ym} 수집 중…", file=sys.stderr)
 
-    vis = read_daily_visitors(since, until)
     server = collect_server()
     git = collect_git(since, until)
     panels = collect_panel(since, until)
-    md = build_markdown(ym, since, until, vis, server, git, panels)
+    md = build_markdown(ym, since, until, server, git, panels)
 
     if a.dry_run:
         print(md)
