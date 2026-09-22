@@ -3102,6 +3102,12 @@ def next_min_sale(v: dict, rates: Optional[dict] = None) -> Optional[dict]:
             "share": share, "alt_price": alt}
 
 
+# 낙찰가/최저가 배수가 '경쟁이 없었다/붙었다'를 가르는 지점. 화면에 이유를 적기 위한 경계다.
+# 2026-09-22 실측(운영 241건): 1.05 이하 21% · 1.30 이상 20% · 가운데 59% — 한쪽에 모이지 않는다.
+SOLO_PREMIUM_MAX = 1.05      # 이 이하면 최저가 바로 위 — 사실상 경쟁이 없었다
+COMPETE_PREMIUM_MIN = 1.30   # 이 이상이면 여럿이 붙어 올라갔다
+
+
 def backtest_stats() -> dict:
     """이미 낙찰된 물건으로 시스템 시세·상한가의 실측 정확도를 백테스트(무네트워크).
 
@@ -3214,6 +3220,7 @@ def backtest_stats() -> dict:
             # LOO MAE(자기 제외 유찰버킷 프리미엄 × 최저가) — 실제 예측의 정직 정확도
             idx = [(_fail_bucket(r.get("fail_count")), r) for r in med_rows if r.get("min_sale_price")]
             loo = []
+            edges = []       # (오차, 실제 낙찰배수) — '왜 빗나갔나'를 화면에 정직하게 적기 위함
             pred_pool = []   # 사후검증 대시보드용: 각 낙찰물건의 (예측=자기제외 LOO, 실제) 쌍 — 정직 정확도
             for i, (bi, r) in enumerate(idx):
                 peers = [(o["winning_price"] / o["min_sale_price"])
@@ -3228,6 +3235,7 @@ def backtest_stats() -> dict:
                     pred = min(pred, r["median_price"] * 1.10)   # expected_for와 동일 소프트캡
                 err = abs(pred - r["winning_price"]) / r["winning_price"]
                 loo.append(err)
+                edges.append((err, r["winning_price"] / r["min_sale_price"]))
                 pred_pool.append({
                     "pred": int(round(pred)), "actual": int(r["winning_price"]),
                     "err_pct": round(err * 100, 1), "model": r.get("model"),
@@ -3242,6 +3250,22 @@ def backtest_stats() -> dict:
                 out["within10_pct"] = round(sum(1 for e in loo if e <= 0.10) / len(loo) * 100)
                 out["within20_pct"] = round(sum(1 for e in loo if e <= 0.20) / len(loo) * 100)
                 out["pred_n"] = len(loo)
+                # ── ±10%를 못 맞추는 이유를 숨기지 않는다(2026-09-22 사용자: "적중률이 너무 낮습니다") ──
+                # 낙찰가/최저가 배수는 가운데로 모이지 않는다. 경쟁이 없으면 최저가 바로 위,
+                # 붙으면 1.3배 위 — **가운데를 겨냥하는 예측은 양 끝을 구조적으로 못 맞춘다.**
+                # 그런데 몇 명이 응찰하는지는 법원이 공개하지 않는다(매각결과 응답에 오는 것은
+                # 낙찰가·매각여부·최저가·유찰횟수뿐이고, 화면정의 8종 어디에도 응찰자수 필드가 없다).
+                # 산식으로 못 올리는 것을 확인했으니(후보 11종·부트스트랩) 숫자로 밝혀 적는다.
+                solo = sum(1 for _e, p in edges if p <= SOLO_PREMIUM_MAX)
+                comp = sum(1 for _e, p in edges if p >= COMPETE_PREMIUM_MIN)
+                out["solo_pct"] = round(solo / len(edges) * 100)
+                out["compete_pct"] = round(comp / len(edges) * 100)
+                miss = [(e, p) for e, p in edges if e > 0.10]
+                out["miss_n"] = len(miss)
+                out["miss_edge_pct"] = (
+                    round(sum(1 for _e, p in miss
+                              if p <= SOLO_PREMIUM_MAX or p >= COMPETE_PREMIUM_MIN)
+                          / len(miss) * 100) if miss else None)
                 # 대시보드 노출용: 최근 매각일 순 예측-실제 쌍(전체는 무거우니 상한)
                 out["pred_pool"] = sorted(
                     pred_pool, key=lambda p: (p.get("sale_date") or ""), reverse=True)

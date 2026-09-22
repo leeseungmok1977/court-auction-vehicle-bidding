@@ -272,6 +272,17 @@
      14.4~14.75 사이에 두면 패딩 1px 변화로 뒤집힌다(선례 주석의 경고) → 15rem 으로 잡아
      360 일반까지 2.25rem 여유를 둔다. 320 일반(14.75)도 1열로 들어오는데, 그쪽에 원래
      있던 카드 경계 28px 초과가 함께 해소되는 방향이라 그대로 둔다. */
+  /* 예측 적중률 설명의 2열 통계 카드 — 큰글씨 320px에서 좌카드 캡션이 5줄, 우카드가 2줄로
+     갈라져 좌우 높이가 어긋나고 블록이 753px까지 늘었다(2026-09-22 디자인 검수 3번).
+     아래 .nc-kv 와 **같은 이유·같은 방식**이다: 폭이 아니라 rem 대비 폭에 걸어야
+     앱 큰글씨 토글과 OS 글자 확대를 한 규칙으로 잡는다. */
+  .nc-split-host{container-type:inline-size}
+  @container (max-width:16rem){
+    .nc-split{grid-template-columns:1fr}
+  }
+  @supports not (container-type: inline-size){
+    @media (max-width:429px){ html.nc-large .nc-split{grid-template-columns:1fr} }
+  }
   .nc-kv-host{container-type:inline-size}
   /* ⚠ 라벨 트랙을 **여기서** 정의한다. 템플릿에 새 임의값 클래스
      (grid-cols-[minmax(0,8.125rem)_1fr])를 쓰면 정적 빌드(app.css)에 규칙이 생기지 않아

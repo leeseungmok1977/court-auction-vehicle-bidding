@@ -30,12 +30,15 @@
   <div class="bg-surface border border-line rounded-lg p-4">
     <div class="text-xs text-mut">±20% 이내 적중</div>
     <div class="font-mono text-3xl font-bold text-emerald-600 tnum mt-1">{{ bt.within20_pct }}<span class="text-lg text-mut">%</span></div>
-    <div class="text-[11px] text-mut mt-1">10건 중 약 {{ (bt.within20_pct/10)|round|int }}건 적중</div>
+    {# ⚠ 반올림하면 95%가 round(9.5)=10 → "10건 중 약 10건", 즉 **만점**으로 읽힌다.
+       한계를 밝히는 아래 블록 바로 위에서 과장하면 정직한 쪽이 변명처럼 보인다
+       (2026-09-22 디자인 검수 2번). 올림이 아니라 **내림**으로 둔다 — ±10% 타일도 같은 규칙. #}
+    <div class="text-[11px] text-mut mt-1">10건 중 약 {{ (bt.within20_pct/10)|int }}건 적중</div>
   </div>
   <div class="bg-surface border border-line rounded-lg p-4">
     <div class="text-xs text-mut">±10% 이내 적중</div>
     <div class="font-mono text-3xl font-bold text-txt tnum mt-1">{{ bt.within10_pct }}<span class="text-lg text-mut">%</span></div>
-    <div class="text-[11px] text-mut mt-1">더 엄격한 기준의 정확도</div>
+    <div class="text-[11px] text-mut mt-1">10건 중 약 {{ (bt.within10_pct/10)|int }}건 적중</div>
   </div>
   <div class="bg-surface border border-line rounded-lg p-4">
     <div class="text-xs text-mut">검증 표본</div>
@@ -96,6 +99,39 @@
       <text x="40" y="40" text-anchor="end" font-size="9" fill="#94a3b8" font-family="monospace">{{ (axis_max/10000)|round|int }}만</text>
     </svg>
   </div>
+</div>
+{% endif %}
+
+{# ±10%가 왜 그 수준인지 — 숨기지 않고 적는다(2026-09-22).
+   후보 예측식 11종을 정직한 LOO로 돌려도 현재식을 유의하게 이긴 것이 없었고, 원인은 산식이
+   아니라 **응찰자 수를 아무도 알 수 없다**는 데 있었다. 그러면 숫자를 꾸미는 대신 이유를 적는다. #}
+{% if bt.miss_edge_pct %}
+<div class="bg-surface border border-line rounded-lg p-4 nc-split-host">
+  <h3 class="text-sm font-semibold text-txt">±10%를 벗어나는 건 왜 생기나</h3>
+  <p class="text-sm text-mut mt-2 leading-relaxed">
+    낙찰가는 최저매각가의 몇 배에서 정해지는데, 그 배수가 <b class="text-txt">가운데로 모이지 않습니다.</b>
+    경쟁이 거의 없으면 최저가 바로 위에서 끝나고, 여럿이 붙으면 훌쩍 뛰어 결정됩니다.
+  </p>
+  {# 아래 문단의 88%는 '빗나간 건' 기준이라 분모가 다르다. 모집단을 안 밝히면
+     16+22=38 과 88 이 같은 대상의 비율로 읽혀 "숫자가 안 맞는다"가 된다(디자인 검수 1번). #}
+  <p class="text-[11px] text-mut mt-3">검증한 {{ bt.pred_n }}건을 낙찰 배수로 나누면</p>
+  <div class="nc-split grid grid-cols-2 gap-3 mt-1.5">
+    <div class="border border-line rounded-lg p-3">
+      <div class="text-xs text-mut">최저가 근처에서 낙찰</div>
+      <div class="font-mono text-2xl font-bold text-txt tnum mt-1">{{ bt.solo_pct }}<span class="text-base text-mut">%</span></div>
+      <div class="text-[11px] text-mut mt-1">최저가의 1.05배 이하 — 경쟁이 거의 없던 물건</div>
+    </div>
+    <div class="border border-line rounded-lg p-3">
+      <div class="text-xs text-mut">경쟁이 붙어 높게 낙찰</div>
+      <div class="font-mono text-2xl font-bold text-txt tnum mt-1">{{ bt.compete_pct }}<span class="text-base text-mut">%</span></div>
+      <div class="text-[11px] text-mut mt-1">최저가의 1.3배 이상</div>
+    </div>
+  </div>
+  <p class="text-sm text-mut mt-3 leading-relaxed">
+    그리고 ±10%를 벗어난 <b class="text-txt">{{ bt.miss_n }}건</b> 중 <b class="text-txt">{{ bt.miss_edge_pct }}%</b>가 이 양 끝이었습니다.
+    그런데 <b class="text-txt">몇 명이 입찰할지는 법원이 알려주지 않아</b>, 예상낙찰가는 가운데를 겨냥할 수밖에 없습니다.
+    유형에 따라 정확도가 얼마나 갈리는지는 아래 표에 그대로 적었습니다.
+  </p>
 </div>
 {% endif %}
 
