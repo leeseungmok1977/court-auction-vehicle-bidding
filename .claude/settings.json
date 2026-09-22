@@ -4,9 +4,13 @@
     "페르소나에 '하지 마라'고 쓰는 것보다 권한을 안 주는 쪽이 확실하다.",
     "개인 허용 목록은 settings.local.json(git 제외)에 둔다."
   ],
+  "$comment2": [
+    "deny 에는 **되돌릴 수 없는 것**만 둔다. git push 는 처음 deny 였는데, deny 는 ask 와 달리",
+    "오너가 승인해도 물어보지 않고 차단한다 — 2026-09-22 실제로 승인받은 커밋을 못 올렸다.",
+    "푸시는 되돌릴 수 있고(revert) 배포는 별도 ssh 경로라, 물어보는 것으로 충분하다 → ask 로 옮김."
+  ],
   "permissions": {
     "deny": [
-      "Bash(git push:*)",
       "Bash(gh release:*)",
       "Bash(gh pr merge:*)",
       "Bash(npm publish:*)",
@@ -24,6 +28,7 @@
       "Read(**/*.jks)"
     ],
     "ask": [
+      "Bash(git push:*)",
       "Bash(ssh:*)",
       "Bash(scp:*)",
       "Bash(git commit:*)",
