@@ -1,0 +1,275 @@
+<!-- 에이전트 현황 대시보드 — tools/agent_dashboard.py 가 127.0.0.1 에서만 서빙한다.
+     설계 원칙은 파이썬 쪽 docstring 에 적어 뒀다: **있는 것만 그리고, 없는 것은 '없음'이라고 쓴다.**
+     "지금 활성 8명" 같은 상태는 만들지 않는다 — 우리 에이전트는 상시 가동이 아니라 호출형이다. -->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>에이전트 현황 — 경매로 내차GET</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --panel2:#1c2430; --line:#2a3441;
+    --ink:#e6edf3; --soft:#9fb0c3; --faint:#6b7d91;
+    --cobalt:#5b8cff; --good:#3fb950; --warn:#d29922; --bad:#f85149;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:14px/1.5 "Pretendard","맑은 고딕",system-ui,-apple-system,sans-serif}
+  a{color:var(--cobalt)}
+  .wrap{max-width:1500px;margin:0 auto;padding:20px 18px 60px}
+
+  header{display:flex;flex-wrap:wrap;gap:12px;align-items:baseline;justify-content:space-between;
+    padding-bottom:14px;border-bottom:1px solid var(--line);margin-bottom:18px}
+  h1{font-size:19px;margin:0;letter-spacing:-.2px}
+  h1 span{color:var(--cobalt)}
+  .meta{font-size:12px;color:var(--faint);font-variant-numeric:tabular-nums}
+  .meta b{color:var(--soft);font-weight:600}
+
+  /* KPI — 숫자가 아니라 '무엇을 어떤 조건에서 센 것인지'를 함께 적는다 */
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-bottom:18px}
+  .kpi{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:13px 15px}
+  .kpi .k{font-size:11.5px;color:var(--faint)}
+  .kpi .v{font-size:27px;font-weight:700;margin-top:3px;font-variant-numeric:tabular-nums;letter-spacing:-.5px}
+  .kpi .s{font-size:11.5px;color:var(--soft);margin-top:2px}
+  .kpi.alert{border-color:#5c2a2a;background:#1d1414}
+  .kpi.alert .v{color:var(--bad)}
+
+  .band{background:#1d1414;border:1px solid #5c2a2a;border-radius:10px;padding:12px 15px;
+    margin-bottom:18px;font-size:13px;color:#ffb3ad}
+  .band b{color:#fff}
+
+  h2{font-size:13px;color:var(--soft);margin:24px 0 10px;font-weight:600;
+    text-transform:none;letter-spacing:.2px}
+  h2 small{color:var(--faint);font-weight:400;margin-left:6px}
+
+  /* 조직도 */
+  /* 부서는 6개다. auto-fit 에 맡기면 폭에 따라 5+1 로 접혀 **한 장이 혼자 남는다**
+     (1440px 실측: `디자인(겸임)` 이 둘째 줄에 홀로, 오른쪽이 텅 빔).
+     같은 날 리포트 고정 바에서 `되팔기 계산` 이 혼자 남아 '잔재처럼 읽힌다'고 고쳤는데,
+     사내 도구에서 같은 걸 방치하면 앞뒤가 안 맞는다.
+     6 은 3 으로도 2 로도 나누어떨어지므로 열 수를 고정해 항상 고르게 떨어뜨린다. */
+  .org{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;align-items:start}
+  @media (max-width:1000px){ .org{grid-template-columns:repeat(2,1fr)} }
+  @media (max-width:620px){ .org{grid-template-columns:1fr} }
+  .dept{background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .dept>h3{margin:0;padding:10px 13px;font-size:13px;background:var(--panel2);
+    border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:8px}
+  .dept>h3 em{font-style:normal;color:var(--faint);font-weight:400;font-size:11px}
+  .dept .role{padding:8px 13px 0;font-size:11.5px;color:var(--faint);line-height:1.45}
+  .dept ul{list-style:none;margin:8px 0 0;padding:0}
+  .ag{padding:9px 13px;border-top:1px solid var(--line);display:flex;gap:10px;align-items:flex-start}
+  .ag:first-child{border-top:0}
+  .dot{width:7px;height:7px;border-radius:50%;margin-top:6px;flex:none;background:var(--faint)}
+  .ag.used .dot{background:var(--good)}
+  .ag.never .dot{background:#3a2020;box-shadow:inset 0 0 0 1px var(--bad)}
+  .ag .nm{font-size:12.5px;font-weight:600}
+  .ag.never .nm{color:var(--soft)}
+  .ag .sub{font-size:11px;color:var(--faint);margin-top:2px;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .ag .cnt{margin-left:auto;font-size:11.5px;color:var(--soft);font-variant-numeric:tabular-nums;
+    white-space:nowrap;text-align:right}
+  .ag.never .cnt{color:var(--bad)}
+  .ag .cnt i{display:block;font-style:normal;color:var(--faint);font-size:10.5px}
+
+  /* 표 */
+  table{width:100%;border-collapse:collapse;background:var(--panel);
+    border:1px solid var(--line);border-radius:10px;overflow:hidden;font-size:12.5px}
+  th,td{padding:8px 12px;text-align:left;border-top:1px solid var(--line)}
+  th{background:var(--panel2);color:var(--soft);font-weight:600;font-size:11.5px;border-top:0}
+  td.num{text-align:right;font-variant-numeric:tabular-nums}
+  tr.bad td{background:#1d1414}
+  .pill{display:inline-block;padding:1px 7px;border-radius:99px;font-size:11px;font-weight:600}
+  .pill.ok{background:#12291a;color:var(--good)}
+  .pill.bad{background:#2b1414;color:var(--bad)}
+  .pill.warn{background:#2a2113;color:var(--warn)}
+
+  /* 활동량 막대 — 숫자를 그대로 곁들인다 */
+  .bars{display:flex;gap:5px;align-items:flex-end;height:96px;background:var(--panel);
+    border:1px solid var(--line);border-radius:10px;padding:12px 14px 10px}
+  .bar{flex:1;display:flex;flex-direction:column;justify-content:flex-end;gap:3px;min-width:0}
+  .bar .t{height:100%;display:flex;flex-direction:column;justify-content:flex-end;gap:2px}
+  .bar .tool{background:#24313f;border-radius:2px 2px 0 0}
+  .bar .agent{background:var(--cobalt);border-radius:2px}
+  .bar .lb{font-size:9.5px;color:var(--faint);text-align:center;white-space:nowrap;
+    overflow:hidden;text-overflow:ellipsis}
+  .legend{font-size:11px;color:var(--faint);margin-top:6px}
+  .legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin:0 4px 0 12px;vertical-align:-1px}
+
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+  @media (max-width:900px){ .cols{grid-template-columns:1fr} }
+  .empty{color:var(--faint);font-size:12.5px;padding:10px 2px}
+  footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);
+    font-size:11.5px;color:var(--faint);line-height:1.7}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>에이전트 현황 <span>— 경매로 내차GET</span></h1>
+    <div class="meta" id="meta">불러오는 중…</div>
+  </header>
+
+  <div id="problems"></div>
+  <div class="kpis" id="kpis"></div>
+
+  <h2>조직도 <small>docs/ORG.md 부서표에서 읽는다 — 문서를 고치면 이 화면이 따라온다</small></h2>
+  <div class="org" id="org"></div>
+
+  <div class="cols" style="margin-top:22px">
+    <div>
+      <h2>정기 작업 <small>schtasks 실측</small></h2>
+      <div id="sched"></div>
+    </div>
+    <div>
+      <h2>최근 호출 <small>세션 기록에서</small></h2>
+      <div id="recent"></div>
+    </div>
+  </div>
+
+  <h2>날짜별 활동량 <small>에이전트 호출 · 전체 도구 호출</small></h2>
+  <div class="bars" id="bars"></div>
+  <div class="legend"><i style="background:var(--cobalt)"></i>에이전트 호출<i style="background:#24313f"></i>전체 도구 호출</div>
+
+  <div class="cols" style="margin-top:22px">
+    <div>
+      <h2>최근 산출물 <small>reports · reviews · 정기 보고서</small></h2>
+      <div id="arts"></div>
+    </div>
+    <div>
+      <h2>최근 배포 <small>git log</small></h2>
+      <div id="git"></div>
+    </div>
+  </div>
+
+  <footer id="foot"></footer>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => (
+  {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const hhmm = ts => ts ? String(ts).slice(0,16).replace('T',' ') : '—';
+
+function kpi(k, v, s, alert){
+  return `<div class="kpi${alert ? ' alert' : ''}"><div class="k">${esc(k)}</div>
+    <div class="v">${esc(v)}</div><div class="s">${esc(s)}</div></div>`;
+}
+
+function render(d){
+  const k = d.kpi;
+
+  $('#meta').innerHTML =
+    `<b>${hhmm(d.generated_at)}</b> 기준 · 세션 기록 ${d.source.logs}개 ·
+     ${Number(d.source.lines_parsed).toLocaleString()}줄 읽음 ·
+     파싱 실패 <b>${d.source.parse_failed}</b> ·
+     Claude Code ${esc((d.source.cc_versions||[]).slice(0,3).join(', ') || '—')}`;
+
+  // 문제는 접어 두지 않는다. 읽지 못한 곳이 있으면 화면 맨 위에 띄운다.
+  $('#problems').innerHTML = (d.problems && d.problems.length)
+    ? `<div class="band"><b>읽지 못한 것 ${d.problems.length}건</b> — ${
+        d.problems.map(esc).join(' · ')}<br>
+        <span style="color:#ffd9d6">이 화면의 숫자는 그만큼 불완전하다. 0 으로 채우지 않았다.</span></div>`
+    : '';
+
+  const lc = k.last_call;
+  $('#kpis').innerHTML = [
+    kpi('실제로 일한 에이전트', `${k.agents_used} / ${k.agents_total}`,
+        k.agents_never ? `${k.agents_never}종은 한 번도 호출된 적 없음` : '전원 가동 이력 있음',
+        k.agents_never > 0),
+    // ★ 로스터(우리 15종) 호출만 센다. general-purpose 같은 기본 에이전트는 따로 적는다 —
+    //   합쳐 놓으면 '우리 조직이 얼마나 일했나'를 부풀리게 된다.
+    kpi('우리 조직 호출', `${k.calls_total}회`,
+        `최근 7일 ${k.calls_7d}회` + ((d.outside_roster || []).length
+          ? ` · 조직도 밖 ${d.outside_roster.reduce((s,o)=>s+o.calls,0)}회 별도` : '')),
+    kpi('마지막 호출', lc ? hhmm(lc.ts) : '없음',
+        lc ? `${lc.agent}${lc.desc ? ' · ' + lc.desc : ''}` : '기록 없음'),
+    kpi('정기 작업', `${k.sched_total}개`,
+        k.sched_never ? `${k.sched_never}개가 한 번도 실행되지 않음` :
+        (k.sched_bad ? `${k.sched_bad}개 실패` : '정상'),
+        k.sched_never > 0 || k.sched_bad > 0),
+  ].join('');
+
+  // 조직도
+  $('#org').innerHTML = d.departments.map(dep => `
+    <div class="dept">
+      <h3><span>${esc(dep.name)}</span><em>${dep.members.length}명</em></h3>
+      <div class="role">${esc(dep.role)}</div>
+      <ul>${dep.members.map(a => `
+        <li class="ag ${a.calls > 0 ? 'used' : 'never'}">
+          <span class="dot"></span>
+          <span style="min-width:0">
+            <span class="nm">${esc(a.name)}</span>
+            <span class="sub">${esc(a.last_desc || a.description || '')}</span>
+          </span>
+          <span class="cnt">${a.calls > 0 ? a.calls + '회' : '호출 없음'}
+            <i>${a.calls > 0
+                 ? (a.days_since === 0 ? '오늘' : (a.days_since != null ? a.days_since + '일 전' : hhmm(a.last_ts)))
+                 : (a.defined ? '정의만 있음' : '정의 없음')}</i></span>
+        </li>`).join('')}</ul>
+    </div>`).join('');
+
+  // 정기 작업 — 한 번도 안 돈 것을 가장 강하게 표시한다
+  $('#sched').innerHTML = d.schedule.length ? `<table>
+    <tr><th>작업</th><th>상태</th><th>마지막 실행</th><th>다음</th></tr>
+    ${d.schedule.map(s => `<tr class="${(s.never_ran || !s.ok) ? 'bad' : ''}">
+      <td>${esc(s.name)}</td>
+      <td>${s.never_ran ? '<span class="pill bad">한 번도 실행 안 됨</span>'
+            : (s.running ? '<span class="pill warn">실행 중</span>'
+            : (s.ok ? '<span class="pill ok">정상</span>'
+                    : `<span class="pill bad">실패 · 결과 ${esc(s.last_result)}</span>`))}</td>
+      <td>${s.never_ran ? '—' : esc(s.last_run)}</td>
+      <td>${esc(s.next_run || '—')}</td></tr>`).join('')}
+    </table>` : '<div class="empty">예약 작업을 읽지 못했다.</div>';
+
+  $('#recent').innerHTML = d.recent.length ? `<table>
+    <tr><th>시각</th><th>에이전트</th><th>작업</th></tr>
+    ${d.recent.map(c => `<tr><td>${hhmm(c.ts)}</td><td>${esc(c.agent)}</td>
+      <td>${esc(c.desc || '—')}</td></tr>`).join('')}
+    </table>` : '<div class="empty">호출 기록이 없다.</div>';
+
+  // 활동량
+  const acts = d.activity || [];
+  const maxT = Math.max(1, ...acts.map(a => a.tool_calls));
+  const maxA = Math.max(1, ...acts.map(a => a.agent_calls));
+  $('#bars').innerHTML = acts.length ? acts.map(a => `
+    <div class="bar" title="${esc(a.day)} · 에이전트 ${a.agent_calls}회 · 도구 ${a.tool_calls}회">
+      <div class="t">
+        <div class="agent" style="height:${(a.agent_calls / maxA * 38).toFixed(1)}px"></div>
+        <div class="tool" style="height:${(a.tool_calls / maxT * 46).toFixed(1)}px"></div>
+      </div>
+      <div class="lb">${esc(a.day.slice(5))}</div>
+    </div>`).join('') : '<div class="empty">활동 기록이 없다.</div>';
+
+  $('#arts').innerHTML = d.artifacts.length ? `<table>
+    <tr><th>파일</th><th>수정</th></tr>
+    ${d.artifacts.slice(0,10).map(a => `<tr><td>${esc(a.path)}</td>
+      <td>${hhmm(a.mtime)}</td></tr>`).join('')}</table>`
+    : '<div class="empty">산출물이 없다.</div>';
+
+  $('#git').innerHTML = d.git.length ? `<table>
+    <tr><th>날짜</th><th>커밋</th><th>내용</th></tr>
+    ${d.git.slice(0,10).map(g => `<tr><td>${esc(g.date)}</td><td>${esc(g.sha)}</td>
+      <td>${esc(g.subject)}</td></tr>`).join('')}</table>`
+    : '<div class="empty">git 이력을 읽지 못했다.</div>';
+
+  const p = d.product || {};
+  const outside = (d.outside_roster || []);
+  $('#foot').innerHTML = `
+    ${p.total ? `제품(이 PC 로컬 사본 · ${hhmm(p.mtime)}): 물건 ${Number(p.total).toLocaleString()}대 ·
+      기일 남은 ${Number(p.upcoming||0).toLocaleString()}대 · 입찰 검토 가능 ${p.review||0}대<br>` : ''}
+    ${outside.length ? `조직도 밖에서 불린 것: ${outside.map(o =>
+        esc(o.name) + ' ' + o.calls + '회').join(' · ')}<br>` : ''}
+    ⚠ 호출 이력은 Claude Code 세션 기록에서 읽는다. <b>내부 포맷이라 버전이 오르면 깨질 수 있다</b> —
+    그때는 위 '파싱 실패'가 올라가거나 숫자가 멈춘다. 조용히 0 을 보여주지 않는다.<br>
+    이 화면은 127.0.0.1 에만 열리고, 대화 내용은 읽지도 내보내지도 않는다(시각·도구명·에이전트명·짧은 작업 라벨만).`;
+}
+
+async function tick(){
+  try{
+    const r = await fetch('/api/state', {cache:'no-store'});
+    if(!r.ok) throw new Error('HTTP ' + r.status);
+    render(await r.json());
+  }catch(e){
+    $('#meta').innerHTML = `<span style="color:var(--bad)">수집기에서 받지 못했다: ${esc(e.message)}</span>`;
+  }
+}
+tick();
+setInterval(tick, 10000);
+</script>
