@@ -307,11 +307,20 @@
   {% set _vt = verdict.tone %}
   <div class="relative flex items-start gap-2.5 rounded-xl px-4 py-3 mb-5 border {{ 'bg-rose-500/15 border-rose-400/40' if _vt=='stop' else 'bg-white/[0.08] border-white/10' }}"
        {% if _vt=='stop' %}style="box-shadow:inset 3px 0 0 rgb(251 113 133)"{% endif %}>
-    {# ⚠ 아이콘 색은 **판정 톤 체계**(app.py _TONE_CLS)를 그대로 따른다 — wait=회색 · caution=앰버.
-       한동안 둘이 뒤집혀 있어서(wait=앰버 · caution=sky) 이 아이콘과 바로 아래 히어로 칩(:318)이
-       같은 물건에 반대 색을 썼다(2026-09-23 교차검수). 어두운 히어로 배경이라 명도만 올려 쓴다
-       (slate-300 8.4:1 · amber-300 8.6:1, bg-white/[0.08] on #0f2247 기준). #}
-    <span class="material-symbols-outlined text-lg shrink-0 mt-px {{ 'text-rose-300' if _vt=='stop' else 'text-emerald-300' if _vt=='ok' else 'text-slate-300' if _vt=='wait' else 'text-amber-300' if _vt=='caution' else 'text-white/50' }}">{{ 'do_not_disturb_on' if _vt=='stop' else 'thumb_up' if _vt=='ok' else 'schedule' if _vt=='wait' else 'info' if _vt=='caution' else 'lock' }}</span>
+    {# ⚠ **아이콘 색의 원천은 판정 칩과 같은 `bidst.tone`** 이다(바로 아래 히어로 칩 :325 · h1 칩 :47 과 한 소스).
+       예전 주석은 "아이콘 색은 판정 톤 체계(app.py _TONE_CLS)를 그대로 따른다"고 **사실보다 강하게 단정**했는데,
+       실제 코드가 보던 것은 `_TONE_CLS` 가 아니라 `verdict.tone`(plain_verdict)이었다. 그 둘은 여섯 상태 중
+       **lowconf 하나에서만 갈라진다** — bid_state 는 wait/stop('…판정 보류')을 주는데 plain_verdict 는
+       caution 을 준다(service.py `시세 신뢰도 낮음`·`손익분기 산출 불가`·`시동·운행 불가`).
+       그래서 **회색·로즈 '판정 보류' 칩 + 앰버 '주의' 아이콘**이 한 카드에 같이 떴다(2026-09-23 교차검수,
+       라이브 2026타경70785_1 회색칩+앰버 · 2026타경50032_1 로즈칩+앰버).
+       문장의 '주의' 성격은 색이 아니라 `verdict.text` 가 **글자로** 말한다("…참고용입니다. 현장 확인 후 판단하세요").
+       ⚠ 모양(글리프)은 계속 `verdict.tone` — closed 의 자물쇠처럼 **상태마다 다른 그림**이 필요해서다.
+       ⚠ 배너 바탕(rose tint, :308)은 `_vt` 그대로 둔다: verdict stop ⊂ bidst stop 이라 새 모순이 생기지 않고,
+          바탕까지 tone 으로 옮기면 lowconf/stop 물건에 **없던 로즈 면**이 생겨 경고색이 희석된다.
+       어두운 히어로 배경이라 명도만 올려 쓴다(slate-300 8.4:1 · amber-300 8.6:1, bg-white/[0.08] on #0f2247 기준). #}
+    {% set _ct = bidst.tone if bidst else 'wait' %}
+    <span class="material-symbols-outlined text-lg shrink-0 mt-px {{ 'text-rose-300' if _ct=='stop' else 'text-emerald-300' if _ct=='ok' else 'text-amber-300' if _ct=='caution' else 'text-slate-300' }}">{{ 'do_not_disturb_on' if _vt=='stop' else 'thumb_up' if _vt=='ok' else 'schedule' if _vt=='wait' else 'info' if _vt=='caution' else 'lock' }}</span>
     <p class="text-sm font-medium leading-snug {{ 'text-rose-50' if _vt=='stop' else 'text-white/90' }}" style="text-wrap:pretty">{{ verdict.text }}</p>
   </div>
   {% endif %}
@@ -338,8 +347,15 @@
        화면에서 가장 크고 유일하게 색이 든 숫자가 초록이었다(디자인 검수). 고치려던 오독이 더
        비싼 형태로 되살아난 셈이다. 초록은 tone == 'ok' 한 곳에만 켠다. #}
     {% set _over = bidst.floor and bidst.max_bid and bidst.floor > bidst.max_bid %}
-    {% set _capcls = 'text-rose-300' if (_over or bidst.state in ('blocked','over_market'))
+    {# ⚠ 색의 원천은 **state 가 아니라 tone** 이다. state 로 가르던 시절, tone=caution 인 `over_market`
+       ('예상 경쟁가가 상한선 초과')에서 **칩은 앰버인데 대표 숫자는 로즈**였다 — 칩은 "조건부",
+       숫자는 "금지"라고 말한 것이다(2026-09-23 교차검수, 라이브 2026타경30130_1). 판정 배너 아이콘과
+       **같은 계열의 톤 불일치**라 같은 방식으로 고친다(원천을 bidst.tone 하나로).
+       `_over`(최저매각가 > 상한선)만 tone 과 무관하게 로즈로 남긴다 — **이번 회차엔 써낼 수조차 없는 금액**이라
+       판정 톤보다 강한 사실이고, 바로 아래 줄(:349)이 그 이유를 글자로 적는다. #}
+    {% set _capcls = 'text-rose-300' if (_over or bidst.tone == 'stop')
                      else 'text-amber-300' if bidst.weak == 'saving_unverified'
+                     else 'text-amber-300' if bidst.tone == 'caution'
                      else 'text-emerald-300' if bidst.tone == 'ok' else 'text-white' %}
     <div>
       <div class="text-xs mb-0.5 {{ _capcls if _capcls != 'text-white' else 'text-white/55' }}" style="word-break:keep-all">{{ ui.gloss('입찰 상한선', '이 금액을 넘겨 낙찰받으면 같은 차를 소매에서 사는 편이 쌉니다. 취득세·이전·탁송·상태별 정비 충당을 포함하고, 사고 이력을 확인하지 못한 차는 사고차로 가정한 보수적 금액입니다.', q=false) }} <span class="text-white/50 font-normal whitespace-nowrap">여기까지만</span></div>
@@ -354,7 +370,11 @@
     </div>
     {% else %}
     <div>
-      <div class="text-xs text-amber-300 mb-0.5" style="word-break:keep-all"><span class="whitespace-nowrap">AI 예상낙찰가</span> <span class="text-white/55 font-normal">실입찰{% if expected.mae %} · 이 유형 ±{{ expected.mae }}%{% elif v.fail_count %} · 유찰 {{ v.fail_count }}회 반영{% endif %}</span></div>
+      {# ⚠ 캡션 색은 **두 분기가 같아야 한다.** 상한선이 있는 쪽(:351)은 `text-white/55 font-medium`,
+         없는 이쪽은 `text-amber-300` 이어서 **같은 낱말('AI 예상낙찰가')이 앰버와 흰색으로 갈렸다**
+         — 이 앱에서 앰버는 '조건부 경고'라 캡션에 쓰면 없는 경고를 만든다(2026-09-23 교차검수).
+         위계는 새 색이 아니라 **굵기(font-medium)와 숫자 크기·색**이 맡는다. #}
+      <div class="text-xs text-white/55 mb-0.5" style="word-break:keep-all"><span class="whitespace-nowrap font-medium">AI 예상낙찰가</span> <span class="text-white/55 font-normal">실입찰{% if expected.mae %} · 이 유형 ±{{ expected.mae }}%{% elif v.fail_count %} · 유찰 {{ v.fail_count }}회 반영{% endif %}</span></div>
       <div class="nc-heronum-lg font-mono text-3xl font-bold tnum text-white">{{ expected.price|won }}<span class="text-base font-normal text-white/60">원</span></div>
       {% if bidst and bidst.exp_pinned %}<div class="text-[11px] text-white/60 mt-0.5" style="word-break:keep-all">이 차는 최저매각가 아래로 내려가지 않습니다 — 바닥값을 그대로 표시</div>{% endif %}
     </div>
@@ -406,8 +426,20 @@
       {% for _lv, _ln, _ld in _leg %}<span class="inline-flex items-center gap-1 whitespace-nowrap"><span class="inline-block w-1.5 h-1.5 rounded-full {{ _ld }}"></span>{{ _ln }} <b class="text-white/85 font-semibold tnum">{{ _lv|man }}</b></span>{% endfor %}
     </div>
     {% set _tone = (bidst.tone if bidst else 'wait') %}
-    {# 주황 '이득 불확실 — …'은 이유만 — 판정은 바로 위 칩이 이미 말했다(검수) #}
-    {% set _gl = bidst.label if bidst else '추가 유찰 대기' %}{% if bidst and bidst.weak %}{% set _gl = _gl.split(' — ', 1)[-1] %}{% endif %}
+    {# 게이지는 **기호 + 이유만** 적는다 — 판정은 바로 위 칩이 이미 말했다(검수).
+       이 규칙은 원래 주황 '이득 불확실 — …' 에만 걸려 있었고, 나머지 톤은 라벨 **전문**을 그대로 찍었다.
+       그 결과 한 화면에 '이번 회차 입찰 부적합'·'지금 사면 이득'이 **두 번**씩 인쇄되고 로즈 요소가 넷이 됐다
+       — 이 저장소가 반복해 막아 온 **경고색 희석**의 문턱이다(2026-09-23 교차검수).
+       ⚠ '이유'의 자리는 라벨마다 다르다: `이득 불확실 — 오차 범위 안`은 대시 **뒤**가 이유지만,
+         `시세 신뢰도 낮음 — 판정 보류`·`침수·전손 의심 — 입찰 보류`는 대시 **앞**이 이유이고 뒤는 판정이다.
+       ⚠ 대시가 없는 라벨(판정 이름뿐)만 _grm 으로 이유를 준다. 새 낱말을 만들지 않고 이미 쓰는 말만 쓴다
+         (`최저매각가`·`예상낙찰가`·`상한선`·`재판매 손익분기` — plain_verdict·리포트 §01 과 같은 어휘). #}
+    {% set _grm = {'blocked': '최저매각가가 상한선 초과', 'wait': '최저매각가가 예상낙찰가 초과',
+                   'usepick': '상한선 이내', 'resale': '재판매 손익분기 이내'} %}
+    {% set _gl = bidst.label if bidst else '추가 유찰 대기' %}
+    {% if bidst and bidst.weak %}{% set _gl = _gl.split(' — ', 1)[-1] %}
+    {% elif ' — ' in _gl %}{% set _gl = _gl.split(' — ', 1)[0] %}
+    {% elif bidst and _grm.get(bidst.state) %}{% set _gl = _grm[bidst.state] %}{% endif %}
     <div class="nc-gauge-judge mt-1 text-center text-[11px] font-semibold leading-tight {{ {'ok':'text-emerald-300','caution':'text-amber-300','stop':'text-rose-300','wait':'text-white/70'}[_tone] }}" style="word-break:keep-all">{{ {'ok':'✓ ','caution':'⚠ ','stop':'✕ ','wait':'↑ '}[_tone] }}{{ _gl }}</div>
   </div>
   {% endif %}

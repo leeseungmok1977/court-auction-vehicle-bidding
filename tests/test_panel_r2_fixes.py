@@ -124,7 +124,12 @@ def test_the_biggest_number_on_the_detail_hero_is_the_ceiling():
     """60·70대 3인이 가장 큰 숫자(예상낙찰가)를 '써도 되는 금액'으로 읽었다 — 오독이 곧 과다 입찰이다."""
     d = (TPL / "detail.html").read_text(encoding="utf-8")
     i = d.index('class="nc-heronums')
-    hero = d[i:i + 4200]
+    # ⚠ 예전엔 `d[i:i + 4200]` 이라는 **매직 넘버 창**이었다. 히어로에 주석 몇 줄이 늘자
+    #   창 밖으로 밀려난 문장(`이 차는 최저매각가 아래로…`)을 "사라졌다"고 읽고 빨간불이 났다
+    #   — 코드가 아니라 **창이 낡은 것**이다(PANEL-35/37 배치에서 실제로 터졌다).
+    #   이제 히어로 블록의 진짜 끝(`{% if expected.basis %}` = 산정 기준 줄)까지 본다.
+    #   창이 **넓어지므로** 아래 `not in` 검사는 약해지는 게 아니라 더 넓은 범위를 지킨다.
+    hero = d[i:d.index("{% if expected.basis %}", i)]
     big = hero.index("nc-heronum-lg")
     assert "bidst.max_bid|won" in hero[big:big + 400], "히어로의 가장 큰 숫자가 입찰 상한선이 아니다"
     assert "입찰 상한선" in hero[:big] and "여기까지만" in hero
