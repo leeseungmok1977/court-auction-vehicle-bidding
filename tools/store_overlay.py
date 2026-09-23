@@ -24,6 +24,10 @@
     다운로드하지 않고, 리포에 새 바이너리를 넣지 않는다(``screenshots/`` 는 .gitignore).
   - 06 캡션 ``" — "`` 는 그 자리에서 두 줄로 나누고 **대시를 그리지 않는다** — 확정 문구의 대시를 줄바꿈이
     대신한다. **오너 승인 항목**(문구 자체는 바꾸지 않는다).
+재검수(-10) ④-1 반영, 지시서 -11(3차):
+  - 캡션 폭 상한을 **카드 폭에 연동**(``caption_max_width`` = 카드 폭 − 2×``CARD_EDGE_GAP``). 2차까지는 캔버스 기준
+    968px 고정이라 카드(939)보다 넓은 캡션(10_report_lower 951)이 조용히 통과했다. 장별 ``caption_within_card``
+    를 metrics 에 남기고, 하나라도 거짓이면 종료코드 1.
 
 색은 코드에서 읽은 값만 쓴다(추측 금지):
   - 띠·캡슐 배경 NAVY  #0b142b  ← web/static/manifest.webmanifest theme_color / background_color
@@ -32,7 +36,8 @@
 
 사용::
 
-    python tools/store_overlay.py                                   # 8장 B-1 + 02_accuracy B1s
+    python tools/store_overlay.py                                   # 8장 B-1(기본)
+    python tools/store_overlay.py --stamp-shots 02_accuracy         # + 기준월 우하단 스탬프 변형 __B1s(오너 선택 대기)
     python tools/store_overlay.py --shots 01_home --variants A B2   # 다른 안
     python tools/store_overlay.py --out /tmp/x --no-thumbs
 
@@ -76,7 +81,11 @@ LINE_TOKEN = (0xE3, 0xE8, 0xEE)  # tailwind.config.js colors.line — 앱 셸의
 CANVAS = (1080, 1920)  # Play 휴대전화 스크린샷 규격(원본과 동일)
 PLAY_TAGLINE_MAX = int(CANVAS[1] * 0.20)  # 384px — Play "taglines ≤ 20% of the image"
 BAND_RECOMMENDED = (220, 300)
-CAPTION_SIDE_MARGIN = 56  # 띠 안 캡션 좌우 여백 → 폭 상한 968px
+# 띠 안 글자와 카드 선의 간격 — 규칙 하나: 캡션 잉크는 카드 좌우선 **안쪽** 12px, 스탬프는 카드 상단선 **위** 12px.
+# 12 를 고른 근거: 1/4 썸네일에서 3px(글자가 카드 안에 있다고 읽히는 최소) · 카드 위 모서리 r=28 의 곡률 구간에서
+# 세로선이 아직 안쪽에 있는 폭(r − r·cos45° ≈ 8px)보다 크다 · 재검수 ④-1 권장 8~12 의 상단.
+# ⚠ 캡션 폭 상한을 여기서 캔버스 폭으로 만들지 않는다 — caption_max_width() 가 **카드 폭**에서 계산한다(3차, 재검수 ④-1).
+CARD_EDGE_GAP = 12
 
 FONTS: dict[str, Path] = {}  # ensure_fonts() 가 채운다: bold / medium
 
@@ -251,8 +260,23 @@ def card_geometry(band_h: int):
     return scale, sw, sh, x
 
 
+def caption_max_width(band_h: int) -> int:
+    """캡션 잉크 폭 상한 = **카드 폭** − 양쪽 CARD_EDGE_GAP. 띠 높이가 바뀌면 카드 폭이 바뀌고 상한이 **따라온다**.
+
+    2차 사고(재검수 ④-1): 상한이 캔버스 기준 `1080 − 2×56 = 968` 로 고정돼 있어, 띠 220→250 으로 카드가 956→939 로
+    좁아졌는데 상한은 그대로였다. `10_report_lower` 캡션 951px 이 카드 939px 밖으로 좌우 6px 씩 나갔다.
+    1차는 카드 956 > 캡션 최대 950 이라 **우연히** 안이었다. 캔버스 폭으로 되돌리면 tests/test_store_overlay.py 가 막는다."""
+    _, card_w, _, _ = card_geometry(band_h)
+    return card_w - 2 * CARD_EDGE_GAP
+
+
+def caption_fits_card(caption_w: int, card_w: int) -> bool:
+    """장별 검사 — 캡션 잉크가 카드 폭 안에 있는가. 하나라도 거짓이면 main 이 종료코드 1 을 낸다(조용히 넘어가지 않는다)."""
+    return caption_w <= card_w
+
+
 def draw_band(caption_lines, basis, *, band_h: int, cap_size: int, basis_size: int,
-              basis_pos: str = "below", stamp_right: int | None = None, stamp_gap: int = 12):
+              basis_pos: str = "below", stamp_right: int | None = None, stamp_gap: int = CARD_EDGE_GAP):
     """상단 띠 이미지(1080×band_h) 와 메트릭.
 
     basis_pos="below": 기준 월을 캡션 아래 가운데(기본).
@@ -280,7 +304,10 @@ def draw_band(caption_lines, basis, *, band_h: int, cap_size: int, basis_size: i
         d.text(((W - bw) // 2 - bl, y - bt), basis, font=fb, fill=CREAM)
         basis_box = ((W - bw) // 2, y, (W + bw) // 2, y + bh)
     else:
-        right = stamp_right if stamp_right is not None else W - CAPTION_SIDE_MARGIN
+        if stamp_right is None:  # 기본은 카드 우측선
+            _, sw_, _, cx_ = card_geometry(band_h)
+            stamp_right = cx_ + sw_
+        right = stamp_right
         sx, sy = right - bw, band_h - stamp_gap - bh
         d.text((sx - bl, sy - bt), basis, font=fb, fill=CREAM)
         basis_box = (sx, sy, right, sy + bh)
@@ -368,8 +395,9 @@ def main(argv=None):
     ap.add_argument("--out", type=Path, default=OUT_DIR)
     ap.add_argument("--shots", nargs="+", default=DEFAULT_SHOTS, help="파일명 stem (예: 01_home). 기본 8장")
     ap.add_argument("--variants", nargs="+", default=["B1"], choices=["A", "B1", "B2"])
-    ap.add_argument("--stamp-shots", nargs="*", default=["02_accuracy"],
-                    help="기준 월을 띠 우하단 스탬프로 옮긴 __B1s 도 낼 장(오너 선택용). 빈 값이면 안 냄")
+    ap.add_argument("--stamp-shots", nargs="*", default=[],
+                    help="기준 월을 띠 우하단 스탬프로 옮긴 __B1s 도 낼 장(오너 선택 대기 — 재검수 ③ 권고는 B1 유지). "
+                         "예: --stamp-shots 02_accuracy")
     ap.add_argument("--basis", default="2026년 9월 기준")
     ap.add_argument("--band-h", type=int, default=250,
                     help=f"띠 높이(px). 권장 {BAND_RECOMMENDED[0]}~{BAND_RECOMMENDED[1]}, Play 20% 상한 {PLAY_TAGLINE_MAX}")
@@ -407,16 +435,21 @@ def main(argv=None):
             raise SystemExit(f"원본 규격이 {CANVAS} 가 아니다: {p} {im.size}")
         srcs[stem] = (p, im)
 
-    band_max_w = CANVAS[0] - 2 * CAPTION_SIDE_MARGIN
+    _, card_w, _, _ = card_geometry(args.band_h)
+    band_max_w = caption_max_width(args.band_h)  # 카드 폭 연동 — 캔버스 기준 고정값(968)을 쓰지 않는다(재검수 ④-1)
     cap_size, per_caption = uniform_caption_size([CAPTIONS[s] for s in args.shots], band_max_w)
     binding = [s for s in args.shots if per_caption[CAPTIONS[s]] == cap_size]  # 값을 못 박은 장
 
     rows = []
+    violations = []  # (파일, 캡션 폭, 카드 폭) — 캡션이 카드보다 넓은 장
     metrics = {
         "HEAD": head,
         "basis": args.basis,
         "fonts": {k: str(v) for k, v in fonts.items()},
         "band_h": args.band_h,
+        "card_w": card_w,
+        "caption_max_w": band_max_w,
+        "card_edge_gap": CARD_EDGE_GAP,
         "caption_font_px_uniform": cap_size,
         "caption_font_px_per_shot_alone": {s: per_caption[CAPTIONS[s]] for s in args.shots},
         "caption_size_bound_by": binding,
@@ -446,6 +479,12 @@ def main(argv=None):
                 out_im, mc = (compose_b2 if v == "B2" else compose_b1)(im, band)
                 m = {**mb, **mc}
                 m["dash_replaced_by_linebreak"] = (len(lines) == 2)  # 오너 승인 항목
+                # 캡션 잉크 ≤ 카드 폭 — 장별 불리언. B-2 는 카드가 없어 캔버스 폭이 기준.
+                cw_v = mc["scaled_size"][0] if "scaled_size" in mc else CANVAS[0]
+                m["caption_within_card"] = caption_fits_card(m["caption_width_px"], cw_v)
+                m["caption_margin_to_card_px"] = round((cw_v - m["caption_width_px"]) / 2, 1)
+                if not m["caption_within_card"]:
+                    violations.append((f"{stem}__{v}.png", m["caption_width_px"], cw_v))
             outp = args.out / f"{stem}__{v}.png"
             save_png(out_im, outp)
             m["out"] = str(outp)
@@ -483,6 +522,7 @@ def main(argv=None):
     print(f"HEAD {head}")
     print(f"글꼴 {', '.join(p.name for p in fonts.values())} · 캡션 글자 크기(세트 공통) {cap_size}px"
           f"(못 박은 장: {', '.join(binding)}) · 띠 {args.band_h}px({args.band_h / 19.2:.1f}% of 1920) "
+          f"· 카드 폭 {card_w}px → 캡션 상한 {band_max_w}px(카드 안쪽 {CARD_EDGE_GAP}px) "
           f"· 기준 월 {args.basis_size}px · 캡슐 {args.capsule_size}px")
     print("장별 단독 최대 크기: " + ", ".join(f"{s}={per_caption[CAPTIONS[s]]}" for s in args.shots))
     print()
@@ -492,7 +532,11 @@ def main(argv=None):
         print(f"| `{name}` | {size[0]}×{size[1]} | `{h}` | `{sh[:12]}…` |")
     print()
     print("md5 전부 상이:", "아니오 — 중복 있음!" if dup else "예")
-    return 1 if dup else 0
+    if violations:
+        print("캡션이 카드보다 넓은 장:", ", ".join(f"{n}({w}>{c})" for n, w, c in violations))
+    else:
+        print("캡션 ≤ 카드 폭: 전 장 참")
+    return 1 if (dup or violations) else 0
 
 
 if __name__ == "__main__":
