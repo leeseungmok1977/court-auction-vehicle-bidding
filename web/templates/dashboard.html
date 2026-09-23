@@ -433,7 +433,9 @@
       {% if backtest.discount_p25 %}<div class="text-xs text-mut mt-1">범위 {{ (backtest.discount_p25*100)|round|int }}~{{ (backtest.discount_p75*100)|round|int }}%</div>{% endif %}
     </div>
     <div class="bg-background border border-line rounded-lg p-4">
-      <div class="text-xs text-mut mb-1">예상낙찰가 오차 <span class="text-mut">(낮을수록 정확)</span></div>
+      {# 이름은 리포트(:1075)·정확도·랜딩과 **한 낱말**로 '전체 평균 오차'다. 무엇의 오차인지는
+         괄호에 남긴다 — 이름이 갈리면 같은 숫자가 모집단이 다른 값으로 읽힌다. #}
+      <div class="text-xs text-mut mb-1">전체 평균 오차 <span class="text-mut">(예상낙찰가 · 낮을수록 정확)</span></div>
       <div class="text-2xl font-bold font-mono {{ 'text-emerald-700' if backtest.mae_pct and backtest.mae_pct<=15 else 'text-amber-700' }}">±{{ backtest.mae_pct }}%</div>
       <div class="text-xs text-mut mt-1">목표 ≤15% · {{ '달성' if backtest.mae_pct and backtest.mae_pct<=15 else '개선 필요' }}</div>
     </div>

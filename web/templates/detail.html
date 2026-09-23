@@ -36,13 +36,16 @@
       {# ⚠ 이 칩이 상세에서 **가장 먼저 읽히는 자리**다. judgment 를 그대로 찍으면
          건설기계·선박이 "시세 신뢰도 낮음, 수동 검토"로 보이는데, 목록 배지·배너는
          "동급 시세 없음"이라고 말한다 — 같은 물건에 두 설명(2026-09-19 육안 검수).
-         '비교 대상이 없다'는 판정은 bid_state 가 단일 진실원천이므로 그 label 을 쓴다.
-         ⚠ 색도 같은 원천에서 나와야 한다. 여기가 레거시 `|bcls`(judgment **문자열**로 색을 고르는
-           옛 방식)를 쓰는 동안 `유찰 대기`라는 같은 글자가 목록에서는 회색(bid_state tone=wait),
-           상세에서는 앰버였다(2026-09-23 교차검수). 라벨은 judgment 를 그대로 쓰되
-           **색은 bid_state 의 톤**(app.py _TONE_CLS)으로 통일한다. #}
-      {% if bidst and bidst.state == 'nomarket' %}<span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-semibold bg-sky-50 text-sky-700 border border-sky-200">{{ bidst.label }}</span>
-      {% elif v.judgment %}<span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-semibold {{ (bidst.tone if bidst else '')|tcls }}">{{ v.judgment }}</span>{% endif %}
+         판정은 bid_state 가 **단일 진실원천**이므로 글자도 색도 그 label·tone 에서만 나온다.
+         ⚠ 한동안 색만 tone 으로 옮기고 글자는 judgment 로 남겨 뒀다. 그 사이 서버가
+           blocked('이번 회차 입찰 부적합', stop)을 내보내는 물건에서 **로즈 칩에 "유찰 대기"**가
+           찍혔다 — 색은 멈추라 하고 글자는 기다리면 된다고 말하는, 자기를 스스로 취소하는
+           칩이었다(2026-09-23 교차검수, 라이브 2026타경30644_1).
+         ⚠ label 은 '지난 기일 — 다음 기일 공고 대기'처럼 길다. h1 옆 flex-wrap 칩이라
+           320px 에서 낱말 중간이 갈린다 → 히어로 칩(:318)과 같은 ui.judge_label 로
+           ' — ' 뒤에서만 접는다. #}
+      {% if bidst %}<span class="inline-flex flex-wrap items-center gap-x-1 px-2.5 py-0.5 rounded text-xs font-semibold {% if bidst.state == 'nomarket' %}bg-sky-50 text-sky-700 border border-sky-200{% else %}{{ bidst.tone|tcls }}{% endif %}">{{ ui.judge_label(bidst.label) }}</span>
+      {% elif v.judgment %}<span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-semibold {{ ''|tcls }}">{{ v.judgment|jshort }}</span>{% endif %}
     </div>
     <p class="text-sm text-mut mt-1">{{ v.court }} · 사건 {{ v.case_no }} · 물건 {{ v.item_no }}</p>
   </div>
@@ -304,7 +307,11 @@
   {% set _vt = verdict.tone %}
   <div class="relative flex items-start gap-2.5 rounded-xl px-4 py-3 mb-5 border {{ 'bg-rose-500/15 border-rose-400/40' if _vt=='stop' else 'bg-white/[0.08] border-white/10' }}"
        {% if _vt=='stop' %}style="box-shadow:inset 3px 0 0 rgb(251 113 133)"{% endif %}>
-    <span class="material-symbols-outlined text-lg shrink-0 mt-px {{ 'text-rose-300' if _vt=='stop' else 'text-emerald-300' if _vt=='ok' else 'text-amber-300' if _vt=='wait' else 'text-sky-300' if _vt=='caution' else 'text-white/50' }}">{{ 'do_not_disturb_on' if _vt=='stop' else 'thumb_up' if _vt=='ok' else 'schedule' if _vt=='wait' else 'info' if _vt=='caution' else 'lock' }}</span>
+    {# ⚠ 아이콘 색은 **판정 톤 체계**(app.py _TONE_CLS)를 그대로 따른다 — wait=회색 · caution=앰버.
+       한동안 둘이 뒤집혀 있어서(wait=앰버 · caution=sky) 이 아이콘과 바로 아래 히어로 칩(:318)이
+       같은 물건에 반대 색을 썼다(2026-09-23 교차검수). 어두운 히어로 배경이라 명도만 올려 쓴다
+       (slate-300 8.4:1 · amber-300 8.6:1, bg-white/[0.08] on #0f2247 기준). #}
+    <span class="material-symbols-outlined text-lg shrink-0 mt-px {{ 'text-rose-300' if _vt=='stop' else 'text-emerald-300' if _vt=='ok' else 'text-slate-300' if _vt=='wait' else 'text-amber-300' if _vt=='caution' else 'text-white/50' }}">{{ 'do_not_disturb_on' if _vt=='stop' else 'thumb_up' if _vt=='ok' else 'schedule' if _vt=='wait' else 'info' if _vt=='caution' else 'lock' }}</span>
     <p class="text-sm font-medium leading-snug {{ 'text-rose-50' if _vt=='stop' else 'text-white/90' }}" style="text-wrap:pretty">{{ verdict.text }}</p>
   </div>
   {% endif %}
@@ -341,13 +348,13 @@
       {% elif bidst.weak == 'saving_unverified' %}<div class="text-[11px] text-amber-300 mt-0.5">이 시세로 계산 — 시세 확인 전 참고</div>{% endif %}
     </div>
     <div>
-      <div class="text-xs text-white/55 mb-0.5" style="word-break:keep-all"><span class="whitespace-nowrap">AI 예상낙찰가</span> <span class="text-white/40 font-normal">{% if bidst and bidst.exp_pinned %}최저가 기준{% else %}실입찰{% if expected.mae %} · 이 유형 ±{{ expected.mae }}%{% elif v.fail_count %} · 유찰 {{ v.fail_count }}회 반영{% endif %}{% endif %}</span></div>
+      <div class="text-xs text-white/55 mb-0.5" style="word-break:keep-all"><span class="whitespace-nowrap font-medium">AI 예상낙찰가</span> <span class="text-white/55 font-normal">{% if bidst and bidst.exp_pinned %}최저가 기준{% else %}실입찰{% if expected.mae %} · 이 유형 ±{{ expected.mae }}%{% elif v.fail_count %} · 유찰 {{ v.fail_count }}회 반영{% endif %}{% endif %}</span></div>
       <div class="nc-heronum-sm font-mono text-xl font-semibold tnum text-white">{{ expected.price|won }}<span class="text-sm font-normal text-white/60">원</span></div>
       {% if bidst.exp_pinned %}<div class="text-[11px] text-white/60 mt-0.5" style="word-break:keep-all">이 차는 최저매각가 아래로 내려가지 않습니다 — 바닥값을 그대로 표시</div>{% endif %}
     </div>
     {% else %}
     <div>
-      <div class="text-xs text-amber-300 mb-0.5" style="word-break:keep-all"><span class="whitespace-nowrap">AI 예상낙찰가</span> <span class="text-white/50 font-normal">실입찰{% if expected.mae %} · 이 유형 ±{{ expected.mae }}%{% elif v.fail_count %} · 유찰 {{ v.fail_count }}회 반영{% endif %}</span></div>
+      <div class="text-xs text-amber-300 mb-0.5" style="word-break:keep-all"><span class="whitespace-nowrap">AI 예상낙찰가</span> <span class="text-white/55 font-normal">실입찰{% if expected.mae %} · 이 유형 ±{{ expected.mae }}%{% elif v.fail_count %} · 유찰 {{ v.fail_count }}회 반영{% endif %}</span></div>
       <div class="nc-heronum-lg font-mono text-3xl font-bold tnum text-white">{{ expected.price|won }}<span class="text-base font-normal text-white/60">원</span></div>
       {% if bidst and bidst.exp_pinned %}<div class="text-[11px] text-white/60 mt-0.5" style="word-break:keep-all">이 차는 최저매각가 아래로 내려가지 않습니다 — 바닥값을 그대로 표시</div>{% endif %}
     </div>

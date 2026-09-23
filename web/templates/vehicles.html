@@ -253,12 +253,16 @@ d.addEventListener('toggle',function(){try{localStorage.setItem('ncUsepickBasis'
       </thead>
       <tbody class="divide-y divide-line text-sm bg-surface">
         {% for v in rows %}
-        {% set acc = 'border-emerald-500' if v.judgment=='입찰 검토 가능'
-                     else 'border-amber-500' if v.judgment=='유찰 대기'
-                     else 'border-sky-500' if v.judgment and '신뢰도' in v.judgment
-                     else 'border-rose-500' if v.judgment=='입찰 보류'
-                     else 'border-transparent' %}
-        <tr class="even:bg-slate-50/60 hover:bg-slate-50 transition-colors border-l-2 {{ acc }}">
+        {# 좌측 악센트(border-l-2)를 **없앴다.** judgment 문자열로 색을 고르던 레거시 자리라
+           톤으로 옮기려고 1440px 에서 실측했더니, 애초에 **첫 행에만** 칠해지고 있었다 —
+           tbody 의 `divide-y divide-line` 이 만드는 `.divide-line > :not([hidden]) ~ :not([hidden])`
+           (클래스 2개)가 `.border-rose-500`(클래스 1개)을 특이도로 이겨 2행부터 #e3e8ee 로 덮인다.
+           실측 8행: 1행 rgb(244,63,94) · 2~8행 전부 rgb(227,232,238). 판정이 같은 두 행이
+           서로 다른 레일을 달고 있었고, 화면은 '첫 행만 특별하다'고 거짓말하는 중이었다.
+           특이도를 이겨 되살리지 않는 이유: 최근 등록순 첫 8행 중 **4행이 stop** 이라 로즈 레일이
+           바로 옆 로즈 칩과 겹쳐 한 행에 경고색이 둘이 된다 — 이 저장소가 반복해 막아 온
+           **경고색 희석**이다. 판정 색은 3번째 칸 칩(:320)이 이미 같은 원천(bid_state.tone)에서 말한다. #}
+        <tr class="even:bg-slate-50/60 hover:bg-slate-50 transition-colors">
           <td class="py-2.5 px-3 text-amber-500 align-top"><span data-fav-star data-vid="{{ v.id }}" hidden>★</span></td>
           <td class="py-2.5 px-3">
             {# ⚠ 썸네일 strip 은 shrink-0 · 176px(56×3+gap) 인데 이 칸의 **안폭은 1440px 에서 180px** 뿐이다.
@@ -369,8 +373,12 @@ d.addEventListener('toggle',function(){try{localStorage.setItem('ncUsepickBasis'
        "전체 평균 ≠ 개별 물건 정확도"를 한 번도 못 봤다(2026-09-23 교차검수).
        ⚠ **행마다 붙이지 않는다** — 행 단위 부착은 accuracy_for 독스트링이 금지한
          '표본에 없는 유형으로 정확도 전이'다. 목록 머리에 **1회만** 둔다.
-       ⚠ 범례(110px)가 첫 카드를 폴드 밖으로 밀어낸 전례가 있다(:142-145) — 한 줄로 유지한다. #}
-    {% if mae %}<p class="px-4 py-2 text-[11px] text-mut" style="word-break:keep-all">예상낙찰가는 <b class="text-txt tnum">전체 평균 오차 ±{{ mae }}%</b>로 검증됩니다 — 전체 평균이라 개별 물건의 정확도는 아닙니다. 물건별 오차는 상세에서 유형별로 표시합니다.</p>{% endif %}
+       ⚠ 범례(110px)가 첫 카드를 폴드 밖으로 밀어낸 전례가 있다(:142-145) — 한 줄로 유지한다.
+         그 약속을 스스로 어기고 있었다(표시 78자 → 390px 3줄·큰글씨 4~5줄 ≈ 110px 급).
+         뒤의 설명은 ui.gloss 로 접고 한 줄만 남긴다(2026-09-23 교차검수).
+       ⚠ **고지에서 굵을 것은 한계다.** 안심시키는 ±오차를 굵게, 한계를 회색으로 두면
+         고지가 광고가 된다 — 굵기를 뒤집어 '이 물건 값 아님'을 굵게 쓴다(리포트 :1075 와 같은 낱말). #}
+    {% if mae %}<p class="px-4 py-2 text-[11px] text-mut gloss-row" style="word-break:keep-all">예상낙찰가 <span class="tnum">전체 평균 오차 ±{{ mae }}%</span> — {{ ui.gloss('이 물건 값 아님', '전체 평균이라 이 물건 하나의 정확도가 아닙니다. 물건별 오차는 상세 화면에서 유형(제조사·유찰횟수)별로 표시합니다.', cls='font-bold text-txt') }}</p>{% endif %}
     {% for v in rows %}
     {% set closed = v.auction_result == '낙찰' or v.judgment == '종결' %}
     {% set exp_far = v.expected_win and v.min_sale_price and v.min_sale_price > v.expected_win %}

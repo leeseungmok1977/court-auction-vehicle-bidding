@@ -74,7 +74,10 @@
           <td class="py-2.5 px-4 font-mono text-right whitespace-nowrap {{ 'text-rose-600' if overfloor else 'text-mut' }}"
               {% if overfloor %}title="최저매각가가 산정 상한가보다 높음"{% endif %}>{{ v.min_sale_price|won }}</td>
           <td class="py-2.5 px-4 font-mono text-right text-mut whitespace-nowrap">{{ v.upper_bid|won }}</td>
-          <td class="py-2.5 px-4 font-mono text-right font-semibold text-txt bg-primary/5 whitespace-nowrap">{{ v.expected_win|won if v.expected_win else '—' }}</td>
+          {# 맨 '—' 는 "로딩 실패·버그"로 읽힌다 — 목록(vehicles.html:460-466)에 이미 같은 처방이 있다.
+             숫자를 지어내지 않는다는 원칙은 그대로 두고 **빈칸에 이름만 붙인다**(리포트 육각형의 '미산출'과 같은 말).
+             값이 없을 때는 위계도 한 단계 낮춘다 — 없는 값이 있는 값보다 진하면 안 된다. #}
+          <td class="py-2.5 px-4 font-mono text-right whitespace-nowrap bg-primary/5 {{ 'font-semibold text-txt' if v.expected_win else 'font-normal text-mut' }}">{{ v.expected_win|won if v.expected_win else '미산출' }}</td>
           <td class="py-2.5 px-4 font-mono text-right text-mut whitespace-nowrap">{{ v.median_price|won if v.median_price is not none else '—' }}</td>
           <td class="py-2.5 px-4 font-mono text-right whitespace-nowrap {{ 'text-emerald-700' if v.margin_room and v.margin_room>0 else 'text-rose-600' if v.margin_room is not none and v.margin_room<0 else 'text-mut' }}">{% if v.margin_room is not none %}{{ '+' if v.margin_room>=0 else '' }}{{ v.margin_room|won }}{% else %}—{% endif %}</td>
           <td class="py-2.5 px-4 font-mono text-right text-txt" data-note-bid data-vid="{{ v.id }}">—</td>
@@ -101,7 +104,7 @@
       {# 홈 유망 물건과 같은 처방 — 글자 크기 확대에서 가운데 숫자가 접히지 않게(가운데 auto 폭 + rem/vw 중 작은 글자) #}
       <div class="nc-pricegrid grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] gap-2 mt-2 tabular-nums">
         <div class="text-left"><div class="text-[10px] text-mut">최저매각가</div><div class="nc-price font-mono whitespace-nowrap {{ 'text-rose-600' if overfloor else 'text-mut' }}" style="font-size:min(.875rem,3.3vw)">{{ v.min_sale_price|won }}</div></div>
-        <div class="nc-price-hero text-center rounded-md bg-primary/5 px-1 py-0.5"><div class="text-[10px] text-primary">예상낙찰가</div><div class="nc-price font-mono font-bold text-txt whitespace-nowrap" style="font-size:min(.875rem,3.3vw)">{{ v.expected_win|won if v.expected_win else '—' }}</div></div>
+        <div class="nc-price-hero text-center rounded-md bg-primary/5 px-1 py-0.5"><div class="text-[10px] text-primary">예상낙찰가</div><div class="nc-price font-mono whitespace-nowrap {{ 'font-bold text-txt' if v.expected_win else 'font-semibold text-mut' }}" style="font-size:min(.875rem,3.3vw)">{{ v.expected_win|won if v.expected_win else '미산출' }}</div></div>
         <div class="text-right"><div class="text-[10px] text-mut">여유</div><div class="nc-price font-mono whitespace-nowrap {{ 'text-emerald-700' if v.margin_room and v.margin_room>0 else 'text-mut' }}" style="font-size:min(.875rem,3.3vw)">{% if v.margin_room is not none %}{{ '+' if v.margin_room>=0 else '' }}{{ v.margin_room|won }}{% else %}—{% endif %}</div></div>
       </div>
       <div data-note-row data-vid="{{ v.id }}" hidden class="flex items-center gap-3 text-xs text-mut mt-2 border-t border-line pt-2">
