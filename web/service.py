@@ -4154,6 +4154,17 @@ def alert_items(days: int = 3) -> list:
             continue
         if dd < 0:
             continue
+        # 오늘 기일이어도 **입찰 시각이 지났으면 임박 알림이 아니다.** 날짜만 보면 오전 10시에
+        # 끝난 경매가 같은 날 오후까지 '3일 이내 · 검토가능' 카드로, 그것도 빨강 D-DAY 칩
+        # (dashboard.html: dday<=1 → bg-rose-100)과 헤더 벨 배지까지 달고 남는다. 알림은
+        # '지금 할 수 있는 일'을 말하는 자리다 — 끝난 것은 뺀다(2026-09-23 목록·상세와 같은 건).
+        # ⚠ 여기서 **dday=None 을 실어 보내면 안 된다.** 알림 카드는 dday 를 그대로 비교·출력하는
+        #   자리라 None 이면 화면이 깨진다. 이 목록의 dday 는 항상 0 이상의 정수여야 한다.
+        # ⚠ 낙찰·종결은 judgment='입찰 검토 가능' 질의에서 이미 빠진다(db.list_vehicles).
+        # ⚠ 시각을 모르면 sale_time_passed 가 False → 알림 유지(보수적. 아직 입찰 가능한 물건의
+        #   알림을 뺏는 쪽이 이 화면에서는 더 비싼 실수다).
+        if dd == 0 and sale_time_passed(v):
+            continue
         out.append({**v, "dday": dd, "expected_win": expected_for(v, bt),
                     "photo_url": _pick_photo_url(v)})   # 대시보드 알림 카드 좌측 대표 썸네일
     out.sort(key=lambda x: (x["dday"], -(x.get("expected_win") or 0)))
@@ -4371,6 +4382,13 @@ def _pick_dict(v: dict, bt: dict) -> dict:
         d["dday"] = (datetime.date.fromisoformat(v["sale_date"]) - datetime.date.today()).days
     except (TypeError, ValueError, KeyError):
         d["dday"] = None
+    # 오늘 기일인데 **입찰 시각이 지났으면** 카운트다운을 끈다. 날짜만 보면 오전 10시에 끝난
+    # 경매가 같은 날 오후까지 홈 첫 화면에 빨강 'D-DAY'(dashboard.html: dday<=1 → bg-rose-600)로
+    # 남는다 — 이 앱에서 가장 센 신호를 이미 끝난 경매에 쓰는 것이다(2026-09-23 목록·상세와 같은 건).
+    # get_daily_picks 가 그런 물건을 아예 빼지만 배지를 만드는 이 자리에서도 끈다 — 게이트가
+    # 하나뿐이면 다음 사람이 모르고 푼다. 템플릿은 `dday is not none` 을 이미 가드한다.
+    if d["dday"] == 0 and sale_time_passed(v):
+        d["dday"] = None
     return d
 
 
@@ -4475,6 +4493,12 @@ def get_daily_picks(n: int = 5) -> list:
             continue
         if not v.get("sale_date") or v["sale_date"] < today:
             continue
+        # ⚠ 위 '미래기일만' 게이트는 **날짜 단위**라 오늘 오전에 끝난 경매를 못 걸렀다.
+        #   경매는 날짜가 아니라 시각 단위다 — 10시에 끝난 차를 오후 내내 '오늘의 추천'으로
+        #   미는 것은 사용자가 **실행할 수 없는 추천**이고, 카드에는 빨강 'D-DAY'까지 붙는다.
+        #   (2026-09-23 목록·상세에서 막은 것과 같은 계열. 기준을 푸는 게 아니라 조이는 쪽이다.)
+        if v["sale_date"][:10] == today and sale_time_passed(v):
+            continue
         # ⚠ **여전히 그 축의 추천인가**를 다시 확인한다 — 아침에 고른 뒤 값이 바뀌었을 수 있다.
         #   판정은 bid_state/personal_use_tier 한 곳에서만 한다(축을 새로 만들지 않는다).
         # ⚠⚠ 게이트를 compute 쪽에만 걸었더니 **캐시 경로로 시동 불가 차가 계속 떴다**
@@ -4525,10 +4549,17 @@ def alert_count(days: int = 3) -> int:
     seen = set()
     for v in db.list_vehicles(judgment="입찰 검토 가능", upcoming_days=days):
         try:
-            if (datetime.date.fromisoformat(v.get("sale_date")) - today).days >= 0:
-                seen.add(v["id"])
+            dd = (datetime.date.fromisoformat(v.get("sale_date")) - today).days
         except (TypeError, ValueError):
-            pass
+            continue
+        if dd < 0:
+            continue
+        # 벨 배지와 홈 알림 카드는 **같은 수**여야 한다. 홈만 len(alert_items()) 를 쓰고 다른
+        # 화면은 이 함수를 쓰므로(app.py 의 alert_badge 주석), alert_items 가 시각 경과를
+        # 빼는데 여기만 날짜로 세면 홈은 3건인데 벨에는 빨간 4가 뜬다 — 눌러도 없는 물건이다.
+        if dd == 0 and sale_time_passed(v):
+            continue
+        seen.add(v["id"])
     return len(seen)
 
 

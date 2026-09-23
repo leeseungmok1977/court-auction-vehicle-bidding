@@ -249,6 +249,32 @@ def _bidding_over(v: dict, today: str) -> bool:
             and service.sale_time_passed(v))
 
 
+def _dday_sort_key(v: dict):
+    """즐겨찾기 '매각기일 가까운 순' 정렬 키 — **끝난 것은 뒤로.**
+
+    표시용 `dday` 는 입찰 시각이 지나면 None 이 된다(빨강 배지를 끄려고). 그 값을 그대로
+    정렬에 쓰면 끝난 물건이 기일 미상과 한 덩어리가 되거나(예전 규칙: 둘 다 9999) 맨 앞에
+    앉는다. 그래서 **정렬용 값과 표시용 값을 나눈다** — 정렬은 `dday_raw`(날짜 차이)와
+    `bidding_over`(오늘인데 시각 경과)를 보고, 화면은 `dday` 만 본다.
+
+    규칙(회귀 테스트로 고정: tests/test_dday_data_layer.py)
+      ① 아직 입찰할 수 있는 것 — 기일 가까운 순(D-0 · D-1 · D-3 …). 사용자가 **지금
+         행동할 수 있는** 물건이라 맨 앞이다.
+      ② 이미 끝난 것 — 그 뒤로, **최근에 끝난 것부터**(오늘 경과 → 어제 → 지난주).
+         결과를 기다리는 물건이라 목록에서 지우지는 않되, 지금 입찰 가능한 물건보다
+         앞에 둘 이유가 없다. 예전 규칙도 지난 기일을 뒤로 보냈으므로 방향은 그대로다.
+      ③ 기일을 모르는 것 — 맨 끝. 판단 근거가 없는 것을 근거 있는 것 사이에 끼우지 않는다.
+
+    ⚠ 첫 원소(0/1/2)가 다르면 둘째 원소끼리는 비교되지 않는다 — int·str 혼합 비교 없음.
+    """
+    raw = v.get("dday_raw")
+    if raw is None:
+        return (2, 0)
+    if raw < 0 or v.get("bidding_over"):
+        return (1, -raw)        # 오늘 경과=0 · 어제=1 · 지난주=7 → 최근 순
+    return (0, raw)
+
+
 def _display_judgment(v: dict, today: str):
     """표시용 판정 보정(신뢰): 이미 낙찰이면 '종결', 지난 기일인데 '입찰 검토 가능'으로
     남은 물건(다음 기일 미정)은 '유찰 대기'로 표기. 가짜 '검토 가능' 배지 방지.
@@ -1208,17 +1234,27 @@ def watchlist(request: Request, sort: str = "sale_date", ids: Optional[str] = No
     rows = [v for v in (db.get_vehicle(i) for i in id_list) if v]
     bt = service.backtest_stats()
     today = _date.today()
+    _tdy = today.isoformat()
     for v in rows:                       # 비교 지표 파생
         exp = service.expected_for(v, bt)
         v["expected_win"] = exp
         v["margin_room"] = (exp - v["min_sale_price"]) if (exp and v.get("min_sale_price")) else None
         try:
-            v["dday"] = (_date.fromisoformat(v.get("sale_date")) - today).days
+            v["dday_raw"] = (_date.fromisoformat(v.get("sale_date")) - today).days
         except (TypeError, ValueError):
-            v["dday"] = None
+            v["dday_raw"] = None
+        # ★ 목록·상세에서 막은 것과 **같은 자리**다(2026-09-23). 날짜만 빼면 오전 10시에 끝난
+        #   경매가 같은 날 오후에도 watchlist.html 의 빨강(dd<=1 → bg-rose-100) 'D-DAY'로 남는다.
+        #   즐겨찾기는 사용자가 **직접 담아 둔** 물건이라 그 화면을 더 오래·더 믿고 본다.
+        #   시각 미상이면 sale_time_passed 가 False → 배지 유지(보수적, 목록과 같은 규칙).
+        v["bidding_over"] = bool(v["dday_raw"] == 0 and _bidding_over(v, _tdy))
+        v["dday"] = None if v["bidding_over"] else v["dday_raw"]
+        # 판정 칩도 목록·상세와 **같은 함수**를 본다. DB 원본이 그대로 나오면 끝난 경매에
+        # 앰버 '유찰 대기'가 붙어, 같은 줄의 기일 표기와 서로 다른 말을 한다. 문구는 한 곳에서만.
+        v["judgment"] = _display_judgment(v, _tdy)
     keys = {
         "sale_date": lambda v: (v.get("sale_date") or "9999"),
-        "dday": lambda v: (v["dday"] if v.get("dday") is not None and v["dday"] >= 0 else 9999),
+        "dday": _dday_sort_key,
         "expected": lambda v: -(v.get("expected_win") or 0),
         # 여유 큰 순(내림차순). margin_room=0(여유 없음)은 실제 값으로, None(데이터 없음)만 최하단.
         "margin": lambda v: -(v["margin_room"]) if v.get("margin_room") is not None else 1e12,
