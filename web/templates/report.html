@@ -846,8 +846,15 @@ document.addEventListener('click', function(e){
       <div class="brand"><div class="brand-mark">A</div>
         <div><div class="brand-name">차량경매 분석 리포트</div><div class="brand-sub">법원경매 차량 분석</div></div></div>
       <div class="badges">
-        {% if conf %}<div class="badge fill">시세 신뢰도 <b>{{ conf }}</b>/100 <span style="font-weight:400;opacity:.75">· {{ conf_scale }}</span></div>{% endif %}
-        <div class="badge">{{ v.market_confidence_label or '—' }}</div>
+        {# PANEL-56 — 라벨 배지는 점수 배지와 **같은 게이트** 안에 둔다. 시세 없는 물건은
+           market_match._confidence_label(0) 이 '낮음' 을 돌려줘 명사 없는 `낮음` 이 홀로 찍혔다(공개 431건 전건) —
+           같은 물건을 상세 h1 칩은 bidst.label('매각 종료' 등)로 말했다. 같은 물건, 두 화면, 두 말.
+           시세가 없으면 판정 단일 소스 bidst.label 을 상세와 같은 말로 찍고, bidst 마저 없으면 아무것도
+           그리지 않는다(측정하지 않은 것을 말하지 않는다). 긴 라벨은 detail.html 과 같은 ui.judge_label 로
+           ' — ' 뒤에서만 접는다. 색은 .badge 그대로 — 의미색 없음('해당 없음'이지 경고가 아니다).
+           ⚠ 이 주석은 conf 게이트와 **같은 줄**에서 끝난다. 줄을 더하면 시세 있는 물건의 렌더 바이트가 바뀐다
+           (tests/test_panel56_masthead_badge.py 가 마스트헤드 md5 로 감시). #}{% if conf %}<div class="badge fill">시세 신뢰도 <b>{{ conf }}</b>/100 <span style="font-weight:400;opacity:.75">· {{ conf_scale }}</span></div>
+        <div class="badge">{{ v.market_confidence_label or '—' }}</div>{% elif bidst %}<div class="badge">{{ ui.judge_label(bidst.label) }}</div>{% endif %}
       </div>
     </div>
     <div class="mh-eyebrow">차량 경매 분석 리포트 · {{ v.court }} · {{ now }}</div>
@@ -1475,7 +1482,15 @@ document.addEventListener('click', function(e){
      ⚠ 공개 문구에 시점 약속을 넣지 않는다. 0표본 재조회(service.requery_missing_market)는 기일이
      30일 안에 남은 물건만 다시 묻고, 이 분기를 타는 공개 물건 대다수는 기일이 이미 지났다
      (실측: reports/2026-09-24-panel55.md). "시세가 잡히면"조차 그들에겐 오지 않는다. #}
-  <section class="section"><div class="card"><p class="note" style="margin:0">{% if is_admin(request) %}시세가 아직 산정되지 않아 종합 리포트를 생성할 수 없습니다. 물건 상세에서 <b>[다시 분석]</b> 후 다시 시도하세요.{% else %}시세가 아직 산정되지 않아 종합 리포트를 만들 수 없습니다. 감정가·최저매각가 등 법원 자료는 물건 상세에서 그대로 확인하실 수 있습니다.{% endif %}</p></div></section>
+  {# PANEL-55 2회차(검수 지적 2·3) —
+     ① 그릇: `.note`(11.5px·ink-faint)는 각주다. 이 분기에서는 이 문장이 페이지의 **유일한 본문**인데 바로 아래
+        면책(더 진한 글자·굵은 제목·빨간 문장)보다 연했다. 새 CSS 없이 기존 `.sec-empty` 로 바꾸고 첫 문장(사실)만 굵게.
+        `.card` 로 감싸지 않는다 — 빈 상태를 카드 안에 넣으면 프레임이 두 겹(test_empty_sections_are_not_double_framed).
+     ② 공개 문구의 `아직` 을 뺀다 — 한 낱말짜리 시점 약속이고, 이 분기 공개 431건 중 391건은 기일이 지났다.
+        관리자 문구의 `아직` 은 유지(행동할 수 있는 사람이다).
+     ③ '물건 상세' 는 sticky 바 `상세로` 와 **같은 핸들러**(_reportBack)로 링크 — 히스토리 설계를 우회하지 않는다.
+        리포트에 본문 링크 색 규칙이 없어 잉크색+밑줄을 인라인으로. 빨강·앰버 금지 — '해당 없음'이지 경고가 아니다. #}
+  <section class="section"><div class="sec-empty">{% if is_admin(request) %}<b style="color:var(--ink)">시세가 아직 산정되지 않아 종합 리포트를 생성할 수 없습니다.</b> 물건 상세에서 <b>[다시 분석]</b> 후 다시 시도하세요.{% else %}<b style="color:var(--ink)">시세가 산정되지 않아 종합 리포트를 만들 수 없습니다.</b> 감정가·최저매각가 등 법원 자료는 <a href="/vehicle/{{ v.id }}" onclick="return _reportBack(event)" style="color:var(--ink);text-decoration:underline">물건 상세</a>에서 그대로 확인하실 수 있습니다.{% endif %}</div></section>
   {% endif %}
 
   <div class="disc">
