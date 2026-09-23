@@ -1392,6 +1392,19 @@ document.addEventListener('click', function(e){
       <div class="logic"><span class="ln">2</span><div class="ld">× 실측 낙찰률(유찰횟수 반영)<small>과거 낙찰가/시세 분포{% if v.fail_count %} · 유찰 {{ v.fail_count }}회 버킷{% endif %}</small></div><span class="lv num">×{{ ((report.discount or 0)*100)|round|int }}%</span></div>
       <div class="logic"><span class="ln">＝</span><div class="ld"><b>예상낙찰가</b><small>{% if expected.acc %}이 유형({{ expected.acc.label }}, {{ expected.acc.n }}건) <span style="white-space:nowrap">실측 오차 ±{{ expected.acc.mae }}%</span>{% else %}이 유형은 검증 표본 부족{% endif %} · 분위수 밴드 {{ report.lo|won if report.lo else '—' }}~{{ report.hi|won if report.hi else '—' }}</small></div><span class="lv num">{{ exp|won }}</span></div>
       {% endif %}
+      {# PANEL-41 — 선택 규칙을 **본문 문장**으로 둔다. 같은 규칙이 히어로에는 ui.acc_why() 툴팁으로
+         있는데, 이 문서는 인쇄용이고 위 <style> 의 @media print 가 `.gloss .pop`·`.q` 를 숨긴다
+         (실측: 인쇄 매체에서 `?` 0/12 · 팝오버 0/13). 즉 **인쇄해 법정에 들고 가는 사용자**에게는
+         "실측 오차 ±9.6%"만 남고 그게 왜 그 값인지가 통째로 사라진다.
+         ⚠ 자리: `.logic .ld small` **안이 아니라 그리드 밖 한 줄**이다. 그 칸은 이 문서에서 폭이
+           가장 빠듯한 자리(24px | minmax(0,1fr) | auto)라 문장을 넣으면 트랙을 다시 밀지만,
+           `p.note` 는 카드 전폭을 써서 320px 큰글씨에서도 넘치지 않는다.
+         ⚠ `exp` 와 `expected.acc` 가 둘 다 있을 때만 — 오차 배지를 안 찍은 물건에 선택 규칙만
+           적으면 **없는 값을 설명**하게 된다(위 '미산출이면 정확도 꼬리표를 붙이지 않는다'와 같은 규칙).
+         문장은 새 주장이 아니라 service.py `accuracy_for` 의 규칙을 그대로 옮긴 것이다. #}
+      {% if exp and expected and expected.acc %}
+      <p class="note"><b style="color:var(--ink)">오차를 고르는 규칙</b> · 이 물건은 여러 유형에 동시에 속하며, 그중 <b style="color:var(--ink)">가장 불리한(오차가 큰) 유형</b>의 실측 오차를 적습니다 — 유리한 쪽을 고르지 않습니다.</p>
+      {% endif %}
       {% if v.breakdown %}
       <div class="v-label" style="margin:18px 0 8px">재판매 상한가 (마진 기준)</div>
       {% set bd = v.breakdown %}
