@@ -75,8 +75,14 @@
       <span class="material-symbols-outlined text-[14px]">payments</span> 가격대별 시세 대비 낙찰가</div>
     <div class="space-y-1.5">
     {% for b in ss.price_bands %}
-      <div class="flex items-center gap-2 text-[11px]">
-        <span class="w-[76px] text-white/70 shrink-0">{{ b.label }}</span>
+      <div class="nc-band-row flex items-center gap-2 text-[11px]">
+        {# 라벨 트랙은 px 가 아니라 **em** 이다 — 76px 로 박아 두면 큰글씨(root 20px)에서
+           `1,000~2,000만` 이 박스를 넘어 `1,000~2,0 / 00만` 처럼 **숫자 한가운데서** 갈린다.
+           (2026-09-23 실측: 320·360·390px 큰글씨 **전부** 2줄. 쉼표를 넣기 전에도 `1000~200 / 0만`
+            으로 이미 갈리고 있었다 — 어휘 통일이 만든 문제가 아니라 드러낸 문제다.)
+           필요 폭은 폰트와 무관하게 6.48em 으로 일정해 7em 이면 덮는다(일반 77px · 큰글씨 114px).
+           `whitespace-nowrap` 은 숫자가 다시 쪼개지지 않게 하는 잠금이다 — 돈 숫자는 갈리면 오독된다. #}
+        <span class="nc-band-lbl w-[7em] text-white/70 shrink-0 whitespace-nowrap">{{ b.label }}</span>
         <div class="flex-1 h-2 rounded-full bg-white/10 relative overflow-hidden">
           <div class="absolute inset-y-0 left-0 rounded-full bg-amber-400" style="width:{{ b.ratio }}%"></div>
         </div>

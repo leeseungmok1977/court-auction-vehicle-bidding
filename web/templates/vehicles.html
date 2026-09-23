@@ -245,7 +245,7 @@ d.addEventListener('toggle',function(){try{localStorage.setItem('ncUsepickBasis'
           <th class="py-3 px-3 font-semibold text-center w-[86px]">판정</th>
           <th class="py-3 px-3 font-semibold text-right whitespace-nowrap w-[112px]">최저매각가 <span class="text-mut font-normal">경매 시작가</span></th>
           <th class="py-3 px-3 font-semibold text-right whitespace-nowrap w-[108px]" title="되팔이(재판매) 마진·부대비 차감 후 손익분기가 — 이 값 이하로 낙찰해야 차익. 예상낙찰가보다 낮은 것이 정상">상한가 <span class="text-mut font-normal">재판매</span></th>
-          <th class="py-3 px-3 font-semibold text-right whitespace-nowrap bg-primary/5 text-primary w-[158px]" title="일반 매수 실입찰 기준{% if mae %} — 전체 평균 오차 ±{{ mae }}%. 이 값은 전체 평균이라 개별 물건의 정확도가 아닙니다. 물건별 실측 오차는 상세·리포트에서 유형(제조사·유찰횟수)별로 표시합니다{% endif %}">예상낙찰가 <span class="text-mut font-normal">실입찰</span></th>
+          <th class="py-3 px-3 font-semibold text-right whitespace-nowrap bg-primary/5 text-primary w-[158px]" title="일반 매수 실입찰 기준{% if mae %} — 전체 평균 오차 ±{{ mae }}%. 이 값은 전체 평균이라 개별 물건의 정확도가 아닙니다. 물건별 실측 오차는 상세·리포트에서 유형별로 표시합니다{% endif %}">예상낙찰가 <span class="text-mut font-normal">실입찰</span></th>
           <th class="py-3 px-3 font-semibold text-right whitespace-nowrap w-[124px]">시세중앙값 <span class="text-mut font-normal">·신뢰도</span></th>
           <th class="py-3 px-3 font-semibold whitespace-nowrap w-[100px]">매각기일</th>
           <th class="py-3 px-3 font-semibold text-right whitespace-nowrap w-[88px]">결과</th>
@@ -376,9 +376,13 @@ d.addEventListener('toggle',function(){try{localStorage.setItem('ncUsepickBasis'
        ⚠ 범례(110px)가 첫 카드를 폴드 밖으로 밀어낸 전례가 있다(:142-145) — 한 줄로 유지한다.
          그 약속을 스스로 어기고 있었다(표시 78자 → 390px 3줄·큰글씨 4~5줄 ≈ 110px 급).
          뒤의 설명은 ui.gloss 로 접고 한 줄만 남긴다(2026-09-23 교차검수).
+       ⚠ **층을 열거하지 않는다.** 전에는 '유형(제조사·유찰횟수)' 이라고 층을 세어 적었는데,
+         2026-09-23 에 **시세대 층**이 더해지면서 이 고지가 거짓이 됐다 — 목록에서 "두 가지"로
+         읽은 사용자가 상세에서 `이 유형(시세 2,000만 이상, 52건)` 을 본다(화면이 자기 고지를
+         반증). 낱말을 하나 더 붙이면 다음 층에서 또 깨지므로 **열거 자체를 없앤다.**
        ⚠ **고지에서 굵을 것은 한계다.** 안심시키는 ±오차를 굵게, 한계를 회색으로 두면
          고지가 광고가 된다 — 굵기를 뒤집어 '이 물건 값 아님'을 굵게 쓴다(리포트 :1075 와 같은 낱말). #}
-    {% if mae %}<p class="px-4 py-2 text-[11px] text-mut gloss-row" style="word-break:keep-all">예상낙찰가 <span class="tnum">전체 평균 오차 ±{{ mae }}%</span> — {{ ui.gloss('이 물건 값 아님', '전체 평균이라 이 물건 하나의 정확도가 아닙니다. 물건별 오차는 상세 화면에서 유형(제조사·유찰횟수)별로 표시합니다.', cls='font-bold text-txt') }}</p>{% endif %}
+    {% if mae %}<p class="px-4 py-2 text-[11px] text-mut gloss-row" style="word-break:keep-all">예상낙찰가 <span class="tnum">전체 평균 오차 ±{{ mae }}%</span> — {{ ui.gloss('이 물건 값 아님', '전체 평균이라 이 물건 하나의 정확도가 아닙니다. 물건별 오차는 상세 화면에서 유형별로 표시합니다.', cls='font-bold text-txt') }}</p>{% endif %}
     {% for v in rows %}
     {% set closed = v.auction_result == '낙찰' or v.judgment == '종결' %}
     {% set exp_far = v.expected_win and v.min_sale_price and v.min_sale_price > v.expected_win %}

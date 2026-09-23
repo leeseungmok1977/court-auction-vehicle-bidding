@@ -557,10 +557,17 @@ table.matrix th.axis{width:32%}
    4열 표 전체를 밀어내 320px·큰글씨 390px 에서 넘쳤다(실측). */
 .matrix th.axis,.matrix td.axis{white-space:normal}
 .cell-pos{background:var(--green-tint);color:var(--green);font-weight:700}.cell-neu{background:var(--amber-tint);color:var(--amber);font-weight:700}.cell-neg{background:var(--red-tint);color:var(--red);font-weight:700}
-.logic{display:grid;grid-template-columns:24px 1fr auto;gap:12px;align-items:baseline;padding:11px 4px;border-bottom:1px solid var(--line)}
+/* ⚠ `1fr` = `minmax(auto,1fr)` 이라 트랙이 **min-content 아래로 못 줄어든다** — 설명(.ld)의
+   가장 긴 비분할 토큰이 길어지면 그리드가 카드를 뚫는다(base.html:271 `nc-kv` 사고와 같은 형태).
+   `minmax(0,1fr)` 로 바닥을 열고, 넘칠 때는 .ld 안에서 줄을 끊는다(아래 overflow-wrap).
+   2026-09-23: 층 라벨에 축 접두가 붙어 `이 유형(시세 1,000~2,000만, 59건)` 으로 길어졌다. */
+.logic{display:grid;grid-template-columns:24px minmax(0,1fr) auto;gap:12px;align-items:baseline;padding:11px 4px;border-bottom:1px solid var(--line)}
 .logic:last-child{border-bottom:none;background:var(--cobalt-tint);border-radius:8px;padding:12px;margin-top:6px}
 .logic .ln{font-family:var(--mono);font-size:11px;color:var(--ink-faint);font-weight:700}
-.logic .ld{font-size:13px}.logic .ld small{display:block;color:var(--ink-faint);font-size:11.5px}
+/* body 의 `overflow-wrap:break-word` 는 :148 에서 표 계열에만 다시 걸려 있고 .ld 에는 상속
+   경로가 있으나, `word-break:keep-all` 과 겹치면 숫자+한글 토큰(`1,000~2,000만,`)이 안 끊긴다.
+   `anywhere` 는 min-content 계산에 반영돼 트랙을 부풀리지 않는다(:146 과 같은 이유). */
+.logic .ld{font-size:13px;min-width:0;overflow-wrap:anywhere}.logic .ld small{display:block;color:var(--ink-faint);font-size:11.5px;overflow-wrap:anywhere}
 .logic .lv{font-family:var(--mono);font-weight:700;font-size:13.5px;white-space:nowrap}.logic:last-child .lv{color:var(--cobalt);font-size:15px}
 pre.body{white-space:pre-wrap;font-family:var(--sans);font-size:12.5px;color:var(--ink-soft);line-height:1.6;margin:0;max-height:260px;overflow:auto}
 .disc{margin-top:44px;padding:20px 24px;background:#EEF1F5;border-radius:12px;font-size:11.5px;color:var(--ink-soft);line-height:1.7}
@@ -889,7 +896,7 @@ document.addEventListener('click', function(e){
             {%- elif use.accident_hits is not none %}(확인된 사고 {{ use.accident_hits }}건 기준 · 업계 통용 범위 기반 <b>가정</b>이며 실측값이 아닙니다)
             {%- endif %} · 정비 충당 <b>{{ use.reserve|won }}원</b>{% endif %}
             <span style="display:block">단, <b>유치권(수리비·보관료)·인수부담은 이 값에 반영돼 있지 않습니다</b> — <a href="#sec09">09 리스크</a>에서 확인하세요.</span></div>
-          <div class="v-label gloss-row" style="margin-top:14px">예상낙찰가 <span style="font-weight:400">{% if exp %}— 참고({{ ui.gloss('분위수 밴드', '과거 낙찰 결과가 얼마나 흩어졌는지(사분위 폭)를 중심값에 적용한 범위예요. 이 안에 떨어질 가능성이 높다는 뜻이지 보장은 아닙니다.') }}{% if expected.acc %} · 이 유형({{ expected.acc.label }}, {{ expected.acc.n }}건) <span style="white-space:nowrap">실측 오차 ±{{ expected.acc.mae }}%</span>{% endif %}){% endif %}</span></div>
+          <div class="v-label gloss-row" style="margin-top:14px">예상낙찰가 <span style="font-weight:400">{% if exp %}— 참고({{ ui.gloss('분위수 밴드', '과거 낙찰 결과가 얼마나 흩어졌는지(사분위 폭)를 중심값에 적용한 범위예요. 이 안에 떨어질 가능성이 높다는 뜻이지 보장은 아닙니다.') }}{% if expected.acc %} · {{ ui.acc_why() }}({{ expected.acc.label }}, {{ expected.acc.n }}건) <span style="white-space:nowrap">실측 오차 ±{{ expected.acc.mae }}%</span>{% endif %}){% endif %}</span></div>
           <div class="v-sub" style="font-size:15px"><b class="num">{% if report.lo and report.hi %}{{ (report.lo/10000)|round|int }} ~ {{ (report.hi/10000)|round|int }} 만원{% elif exp %}{{ (exp/10000)|round|int }} 만원{% else %}<b>미산출</b>{% endif %}</b>
             {% if exp %}· 중심값 {{ exp|won }}원 {% endif %}· 재판매 상한가 {% if upper %}{{ upper|won }}원{% else %}미산출{% endif %}
             {% if not exp %}<span style="display:block;font-weight:400">— 이 물건은 <b>예상낙찰가를 산출하지 않았습니다</b>(표본·조건 불충족). 아래 06·08은 현 최저매각가 기준입니다.</span>{% endif %}
@@ -897,7 +904,7 @@ document.addEventListener('click', function(e){
             {% if exp and exp > max_bid %}<b style="color:var(--red)">— 예상 경쟁가가 상한선을 {{ (exp - max_bid)|won }}원 넘습니다.</b>{% endif %}</div>
           {% else %}
           {# 미산출이면 정확도 꼬리표를 붙이지 않는다 — 없는 값에 적중률을 달면 값이 있는 것처럼 읽힌다 #}
-          <div class="v-label gloss-row">예상낙찰가 <span style="font-weight:400">{% if exp %}— {{ ui.gloss('분위수 밴드', '과거 낙찰 결과가 얼마나 흩어졌는지(사분위 폭)를 중심값에 적용한 범위예요. 이 안에 떨어질 가능성이 높다는 뜻이지 보장은 아닙니다.') }}{% if expected.acc %} · 이 유형({{ expected.acc.label }}, {{ expected.acc.n }}건) <span style="white-space:nowrap">실측 오차 ±{{ expected.acc.mae }}%</span>{% endif %}{% endif %}</span></div>
+          <div class="v-label gloss-row">예상낙찰가 <span style="font-weight:400">{% if exp %}— {{ ui.gloss('분위수 밴드', '과거 낙찰 결과가 얼마나 흩어졌는지(사분위 폭)를 중심값에 적용한 범위예요. 이 안에 떨어질 가능성이 높다는 뜻이지 보장은 아닙니다.') }}{% if expected.acc %} · {{ ui.acc_why() }}({{ expected.acc.label }}, {{ expected.acc.n }}건) <span style="white-space:nowrap">실측 오차 ±{{ expected.acc.mae }}%</span>{% endif %}{% endif %}</span></div>
           <div class="v-band num">{% if report.lo and report.hi %}{{ (report.lo/10000)|round|int }} <small>~</small> {{ (report.hi/10000)|round|int }}<small>만원</small>{% elif exp %}{{ (exp/10000)|round|int }}<small>만원</small>{% else %}<span style="font-family:var(--sans);font-size:21px;color:var(--ink-soft)">미산출</span>{% endif %}</div>
           <div class="v-sub">{% if exp %}중심값 <b class="num">{{ exp|won }}원</b> · {% endif %}재판매 상한가 {% if upper %}<b class="num">{{ upper|won }}원</b>{% else %}<b>미산출</b>{% endif %}
             {% if report.hi and exp and report.hi <= exp %}<span style="display:block;color:var(--ink-faint)">예상가 밴드는 소매 시세의 110%(소프트캡)에서 멈추도록 제한돼 있어 윗부분이 여기서 끊깁니다. 중심값이 맨 위에 있다고 해서 그 금액까지 써도 된다는 뜻은 아닙니다.</span>{% endif %}

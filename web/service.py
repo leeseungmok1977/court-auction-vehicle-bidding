@@ -4096,7 +4096,12 @@ def _price_band(med: Optional[int]) -> Optional[str]:
     전에는 `med = median_price or actual or 0` 이라 가격 미상 물건이 전부 `500만 이하` 로
     밀려 들어갔다. 지금은 그 층이 n=2(<8)라 자동 제외돼 무해하지만, 표본이 8을 넘는
     순간 **가격을 모르는 물건이 엉뚱한 오차율을 배정받는다**(PANEL-30 구현 함정).
-    층 경계는 기존 값 그대로다 — 새로 만들지 않는다."""
+    층 경계는 기존 값 그대로다 — 새로 만들지 않는다.
+
+    ⚠ 경계 **낱말**은 고쳤다(2026-09-23 교차검수). 마지막 층은 `med >= 20_000_000` 이라
+    시세가 정확히 2,000만원인 물건이 이 층에 **들어오는데** 이름이 `2,000만 초과`였다 —
+    화면에 사실과 다른 말이 찍혔다(`<` 인 위 두 층은 상한 배타라 정상). 달력 '지난달 낙찰
+    실적'(`last_month_sale_stats`)이 이미 쓰던 `이상`으로 맞춰 **앱 어휘를 한 벌로 모은다.**"""
     if not med:
         return None
     if med < 5_000_000:
@@ -4105,7 +4110,7 @@ def _price_band(med: Optional[int]) -> Optional[str]:
         return "500~1,000만"
     if med < 20_000_000:
         return "1,000~2,000만"
-    return "2,000만 초과"
+    return "2,000만 이상"
 
 
 def _fail_band(fc) -> str:
@@ -4155,6 +4160,17 @@ def accuracy_strata(bt: Optional[dict] = None) -> list:
     return out
 
 
+def _acc_label(row: dict) -> str:
+    """화면에 인쇄되는 층 이름 — **축을 라벨 안에 넣는다.**
+
+    `국산`·`유찰 3회 이상` 은 축이 자명한데 가격대 층만 **무엇의 2,000만인지** 말하지 않았다
+    (2026-09-23 교차검수). 기준은 `accuracy_for` 가 쓰는 `effective_median`(엔카+케이카 블렌드
+    시세중앙값)이라 화면 어휘 `시세` 를 앞에 붙인다. 제조사·유찰 라벨에는 붙이지 않는다 —
+    이미 자명한 말에 접두를 더하면 좁은 폭(`report.html:563` `.logic .ld small`)에서 길어지기만 한다.
+    ⚠ 이 문자열로 `accuracy_strata` 층을 다시 찾지 말 것 — 조회 키는 `_price_band` 원문이다."""
+    return f"시세 {row['label']}" if row.get("group") == "가격대" else row["label"]
+
+
 def accuracy_for(v: dict, bt: Optional[dict] = None) -> Optional[dict]:
     """이 물건 **유형**의 실측 오차. 표본이 부족하면 None — 전체 평균으로 대신하지 않는다.
 
@@ -4165,7 +4181,17 @@ def accuracy_for(v: dict, bt: Optional[dict] = None) -> Optional[dict]:
     후보는 제조사·유찰횟수·**가격대** 세 층이다. 가격대는 `accuracy_strata` 가 계산해
     두고도 후보에서 빠져 있던 **죽은 계산**이었다(PANEL-30). 넣으면 '더 나쁜 쪽' 규칙상
     표시 오차는 커지거나 그대로다 — 더 낙관적으로 바뀌는 경우가 없어 이 독스트링이
-    금지한 과대주장과 방향이 같다(실측: 734건 중 396건이 평균 +0.77%p·최대 +1.0%p).
+    금지한 과대주장과 방향이 같다(실측: 734건 중 396건이 평균 +0.77%p·최대 +1.0%p —
+    ⚠ 이 숫자는 **엔카 단일 `median_price`** 로 층을 잡아 잰 값이고, 아래 코드가 쓰는 기준은
+    `effective_median`(엔카+케이카 블렌드)다. 근거를 잰 기준과 코드가 쓰는 기준이 다르다.
+    블렌드 기준 전수 재측정 2026-09-23: 1,418대 중 **400건**이 가격대 층을 배정받아
+    평균 +0.77%p·최대 +1.0%p).
+
+    ⚠ **오차만 오르는 게 아니라 표본수 `N` 이 같이 떨어진다.** 같은 재측정에서 314건의 N이
+    줄었고(중앙값 −41·최대 −48) 늘어난 건은 0건이다. 그 314건만 따로 보면 오차 증가는
+    평균 **+0.93%p** 다 — 400건 전체(+0.77%p)와 분모가 다르니 두 수를 섞어 쓰지 말 것. `N` 은 라벨 안에 함께 인쇄되는
+    신뢰 신호라, 사용자 눈에는 두 신호가 동시에 나빠진다 — 그래서 라벨이 **자기 축**을
+    밝혀야 한다(`_acc_label` 의 `시세` 접두).
     ⚠ **가격을 모르면 가격대 층은 후보에서 뺀다** — 그 물건을 `500만 이하` 로 몰아
     엉뚱한 오차율을 배정하지 않기 위해서다(`_price_band` 참조)."""
     kind = "국산" if is_domestic_maker(v) else "수입"
@@ -4179,8 +4205,8 @@ def accuracy_for(v: dict, bt: Optional[dict] = None) -> Optional[dict]:
     if not cands:
         return None
     worst = max(cands, key=lambda c: c["mae"])
-    return {"mae": worst["mae"], "within10": worst["within10"],
-            "n": worst["n"], "label": worst["label"]}
+    return {"mae": worst["mae"], "within10": worst["within10"], "n": worst["n"],
+            "group": worst["group"], "label": _acc_label(worst)}
 
 
 def alert_items(days: int = 3) -> list:
@@ -4255,8 +4281,11 @@ def last_month_sale_stats() -> Optional[dict]:
     over_min = sorted(r["winning_price"] / r["min_sale_price"] for r in rows)  # 최저가 대비
     qs = statistics.quantiles(ratios, n=4) if len(ratios) >= 4 else [ratios[0], statistics.median(ratios), ratios[-1]]
 
-    bands = [("500만 이하", 0, 500), ("500~1000만", 500, 1000),
-             ("1000~2000만", 1000, 2000), ("2000만 이상", 2000, 10 ** 9)]
+    # 가격대 어휘는 `_price_band`(정확도 층)와 **한 벌**이어야 한다 — 같은 개념을 두 벌로
+    # 적어 두면 한 화면은 `1,000~2,000만`, 다른 화면은 `1000~2000만` 이 된다(2026-09-23 교차검수).
+    # 쉼표는 `_man` 필터(app.py:305 `f"{n:,}만"`)가 앱 규칙이고, 경계 낱말은 이쪽 `이상`이 옳다.
+    bands = [("500만 이하", 0, 500), ("500~1,000만", 500, 1000),
+             ("1,000~2,000만", 1000, 2000), ("2,000만 이상", 2000, 10 ** 9)]
     price_bands = []
     for lab, lo, hi in bands:
         sub = [r["winning_price"] / r["median_price"] for r in rows
