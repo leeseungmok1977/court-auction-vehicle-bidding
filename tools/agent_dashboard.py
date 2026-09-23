@@ -87,6 +87,8 @@ CACHE = ROOT / "data" / "agent_dashboard_cache.json"        # data/ 는 git 제�
 EVENTS = ROOT / "data" / "agent-events.jsonl"               # .claude/hooks/agent-log.ps1 이 쓴다
 TOKEN_FILE = ROOT / "data" / "dashboard_token.txt"          # 사내망 열쇠 — data/ 는 git 제외
 UTIL_MD = ROOT / "docs" / "agent-utilization.md"           # 유휴 판정·리듬 정의(사람이 쓴다)
+SUPPLY = ROOT / "data" / "ops_supply.json"                 # 공급 판정 — 매일 12시 리포트가 쓴다
+SUPPLY_MAX_AGE_H = 26                                      # 하루(12:00) + 여유 2시간. 넘으면 '낡음'
 HTML = Path(__file__).with_name("agent_dashboard.html")
 PORT = 8765
 TOKEN = ""            # 빈 문자열이면 로컬 전용 — 검사하지 않는다. main() 에서만 채운다.
@@ -503,6 +505,32 @@ def read_git() -> tuple[list[dict], str | None]:
     return out, None
 
 
+def read_supply() -> tuple[dict, str | None]:
+    """공급 상태 — **운영 서버를 읽은 결론 파일**(`data/ops_supply.json`)만 쓴다.
+
+    ★ 옆에 있는 `read_product()` 처럼 로컬 `auction.db` 로 판정하면 안 된다. 그 파일은
+      수집이 꺼진 개발 사본이라 `max(collected_at)` 이 며칠씩 낡아 있다(2026-09-23 실측:
+      로컬 09-17 vs 운영 09-23). 그 값으로 '수집 멈춤'을 띄우면 **매일 거짓 경보**가 뜨고,
+      그러면 사람은 진짜 경보도 안 보게 된다. 결론은 서버를 읽는 쪽이 만든다
+      (`tools/daily_ops_report.py` 매일 12:00) — 여기서는 **언제 잰 것인지와 함께** 보여 준다.
+    """
+    if not SUPPLY.exists():
+        return {}, "data/ops_supply.json 이 없다 — 매일 12시 리포트가 만든다"
+    try:
+        v = json.loads(SUPPLY.read_text(encoding="utf-8"))
+    except Exception as e:                                   # noqa: BLE001
+        return {}, f"공급 판정 파일을 읽지 못했다: {type(e).__name__}"
+    age_h = None
+    try:
+        age_h = round((datetime.now() - datetime.fromisoformat(v["checked_at"])).total_seconds() / 3600, 1)
+    except Exception:                                        # noqa: BLE001
+        pass
+    v["age_hours"] = age_h
+    # 판정 자체가 낡으면 색을 초록으로 두지 않는다 — '어제는 정상이었다'는 오늘의 정상이 아니다.
+    v["stale"] = age_h is None or age_h > SUPPLY_MAX_AGE_H
+    return v, None
+
+
 def read_product() -> tuple[dict, str | None]:
     """제품 규모 — **이 PC 의 로컬 사본**이다. 운영 수치가 아니라는 점을 화면에 밝힌다."""
     db = ROOT / "data" / "auction.db"
@@ -739,6 +767,9 @@ def build_state(rescan: bool = False) -> dict:
     product, e = read_product()
     if e:
         problems.append(e)
+    supply, e = read_supply()
+    if e:
+        problems.append(e)
     verdicts, rhythms, e = read_utilization()
     if e:
         problems.append(e)
@@ -821,9 +852,18 @@ def build_state(rescan: bool = False) -> dict:
     week_ago = (now - timedelta(days=7)).isoformat()[:10]
     calls_7d = sum(v for k, v in stats["per_day"].items() if k >= week_ago)
 
+    # 공급 상태 타일 — 화면에서 **제일 먼저** 읽혀야 한다. 2026-09-19~21 의 기록은 이미
+    # 어딘가에 다 있었지만 먼저 보이는 자리에 없어서 사흘을 아무도 몰랐다.
+    _sup_state = (supply.get("state") if supply else None)
+    if supply and supply.get("stale"):
+        _sup_state = "unknown"
     return {
         "generated_at": now.isoformat(timespec="seconds"),
         "kpi": {
+            # 없으면 '정상'이 아니라 '—'다. 모르는 것을 초록으로 칠하지 않는다.
+            "supply_state": _sup_state,
+            "supply_headline": (supply.get("headline") if supply else ""),
+            "supply_alerts": len(supply.get("alerts") or []) if supply else None,
             "agents_total": len(roster), "agents_used": len(used), "agents_never": len(never),
             "calls_total": sum(per_agent.get(a["name"], 0) for a in roster),
             "calls_7d": calls_7d,
@@ -864,6 +904,7 @@ def build_state(rescan: bool = False) -> dict:
         "artifacts": read_artifacts(),
         "git": git,
         "product": product,
+        "supply": supply,
         "source": {
             "cc_versions": sorted(stats["versions"], reverse=True)[:6],
             "lines_parsed": stats["lines"], "parse_failed": stats["bad"],

@@ -29,6 +29,7 @@ from src.bidcalc.calculator import BidInput, calculate
 from src.pipeline import resolve_mapping
 
 from . import db
+from . import ops_health
 
 # 동시 수집 방지용 상태
 _lock = threading.Lock()
@@ -1697,6 +1698,108 @@ def encar_health_status() -> dict:
             "degraded": state == "blocked" or (days is not None and days >= 2)}
 
 
+# =========================================================================
+# 공급 감시 — 수집·분석·교차검증이 멈추면 **먼저 보이는 자리**에 띄우기 위한 재료
+#   판정은 web/ops_health.py(순수 함수) 한 곳에만 있다. 여기서는 **읽기만** 한다.
+#   ⚠ 여기 함수들은 외부 요청을 하지 않는다(encar_health 와 다르다 — 그건 요청 1회를 쓴다).
+# =========================================================================
+SUPPLY_HISTORY_KEY = "supply_zero_history"      # settings 에 쌓는 0표본 추이(JSON 배열)
+
+# 0표본 정의는 ops_health 한 곳에만 둔다(운영 서버 조회 스크립트도 같은 문장을 쓴다).
+_ZERO_SAMPLE_SQL = ops_health.ZERO_SAMPLE_SQL
+
+
+def supply_snapshot(days: int = 7) -> dict:
+    """공급 상태 판정에 필요한 값만 모은 스냅샷(외부요청 0 · 읽기 전용).
+
+    ⚠ 이 함수는 **자기 DB** 를 읽는다. 개발 PC 에서 부르면 개발 사본의 값이 나온다 —
+      그 값으로 공급을 판정하면 매일 거짓 경보가 뜬다(ops_health 모듈 주석 참조).
+    """
+    from datetime import timedelta as _td
+    since = (date.today() - _td(days=max(1, int(days)))).isoformat()
+    conn = db.connect()
+    try:
+        fresh = conn.execute(
+            "select max(collected_at) c, max(analyzed_at) a, "
+            "max(result_checked_at) r, max(kcar_checked_at) k from vehicles").fetchone()
+        zero = conn.execute(_ZERO_SAMPLE_SQL).fetchone()["n"]
+        total = conn.execute("select count(*) n from vehicles").fetchone()["n"]
+        runs = [{"started_at": x["started_at"], "status": x["status"], "message": x["message"]}
+                for x in conn.execute(
+                    "select started_at, status, message from runs "
+                    "where started_at >= ? order by started_at", (since,))]
+    finally:
+        conn.close()
+    s = db.get_all_settings()
+    return {
+        "collected_at": fresh["c"], "analyzed_at": fresh["a"],
+        "result_checked_at": fresh["r"], "kcar_checked_at": fresh["k"],
+        "encar_state": s.get("encar_health_state"), "encar_code": s.get("encar_health_code"),
+        "encar_ok_at": s.get("encar_health_ok_at"),
+        "kcar_state": s.get("kcar_health_state"), "kcar_state_at": s.get("kcar_health_at"),
+        "kcar_msg": s.get("kcar_health_msg"),
+        "daily_enabled": s.get("daily_enabled"), "runs": runs,
+        "zero_sample": {"zero": zero, "total": total},
+        "zero_history": _supply_history(s),
+    }
+
+
+def _supply_history(settings: Optional[dict] = None) -> list:
+    """settings 에 쌓아 둔 0표본 추이. 깨진 값은 빈 목록으로(감시가 먼저 죽지 않게)."""
+    raw = (settings or db.get_all_settings()).get(SUPPLY_HISTORY_KEY)
+    try:
+        rows = json.loads(raw) if raw else []
+        return [r for r in rows if isinstance(r, dict) and r.get("date")]
+    except (TypeError, ValueError):
+        return []
+
+
+def record_supply_history(today: Optional[str] = None) -> list:
+    """오늘의 0표본을 추이에 기록한다(하루 1행, 같은 날은 덮어쓴다).
+
+    0표본 경보는 **어제와 비교**해야 의미가 생기는데, DB 에는 현재 값만 있고 과거가 없었다.
+    매일 갱신 끝에서 한 줄 남긴다 — 다음 날의 비교 기준이 된다.
+    """
+    today = today or date.today().isoformat()
+    conn = db.connect()
+    try:
+        zero = conn.execute(_ZERO_SAMPLE_SQL).fetchone()["n"]
+        total = conn.execute("select count(*) n from vehicles").fetchone()["n"]
+    finally:
+        conn.close()
+    keep = int(load_config().get("ops_alert", {}).get("history_days", 14))
+    rows = [r for r in _supply_history() if str(r.get("date"))[:10] != today]
+    rows.append({"date": today, "zero": zero, "total": total})
+    rows = sorted(rows, key=lambda r: str(r.get("date")))[-max(2, keep):]
+    db.set_setting(SUPPLY_HISTORY_KEY, json.dumps(rows, ensure_ascii=False))
+    return rows
+
+
+def record_kcar_health(state: str, msg: str = "") -> None:
+    """케이카 수집 가능 여부를 settings 에 남긴다(외부요청 없음 — 시도 결과를 적을 뿐).
+
+    왜 필요한가 — 2026-09-23 조사: `kcar_checked_at` 이 18일 멈췄는데 **원인을 가릴 기록이
+    하나도 없었다.** 재교정 경로는 세션 생성 실패를 `except: ks = None` 로 삼키고, 그 경로는
+    `run_id=None` 이라 실행 메시지도 남기지 않는다. 엔카에는 `encar_health_*` 가 있는데
+    케이카에는 대응물이 없어서 홈 배너도 일일 리포트도 케이카에 대해 **아무 말도 못 했다.**
+    """
+    db.set_setting("kcar_health_state", state)
+    db.set_setting("kcar_health_at", _now())
+    db.set_setting("kcar_health_msg", str(msg)[:200])
+    if state == "ok":
+        db.set_setting("kcar_health_ok_at", _now())
+
+
+def supply_health(now: Optional[datetime] = None) -> dict:
+    """공급 상태 판정(외부요청 0). 홈 배너·대시보드·일일 리포트가 같은 결론을 쓰도록 한 곳.
+
+    ⚠ 화면 적용은 여기서 하지 않는다 — 공개 배너는 PANEL-19 와 겹치는 별도 판단 사항이다.
+    """
+    snap = supply_snapshot()
+    snap["source"] = "이 인스턴스 DB"
+    return ops_health.evaluate(snap, ops_health.load_thresholds(load_config()), now=now)
+
+
 def daily_update(within_days: int = 30, analyze: bool = True,
                  analyze_limit: int = 0, run_id: Optional[int] = None,
                  repair_cost: int = 500000) -> dict:
@@ -1830,6 +1933,12 @@ def daily_update(within_days: int = 30, analyze: bool = True,
         _nc = (f" · 출시가 {newcar.get('matched', 0)}건(대기 {newcar.get('remaining', 0)}{'·' + _why if _why else ''})"
                if (newcar.get("matched") or newcar.get("remaining") or _why) else "")
         db.update_run(run_id, status="done", finished_at=_now(), message=f"{_base}{_nc}")
+    # ⑦ 공급 추이 한 줄 기록(외부요청 0) — 0표본 경보는 **어제와 비교**해야 뜻이 생기는데
+    #    DB 에는 현재 값만 있고 과거가 없었다. 실패해도 갱신 자체는 성공이다.
+    try:
+        record_supply_history()
+    except Exception:  # noqa: BLE001
+        pass
     return {"stored": stored, "analyzed": analyzed, "results": results, "review": review,
             "encar_health": health, "reuse": reuse, "requery": requery, "newcar": newcar, "photos": photos}
 
@@ -4843,9 +4952,13 @@ def analyze_single(vid: str, repair_cost: Optional[int] = None) -> Optional[dict
     if (kcar.ENABLED and config.get("kcar_cross_enabled", False)
             and rec.get("median_price") is not None):
         try:
-            kcar_crosscheck(vid, config)
-        except Exception:  # noqa: BLE001 — 차단·오류는 조용히(단건이라 이후 재시도 가능)
-            pass
+            _kr = kcar_crosscheck(vid, config) or {}
+            # 수집 자체가 됐는지만 남긴다(표본 부족 같은 정상 결과는 'skipped').
+            record_kcar_health("ok" if _kr.get("ok") else "skipped", _kr.get("msg") or "")
+        except Exception as e:  # noqa: BLE001 — 차단·오류는 조용히(단건이라 이후 재시도 가능)
+            # ⚠ 예전엔 통째로 삼켰다. 이 경로가 kcar_checked_at 을 쓰는 **유일한 자동 호출처**인데
+            #   실패 흔적이 없어 18일 정지의 원인을 코드로 가릴 수 없었다(2026-09-23).
+            record_kcar_health("error", f"{type(e).__name__}: {e}")
     return db.get_vehicle(vid)
 
 
@@ -4903,8 +5016,13 @@ def recompute_all_market(run_id: Optional[int] = None, finalize: bool = True,
     if kcar_on:
         try:
             ks = kcar.new_session()
-        except Exception:  # noqa: BLE001 — 케이카 세션 실패 시 엔카 단독 진행
+            record_kcar_health("ok")
+        except Exception as e:  # noqa: BLE001 — 케이카 세션 실패 시 엔카 단독 진행
             ks = None
+            # ⚠ 2026-09-23: 여기서 예외를 통째로 삼키고 있었다. 케이카가 매일 실패해도
+            #   흔적이 **어디에도** 남지 않는다(이 경로는 run_id=None 이라 실행 메시지도 없다).
+            #   동작은 그대로(엔카 단독 진행) 두고 **사유만** 남긴다 — 다음 사람이 원인을 본다.
+            record_kcar_health("error", f"{type(e).__name__}: {e}")
     updated = 0
     consecutive_fail = 0
     kcar_blocked = False
@@ -4962,6 +5080,7 @@ def recompute_all_market(run_id: Optional[int] = None, finalize: bool = True,
             fields.update(_kf)
             if _blk:                       # 케이카 차단 → 이후 케이카 중단(엔카는 계속)
                 kcar_blocked = True
+                record_kcar_health("blocked", "차단 감지(C.4-5) — 이 런의 케이카 조회 중단")
                 try:
                     ks.close()
                 except Exception:  # noqa: BLE001

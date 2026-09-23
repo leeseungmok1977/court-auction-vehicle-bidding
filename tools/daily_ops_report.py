@@ -39,6 +39,9 @@ from pathlib import Path
 from typing import Optional
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from web import ops_health  # noqa: E402 — 판정은 앱과 같은 한 곳을 쓴다(표준 라이브러리만 쓰는 모듈)
+
 OUT_DIR = ROOT / "docs" / "daily-reports"
 SERVER = "ubuntu@43.202.126.180"
 KEY = Path(os.environ.get("USERPROFILE", str(Path.home()))) / "Downloads" / "naechaget.pem"
@@ -46,6 +49,12 @@ LOCAL_STATE = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "naechage
 PHOTO_LOG = ROOT / "data" / "_photo_work" / "weekly_check.log"
 TUNNEL_LOG = LOCAL_STATE / "home_tunnel.log"
 REPORT_HOUR = 12
+# 공급 판정에 쓸 운영 `runs` 를 리포트 창보다 며칠 더 읽는다(연속 0건 판정에 필요).
+SUPPLY_RUN_DAYS = 7
+# 사내 대시보드(tools/agent_dashboard.py)가 읽는 자리. data/ 는 git 제외이고 같은 PC 안이다.
+# ⚠ 대시보드가 **로컬 auction.db 로 공급을 판정하면 안 된다** — 그건 수집이 꺼진 개발 사본이라
+#   매일 '수집 멈춤' 거짓 경보가 뜬다(2026-09-23 실측: 로컬 09-17 vs 운영 09-23).
+SUPPLY_OUT = ROOT / "data" / "ops_supply.json"
 
 OK = "✅ 성공"
 FAIL = "❌ 실패"
@@ -359,8 +368,22 @@ con.row_factory = sqlite3.Row
 out["runs"] = [dict(r) for r in con.execute(
     "select id, started_at, finished_at, status, scanned, processed, target, message from runs "
     "where started_at >= ? and started_at < ? order by id", (SINCE, UNTIL))]
+# 공급 감시용(web/ops_health.evaluate 가 먹는 스냅샷). 창(window) 밖까지 본다 —
+# '분석 0건 2일 연속' 같은 판정은 하루치만 봐서는 절대 나오지 않는다.
+fresh = con.execute("select max(collected_at) c, max(analyzed_at) a, "
+                    "max(result_checked_at) r, max(kcar_checked_at) k from vehicles").fetchone()
+out["supply"] = {
+    "collected_at": fresh["c"], "analyzed_at": fresh["a"],
+    "result_checked_at": fresh["r"], "kcar_checked_at": fresh["k"],
+    "zero_sample": {"zero": con.execute(__ZERO_SQL__).fetchone()["n"],
+                    "total": con.execute("select count(*) n from vehicles").fetchone()["n"]},
+    "runs": [dict(r) for r in con.execute(
+        "select started_at, status, message from runs where started_at >= ? order by started_at",
+        (__RUNS_SINCE__,))],
+}
 keys = ("daily_time", "daily_enabled", "last_run_date", "encar_health_state", "encar_health_code",
-        "encar_health_at", "encar_health_ok_at", "last_upcoming_count")
+        "encar_health_at", "encar_health_ok_at", "last_upcoming_count", "supply_zero_history",
+        "kcar_health_state", "kcar_health_at", "kcar_health_msg")
 out["settings"] = {r["key"]: r["value"] for r in con.execute(
     "select key, value from settings where key in (%s)" % ",".join("?" * len(keys)), keys)}
 def sh(cmd):
@@ -388,9 +411,16 @@ print(json.dumps(out, ensure_ascii=True))
 
 
 def remote_script(since: datetime, until: datetime) -> str:
-    """서버에서 실행할 읽기 전용 파이썬. 날짜는 JSON 문자열 리터럴로만 끼워 넣는다(주입·따옴표 사고 방지)."""
+    """서버에서 실행할 읽기 전용 파이썬. 날짜는 JSON 문자열 리터럴로만 끼워 넣는다(주입·따옴표 사고 방지).
+
+    0표본 문장은 `web/ops_health.ZERO_SAMPLE_SQL` 을 그대로 실어 보낸다 — 여기에 손으로
+    베껴 쓰면 앱이 세는 0표본과 리포트가 세는 0표본이 조용히 갈라진다.
+    """
+    runs_since = (since - timedelta(days=SUPPLY_RUN_DAYS)).strftime("%Y-%m-%d %H:%M:%S")
     return (_REMOTE.replace("__SINCE__", json.dumps(since.strftime("%Y-%m-%d %H:%M:%S")))
-                   .replace("__UNTIL__", json.dumps(until.strftime("%Y-%m-%d %H:%M:%S"))))
+                   .replace("__UNTIL__", json.dumps(until.strftime("%Y-%m-%d %H:%M:%S")))
+                   .replace("__RUNS_SINCE__", json.dumps(runs_since))
+                   .replace("__ZERO_SQL__", json.dumps(ops_health.ZERO_SAMPLE_SQL)))
 
 
 def _scrub(text: str) -> str:
@@ -482,6 +512,8 @@ def collect(day: date, now: Optional[datetime] = None) -> dict:
             data[key] = {"error": _scrub(e)}
     data["photo_log"] = read_photo_log()
     data["tunnel_log"] = read_tunnel_log(since, until)
+    # 공급 판정은 여기서 한 번만 한다(리포트와 사내 대시보드가 같은 결론을 쓰도록).
+    data["supply"] = supply_verdict(data, data["generated"])
     return data
 
 
@@ -493,6 +525,70 @@ def _cell(s) -> str:
 def _hm(s: Optional[str]) -> str:
     d = _dt(s)
     return d.strftime("%H:%M") if d else "?"
+
+
+_SUPPLY_MARK = {"ok": "✅ 정상", "warn": "⚠️ 이상", "down": "🛑 멈춤", "unknown": "❔ 확인 불가"}
+
+
+def _zero_history(raw) -> list:
+    try:
+        rows = json.loads(raw) if raw else []
+    except (TypeError, ValueError):
+        return []
+    return [r for r in rows if isinstance(r, dict) and r.get("date")]
+
+
+def supply_verdict(data: dict, now: Optional[datetime] = None) -> Optional[dict]:
+    """운영 서버 스냅샷 → 공급 판정. 읽지 못했으면 **None** 이다(모르는 것을 정상으로 적지 않는다).
+
+    ⚠ 판정은 **지금** 값이다. 지난 날짜 리포트(--date)에 지금 값을 쓰면 그날을 오판한다 —
+      터널 행이 9/15 드라이런에서 실제로 그렇게 틀렸다. 호출자가 기간을 보고 거른다.
+    """
+    server = data.get("server") or {}
+    supply = server.get("supply")
+    if server.get("error") or not supply:
+        return None
+    s = server.get("settings") or {}
+    snap = dict(supply)
+    snap.update({"encar_state": s.get("encar_health_state"),
+                 "encar_code": s.get("encar_health_code"),
+                 "encar_ok_at": s.get("encar_health_ok_at"),
+                 "kcar_state": s.get("kcar_health_state"),
+                 "kcar_state_at": s.get("kcar_health_at"),
+                 "kcar_msg": s.get("kcar_health_msg"),
+                 "daily_enabled": s.get("daily_enabled"),
+                 "zero_history": _zero_history(s.get("supply_zero_history")),
+                 "source": "운영 서버"})
+    return ops_health.evaluate(snap, ops_health.load_thresholds(),
+                               now=now or data.get("generated"))
+
+
+def supply_block(verdict: Optional[dict], live: bool) -> list:
+    """리포트 **맨 위**에 들어가는 공급 상태 블록.
+
+    왜 맨 위인가 — 2026-09-19~21 의 기록은 이 리포트 안에 **이미 있었다**(분석 0건이 표에 찍혔다).
+    그런데 아무도 몰랐다. 묻혀 있는 기록과 먼저 보이는 판정은 다르다.
+    """
+    if not live:
+        return ["## 공급 상태", "",
+                "> ❔ **지난 기간** — 공급 판정은 지금 값이라 지난 날짜 리포트에는 적지 않는다.", ""]
+    if not verdict:
+        return ["## 공급 상태", "",
+                "> ❔ **확인 불가** — 운영 서버 스냅샷을 읽지 못했다. 정상이라는 뜻이 아니다.", ""]
+    mark = _SUPPLY_MARK.get(verdict["state"], verdict["state"])
+    head = (f"> {mark} — {_cell(verdict['headline'])}"
+            f" · 기준 {verdict.get('source') or '운영 서버'} {verdict['checked_at'][:16]}")
+    L = ["## 공급 상태", "", head, ""]
+    if verdict["alerts"]:
+        L += ["**먼저 볼 것**", ""]
+        L += [f"- {_SUPPLY_MARK.get(a['state'], a['state'])} **{_cell(a['label'])}** "
+              f"{_cell(a['head'])} — {_cell(a['detail'])}" for a in verdict["alerts"]]
+        L += [""]
+    L += ["| 신호 | 상태 | 값 | 근거 |", "|---|---|---|---|"]
+    L += [f"| {_cell(s['label'])} | {_SUPPLY_MARK.get(s['state'], s['state'])} | "
+          f"{_cell(s['head'])} | {_cell(s['detail'])} |" for s in verdict["signals"]]
+    L += ["", "> 임계는 `config.yaml: ops_alert`, 판정은 `web/ops_health.py` 한 곳에 있습니다.", ""]
+    return L
 
 
 def build_markdown(data: dict) -> str:
@@ -638,6 +734,16 @@ def build_markdown(data: dict) -> str:
     summary = (f"성공 {counted.count(OK)} · 경고 {counted.count(WARN)} · 실패 {counted.count(FAIL)}"
                f" · 진행 중 {counted.count(RUNNING)} · 확인 불가 {counted.count(UNKNOWN)}")
 
+    # 공급 상태 — 표보다 **먼저** 읽히는 자리에 둔다. '지금' 판정이므로 지난 기간 리포트에는 적지 않는다.
+    supply_live = since <= now <= until + timedelta(hours=2)
+    verdict = data.get("supply") if "supply" in data else supply_verdict(data, now)
+    if supply_live and verdict:
+        summary += f" · 공급 {_SUPPLY_MARK.get(verdict['state'], verdict['state'])}"
+        if verdict["state"] != "ok":
+            # 요약 줄에서는 **가장 나쁜 1건 + 외 N건**만 부른다 — 세 건을 다 적으면 줄이 넘쳐
+            # 정작 '공급 멈춤'이라는 낱말이 뒤로 밀린다.
+            summary += f"({ops_health.headline(verdict['state'], verdict['alerts'], limit=1)})"
+
     L = [
         f"# 작업 결과 리포트 · {until:%Y-%m-%d}",
         "",
@@ -645,6 +751,7 @@ def build_markdown(data: dict) -> str:
         f"- **생성** {now:%Y-%m-%d %H:%M} · 이 PC 작업 스케줄러",
         f"- **요약** {summary}",
         "",
+    ] + supply_block(verdict, supply_live) + [
         "## 정기 작업",
         "",
         "| 작업 | 실행 위치 | 예정 | 실제 실행 | 건수 | 결과 |",
@@ -675,6 +782,24 @@ def build_markdown(data: dict) -> str:
     return "\n".join(L)
 
 
+def write_supply_sidecar(data: dict) -> Optional[Path]:
+    """공급 판정을 기계가 읽을 수 있게 한 줄 남긴다 — 사내 대시보드가 이 파일을 읽는다.
+
+    대시보드는 같은 PC 에 있지만 **운영 DB 를 못 본다**. 로컬 `auction.db` 로 판정하면
+    개발 사본의 낡은 시각 때문에 매일 거짓 '수집 멈춤'이 뜬다 — 그래서 서버를 읽은
+    이 도구가 결론을 남기고, 대시보드는 그 결론과 **언제 잰 것인지**를 함께 보여준다.
+    """
+    verdict = data.get("supply")
+    if not verdict:
+        return None
+    try:
+        SUPPLY_OUT.parent.mkdir(parents=True, exist_ok=True)
+        SUPPLY_OUT.write_text(json.dumps(verdict, ensure_ascii=False, indent=1), encoding="utf-8")
+        return SUPPLY_OUT
+    except OSError:
+        return None
+
+
 def _log_local(line: str) -> None:
     try:
         LOCAL_STATE.mkdir(parents=True, exist_ok=True)
@@ -695,7 +820,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     a = ap.parse_args(argv)
     day = date.fromisoformat(a.date) if a.date else date.today()
     try:
-        md = build_markdown(collect(day))
+        data = collect(day)
+        md = build_markdown(data)
+        write_supply_sidecar(data)      # 사내 대시보드가 읽는 자리(data/ops_supply.json)
     except Exception as e:  # noqa: BLE001
         _log_local(f"FAIL {day} {_scrub(e)}")
         raise
