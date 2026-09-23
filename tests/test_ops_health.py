@@ -381,6 +381,110 @@ def test_대시보드_타일과_띠는_같은_값을_쓴다():
     assert js.index("supTile,") < js.index("liveTile,")  # 타일도 맨 앞이다
 
 
+# ── 낡은 판정: 머리만 내리고 표를 초록으로 두면 안 된다 ──────────────────
+def _stored_ok(**over) -> dict:
+    """파일에 저장된 '전부 정상' 판정 — 낡음 여부만 갈아 끼운다."""
+    v = {"state": "ok", "headline": "공급 이상 없음", "source": "운영 서버",
+         "stale": False, "age_hours": 1.0,
+         "signals": [{"key": k, "label": k, "state": "ok", "head": "", "detail": ""}
+                     for k in ("collect", "analyze", "encar", "kcar",
+                               "results", "zero_sample", "runs")]}
+    v.update(over)
+    return v
+
+
+def test_낡은_판정이면_행_칩까지_전부_확인_불가다():
+    """★ 초록 칩이 **0개**여야 한다.
+
+    2026-09-24 실측: 머리(띠·타일)만 `unknown` 으로 내리고 표는 파일에 저장된 원래 `state`
+    를 그려서, 회색 '확인 불가' 바로 아래에 초록 `정상` 칩 7개가 남았다. 사람은 표를 믿는다.
+    `web/ops_health.py` 첫머리가 적어 둔 *"모르는 것을 초록으로 칠하지 않기 위해서다"* 를
+    **표가 어기고 있었다.**
+    """
+    stored = _stored_ok(stale=True, age_hours=30.0)
+    state, why, view = DASH.supply_display(stored, None)
+    assert state == "unknown"
+    assert [s["state"] for s in view["signals"]] == ["unknown"] * 7
+    assert [s for s in view["signals"] if s["state"] == "ok"] == []      # 초록 0개
+    # 표 머리('아래 7행은 30시간 전 상태다')와 **같은 수**로 읽혀야 한다 — 30.0 이 아니라 30
+    assert "30시간 전" in why and "30.0" not in why
+    assert [s["state_stored"] for s in view["signals"]] == ["ok"] * 7    # 원래 값은 안 잃는다
+    assert [s["state"] for s in stored["signals"]] == ["ok"] * 7         # 판정 원본 불변
+
+
+def test_반증_낡지_않으면_초록이_그대로_돌아온다():
+    """한쪽만 단언하면 공허하다 — `stale` 을 끄면 `정상` 칩이 **다시 7개**여야 한다.
+
+    이게 없으면 "전부 unknown 으로 칠한다"는 코드도 위 테스트를 통과한다.
+    """
+    state, why, view = DASH.supply_display(_stored_ok(stale=False), None)
+    assert state == "ok" and why == "공급 이상 없음"
+    assert [s["state"] for s in view["signals"]] == ["ok"] * 7
+    assert "state_stored" not in view["signals"][0]                     # 손대지 않았다
+
+
+def test_판정_파일을_못_읽으면_빨간_띠가_아니라_공급_확인_불가로_흡수한다(tmp_path, monkeypatch):
+    """★ 빨강은 '멈춤'에만 쓴다.
+
+    `#problems` 는 modifier 없는 `.band`(빨강)다. 판정 파일이 없는 첫날 화면이 통째로
+    빨개지면, 이 도구가 스스로 적어 둔 *"빨간불을 남발하면 진짜 빨간불을 못 본다"* 를
+    스스로 어긴다. 2026-09-24 기준 `data/ops_supply.json` 은 실제로 없다 — 오너가 지금
+    보는 화면이 그 상태다.
+    """
+    monkeypatch.setattr(DASH, "SUPPLY", tmp_path / "없음.json")
+    for fn, val in (("read_schedule", ([], None)), ("read_git", ([], None)),
+                    ("read_product", ({}, None)), ("read_delegation", ([], None))):
+        monkeypatch.setattr(DASH, fn, lambda *a, _v=val, **kw: _v)
+    monkeypatch.setattr(DASH, "read_artifacts", lambda: [])
+    monkeypatch.setattr(DASH, "scan_sessions", lambda rescan=False: (DASH._empty_stats(), None))
+    monkeypatch.setattr(DASH, "read_agent_events",
+                        lambda: {"enabled": False, "running": [], "recent": [],
+                                 "durations": {}, "count": 0})
+    s = DASH.build_state()
+    assert s["kpi"]["supply_state"] == "unknown"                 # 초록도 '—'도 아니다
+    assert "ops_supply.json" in s["kpi"]["supply_why"]           # 사유가 그 자리에 적힌다
+    assert [p for p in s["problems"] if "ops_supply" in p] == []  # 빨간 띠로 올리지 않는다
+
+
+def test_확인_불가는_초록보다_조용해서는_안_된다():
+    """심각도 순서: **정상 < 확인 불가 < 이상 < 멈춤.**
+
+    ⚠ 색값을 문자열로 고정한다. 2026-09-24 이전에는
+      · 행 칩: `unknown → warn`(주황) — '이상'과 같은 색이라 심각도가 섞였다
+      · KPI 타일: `.alert`·`.warn` 둘뿐 — '확인 불가'가 '정상'과 **같은 픽셀 색**(--ink)
+      · 띠: `.band.mute` bg `#14181d` — 카드 `#161b22` 와 채널당 (2,3,5) 차이
+    """
+    html = (_ROOT / "tools" / "agent_dashboard.html").read_text(encoding="utf-8")
+    spp = html[html.index("const SPP = {"):]
+    spp = spp[:spp.index("\n")].replace(" ", "")
+    assert "unknown:'mute'" in spp          # 초록(ok)도 주황(warn)도 아니다
+    # 행 칩은 **내려온 state** 를 그린다 — 파일에 저장된 원래 state 가 아니다
+    assert "sp.stale ? 'unknown' : s.state" in html
+    # '확인 불가' 전용 색이 실재하고 --ink(정상)와 다르다
+    assert "--unk:#b6c6d8" in html and "--unk-line:#55687f" in html
+    assert ".kpi.mute{border-color:var(--unk-line);background:var(--unk-bg)}" in html
+    assert ".kpi.mute .v{color:var(--unk)}" in html
+    assert ".band.mute{background:var(--unk-bg);border-color:var(--unk-line)" in html
+    assert ".pill.mute{" in html
+    # 낡았으면 표 머리에 '아래 N행은 …' 을 박는다
+    assert 'tr class="sh"' in html and "전 상태다 — 지금이 아니다" in html
+
+
+def test_멈춤_띠는_빨강이다_빈문자열_기본값에_걸리지_않는다():
+    """★ 2026-09-24 실측 버그.
+
+    `SPB = {..., down:'', ...}` 이라 `SPB[sst] || 'mute'` 의 `||` 가 빈 문자열을 먹고
+    **'멈춤' 띠를 회색(.mute)으로** 떨어뜨렸다. 타일은 `.alert`(빨강)인데 바로 위 띠는
+    회색이었다 — '타일과 띠는 같은 값을 쓴다'가 같은 *값*만 보장하고 같은 *심각도*는
+    보장하지 못한 자리다. 빨강을 아껴 쓰자던 규칙이 정작 진짜 멈춤에 빨강을 안 썼다.
+    """
+    html = (_ROOT / "tools" / "agent_dashboard.html").read_text(encoding="utf-8")
+    spb = html[html.index("const SPB = {"):]
+    spb = spb[:spb.index("\n")].replace(" ", "")
+    assert "down:'bad'" in spb and "down:''" not in spb
+    assert ".band.bad{background:#1d1414;border-color:#5c2a2a" in html
+
+
 # ── 케이카가 왜 멈췄는지 다음 사람이 볼 수 있게 ─────────────────────────
 def test_케이카_세션_실패는_기록으로_남는다(svc, monkeypatch):
     """★ 2026-09-23 조사에서 **원인을 가릴 기록이 하나도 없었다.**

@@ -531,6 +531,43 @@ def read_supply() -> tuple[dict, str | None]:
     return v, None
 
 
+def supply_display(supply: dict, err: str | None) -> tuple[str, str, dict]:
+    """공급 판정을 **표시용으로** 한 방향으로 정렬한다: 정상 < 확인 불가 < 이상 < 멈춤.
+
+    ⚠ 판정 자체(`web/ops_health.py`)는 건드리지 않는다. 판정 함수는 옳다 — 여기서 고치는 것은
+      **표시**다. 돌려주는 것: (화면 상태, 사유 한 줄, 표시용 supply 사본).
+
+    ★ 2026-09-24 검수 ①. 전에는 머리(띠·타일)만 `unknown` 으로 내리고 표는 파일에 저장된
+      원래 `state` 를 그대로 그렸다. 30시간 낡은 '전부 정상' 판정에서 화면은 회색 '확인 불가'
+      머리 **바로 아래에 초록 `정상` 칩 7개**를 띄웠다. 사람은 표를 믿는다.
+      `web/ops_health.py` 첫머리가 *"'판정 보류(unknown)'를 따로 두는 이유: 모르는 것을
+      초록으로 칠하지 않기 위해서다"* 라고 적어 뒀는데 **표가 그 문장을 어기고 있었다.**
+      그리고 이 블록이 막으려던 09-19~21 사고의 형태가 정확히 '초록으로 보여서 안 봤다' 다.
+      → 낡으면 **행 칩까지 전부** 내린다. 초록이 한 개도 남지 않아야 한다.
+
+    ★ 2026-09-24 검수 ②㉢. 판정 파일을 못 읽은 것을 `problems`(빨간 띠)로 올리지 않는다.
+      빨강은 '멈춤'에만 쓴다 — 판정 파일이 없는 첫날 화면이 통째로 빨개지면, 이 파일이
+      스스로 적어 둔 *"빨간불을 남발하면 진짜 빨간불을 못 본다"* 를 스스로 어긴다.
+      대신 공급 띠 안의 '확인 불가'로 흡수하고 **왜 못 읽었는지**를 그 자리에 적는다
+      (파일 부재 · 파싱 실패 · `state` 키 없음 — 세 원인의 문장이 서로 다르다).
+    """
+    v = dict(supply or {})
+    if err:
+        return "unknown", err, v
+    state = str(v.get("state") or "")
+    if not state:
+        return "unknown", "판정 파일에 state 가 없다 — 형식이 바뀌었는지 확인할 것", v
+    if v.get("stale"):
+        age = v.get("age_hours")
+        v["signals"] = [{**s, "state": "unknown", "state_stored": s.get("state")}
+                        for s in (v.get("signals") or [])]
+        # `:g` — 30.0 을 '30' 으로 적는다. 표 머리의 '아래 N행은 30시간 전' 과 같은 수로 읽혀야 한다.
+        return "unknown", (f"지금 상태는 모른다 — 저장된 판정이 {age:g}시간 전 것이다"
+                           if isinstance(age, (int, float))
+                           else "판정 시각을 읽지 못했다 — 언제 잰 것인지 모른다"), v
+    return state, str(v.get("headline") or ""), v
+
+
 def read_product() -> tuple[dict, str | None]:
     """제품 규모 — **이 PC 의 로컬 사본**이다. 운영 수치가 아니라는 점을 화면에 밝힌다."""
     db = ROOT / "data" / "auction.db"
@@ -767,9 +804,9 @@ def build_state(rescan: bool = False) -> dict:
     product, e = read_product()
     if e:
         problems.append(e)
-    supply, e = read_supply()
-    if e:
-        problems.append(e)
+    # ★ 공급 판정을 못 읽은 것은 problems(빨간 띠)로 올리지 않는다 — '확인 불가'지 '멈춤'이
+    #   아니다. 아래 supply_display() 가 공급 띠 안으로 흡수하고 사유를 그 자리에 적는다.
+    supply, supply_err = read_supply()
     verdicts, rhythms, e = read_utilization()
     if e:
         problems.append(e)
@@ -854,14 +891,14 @@ def build_state(rescan: bool = False) -> dict:
 
     # 공급 상태 타일 — 화면에서 **제일 먼저** 읽혀야 한다. 2026-09-19~21 의 기록은 이미
     # 어딘가에 다 있었지만 먼저 보이는 자리에 없어서 사흘을 아무도 몰랐다.
-    _sup_state = (supply.get("state") if supply else None)
-    if supply and supply.get("stale"):
-        _sup_state = "unknown"
+    # 띠·타일·행 칩이 **한 함수**를 거쳐 나온다. 셋이 다른 말을 할 수 없게 하기 위해서다.
+    _sup_state, _sup_why, supply = supply_display(supply, supply_err)
     return {
         "generated_at": now.isoformat(timespec="seconds"),
         "kpi": {
-            # 없으면 '정상'이 아니라 '—'다. 모르는 것을 초록으로 칠하지 않는다.
+            # 모르면 '정상'이 아니라 '확인 불가'다. 모르는 것을 초록으로 칠하지 않는다.
             "supply_state": _sup_state,
+            "supply_why": _sup_why,          # 왜 이 상태인가 — 원인마다 문장이 다르다
             "supply_headline": (supply.get("headline") if supply else ""),
             "supply_alerts": len(supply.get("alerts") or []) if supply else None,
             "agents_total": len(roster), "agents_used": len(used), "agents_never": len(never),

@@ -9,6 +9,14 @@
     --bg:#0d1117; --panel:#161b22; --panel2:#1c2430; --line:#2a3441;
     --ink:#e6edf3; --soft:#9fb0c3; --faint:#6b7d91;
     --cobalt:#5b8cff; --good:#3fb950; --warn:#d29922; --bad:#f85149;
+    /* ★ '판정 보류(확인 불가)' 전용 색. 2026-09-24 검수 ②: 확인 불가가 정상보다 **조용했다** —
+       띠 배경 #14181d 이 카드 배경 #161b22 와 채널당 (2,3,5) 차이라 테두리가 사실상 없었고,
+       KPI 타일은 `.alert`·`.warn` 둘뿐이라 확인 불가가 정상과 **같은 픽셀 색**(--ink)이었다.
+       심각도는 한 방향이어야 한다: **정상 < 확인 불가 < 이상 < 멈춤.**
+       초록도 주황도 아니되 바탕과 확실히 갈라지는 무채색 계열로 둔다(실측 대비는 아래 주석). */
+    --unk:#b6c6d8;        /* 글자 — 바탕 #171e27 대비 9.6:1 */
+    --unk-bg:#171e27;
+    --unk-line:#55687f;   /* 테두리 — 페이지 배경 3.3:1 · 카드 배경 3.0:1 (둘 다 ≥3:1) */
   }
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--ink);
@@ -54,19 +62,47 @@
      구조 상태(편중·미배분)는 주황이다. 빨간불을 남발하면 진짜 빨간불을 못 본다. */
   .kpi.warn{border-color:#5c4a1e;background:#1d1a12}
   .kpi.warn .v{color:var(--warn)}
+  /* ★ 확인 불가에도 **제 색**을 준다. 전에는 modifier 가 alert·warn 둘뿐이라 '확인 불가'가
+     '정상'과 같은 --ink 로 그려졌다 — 판정을 모른다는 말이 정상과 구분이 안 됐다. */
+  .kpi.mute{border-color:var(--unk-line);background:var(--unk-bg)}
+  .kpi.mute .v{color:var(--unk)}
 
   .band{background:#1d1414;border:1px solid #5c2a2a;border-radius:10px;padding:12px 15px;
     margin-bottom:18px;font-size:13px;color:#ffb3ad}
   .band b{color:#fff}
   /* 빨강은 '멈춤'에만 쓴다. 경고까지 빨갛게 칠하면 빨강이 뜻을 잃는다(검수 지적 이력). */
   .band.warn{background:#1d1a12;border-color:#5c4a1e;color:#f2d69a}
-  .band.mute{background:#14181d;border-color:#2c3a4a;color:#a9b6c6}
+  .band.mute{background:var(--unk-bg);border-color:var(--unk-line);color:var(--unk)}
   .band.good{background:#12201a;border-color:#245038;color:#9fd6b4}
+  /* 멈춤 — 기본 `.band` 와 같은 빨강이다. **이름을 붙여 두는** 이유가 있다: 전에는 JS 의
+     SPB 가 down 을 빈 문자열('')로 매핑해서 `SPB[sst] || 'mute'` 의 `||` 에 걸렸고,
+     그래서 **진짜 '멈춤'이 회색 띠로 떨어졌다**(2026-09-24 실측). 빨강을 아껴 쓰자던 규칙이
+     정작 아껴 둔 빨강을 한 번도 안 쓰고 있었던 셈이다. 빈 문자열을 기본값으로 쓰지 않는다. */
+  .band.bad{background:#1d1414;border-color:#5c2a2a;color:#ffb3ad}
   .band table{margin-top:9px;width:100%;border-collapse:collapse;font-size:12px;color:inherit}
   .band td{padding:3px 8px 3px 0;border-top:1px solid rgba(255,255,255,.07);vertical-align:top}
   .band td:first-child{white-space:nowrap;color:#fff}
   /* 상태 칩은 절대 줄바꿈하지 않는다 — 768px 에서 '멈 / 춤' 으로 갈리는 것을 실측했다. */
   .band td:nth-child(2){white-space:nowrap}
+  /* 3열은 '언제·얼마'를 답하는 칸이다. 768px 에서 `2026-09-21 06:35` 가 날짜/시각 두 줄로
+     갈렸다 — 하필 이 화면이 묻는 것이 그 시각이다. 320px 에서는 풀어 준다(가로 스크롤이 더 나쁘다). */
+  @media (min-width:480px){ .band td:nth-child(3){white-space:nowrap} }
+  /* 320px 에서는 4열이 아예 안 들어간다 — 실측: `2026-09-22 06:35` 가 `20 / 26- / 09- / 22 /
+     06: / 35` 로 **글자마다** 갈렸다(th,td 의 overflow-wrap:anywhere 때문이다). 가로 스크롤은
+     안 났지만 읽을 수가 없다. 열을 포기하고 행마다 블록으로 쌓는다 — 라벨+칩 한 줄, 값 한 줄,
+     설명 한 줄. 한 줄을 통째로 쓰므로 여기서는 값에 nowrap 을 붙여도 안전하다. */
+  @media (max-width:479px){
+    .band table,.band tbody,.band tr,.band td{display:block;width:auto}
+    .band tr{border-top:1px solid rgba(255,255,255,.07);margin-top:6px;padding-top:6px}
+    .band td{border-top:0;padding:0 0 2px}
+    .band td:first-child,.band td:nth-child(2){display:inline-block;vertical-align:middle}
+    .band td:nth-child(2){margin-left:6px}
+    .band td:nth-child(3){white-space:nowrap}
+    .band tr.sh{margin-top:0;padding-top:0;border-top:0}
+  }
+  /* 낡은 판정 머리글 — 아래 행이 '지금'이 아니라는 것을 **표 안에서** 못 놓치게 한다.
+     띠 머리만 '확인 불가'로 바꾸고 표를 그대로 두면 사람은 표를 믿는다(2026-09-24 검수 ①). */
+  .band tr.sh td{white-space:normal;color:var(--unk);font-weight:600;border-top:0;padding:2px 0 6px}
 
   h2{font-size:13px;color:var(--soft);margin:24px 0 10px;font-weight:600;
     text-transform:none;letter-spacing:.2px}
@@ -152,10 +188,15 @@
   /* '늦음'은 '끊김'이 아니다 — 행 배경도 칩과 같은 심각도를 써야 한다. 타일에서 고친
      어휘·색 불일치가 표 안에 그대로 남아 있었다(2026-09-23 육안 확인에서 발견). */
   tr.late td{background:#1d1a12}
-  .pill{display:inline-block;padding:1px 7px;border-radius:99px;font-size:11px;font-weight:600}
+  /* `.vd` 와 같은 이유로 칩도 줄바꿈하지 않는다 — '멈 / 춤' 으로 갈리는 버그가 공급 표에서
+     한 번 났고, 리듬 감시 표에서 같은 것이 재발할 자리였다. */
+  .pill{display:inline-block;padding:1px 7px;border-radius:99px;font-size:11px;font-weight:600;
+    white-space:nowrap}
   .pill.ok{background:#12291a;color:var(--good)}
   .pill.bad{background:#2b1414;color:var(--bad)}
   .pill.warn{background:#2a2113;color:var(--warn)}
+  /* 확인 불가 — 초록이 아니되 '이상'(주황)을 흉내 내지도 않는다. 테두리로 존재를 만든다. */
+  .pill.mute{background:#232d3a;color:var(--unk);box-shadow:inset 0 0 0 1px var(--unk-line)}
   /* 표 칸 안의 보조 설명 — 무엇을 어떤 기준으로 쟀는지 숫자 옆에 같이 적는다 */
   td .sb{display:block;font-style:normal;color:var(--faint);font-size:10.5px;margin-top:2px}
 
@@ -257,9 +298,11 @@ const VDC = {'정상':'ok','과부하':'hot','미배분':'gap','리듬중단':'c
 const RCLS = s => (s === '끊김' || s === '없음') ? 'bad' : (s === '늦음' ? 'late' : '');
 const RPILL = s => s === '정상' ? 'ok' : ((s === '끊김' || s === '없음') ? 'bad' : 'warn');
 
-// level: true|'alert' = 빨강(오늘 조치) · 'warn' = 주황(구조 상태) · 그 밖 = 무채색
+// level: true|'alert' = 빨강(오늘 조치) · 'warn' = 주황(구조 상태) · 'mute' = 판정 보류
+//        · 그 밖 = 무채색(정상). 심각도 순서: 정상 < 확인 불가 < 이상 < 멈춤.
 function kpi(k, v, s, level){
-  const cls = (level === true || level === 'alert') ? ' alert' : (level === 'warn' ? ' warn' : '');
+  const cls = (level === true || level === 'alert') ? ' alert'
+            : (level === 'warn' ? ' warn' : (level === 'mute' ? ' mute' : ''));
   return `<div class="kpi${cls}"><div class="k">${esc(k)}</div>
     <div class="v">${esc(v)}</div><div class="s">${esc(s)}</div></div>`;
 }
@@ -285,18 +328,32 @@ function render(d){
   // '수집 멈춤'이 뜬다. 판정이 낡으면(26시간 초과) 초록으로 두지 않고 '확인 불가'로 내린다.
   const sp = d.supply || {};
   const SPM = {ok:'정상', warn:'이상', down:'멈춤', unknown:'확인 불가'};
-  const SPB = {ok:'good', warn:'warn', down:'', unknown:'mute'};   // 띠 배경(빨강은 '멈춤'에만)
-  const SPP = {ok:'ok', warn:'warn', down:'bad', unknown:'warn'};  // 행 칩 — 표의 어휘와 색을 묶는다
+  // 심각도는 **한 방향**이다: 정상 < 확인 불가 < 이상 < 멈춤. 띠·타일·칩이 같은 줄을 선다.
+  // 빨강은 '멈춤'에만. '확인 불가'는 초록이 아니되 바탕과 갈라지는 테두리를 갖는다(.mute).
+  // ⚠ 값에 **빈 문자열을 쓰지 않는다.** 전에는 down 이 '' 이라 아래 `|| 'mute'` 에 걸려
+  //   '멈춤' 띠가 회색으로 떨어졌다 — 타일은 빨강인데 바로 위 띠는 회색이었다.
+  const SPB = {ok:'good', warn:'warn', down:'bad', unknown:'mute'};   // 띠 배경
+  const SPP = {ok:'ok', warn:'warn', down:'bad', unknown:'mute'};  // 행 칩 — 어휘도 색도 띠와 같다
   const sst = k.supply_state;                 // 타일과 띠가 **같은 값**을 쓴다
+  // ★ 행 칩은 파일에 저장된 state 가 아니라 **표시용으로 내려온 state** 를 그린다.
+  //   2026-09-24 검수 ①: 30시간 낡은 '전부 정상' 판정에서 머리(띠·타일)만 '확인 불가'로
+  //   내리고 표는 원래 state 를 그렸다 — 회색 '확인 불가' 바로 아래 **초록 `정상` 칩 7개**.
+  //   사람은 표를 믿는다. 내리는 자리는 agent_dashboard.py 의 supply_display() 한 곳이고,
+  //   여기 삼항은 그 자리가 빠졌을 때를 막는 두 번째 그물이다(둘이 어긋날 수 없다).
+  const sgs = (sp.signals || []).map(s => ({...s, state: sp.stale ? 'unknown' : s.state}));
+  const sage = sp.age_hours != null ? sp.age_hours + '시간' : '알 수 없는 시간';
   $('#supply').innerHTML = !sst ? '' : `
     <div class="band ${SPB[sst] || 'mute'}">
-      <b>공급 ${esc(SPM[sst] || sst)}</b> — ${esc(sp.stale ? '판정이 낡았다' : (sp.headline || ''))}
-      <br><span style="opacity:.8">기준 ${esc(sp.source || '운영 서버')} ${hhmm(sp.checked_at)}
-      ${sp.age_hours != null ? ' · ' + sp.age_hours + '시간 전' : ''}
-      ${sp.stale ? ' · 매일 12시 리포트가 돌았는지 먼저 본다' : ''}</span>
-      <table>${(sp.signals || []).map(s => `<tr><td>${esc(s.label)}</td>
-        <td><span class="pill ${SPP[s.state] || 'warn'}">${esc(SPM[s.state] || s.state)}</span></td>
-        <td>${esc(s.head)}</td><td style="opacity:.75">${esc(s.detail)}</td></tr>`).join('')}</table>
+      <b>공급 ${esc(SPM[sst] || sst)}</b> — ${esc(k.supply_why || sp.headline || '')}
+      ${sp.checked_at ? `<br><span style="opacity:.8">기준 ${esc(sp.source || '운영 서버')} ${hhmm(sp.checked_at)}
+        ${!sp.stale && sp.age_hours != null ? ' · ' + sp.age_hours + '시간 전' : ''}
+        ${sp.stale ? ' · 매일 12시 리포트가 돌았는지 먼저 본다' : ''}</span>` : ''}
+      ${sgs.length ? `<table>
+        ${sp.stale ? `<tr class="sh"><td colspan="4">아래 ${sgs.length}행은 ${
+            esc(sage)} 전 상태다 — 지금이 아니다</td></tr>` : ''}
+        ${sgs.map(s => `<tr><td>${esc(s.label)}</td>
+        <td><span class="pill ${SPP[s.state] || 'mute'}">${esc(SPM[s.state] || s.state)}</span></td>
+        <td>${esc(s.head)}</td><td style="opacity:.75">${esc(s.detail)}</td></tr>`).join('')}</table>` : ''}
     </div>`;
 
   const lc = k.last_call;
@@ -310,11 +367,18 @@ function render(d){
             : `훅 기록 ${live.count || 0}건 · 가동 중 없음`);
 
   // 공급 타일이 맨 앞이다 — 에이전트가 몇 명 일했는지보다 **공급이 도는지**가 먼저다.
-  const supTile = !sst
-    ? kpi('공급 상태', '—', '판정 파일이 없다 — 매일 12시 리포트가 만든다')
-    : kpi('공급 상태', SPM[sst] || sst,
-          sp.stale ? `판정이 ${sp.age_hours ?? '?'}시간 전 것이다` : (sp.headline || ''),
-          sst === 'down' ? 'alert' : (sst === 'warn' ? 'warn' : ''));
+  // ★ 부제가 띠 헤드라인을 40px 아래에서 **그대로 되풀이**하고 있었다(전: 둘 다 '공급 이상 없음').
+  //   띠는 '무엇이 문제인가', 타일은 '그래서 이 숫자를 얼마나 믿을 수 있나'를 말한다.
+  //   (판정을 못 읽은 세 원인 — 파일 부재·파싱 실패·state 키 없음 — 은 위 띠가 가른다.
+  //    타일은 그 결과가 무엇을 뜻하는지만 말하고 사유를 되풀이하지 않는다.)
+  const supSub =
+      !sp.checked_at ? '공급이 도는지 재지 못했다 — 사유는 위 띠에'
+    : sp.stale       ? `저장된 값은 '${SPM[sp.state] || sp.state}' — 지금 상태가 아니다`
+    : sst === 'ok'   ? `신호 ${sgs.length}개 · 이상 0건`
+    :                  `이상 ${k.supply_alerts ?? '?'}건 · 근거는 위 표에`;
+  const supTile = kpi('공급 상태', SPM[sst] || sst || '—', supSub,
+        sst === 'down' ? 'alert'
+      : (sst === 'warn' ? 'warn' : (sst === 'unknown' ? 'mute' : '')));
 
   $('#kpis').innerHTML = [
     supTile,
