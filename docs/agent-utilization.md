@@ -170,8 +170,8 @@ WebFetch https://naechaget.co.kr/courts              →  200
 | 문 | 증상 | 조치 | 한 사람 |
 |---|---|---|---|
 | ① 이그레스 | `curl … → 403` | 환경을 `naechaget-panel`(사용자 지정)로 바꾸고 `naechaget.co.kr` 허용 | 오너 |
-| ② 도구 권한 | `pip install` 거부 → 스크린샷 0장·`pytest` 0/491 | **미해결** — 설정 스크립트가 1.27초 만에 '완료'되고 아무것도 설치하지 않았다(아래) | 오너 (대기) |
-| ③ GitHub 쓰기 | 푸시 `403`, 리포트 유실 | 커넥터 화면에서 GitHub 재연결 | 오너 |
+| ② 설치 | 스크린샷 0장·`pytest` 0/491 | **원인 확정(아래)** — `PyYAML` 때문에 `pip` 이 중단된다. 한 플래그로 고친다 | 오너 (대기) |
+| ③ GitHub 쓰기 | 푸시 `403`, 리포트 유실 | ~~커넥터 재연결~~ → **미해결.** 커넥터는 `✓` 인데 루틴 푸시는 **여전히 403** 이다. 필요한 것은 토글이 아니라 **GitHub 앱 설치**(`github.com/apps/claude/installations/select_target`) | 오너 (대기) |
 
 같은 화면에서 **`Microsoft 365` 가 `다시 연결` 경고 상태**인 것이 보였다. 그 커넥터가 패널
 루틴에 붙어 있었고 실행 로그에도 `mcp_auth_required` 가 있었는데, **패널은 그것을 전혀 쓰지
@@ -213,7 +213,48 @@ WebFetch https://naechaget.co.kr/courts              →  200
 **내가 붙이라고 한 `|| true` 가 실패를 삼켰다.** 세션이 뜨지 못하는 것을 막으려던 장치가
 **진단을 지웠다.** 안전장치를 걸 때는 *무엇을 가리게 되는지*도 같이 봐야 한다.
 
-1.27초에 끝날 만한 원인은 셋이고 **어느 것인지 모른다**(로그에 설정 스크립트 출력이 안 남는다).
+~~1.27초에 끝날 만한 원인은 셋이고 어느 것인지 모른다~~
+**2026-09-23 확정 — 셋 다 아니었다.** 검증 실행(`cse_01FfqR3h…`)의 로그에 원문이 남았다.
+
+```
+python3 -m pip install -q -r requirements.txt
+→ ERROR: Cannot uninstall PyYAML 6.0.1, RECORD file not found.
+  Hint: The package was installed by debian.
+```
+
+`PyYAML` 이 **데비안 패키지로 깔려 있어 pip 이 제거하지 못하고 거기서 통째로 중단**된다.
+`requirements.txt` 가 그 줄에서 멈추니 **명령 맨 뒤의 `playwright` 는 영영 설치되지 않는다.**
+어제 1.27초도 같은 이유다.
+
+그래서 이번 세션은 필요한 것을 **하나씩 우회 설치**해 `pytest` 를 살려냈고(전 항목 통과까지
+확인), `playwright` 만 끝내 못 깔아 **스크린샷이 2회 연속 0장**이 됐다.
+
+고치는 방법은 **플래그 하나**다 — 그 패키지만 건드리지 말라고 일러 준다.
+
+```bash
+#!/bin/bash
+R=/home/user/court-auction-vehicle-bidding/requirements.txt
+python3 -m pip install --break-system-packages --ignore-installed PyYAML -r "$R" playwright ||
+python3 -m pip install --ignore-installed PyYAML -r "$R" playwright
+exit 0
+```
+
+**교훈**: 나는 `EXIT:0` 과 `Setup script completed` 를 보고 "설치가 됐다"고 읽었다.
+`pip` 은 **실패해도 0 을 돌려준다.** 종료 코드가 아니라 **결과물**(`import` 가 되는가)로
+확인해야 했다. 오늘 내가 반복해서 배운 것과 같은 규칙이다 —
+**상태값이 아니라 산출물로 판정한다.**
+
+### 검증 실행의 결과 (2026-09-23 00:05~00:26Z)
+
+| 문 | 결과 |
+|---|---|
+| ① 이그레스 | **정상** — 전 화면 200, 1.3~1.7초 |
+| ② 설치 | **절반** — `pytest` 전 항목 통과(세션이 우회 설치) · `playwright` 실패 → 스크린샷 0장 |
+| ③ GitHub 쓰기 | **또 403** — 리포트가 `af000c9` 로 커밋됐다가 샌드박스와 함께 사라짐 |
+
+패널 자체는 **완주했다**(7회차 평균 77.0). 산출물은
+[`docs/reviews/2026-09-23.md`](reviews/2026-09-23.md) 에 로그에서 건져 복구본으로 남겼다.
+**두 회차 연속 원본을 잃었다** — ③을 고치지 않으면 토요일도 같다.
 
 1. **PEP 668** — 시스템 파이썬에 `pip install` 하면 `externally-managed-environment` 로
    즉시 거부된다. 0.3초면 끝난다. 가장 그럴듯하다.
