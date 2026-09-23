@@ -337,13 +337,13 @@
       {% elif bidst.weak == 'saving_unverified' %}<div class="text-[11px] text-amber-300 mt-0.5">이 시세로 계산 — 시세 확인 전 참고</div>{% endif %}
     </div>
     <div>
-      <div class="text-xs text-white/55 mb-0.5" style="word-break:keep-all"><span class="whitespace-nowrap">AI 예상낙찰가</span> <span class="text-white/40 font-normal">{% if bidst and bidst.exp_pinned %}최저가 기준{% else %}실입찰{% if expected.mae %} ±{{ expected.mae|round|int }}%{% elif v.fail_count %} · 유찰 {{ v.fail_count }}회 반영{% endif %}{% endif %}</span></div>
+      <div class="text-xs text-white/55 mb-0.5" style="word-break:keep-all"><span class="whitespace-nowrap">AI 예상낙찰가</span> <span class="text-white/40 font-normal">{% if bidst and bidst.exp_pinned %}최저가 기준{% else %}실입찰{% if expected.mae %} ±{{ expected.mae }}%{% elif v.fail_count %} · 유찰 {{ v.fail_count }}회 반영{% endif %}{% endif %}</span></div>
       <div class="nc-heronum-sm font-mono text-xl font-semibold tnum text-white">{{ expected.price|won }}<span class="text-sm font-normal text-white/60">원</span></div>
       {% if bidst.exp_pinned %}<div class="text-[11px] text-white/60 mt-0.5" style="word-break:keep-all">이 차는 최저매각가 아래로 내려가지 않습니다 — 바닥값을 그대로 표시</div>{% endif %}
     </div>
     {% else %}
     <div>
-      <div class="text-xs text-amber-300 mb-0.5" style="word-break:keep-all"><span class="whitespace-nowrap">AI 예상낙찰가</span> <span class="text-white/50 font-normal">실입찰{% if expected.mae %} ±{{ expected.mae|round|int }}%{% elif v.fail_count %} · 유찰 {{ v.fail_count }}회 반영{% endif %}</span></div>
+      <div class="text-xs text-amber-300 mb-0.5" style="word-break:keep-all"><span class="whitespace-nowrap">AI 예상낙찰가</span> <span class="text-white/50 font-normal">실입찰{% if expected.mae %} ±{{ expected.mae }}%{% elif v.fail_count %} · 유찰 {{ v.fail_count }}회 반영{% endif %}</span></div>
       <div class="nc-heronum-lg font-mono text-3xl font-bold tnum text-white">{{ expected.price|won }}<span class="text-base font-normal text-white/60">원</span></div>
       {% if bidst and bidst.exp_pinned %}<div class="text-[11px] text-white/60 mt-0.5" style="word-break:keep-all">이 차는 최저매각가 아래로 내려가지 않습니다 — 바닥값을 그대로 표시</div>{% endif %}
     </div>
@@ -894,7 +894,7 @@
           {% if b.capped %}최저매각가 × 프리미엄이 <b class="text-txt">소매 시세의 1.10배</b>를 넘어 그 지점에서 잘랐습니다{% if expected.price > b.cap %}. 다만 그 절단선이 최저매각가보다 낮아, 써낼 수 없는 금액이 되지 않도록 최저매각가를 하한으로 뒀습니다{% endif %}.
           {% endif %}
           유찰로 내려간 <b class="text-txt">최저매각가</b>가 시장 할인을 이미 반영 → 동급 <b>낙찰가/최저가 프리미엄</b>(유찰 많을수록↑)만 곱합니다(시세보다 안정적).
-          {% if expected.comp_n %}동급 낙찰 {{ expected.comp_n }}건은 <b class="text-txt">참고용</b>(이 경로에선 미반영) · {% endif %}{% if expected.mae %}실측 오차 ±{{ expected.mae|round|int }}%. {% endif %}보수·균형·공격 3단은 위 <b>추천 입찰 전략</b> 참고.
+          {% if expected.comp_n %}동급 낙찰 {{ expected.comp_n }}건은 <b class="text-txt">참고용</b>(이 경로에선 미반영) · {% endif %}{% if expected.mae %}실측 오차 ±{{ expected.mae }}%. {% endif %}보수·균형·공격 3단은 위 <b>추천 입찰 전략</b> 참고.
         </div>
       </div>
       {% endif %}

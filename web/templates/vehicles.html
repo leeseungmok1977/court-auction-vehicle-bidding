@@ -238,7 +238,7 @@ d.addEventListener('toggle',function(){try{localStorage.setItem('ncUsepickBasis'
           <th class="py-3 px-3 font-semibold text-center w-[86px]">판정</th>
           <th class="py-3 px-3 font-semibold text-right whitespace-nowrap w-[112px]">최저매각가 <span class="text-mut font-normal">경매 시작가</span></th>
           <th class="py-3 px-3 font-semibold text-right whitespace-nowrap w-[108px]" title="되팔이(재판매) 마진·부대비 차감 후 손익분기가 — 이 값 이하로 낙찰해야 차익. 예상낙찰가보다 낮은 것이 정상">상한가 <span class="text-mut font-normal">재판매</span></th>
-          <th class="py-3 px-3 font-semibold text-right whitespace-nowrap bg-primary/5 text-primary w-[158px]" title="일반 매수 실입찰 기준 — 참고 정확도 ±{{ mae|round|int if mae else 30 }}%">예상낙찰가 <span class="text-mut font-normal">실입찰 ±{{ mae|round|int if mae else 30 }}%</span></th>
+          <th class="py-3 px-3 font-semibold text-right whitespace-nowrap bg-primary/5 text-primary w-[158px]" title="일반 매수 실입찰 기준 — 참고 정확도 ±{{ mae if mae else 30 }}%">예상낙찰가 <span class="text-mut font-normal">실입찰 ±{{ mae if mae else 30 }}%</span></th>
           <th class="py-3 px-3 font-semibold text-right whitespace-nowrap w-[124px]">시세중앙값 <span class="text-mut font-normal">·신뢰도</span></th>
           <th class="py-3 px-3 font-semibold whitespace-nowrap w-[100px]">매각기일</th>
           <th class="py-3 px-3 font-semibold text-right whitespace-nowrap w-[88px]">결과</th>

@@ -889,7 +889,7 @@ document.addEventListener('click', function(e){
             {%- elif use.accident_hits is not none %}(확인된 사고 {{ use.accident_hits }}건 기준 · 업계 통용 범위 기반 <b>가정</b>이며 실측값이 아닙니다)
             {%- endif %} · 정비 충당 <b>{{ use.reserve|won }}원</b>{% endif %}
             <span style="display:block">단, <b>유치권(수리비·보관료)·인수부담은 이 값에 반영돼 있지 않습니다</b> — <a href="#sec09">09 리스크</a>에서 확인하세요.</span></div>
-          <div class="v-label gloss-row" style="margin-top:14px">예상낙찰가 <span style="font-weight:400">{% if exp %}— 참고({{ ui.gloss('분위수 밴드', '과거 낙찰 결과가 얼마나 흩어졌는지(사분위 폭)를 중심값에 적용한 범위예요. 이 안에 떨어질 가능성이 높다는 뜻이지 보장은 아닙니다.') }}{% if expected.acc %} · 실측 평균오차 ±{{ expected.acc.mae }}%{% elif backtest.mae_pct %} · 실측 평균오차 ±{{ backtest.mae_pct|round(1) }}%{% endif %}){% endif %}</span></div>
+          <div class="v-label gloss-row" style="margin-top:14px">예상낙찰가 <span style="font-weight:400">{% if exp %}— 참고({{ ui.gloss('분위수 밴드', '과거 낙찰 결과가 얼마나 흩어졌는지(사분위 폭)를 중심값에 적용한 범위예요. 이 안에 떨어질 가능성이 높다는 뜻이지 보장은 아닙니다.') }}{% if expected.acc %} · 실측 평균오차 ±{{ expected.acc.mae }}%{% elif backtest.mae_pct %} · 실측 평균오차 ±{{ backtest.mae_pct }}%{% endif %}){% endif %}</span></div>
           <div class="v-sub" style="font-size:15px"><b class="num">{% if report.lo and report.hi %}{{ (report.lo/10000)|round|int }} ~ {{ (report.hi/10000)|round|int }} 만원{% elif exp %}{{ (exp/10000)|round|int }} 만원{% else %}<b>미산출</b>{% endif %}</b>
             {% if exp %}· 중심값 {{ exp|won }}원 {% endif %}· 재판매 상한가 {% if upper %}{{ upper|won }}원{% else %}미산출{% endif %}
             {% if not exp %}<span style="display:block;font-weight:400">— 이 물건은 <b>예상낙찰가를 산출하지 않았습니다</b>(표본·조건 불충족). 아래 06·08은 현 최저매각가 기준입니다.</span>{% endif %}
@@ -897,7 +897,7 @@ document.addEventListener('click', function(e){
             {% if exp and exp > max_bid %}<b style="color:var(--red)">— 예상 경쟁가가 상한선을 {{ (exp - max_bid)|won }}원 넘습니다.</b>{% endif %}</div>
           {% else %}
           {# 미산출이면 정확도 꼬리표를 붙이지 않는다 — 없는 값에 적중률을 달면 값이 있는 것처럼 읽힌다 #}
-          <div class="v-label gloss-row">예상낙찰가 <span style="font-weight:400">{% if exp %}— {{ ui.gloss('분위수 밴드', '과거 낙찰 결과가 얼마나 흩어졌는지(사분위 폭)를 중심값에 적용한 범위예요. 이 안에 떨어질 가능성이 높다는 뜻이지 보장은 아닙니다.') }}{% if expected.acc %} · 실측 평균오차 ±{{ expected.acc.mae }}%{% elif backtest.mae_pct %} · 실측 평균오차 ±{{ backtest.mae_pct|round(1) }}%{% endif %}{% endif %}</span></div>
+          <div class="v-label gloss-row">예상낙찰가 <span style="font-weight:400">{% if exp %}— {{ ui.gloss('분위수 밴드', '과거 낙찰 결과가 얼마나 흩어졌는지(사분위 폭)를 중심값에 적용한 범위예요. 이 안에 떨어질 가능성이 높다는 뜻이지 보장은 아닙니다.') }}{% if expected.acc %} · 실측 평균오차 ±{{ expected.acc.mae }}%{% elif backtest.mae_pct %} · 실측 평균오차 ±{{ backtest.mae_pct }}%{% endif %}{% endif %}</span></div>
           <div class="v-band num">{% if report.lo and report.hi %}{{ (report.lo/10000)|round|int }} <small>~</small> {{ (report.hi/10000)|round|int }}<small>만원</small>{% elif exp %}{{ (exp/10000)|round|int }}<small>만원</small>{% else %}<span style="font-family:var(--sans);font-size:21px;color:var(--ink-soft)">미산출</span>{% endif %}</div>
           <div class="v-sub">{% if exp %}중심값 <b class="num">{{ exp|won }}원</b> · {% endif %}재판매 상한가 {% if upper %}<b class="num">{{ upper|won }}원</b>{% else %}<b>미산출</b>{% endif %}
             {% if report.hi and exp and report.hi <= exp %}<span style="display:block;color:var(--ink-faint)">예상가 밴드는 소매 시세의 110%(소프트캡)에서 멈추도록 제한돼 있어 윗부분이 여기서 끊깁니다. 중심값이 맨 위에 있다고 해서 그 금액까지 써도 된다는 뜻은 아닙니다.</span>{% endif %}
@@ -1072,13 +1072,13 @@ document.addEventListener('click', function(e){
       {% if backtest and (backtest.mae_pct or backtest.history_n) %}
       <div class="v-label" style="margin-top:20px">모델 검증 실적 <span style="font-weight:400;color:var(--ink-faint)">— 예측이 실제 낙찰을 얼마나 맞혔는가</span></div>
       <div class="vstats">
-        {% if backtest.mae_pct %}<div class="vstat"><div class="n">±{{ backtest.mae_pct|round|int }}%</div><div class="l">예측 오차</div><div class="s">자기 제외 방식으로 실측 검증</div></div>{% endif %}
+        {% if backtest.mae_pct %}<div class="vstat"><div class="n">±{{ backtest.mae_pct }}%</div><div class="l">예측 오차</div><div class="s">자기 제외 방식으로 실측 검증</div></div>{% endif %}
         {# '상한가 적중률'은 재판매 마진선을 넘겼는지를 재는 지표라 '예측 적중률'로 오독된다.
            ±9%·175와 같은 크기·같은 색으로 20%가 놓여 "적중률이 20%밖에 안 되나"로 읽혔다.
            같은 이유로 /accuracy 에서는 이미 뺐는데 리포트에만 남아 있었다(2026-09-12 패널 지적).
            재판매 상한가 자체는 06·07·10에서 금액으로 충분히 설명된다. #}
         {% if backtest.history_n %}<div class="vstat"><div class="n num">{{ backtest.history_n }}</div><div class="l">학습 낙찰표본</div><div class="s">누적 실측</div></div>{% endif %}
-        {% if backtest.actual_sample %}<div class="vstat"><div class="n">±{{ backtest.actual_mae_pct|round|int }}%</div><div class="l">시세 실측 대조</div><div class="s">n={{ backtest.actual_sample }}</div></div>{% endif %}
+        {% if backtest.actual_sample %}<div class="vstat"><div class="n">±{{ backtest.actual_mae_pct }}%</div><div class="l">시세 실측 대조</div><div class="s">n={{ backtest.actual_sample }}</div></div>{% endif %}
       </div>
       <p class="note">과거에 실제로 낙찰된 차를 <b>그 차를 빼고</b> 예측해 봤을 때의 정확도입니다. 개별 경매를 정밀 예측하지 않으며, 낙찰 표본이 쌓일수록 모델이 자동 정교화됩니다.</p>
       {% endif %}
@@ -1233,7 +1233,7 @@ document.addEventListener('click', function(e){
           </div>
           <div style="position:absolute;bottom:0;left:0;right:0;display:flex;justify-content:space-between;font-family:var(--mono);font-size:9px;color:var(--ink-faint)">{% for f in [0,0.25,0.5,0.75,1.0] %}<span>{{ ((dist.lo+(dist.hi-dist.lo)*f)/10000)|round|int }}만</span>{% endfor %}</div>
         </div>
-        <div style="text-align:center;font-size:10px;color:var(--ink-faint);margin-top:2px">동급 {{ dist.n }}건 실매물 · <b style="color:var(--cobalt)">▎</b>예상 · <span style="color:var(--ink-faint)">┆</span>시세{% if dist.band %} · <span style="background:var(--cobalt-tint);border-left:1px solid var(--cobalt);border-right:1px solid var(--cobalt);padding:0 4px">음영</span>=예상 ±{{ report.mae|round|int if report and report.mae else 30 }}%{% endif %}</div>
+        <div style="text-align:center;font-size:10px;color:var(--ink-faint);margin-top:2px">동급 {{ dist.n }}건 실매물 · <b style="color:var(--cobalt)">▎</b>예상 · <span style="color:var(--ink-faint)">┆</span>시세{% if dist.band %} · <span style="background:var(--cobalt-tint);border-left:1px solid var(--cobalt);border-right:1px solid var(--cobalt);padding:0 4px">음영</span>=예상 ±{{ report.mae if report and report.mae else 30 }}%{% endif %}</div>
       </div>
       {% endif %}
       <p class="note">이상치(IQR)를 제거한 동급 매물의 중앙값입니다. 게시가 기준이며 실거래가와 차이가 있을 수 있어, 예상낙찰가는 실측 낙찰률로 별도 보정합니다(10).</p>
@@ -1360,7 +1360,7 @@ document.addEventListener('click', function(e){
       <div class="logic"><span class="ln">5</span><div class="ld">→ 최저매각가 하한<small>절단선이 최저매각가보다 낮아, 써낼 수 없는 금액이 되지 않도록 최저매각가를 하한으로 둡니다</small></div><span class="lv num">{{ bs.min_sale_price|won }}</span></div>
       {% endif %}
       {% endif %}
-      <div class="logic"><span class="ln">＝</span><div class="ld"><b>예상낙찰가</b><small>분위수 밴드 {{ report.lo|won if report.lo else '—' }}~{{ report.hi|won if report.hi else '—' }}{% if report.mae %} · 실측 평균오차 ±{{ report.mae|round|int }}%</small>{% endif %}</div><span class="lv num">{{ exp|won }}</span></div>
+      <div class="logic"><span class="ln">＝</span><div class="ld"><b>예상낙찰가</b><small>분위수 밴드 {{ report.lo|won if report.lo else '—' }}~{{ report.hi|won if report.hi else '—' }}{% if report.mae %} · 실측 평균오차 ±{{ report.mae }}%</small>{% endif %}</div><span class="lv num">{{ exp|won }}</span></div>
       {% elif not exp %}
       {# 예상낙찰가를 **일부러 내지 않은** 물건(24%). 여기에 폴백 산식을 그리면
          "69,990,000 × 82% ＝ 0" 이라는 닫히지 않는 검산이 인쇄된다.
@@ -1377,7 +1377,7 @@ document.addEventListener('click', function(e){
       {% else %}
       <div class="logic"><span class="ln">1</span><div class="ld">소매 시세중앙값<small>동급 이상치 제거 후 중앙값(폴백 경로 — 최저가 미보유)</small></div><span class="lv num">{{ med|won }}</span></div>
       <div class="logic"><span class="ln">2</span><div class="ld">× 실측 낙찰률(유찰횟수 반영)<small>과거 낙찰가/시세 분포{% if v.fail_count %} · 유찰 {{ v.fail_count }}회 버킷{% endif %}</small></div><span class="lv num">×{{ ((report.discount or 0)*100)|round|int }}%</span></div>
-      <div class="logic"><span class="ln">＝</span><div class="ld"><b>예상낙찰가</b><small>참고 정확도 ±{{ report.mae|round|int if report.mae else 30 }}% · 분위수 밴드 {{ report.lo|won if report.lo else '—' }}~{{ report.hi|won if report.hi else '—' }}</small></div><span class="lv num">{{ exp|won }}</span></div>
+      <div class="logic"><span class="ln">＝</span><div class="ld"><b>예상낙찰가</b><small>참고 정확도 ±{{ report.mae if report.mae else 30 }}% · 분위수 밴드 {{ report.lo|won if report.lo else '—' }}~{{ report.hi|won if report.hi else '—' }}</small></div><span class="lv num">{{ exp|won }}</span></div>
       {% endif %}
       {% if v.breakdown %}
       <div class="v-label" style="margin:18px 0 8px">재판매 상한가 (마진 기준)</div>
@@ -1448,7 +1448,7 @@ document.addEventListener('click', function(e){
 
   <div class="disc">
     <b>이용 안내 및 면책</b><br>
-    본 리포트는 대법원 법원경매정보·감정평가서·보험이력과 소매 시세 참고 정보를 기반으로 발행 시점에 자동 생성된 참고자료입니다. 시세·낙찰 경쟁·차량 상태는 매각기일까지 변동될 수 있으며, 최종 입찰 판단과 결과의 책임은 입찰자 본인에게 있습니다. 예상낙찰가는 실측 통계 기반 중심 추정치로 오차(±{{ report.mae|round|int if report and report.mae else 30 }}%)가 있고 단일 경매를 정밀 예측하지 않습니다. 본 리포트는 투자 권유가 아니며, 차량 실물 확인·등기/공부 열람을 대체하지 않습니다. <b style="color:var(--red)">입찰 중단 기준에 해당하는 사실을 미리 발견하면 권장가는 무효입니다.</b>
+    본 리포트는 대법원 법원경매정보·감정평가서·보험이력과 소매 시세 참고 정보를 기반으로 발행 시점에 자동 생성된 참고자료입니다. 시세·낙찰 경쟁·차량 상태는 매각기일까지 변동될 수 있으며, 최종 입찰 판단과 결과의 책임은 입찰자 본인에게 있습니다. 예상낙찰가는 실측 통계 기반 중심 추정치로 오차(±{{ report.mae if report and report.mae else 30 }}%)가 있고 단일 경매를 정밀 예측하지 않습니다. 본 리포트는 투자 권유가 아니며, 차량 실물 확인·등기/공부 열람을 대체하지 않습니다. <b style="color:var(--red)">입찰 중단 기준에 해당하는 사실을 미리 발견하면 권장가는 무효입니다.</b>
   </div>
   <footer class="foot">
     <span>차량경매 분석 리포트 · {{ v.case_no }}</span>
