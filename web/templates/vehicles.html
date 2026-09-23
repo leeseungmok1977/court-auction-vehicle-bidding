@@ -321,7 +321,7 @@ d.addEventListener('toggle',function(){try{localStorage.setItem('ncUsepickBasis'
                사진 위가 아니라 흰 배경이므로 카드의 반전(bg-black/55)이 아니라
                상세 배지와 같은 연한 sky 세트로 칠한다(sky-700 on white = 5.9:1). #}
             {% set _nm = v.bidst and v.bidst.state == 'nomarket' %}
-            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium whitespace-nowrap {% if _nm %}bg-sky-50 text-sky-700 border border-sky-200{% else %}{{ (v.bidst.tone if v.bidst else '')|tcls }}{% endif %}" title="{{ v.judgment or v.status or '' }}">{{ v.bidst.label if v.bidst else (v.judgment|jshort if v.judgment else v.status|sstat) }}</span>
+            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium whitespace-nowrap {% if _nm %}bg-sky-50 text-sky-700 border border-sky-200{% else %}{{ (v.bidst.tone if v.bidst else '')|tcls }}{% endif %}" title="{{ v.bidst.label if v.bidst else (v.judgment or v.status or '') }}">{{ v.bidst.label if v.bidst else (v.judgment|jshort if v.judgment else v.status|sstat) }}</span>
           </td>
           {% set over_mkt = v.min_sale_price and v.median_price and v.min_sale_price > v.median_price %}
           {% set over_bid = v.min_sale_price and v.upper_bid and v.min_sale_price > v.upper_bid %}
