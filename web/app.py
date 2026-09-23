@@ -790,7 +790,11 @@ def vehicle_detail(request: Request, vid: str, cc: str = "", an: str = ""):
                     "comp_used": _used_comps,          # 실제로 산정에 쓰였는가
                     "comp_ratio": _cd[0] if _cd else None}
     dist = service.price_distribution(
-        v, expected["price"] if expected else None, bt.get("mae_pct"))
+        v, expected["price"] if expected else None,
+        # 음영 **폭**과 그 옆 **라벨**이 같은 값을 써야 한다. 라벨만 유형별로 바꾸면
+        # '그린 폭'과 '말하는 %'가 어긋난다. 유형 표본이 없으면 band 가 아예 안 그려진다
+        # (service.price_distribution 의 `if exp and mae:`) — 미산출이 옳다.
+        (service.accuracy_for(v, bt) or {}).get("mae"))
     # 감정 요항 구조화(색상·연료·검사유효기간·옵션·상태) + 상태 반영 비용
     from src.parse.appraisal import condition_adjustment
     _cfg = service.load_config()
@@ -847,7 +851,12 @@ def vehicle_report(request: Request, vid: str):
     if _band:
         expected = {"price": _band["price"], "lo": _band["lo"], "hi": _band["hi"],
                     "premium": _band.get("premium"), "basis": _band.get("basis") or {},
-                    "discount": disc, "sample": bt.get("sample"), "mae": bt.get("mae_pct")}
+                    "discount": disc, "sample": bt.get("sample"), "mae": bt.get("mae_pct"),
+                    # PANEL-01 — 상세(:781-782)와 **같은 소스**를 준다. 이 키가 없어서
+                    # report.html:892·900 의 `{% if expected.acc %}` 가 한 번도 안 열리는
+                    # 죽은 가지였고, 리포트는 늘 전체평균으로 떨어졌다. accuracy_for 독스트링:
+                    # "전체 MAE 하나를 모든 물건에 붙이면 … 과대주장이 된다".
+                    "acc": service.accuracy_for(v, bt)}
     appraisal = ""
     afile = DATA_DIR / (v.get("folder_key") or vid) / "appraisal.txt"
     if afile.exists():
@@ -880,7 +889,11 @@ def vehicle_report(request: Request, vid: str):
     _bidst = service.bid_state(v, bt, config)             # 판정 단일 소스(상세·리포트 공용)
     verdict = service.plain_verdict(v, expected, _bidst)  # 판정은 하지 않고 문장만 만든다
     dist = service.price_distribution(
-        v, expected["price"] if expected else None, bt.get("mae_pct"))
+        v, expected["price"] if expected else None,
+        # 음영 **폭**과 그 옆 **라벨**이 같은 값을 써야 한다. 라벨만 유형별로 바꾸면
+        # '그린 폭'과 '말하는 %'가 어긋난다. 유형 표본이 없으면 band 가 아예 안 그려진다
+        # (service.price_distribution 의 `if exp and mae:`) — 미산출이 옳다.
+        (service.accuracy_for(v, bt) or {}).get("mae"))
     _adm = is_admin(request)
     _report = service.report_data(v, config, bt)          # 원본 v로 계산
     return templates.TemplateResponse("report.html", {

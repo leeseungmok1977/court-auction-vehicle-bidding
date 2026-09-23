@@ -166,7 +166,10 @@ def test_accuracy_has_one_headline_metric():
     이 추정의 불확실성인지 고를 수 없었다(42·63세). 주지표는 평균오차 하나."""
     r = (TPL / "report.html").read_text(encoding="utf-8")
     assert "실측 ±10% 적중" not in r, "예상낙찰가 옆 주지표가 아직 적중률이다"
-    assert r.count("실측 평균오차 ±") >= 2
+    # 2026-09-23 PANEL-01 — 주지표 이름이 '실측 평균오차'에서 상세와 같은
+    # '이 유형(라벨, N건) 실측 오차'로 바뀌었다. 전체평균을 물건에 붙이던 것을
+    # 유형별로 고치면서, 상세(detail.html:408)가 이미 쓰던 형식을 그대로 따랐다.
+    assert r.count("실측 오차 ±") >= 2, "예상낙찰가 옆 주지표가 실측 오차가 아니다"
 
 
 def test_confidence_cutoffs_are_published():
