@@ -44,7 +44,13 @@
       <thead class="bg-surface border-b border-line">
         <tr class="text-xs text-mut">
           <th class="py-3 px-4 font-semibold">차량 · 사건</th>
-          <th class="py-3 px-4 font-semibold text-center">판정</th>
+          {# 판정 칸에 바닥을 준다 — `기일 경과 — 결과 확인 전`(12자)이 좁은 칸에서 **3줄**로 접혀
+             행 높이가 ~100px 로 튀었다(1440px qa 실측, 정상 ~78px). 칩 문구를 줄이는 방법은 쓸 수 없다:
+             tests/test_dday_data_layer.py:128 이 `ELAPSED_LABEL + "</span>"` 를 물어 **칩 본문에
+             전문이 그대로 있어야** 한다(줄이면 title 로 밀려 테스트가 깨진다). 그래서 폭으로 푼다.
+             칩에는 word-break:keep-all 을 줘 어절 중간에서 끊기지 않게 한다 — 그래야 이 정도 바닥으로
+             2줄에 들어간다(전각 12자를 한 줄에 담으려면 ~160px 이 필요해 표가 과하게 넓어진다). #}
+          <th class="py-3 px-4 font-semibold text-center min-w-[108px]">판정</th>
           <th class="py-3 px-4 font-semibold whitespace-nowrap">매각기일</th>
           <th class="py-3 px-4 font-semibold text-right whitespace-nowrap">최저매각가</th>
           <th class="py-3 px-4 font-semibold text-right whitespace-nowrap" title="재판매 마진 차감 후 손익분기가 — 예상낙찰가보다 낮은 것이 정상">상한가 <span class="text-mut font-normal">재판매</span></th>
@@ -63,7 +69,7 @@
             <a href="/vehicle/{{ v.id }}" class="text-primary font-medium hover:underline" style="word-break:keep-all">{{ v.model|mdl }}</a>
             <div class="text-xs text-mut">{{ v.case_no }}{% if v.year %} · {{ v.year }}년{% endif %}</div>
           </td>
-          <td class="py-2.5 px-4 text-center">{% if v.judgment %}<span class="inline-flex px-2 py-0.5 rounded text-xs font-medium {{ v.judgment|bcls }}">{{ v.judgment|jshort }}</span>{% endif %}</td>
+          <td class="py-2.5 px-4 text-center">{% if v.judgment %}<span class="inline-flex px-2 py-0.5 rounded text-xs font-medium {{ v.judgment|bcls }}" style="word-break:keep-all">{{ v.judgment|jshort }}</span>{% endif %}</td>
           <td class="py-2.5 px-4 font-mono text-mut whitespace-nowrap">{{ v.sale_date or '—' }} {{ dday_badge(v.dday) }}</td>
           <td class="py-2.5 px-4 font-mono text-right whitespace-nowrap {{ 'text-rose-600' if overfloor else 'text-mut' }}"
               {% if overfloor %}title="최저매각가가 산정 상한가보다 높음"{% endif %}>{{ v.min_sale_price|won }}</td>
@@ -83,8 +89,12 @@
     {% for v in rows %}
     {% set overfloor = v.min_sale_price and v.upper_bid and v.min_sale_price > v.upper_bid %}
     <a href="/vehicle/{{ v.id }}" class="block px-4 py-3 hover:bg-slate-50 transition-colors nc-pricegrid-host">
-      <div class="flex items-center justify-between gap-2">
-        <span class="font-semibold text-primary truncate" style="word-break:keep-all">{{ v.model|mdl }} <span class="text-xs text-mut font-normal">{{ v.year or '' }}</span></span>
+      {# 320px 에서 제목이 `토레스 EVX 20…` 으로 잘렸다(qa 실측). 12자 nowrap 판정 칩이 자리를 먹는데
+         제목에 `truncate` 가 걸려 min-content 가 0 이라, 칩이 줄을 바꾸는 대신 **제목만 계속 줄었다.**
+         제목에 바닥(9rem)을 주고 행을 flex-wrap 으로 열어, 자리가 모자라면 칩이 아랫줄로 내려가고
+         제목이 폭을 되찾게 한다. 390px 이상에서는 둘이 한 줄에 들어가 렌더가 바뀌지 않는다. #}
+      <div class="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+        <span class="font-semibold text-primary truncate grow min-w-[9rem]" style="word-break:keep-all">{{ v.model|mdl }} <span class="text-xs text-mut font-normal">{{ v.year or '' }}</span></span>
         <div class="flex items-center gap-1.5 shrink-0">{{ dday_badge(v.dday) }}{% if v.judgment %}<span class="inline-flex px-2 py-0.5 rounded text-xs font-medium whitespace-nowrap {{ v.judgment|bcls }}">{{ v.judgment|jshort }}</span>{% endif %}</div>
       </div>
       <div class="text-xs text-mut mt-0.5">{{ v.case_no }}{% if v.sale_date %} · {{ v.sale_date }}{% endif %}</div>

@@ -1072,7 +1072,7 @@ document.addEventListener('click', function(e){
       {% if backtest and (backtest.mae_pct or backtest.history_n) %}
       <div class="v-label" style="margin-top:20px">모델 검증 실적 <span style="font-weight:400;color:var(--ink-faint)">— 예측이 실제 낙찰을 얼마나 맞혔는가</span></div>
       <div class="vstats">
-        {% if backtest.mae_pct %}<div class="vstat"><div class="n">±{{ backtest.mae_pct }}%</div><div class="l">예측 오차</div><div class="s">모델 전체 평균 · 이 물건 값 아님</div></div>{% endif %}
+        {% if backtest.mae_pct %}<div class="vstat"><div class="n">±{{ backtest.mae_pct }}%</div><div class="l">예측 오차</div><div class="s">전체 평균 · 이 물건 값 아님</div></div>{% endif %}
         {# '상한가 적중률'은 재판매 마진선을 넘겼는지를 재는 지표라 '예측 적중률'로 오독된다.
            ±9%·175와 같은 크기·같은 색으로 20%가 놓여 "적중률이 20%밖에 안 되나"로 읽혔다.
            같은 이유로 /accuracy 에서는 이미 뺐는데 리포트에만 남아 있었다(2026-09-12 패널 지적).

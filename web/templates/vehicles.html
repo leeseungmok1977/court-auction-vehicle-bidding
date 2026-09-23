@@ -149,8 +149,15 @@
     <span class="ml-auto sm:hidden text-sm whitespace-nowrap">총 <b class="text-txt">{{ total }}</b>건</span></summary>
 <div class="gloss-row gloss-up flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-mut mt-1">
   {{ ui.gloss('검토 가능', '지금 가격이 적정해 바로 입찰을 검토할 수 있는 물건이에요.', q=false, cls='font-bold text-emerald-700') }}
-  {{ ui.gloss('유찰 대기', '아직 최저가가 시세보다 높아, 유찰로 더 내려가길 기다리는 편이 나은 물건이에요.', q=false, cls='font-bold text-amber-700') }}
-  {{ ui.gloss('신뢰도 낮음', '동급 시세 표본이 부족해 예상낙찰가를 믿기 어려운 물건이에요. 직접 시세 확인이 필요합니다.', q=false, cls='font-bold text-sky-700') }}
+  {# 범례 색은 **실제 칩 색**을 따른다(app.py _TONE_CLS). wait 톤 칩이 회색인데 범례만 앰버·하늘색이면
+     같은 상태를 두 색으로 말하는 것이다 — '신뢰도 낮음'은 원래부터 어긋나 있었다(sky 범례 ↔ 앰버 칩).
+     유찰 대기·기일 경과·신뢰도 낮음은 모두 bid_state tone='wait' → text-slate-600. #}
+  {{ ui.gloss('유찰 대기', '아직 최저가가 시세보다 높아, 유찰로 더 내려가길 기다리는 편이 나은 물건이에요.', q=false, cls='font-bold text-slate-600') }}
+  {# 오늘 기일 목록에서 가장 많이 보이는 칩인데 범례에만 없었다(실측 31회).
+     ⚠ 용어는 짧은 '기일 경과'로 둔다 — 칩 전문('기일 경과 — 결과 확인 전')을 여기 적으면
+       그 문자열이 범례에 상주해 test_dday_after_bid_time 의 칩 검사가 항상 통과한다(가짜 합격). #}
+  {{ ui.gloss('기일 경과', '오늘 입찰 시각이 이미 지난 물건이에요. 낙찰 결과가 법원에 올라오면 자동으로 바뀝니다.', q=false, cls='font-bold text-slate-600') }}
+  {{ ui.gloss('신뢰도 낮음', '동급 시세 표본이 부족해 예상낙찰가를 믿기 어려운 물건이에요. 직접 시세 확인이 필요합니다.', q=false, cls='font-bold text-slate-600') }}
   {# '비교할 대상이 없다'와 '비교했는데 못 믿겠다'는 다른 말이다 — 둘을 한 설명으로 묶으면
      곧 표본이 생길 것처럼 읽힌다(생기지 않는다). 배너·배지와 같은 문구를 쓴다. #}
   {{ ui.gloss('건설기계·선박 등', '동급으로 비교할 중고차가 없어 시세와 예상낙찰가를 내지 않는 물건이에요. 감정가·최저매각가·사진은 그대로 보실 수 있습니다.', q=false, cls='font-bold text-sky-700') }}
@@ -238,7 +245,7 @@ d.addEventListener('toggle',function(){try{localStorage.setItem('ncUsepickBasis'
           <th class="py-3 px-3 font-semibold text-center w-[86px]">판정</th>
           <th class="py-3 px-3 font-semibold text-right whitespace-nowrap w-[112px]">최저매각가 <span class="text-mut font-normal">경매 시작가</span></th>
           <th class="py-3 px-3 font-semibold text-right whitespace-nowrap w-[108px]" title="되팔이(재판매) 마진·부대비 차감 후 손익분기가 — 이 값 이하로 낙찰해야 차익. 예상낙찰가보다 낮은 것이 정상">상한가 <span class="text-mut font-normal">재판매</span></th>
-          <th class="py-3 px-3 font-semibold text-right whitespace-nowrap bg-primary/5 text-primary w-[158px]" title="일반 매수 실입찰 기준{% if mae %} — 모델 전체 평균 오차 ±{{ mae }}%. 이 값은 전체 평균이라 개별 물건의 정확도가 아닙니다. 물건별 실측 오차는 상세·리포트에서 유형(제조사·유찰횟수)별로 표시합니다{% endif %}">예상낙찰가 <span class="text-mut font-normal">실입찰</span></th>
+          <th class="py-3 px-3 font-semibold text-right whitespace-nowrap bg-primary/5 text-primary w-[158px]" title="일반 매수 실입찰 기준{% if mae %} — 전체 평균 오차 ±{{ mae }}%. 이 값은 전체 평균이라 개별 물건의 정확도가 아닙니다. 물건별 실측 오차는 상세·리포트에서 유형(제조사·유찰횟수)별로 표시합니다{% endif %}">예상낙찰가 <span class="text-mut font-normal">실입찰</span></th>
           <th class="py-3 px-3 font-semibold text-right whitespace-nowrap w-[124px]">시세중앙값 <span class="text-mut font-normal">·신뢰도</span></th>
           <th class="py-3 px-3 font-semibold whitespace-nowrap w-[100px]">매각기일</th>
           <th class="py-3 px-3 font-semibold text-right whitespace-nowrap w-[88px]">결과</th>
@@ -302,7 +309,15 @@ d.addEventListener('toggle',function(){try{localStorage.setItem('ncUsepickBasis'
             </div>
           </td>
           <td class="py-2.5 px-3 text-center">
-            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium whitespace-nowrap {{ (v.bidst.tone if v.bidst else '')|tcls }}" title="{{ v.judgment or v.status or '' }}">{{ v.bidst.label if v.bidst else (v.judgment|jshort if v.judgment else v.status|sstat) }}</span>
+            {# '동급 시세 없음'은 경고가 아니라 **해당 없음**이다(아래 :409-412 주석의 규칙 —
+               일정=보라 / 상태경고=앰버 / 해당없음=sky). 카드 칩·상세 배지(detail.html:40)·
+               범례가 모두 sky 로 말하는데 이 표 칩만 tone(wait)→회색이라, 1024px 이상에서
+               **범례는 sky, 같은 상태의 표 칩은 회색**이었다(2026-09-23 교차검수).
+               판정식은 카드와 **같은 것**을 쓴다 — 새 판정식을 만들지 않는다.
+               사진 위가 아니라 흰 배경이므로 카드의 반전(bg-black/55)이 아니라
+               상세 배지와 같은 연한 sky 세트로 칠한다(sky-700 on white = 5.9:1). #}
+            {% set _nm = v.bidst and v.bidst.state == 'nomarket' %}
+            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium whitespace-nowrap {% if _nm %}bg-sky-50 text-sky-700 border border-sky-200{% else %}{{ (v.bidst.tone if v.bidst else '')|tcls }}{% endif %}" title="{{ v.judgment or v.status or '' }}">{{ v.bidst.label if v.bidst else (v.judgment|jshort if v.judgment else v.status|sstat) }}</span>
           </td>
           {% set over_mkt = v.min_sale_price and v.median_price and v.min_sale_price > v.median_price %}
           {% set over_bid = v.min_sale_price and v.upper_bid and v.min_sale_price > v.upper_bid %}
@@ -349,6 +364,13 @@ d.addEventListener('toggle',function(){try{localStorage.setItem('ncUsepickBasis'
   </div>
   <!-- 모바일 카드 (풀폭 사진 프리미엄) -->
   <div class="lg:hidden divide-y divide-line">
+    {# ⑴전체평균 고지가 **폰에서 0회**였다 — 표 머리글(:248)의 고지 전문은 title(호버 전용)인데
+       그 표는 `hidden lg:block` 이고 폰은 이 카드 목록(`lg:hidden`)이다. 즉 TWA 사용자는
+       "전체 평균 ≠ 개별 물건 정확도"를 한 번도 못 봤다(2026-09-23 교차검수).
+       ⚠ **행마다 붙이지 않는다** — 행 단위 부착은 accuracy_for 독스트링이 금지한
+         '표본에 없는 유형으로 정확도 전이'다. 목록 머리에 **1회만** 둔다.
+       ⚠ 범례(110px)가 첫 카드를 폴드 밖으로 밀어낸 전례가 있다(:142-145) — 한 줄로 유지한다. #}
+    {% if mae %}<p class="px-4 py-2 text-[11px] text-mut" style="word-break:keep-all">예상낙찰가는 <b class="text-txt tnum">전체 평균 오차 ±{{ mae }}%</b>로 검증됩니다 — 전체 평균이라 개별 물건의 정확도는 아닙니다. 물건별 오차는 상세에서 유형별로 표시합니다.</p>{% endif %}
     {% for v in rows %}
     {% set closed = v.auction_result == '낙찰' or v.judgment == '종결' %}
     {% set exp_far = v.expected_win and v.min_sale_price and v.min_sale_price > v.expected_win %}
