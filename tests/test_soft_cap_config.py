@@ -88,3 +88,60 @@ def test_실제_config_가_산정까지_연결돼_있다(monkeypatch):
     assert service.soft_cap(20_000_000) == expected, (
         "config.yaml 의 soft_cap_ratio 가 산정에 도달하지 않는다 — "
         "코드 기본값이 대신 쓰였다. 값을 고쳐도 화면이 안 바뀐다는 뜻이다")
+
+
+# ── PANEL-29: 외부화가 **절반만** 됐던 자리 ────────────────────────────────
+# `soft_cap()` 은 config 를 읽는데 백테스트 LOO(`backtest_stats`)는 리터럴 1.10 이었다.
+# 그 상태에서도 **위 테스트는 전부 통과한다** — soft_cap 만 재기 때문이다. 배율을 바꾸면
+# 예상낙찰가는 새 배율로, 정확도 검증(이 LOO → pred_pool → accuracy_for 배지)은 옛 1.10
+# 기준으로 계산됐다. 그래서 여기서는 **두 경로를 같은 테스트 안에서** 재고 함께 움직이는지 본다.
+_MED = 10_050_000     # ⚠ 10만원 배수가 아니다 — LOO 가 반올림하지 않는다는 것까지 고정한다
+_FLOOR = 10_000_000
+_WIN = 20_000_000     # 프리미엄 2.0 → base(최저가×프리미엄)=2,000만 > 캡 → 캡이 반드시 binding
+
+
+def _seed_won(n: int = 12) -> None:
+    """낙찰 히스토리 n건 — 전부 같은 값이라 LOO 프리미엄이 정확히 2.0 이 된다."""
+    from web import db
+    for i in range(n):
+        db.record_sale_result({
+            "id": f"S{i}", "court_code": "B000210", "case_no": f"2026타경{9000 + i}",
+            "item_no": "1", "maker": "현대", "model": "쏘나타", "year": 2020,
+            "median_price": _MED, "min_sale_price": _FLOOR, "winning_price": _WIN,
+            "fail_count": 1, "sale_date": "2026-09-01", "market_confidence_label": "높음"})
+
+
+@pytest.mark.parametrize("ratio", [1.10, 1.50])
+def test_백테스트_LOO_가_예상가와_같은_배율을_쓴다(cfg, ratio):
+    """★ PANEL-29 의 본체 — 배율을 바꾸면 **두 경로가 함께** 움직여야 한다.
+
+    고치기 전에는 예상가 경로만 바뀌고 백테스트는 1.10 에 머물렀다. 화면의
+    '이 유형 실측 오차 ±X%' 배지가 예상낙찰가와 **다른 기준**으로 계산됐다는 뜻이다."""
+    cfg({"soft_cap_ratio": ratio})
+    _seed_won()
+    service._bt_cache.update({"data": None, "key": None, "t": 0.0})
+    bt = service.backtest_stats()
+    preds = {p["pred"] for p in bt["pred_pool"]}
+    assert preds == {round(_MED * ratio)}, (
+        f"백테스트 LOO 의 캡이 {preds} — 시세 {_MED} × config 배율 {ratio} 여야 한다. "
+        "리터럴이 남아 있으면 배율을 바꿔도 이 값이 안 움직인다(PANEL-29)")
+    # 같은 배율이 예상가 경로에도 도달하는가 — 한쪽만 움직이는 것이 이 버그였다
+    assert service.soft_cap(_MED) == int(round(_MED * ratio / 100_000) * 100_000)
+
+
+def test_LOO_는_캡을_10만원_단위로_반올림하지_않는다(cfg):
+    """배율만 config 로 옮기고 **반올림 규칙은 각자 유지**한다.
+
+    `soft_cap()` 이 10만원 단위로 반올림하는 이유는 화면 금액이 밴드와 1원까지 맞아야
+    해서다(그 독스트링). LOO 의 pred 는 인쇄되는 금액이 아니라 오차 지표의 입력이고
+    base(최저가×프리미엄)도 반올림하지 않는다 — 캡만 반올림하면 한 식 안에서 규칙이 갈리고,
+    운영 실측(2026-09-23, 135건)에서 캡이 binding 인 6건의 pred 와 MAE(9.199882→9.197875)가
+    조용히 바뀐다. '값은 그대로 두고 자리만 옮긴다'는 이 수정의 약속과 어긋난다."""
+    cfg({"soft_cap_ratio": 1.10})
+    _seed_won()
+    service._bt_cache.update({"data": None, "key": None, "t": 0.0})
+    bt = service.backtest_stats()
+    assert {p["pred"] for p in bt["pred_pool"]} == {11_055_000}, "LOO 캡이 반올림됐다"
+    cap_shown = service.soft_cap(_MED)
+    assert cap_shown % 100_000 == 0 and cap_shown != 11_055_000, (
+        "soft_cap 은 반대로 10만원 반올림을 유지해야 한다 — 화면 검산이 닫히지 않는다")

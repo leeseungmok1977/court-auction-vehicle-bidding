@@ -3260,7 +3260,15 @@ def backtest_stats() -> dict:
                     prem = gpm
                 pred = r["min_sale_price"] * prem
                 if r.get("median_price"):
-                    pred = min(pred, r["median_price"] * 1.10)   # expected_for와 동일 소프트캡
+                    # ★ 배율은 config 단일 원천(`soft_cap_ratio()`)에서 온다 — expected_for 와 같은 값.
+                    # 전에는 여기만 리터럴 1.10 이라 주석의 "동일"이 거짓이었다. 그 상태로 배율을
+                    # 바꾸면 **예상낙찰가는 새 배율로, 정확도 검증은 옛 1.10 기준으로** 계산된다
+                    # (이 LOO 가 pred_pool → accuracy_strata → accuracy_for 배지를 만든다. PANEL-29).
+                    # ⚠ 반올림은 하지 않는다. soft_cap() 이 10만원 단위로 반올림하는 이유는 화면에
+                    #   찍히는 금액이 밴드와 1원까지 맞아야 해서다. 여기 pred 는 인쇄되는 금액이
+                    #   아니라 오차 지표의 입력이고 base(min×prem)도 반올림하지 않는다 —
+                    #   캡만 반올림하면 한 식 안에서 규칙이 갈린다.
+                    pred = min(pred, r["median_price"] * soft_cap_ratio())
                 err = abs(pred - r["winning_price"]) / r["winning_price"]
                 loo.append(err)
                 edges.append((err, r["winning_price"] / r["min_sale_price"]))
@@ -3585,6 +3593,24 @@ def market_provenance(v: Optional[dict]) -> Optional[dict]:
 SOFT_CAP_RATIO = 1.10     # config.yaml 에 soft_cap_ratio 가 없을 때만 쓰는 기본값
 
 
+def soft_cap_ratio() -> float:
+    """소프트캡 **배율**의 단일 원천 — 값은 `config.yaml` 의 `soft_cap_ratio` 하나다.
+
+    PANEL-29: 외부화(PANEL-03)가 **절반만** 돼 있었다. `soft_cap()` 은 config 를 읽는데
+    백테스트 LOO(`backtest_stats`)는 리터럴 `1.10` 을 써서, 배율을 바꾸면 예상낙찰가와
+    정확도 검증이 **서로 다른 기준**으로 계산됐다. 두 경로가 이 함수 하나를 부르게 해서
+    그 어긋남을 구조가 막게 한다(사람이 두 자리를 같이 고치기를 바라지 않는다 —
+    `config.yaml:57` 에 같은 종류의 사고가 이미 기록돼 있다).
+
+    ⚠ **반올림은 여기서 하지 않는다.** 호출부마다 반올림 규칙이 다르기 때문이다:
+    `soft_cap()` 은 화면 검산을 위해 10만원 단위로 반올림하고, LOO 는 오차 지표라 생값을 쓴다.
+    이 함수가 돌려주는 것은 배율뿐이다."""
+    try:
+        return float(load_config().get("soft_cap_ratio") or SOFT_CAP_RATIO)
+    except (OSError, ValueError, TypeError):
+        return SOFT_CAP_RATIO     # 설정이 깨져도 산정 자체가 멈추지는 않게 한다
+
+
 def soft_cap(med: Optional[int]) -> Optional[int]:
     """예상낙찰가 소프트캡(10만원 단위). expected_for와 expected_band가 **같은 값**을 쓰게 한다.
 
@@ -3594,15 +3620,11 @@ def soft_cap(med: Optional[int]) -> Optional[int]:
     배율은 `config.yaml` 의 `soft_cap_ratio` 에서 읽는다(PANEL-03 — 3회차부터 반복 지적).
     **실측이 아니라 가정**이므로 코드에 박아 두면 근거를 적을 자리가 없고, 바꾸려면 배포가
     필요해진다. config.yaml 은 "흐름/코드 수정 없이 이 파일만 조정한다"가 원칙인 자리다.
-    호출부 3곳(:3599·:3654·:3676)이 인자를 넘기지 않으므로 여기서 직접 읽는다 —
+    호출부가 인자를 넘기지 않으므로 배율은 `soft_cap_ratio()` 에서 직접 읽는다 —
     `load_config` 는 mtime 캐시라 행마다 불려도 파일 I/O가 반복되지 않는다(:40-51)."""
     if not med:
         return None
-    try:
-        ratio = float(load_config().get("soft_cap_ratio") or SOFT_CAP_RATIO)
-    except (OSError, ValueError, TypeError):
-        ratio = SOFT_CAP_RATIO     # 설정이 깨져도 산정 자체가 멈추지는 않게 한다
-    return int(round(med * ratio / 100_000) * 100_000)
+    return int(round(med * soft_cap_ratio() / 100_000) * 100_000)
 
 
 def stale_floor(v: dict) -> bool:
@@ -3989,8 +4011,11 @@ def plain_verdict(v: dict, expected: Optional[dict],
     cap = f" 입찰 상한선은 {won(mb)}입니다." if mb else ""
     tone = "caution" if st.get("tone") == "caution" else "ok"
     weak = {
-        "within_error": " 다만 절감 폭이 이 유형의 예측 오차 범위 안이라 이득이 확정적이지는 않습니다.",
-        "no_error_stat": " 다만 이 유형은 예측 오차를 낼 검증 표본이 부족해 이득이 확정적이라고 말할 수 없습니다.",
+        # 어휘 통일(PANEL-36): 이 숫자는 낙찰된 물건으로 사후검증한 **실측** 오차다.
+        # 반대편 6자리(detail·report·accuracy)가 이미 '이 유형(라벨, N건) 실측 오차' 로 통일됐는데
+        # 히어로 배너만 '예측 오차' 로 남아 같은 값이 두 이름으로 불렸다.
+        "within_error": " 다만 절감 폭이 이 유형의 실측 오차 범위 안이라 이득이 확정적이지는 않습니다.",
+        "no_error_stat": " 다만 이 유형은 실측 오차를 낼 검증 표본이 부족해 이득이 확정적이라고 말할 수 없습니다.",
         "saving_unverified": (" 다만 시세가 감정가와 크게 어긋나 시세 오매칭이 의심됩니다 — 절감액을 확정할 수 없으니 "
                               "입찰 전 같은 등급·연식의 시세를 직접 확인하세요."),
     }.get(st.get("weak") or ("within_error" if tone == "caution" else ""), "")
@@ -4065,6 +4090,31 @@ def is_domestic_maker(v: dict) -> bool:
     return _is_domestic(str(v.get("maker") or ""), str(v.get("model") or ""))
 
 
+def _price_band(med: Optional[int]) -> Optional[str]:
+    """가격대 층 라벨. **가격을 모르면 None** — 층을 배정하지 않는다.
+
+    전에는 `med = median_price or actual or 0` 이라 가격 미상 물건이 전부 `500만 이하` 로
+    밀려 들어갔다. 지금은 그 층이 n=2(<8)라 자동 제외돼 무해하지만, 표본이 8을 넘는
+    순간 **가격을 모르는 물건이 엉뚱한 오차율을 배정받는다**(PANEL-30 구현 함정).
+    층 경계는 기존 값 그대로다 — 새로 만들지 않는다."""
+    if not med:
+        return None
+    if med < 5_000_000:
+        return "500만 이하"
+    if med < 10_000_000:
+        return "500~1,000만"
+    if med < 20_000_000:
+        return "1,000~2,000만"
+    return "2,000만 초과"
+
+
+def _fail_band(fc) -> str:
+    """유찰횟수 층 라벨 — `accuracy_strata` 와 `accuracy_for` 가 **같은 문자열**을 쓰게 한다.
+    (두 곳에 따로 적혀 있어 한쪽만 고치면 층 조회가 조용히 빗나간다.)"""
+    fc = fc or 0
+    return "유찰 0~1회" if fc <= 1 else "유찰 2회" if fc == 2 else "유찰 3회 이상"
+
+
 _ACC_STRATA = {"key": None, "data": None}   # accuracy_strata 메모(낙찰 표본수 기준)
 
 
@@ -4083,27 +4133,17 @@ def accuracy_strata(bt: Optional[dict] = None) -> list:
     if _ACC_STRATA["key"] == _key and _ACC_STRATA["data"] is not None:
         return _ACC_STRATA["data"]
 
-    def price_band(p):
-        med = p.get("median_price") or p.get("actual") or 0
-        if med < 5_000_000:
-            return "500만 이하"
-        if med < 10_000_000:
-            return "500~1,000만"
-        if med < 20_000_000:
-            return "1,000~2,000만"
-        return "2,000만 초과"
-
-    def fail_band(p):
-        fc = p.get("fail_count") or 0
-        return "유찰 0~1회" if fc <= 1 else "유찰 2회" if fc == 2 else "유찰 3회 이상"
-
-    groups = [("가격대", price_band), ("유찰횟수", fail_band),
+    groups = [("가격대", lambda p: _price_band(p.get("median_price") or p.get("actual"))),
+              ("유찰횟수", lambda p: _fail_band(p.get("fail_count"))),
               ("제조사", lambda p: "국산" if is_domestic_maker(p) else "수입")]
     out = []
     for gname, fn in groups:
         buckets = {}
         for p in pool:
-            buckets.setdefault(fn(p), []).append(p["err_pct"])
+            label = fn(p)
+            if label is None:
+                continue        # 가격을 모르는 표본은 가격대 층에 넣지 않는다(엉뚱한 층을 살찌운다)
+            buckets.setdefault(label, []).append(p["err_pct"])
         for label, errs in buckets.items():
             enough = len(errs) >= ACCURACY_STRATUM_MIN_N
             out.append({
@@ -4120,13 +4160,21 @@ def accuracy_for(v: dict, bt: Optional[dict] = None) -> Optional[dict]:
 
     전체 MAE 하나를 모든 물건에 붙이면, 표본에 없는 유형에도 정확도를 전이시키는
     과대주장이 된다(3회차 경매·중고차 지적). 유찰 3회 이상은 실측 ±12.8%로
-    전체 평균(±9.2%)보다 확연히 나쁘다."""
+    전체 평균(±9.2%)보다 확연히 나쁘다.
+
+    후보는 제조사·유찰횟수·**가격대** 세 층이다. 가격대는 `accuracy_strata` 가 계산해
+    두고도 후보에서 빠져 있던 **죽은 계산**이었다(PANEL-30). 넣으면 '더 나쁜 쪽' 규칙상
+    표시 오차는 커지거나 그대로다 — 더 낙관적으로 바뀌는 경우가 없어 이 독스트링이
+    금지한 과대주장과 방향이 같다(실측: 734건 중 396건이 평균 +0.77%p·최대 +1.0%p).
+    ⚠ **가격을 모르면 가격대 층은 후보에서 뺀다** — 그 물건을 `500만 이하` 로 몰아
+    엉뚱한 오차율을 배정하지 않기 위해서다(`_price_band` 참조)."""
     kind = "국산" if is_domestic_maker(v) else "수입"
-    fc = v.get("fail_count") or 0
-    fband = "유찰 0~1회" if fc <= 1 else "유찰 2회" if fc == 2 else "유찰 3회 이상"
     rows = {(r["group"], r["label"]): r for r in accuracy_strata(bt)}
     # 더 불리한(오차가 큰) 층을 택한다 — 낙관적인 쪽을 고르지 않는다.
-    cands = [rows.get(("제조사", kind)), rows.get(("유찰횟수", fband))]
+    cands = [rows.get(("제조사", kind)), rows.get(("유찰횟수", _fail_band(v.get("fail_count"))))]
+    band = _price_band(effective_median(v) or v.get("median_price"))
+    if band:                    # 가격 미상이면 후보 자체를 만들지 않는다(가드)
+        cands.append(rows.get(("가격대", band)))
     cands = [c for c in cands if c and c["mae"] is not None]
     if not cands:
         return None
