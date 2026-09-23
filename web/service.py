@@ -3554,17 +3554,27 @@ def market_provenance(v: Optional[dict]) -> Optional[dict]:
     }
 
 
-SOFT_CAP_RATIO = 1.10     # 예상낙찰가 상한 = 소매 시세 × 이 배율
+SOFT_CAP_RATIO = 1.10     # config.yaml 에 soft_cap_ratio 가 없을 때만 쓰는 기본값
 
 
 def soft_cap(med: Optional[int]) -> Optional[int]:
     """예상낙찰가 소프트캡(10만원 단위). expected_for와 expected_band가 **같은 값**을 쓰게 한다.
 
     전에는 expected_for가 반올림값(17,500,000), expected_band가 생값(17,490,000)을 써서
-    캡이 걸린 물건에서 리포트 검산이 10,000원 어긋났다."""
+    캡이 걸린 물건에서 리포트 검산이 10,000원 어긋났다.
+
+    배율은 `config.yaml` 의 `soft_cap_ratio` 에서 읽는다(PANEL-03 — 3회차부터 반복 지적).
+    **실측이 아니라 가정**이므로 코드에 박아 두면 근거를 적을 자리가 없고, 바꾸려면 배포가
+    필요해진다. config.yaml 은 "흐름/코드 수정 없이 이 파일만 조정한다"가 원칙인 자리다.
+    호출부 3곳(:3599·:3654·:3676)이 인자를 넘기지 않으므로 여기서 직접 읽는다 —
+    `load_config` 는 mtime 캐시라 행마다 불려도 파일 I/O가 반복되지 않는다(:40-51)."""
     if not med:
         return None
-    return int(round(med * SOFT_CAP_RATIO / 100_000) * 100_000)
+    try:
+        ratio = float(load_config().get("soft_cap_ratio") or SOFT_CAP_RATIO)
+    except (OSError, ValueError, TypeError):
+        ratio = SOFT_CAP_RATIO     # 설정이 깨져도 산정 자체가 멈추지는 않게 한다
+    return int(round(med * ratio / 100_000) * 100_000)
 
 
 def stale_floor(v: dict) -> bool:
