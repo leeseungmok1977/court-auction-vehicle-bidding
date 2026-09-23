@@ -1,32 +1,39 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""스토어 스크린샷 오버레이 시안 — 기준 월 캡슐(안 A) · 상단 캡션 띠(안 B-1 / B-2).
+"""스토어 스크린샷 오버레이 — 상단 캡션 띠(안 B-1, 채택 방향) · 기준 월 캡슐(안 A) · 원크기+하단 잘라냄(안 B-2).
 
 배경(오너 승인 2026-09-24): 스토어 스크린샷은 영구 공개물인데 화면 속 수치는 8시간 안에
 움직인다(±9.5→±9.6%, 275→288건). 그림 안에 ``2026년 9월 기준`` 을 얹으면 값이 움직여도
 "그때는 참이었다"가 성립한다. Play 콘솔에는 사용자에게 보이는 스크린샷별 캡션 필드가 없다
-(alt text 는 스크린리더용) — 캡션이 보이려면 그림 안이 유일한 경로다.
+(alt text 는 스크린리더용, support.google.com/googleplay/android-developer/answer/9866151) —
+캡션이 보이려면 그림 안이 유일한 경로다. 그림 안 태그라인은 이미지의 20%(=384px) 이하.
 
 원본 ``screenshots/store/NN_*.png`` 은 절대 덮어쓰지 않는다. 출력은 ``--out`` 아래(기본
-``screenshots/store/overlay-draft/``) 에 ``NN_name__A.png`` · ``__B1.png`` · ``__B2.png`` 로 쓴다.
+``screenshots/store/overlay-draft/``) 에 ``NN_name__B1.png`` 등으로 쓴다.
 
-안 A   : 헤더 바로 아래 우측에 반투명 네이비 캡슐 ``2026년 9월 기준`` 만 얹는다(앱 UI 가림 없음 —
-         캡슐 밑 픽셀이 균일한지 스크립트가 검사한다).
-안 B-1 : 상단 띠(캡션 + 기준 월) + 스크린샷을 **비율 유지 축소**해 띠 아래 배치. 최종 1080×1920.
-안 B-2 : 상단 띠 + 스크린샷을 **원크기**로 띠 아래 배치, 하단 띠 높이만큼 잘린다. 최종 1080×1920.
+안 B-1 : 상단 띠(캡션 + 기준 월) + 스크린샷을 **비율 유지 축소**해 띠 아래 카드처럼 배치. 최종 1080×1920.
+         ``--stamp-shots`` 로 지정한 장은 기준 월을 띠 **우하단 스탬프**(카드 우측선에 맞춤, 카드 상단 12px 위)
+         로 옮긴 ``__B1s.png`` 도 함께 낸다(오너 선택용). 기본 자리는 캡션 아래 가운데.
+안 A   : 헤더 바로 아래 우측에 반투명 네이비 캡슐 ``2026년 9월 기준`` 만 얹는다(캡션은 아무도 못 본다).
+안 B-2 : 상단 띠 + 스크린샷 원크기 → 하단이 띠 높이만큼 잘린다(탭바가 잘려 1차 시안에서 탈락).
+
+검수(-06) 반영, 지시서 -08:
+  - 띠 높이 220 → **250px**(2줄 캡션 장의 위아래 여백 24→40px, 1줄 장 56→71px). 축소율 0.870, 카드 939×1670.
+  - 글꼴 맑은 고딕 → **Pretendard**(앱 실제 글꼴). 리포의 ``web/static/fonts/Pretendard-{Bold,Medium}.woff2``
+    원본(비서브셋)을 실행 시 fontTools 로 TTF/OTF 로 풀어 캐시(``<out>/_fonts/``)에 두고 Pillow 로 읽는다.
+    다운로드하지 않고, 리포에 새 바이너리를 넣지 않는다(``screenshots/`` 는 .gitignore).
+  - 06 캡션 ``" — "`` 는 그 자리에서 두 줄로 나누고 **대시를 그리지 않는다** — 확정 문구의 대시를 줄바꿈이
+    대신한다. **오너 승인 항목**(문구 자체는 바꾸지 않는다).
 
 색은 코드에서 읽은 값만 쓴다(추측 금지):
   - 띠·캡슐 배경 NAVY  #0b142b  ← web/static/manifest.webmanifest theme_color / background_color
   - 캡션 글자   WHITE #ffffff
   - 기준 월 글자 CREAM #f5e9d4  ← tailwind.config.js colors.cream (brand-dark 와 짝인 강조 스톱)
-폰트는 맑은 고딕(``C:/Windows/Fonts/malgun.ttf`` · ``malgunbd.ttf``)만 쓴다. 없으면 대체를 찾지
-않고 종료한다.
 
 사용::
 
-    python tools/store_overlay.py                       # 02_accuracy·01_home·06_landing × A/B1/B2
-    python tools/store_overlay.py --shots 01_home       # 한 장만
-    python tools/store_overlay.py --variants A          # 한 안만
+    python tools/store_overlay.py                                   # 8장 B-1 + 02_accuracy B1s
+    python tools/store_overlay.py --shots 01_home --variants A B2   # 다른 안
     python tools/store_overlay.py --out /tmp/x --no-thumbs
 
 표준출력에 규격·md5·글자 크기·대비·잘린 픽셀을 마크다운 표로 낸다(보고서에 그대로 붙인다).
@@ -36,7 +43,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
 import subprocess
 import sys
 from pathlib import Path
@@ -46,8 +52,9 @@ from PIL import Image, ImageDraw, ImageFont
 ROOT = Path(__file__).resolve().parent.parent
 SRC_DIR = ROOT / "screenshots" / "store"
 OUT_DIR = SRC_DIR / "overlay-draft"
+FONT_SRC_DIR = ROOT / "web" / "static" / "fonts"
 
-# docs/STORE_LISTING.md "제출할 8장 (오너 확정 2026-09-22)" 의 캡션 — 문구를 바꾸지 않는다.
+# docs/STORE_LISTING.md "제출할 8장 (오너 확정 2026-09-22)" 의 캡션 — 문구를 바꾸지 않는다. 순서도 표 순서.
 CAPTIONS = {
     "06_landing": "감으로 입찰하지 않습니다 — 데이터로 먼저 봅니다",
     "01_home": "최저매각가와 AI 예상낙찰가를 한 카드에서",
@@ -58,17 +65,45 @@ CAPTIONS = {
     "10_report_lower": "가격·시세신뢰도·사고·주행·잔존가치·유동성 6축",
     "05_calendar": "날짜별 매각기일과 지난달 낙찰 실적까지",
 }
-DEFAULT_SHOTS = ["02_accuracy", "01_home", "06_landing"]
+DEFAULT_SHOTS = list(CAPTIONS)  # 제출 순서 그대로 8장
 
 # 색 — 출처는 모듈 docstring 참조
 NAVY = (0x0B, 0x14, 0x2B)
 WHITE = (0xFF, 0xFF, 0xFF)
 CREAM = (0xF5, 0xE9, 0xD4)
-
-FONT_REG = Path("C:/Windows/Fonts/malgun.ttf")
-FONT_BOLD = Path("C:/Windows/Fonts/malgunbd.ttf")
+LINE_TOKEN = (0xE3, 0xE8, 0xEE)  # tailwind.config.js colors.line — 앱 셸의 hairline 보더(탭바 상단선)
 
 CANVAS = (1080, 1920)  # Play 휴대전화 스크린샷 규격(원본과 동일)
+PLAY_TAGLINE_MAX = int(CANVAS[1] * 0.20)  # 384px — Play "taglines ≤ 20% of the image"
+BAND_RECOMMENDED = (220, 300)
+CAPTION_SIDE_MARGIN = 56  # 띠 안 캡션 좌우 여백 → 폭 상한 968px
+
+FONTS: dict[str, Path] = {}  # ensure_fonts() 가 채운다: bold / medium
+
+
+# ── 글꼴: 리포의 Pretendard woff2 → TTF/OTF 캐시 ──────────────────────────────
+def ensure_fonts(cache_dir: Path) -> dict[str, Path]:
+    """Pillow 는 woff2 를 못 읽는다. fontTools 로 flavor 만 벗겨 캐시에 저장(글리프·힌팅 그대로).
+    원본이 없거나 fontTools/brotli 가 없으면 대체 글꼴을 찾지 않고 종료한다."""
+    try:
+        from fontTools.ttLib import TTFont
+    except ImportError as e:  # noqa: BLE001
+        raise SystemExit(f"fontTools 가 없다({e}) — Pretendard 를 풀 수 없다. 대체 글꼴을 쓰지 않는다.")
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    out: dict[str, Path] = {}
+    for key, name in (("bold", "Pretendard-Bold"), ("medium", "Pretendard-Medium")):
+        src = FONT_SRC_DIR / f"{name}.woff2"  # 비서브셋 원본(.subset.woff2 아님)
+        if not src.exists():
+            raise SystemExit(f"글꼴 원본이 없다: {src} — 다운로드하지 않는다. 사람에게 보고할 것.")
+        f = TTFont(str(src))
+        ext = ".otf" if "CFF " in f else ".ttf"
+        dst = cache_dir / f"{name}{ext}"
+        if not dst.exists() or dst.stat().st_mtime < src.stat().st_mtime:
+            f.flavor = None
+            f.save(str(dst))
+        out[key] = dst
+    FONTS.update(out)
+    return out
 
 
 # ── WCAG 대비 ─────────────────────────────────────────────────────────────────
@@ -92,8 +127,10 @@ def blend(fg, bg, alpha: float):
 
 
 # ── 글자 측정 ─────────────────────────────────────────────────────────────────
-def font(path: Path, size: int) -> ImageFont.FreeTypeFont:
-    return ImageFont.truetype(str(path), size)
+def font(key: str, size: int) -> ImageFont.FreeTypeFont:
+    if key not in FONTS:
+        raise RuntimeError("ensure_fonts() 를 먼저 부른다")
+    return ImageFont.truetype(str(FONTS[key]), size)
 
 
 def ink(f: ImageFont.FreeTypeFont, text: str):
@@ -103,10 +140,14 @@ def ink(f: ImageFont.FreeTypeFont, text: str):
 
 
 def fit_caption(text: str, max_w: int, sizes=range(54, 43, -1)):
-    """한 줄로 들어가는 가장 큰 크기. ' — ' 가 있으면 그 자리에서 두 줄로 나눠도 된다.
-    반환 (size, lines) — 못 맞추면 (None, None)."""
+    """한 줄로 들어가는 가장 큰 크기. 반환 (size, lines) — 못 맞추면 (None, None).
+
+    ``" — "`` 가 있으면 그 자리에서 두 줄로 나눌 수 있다. 이때 **대시는 그리지 않는다** — 확정 문구의 대시를
+    줄바꿈이 대신한다(06_landing 이 해당). 문구는 오너 확정본이라 바꾸지 않으며, 대시 없는 2줄 렌더는
+    **오너 승인 항목**이다(검수 -06 지적 3 · 지시서 -08 §3). 줄 끝에 대시를 남기는 안은 어색해 쓰지 않는다.
+    다른 구분자(``·`` 등)로는 나누지 않는다 — 나눌 자리를 코드가 고르면 문구를 손댄 것과 같다."""
     for s in sizes:
-        f = font(FONT_BOLD, s)
+        f = font("bold", s)
         if ink(f, text)[0] <= max_w:
             return s, [text]
         if " — " in text:
@@ -117,23 +158,20 @@ def fit_caption(text: str, max_w: int, sizes=range(54, 43, -1)):
 
 
 def uniform_caption_size(texts, max_w):
-    """세트 전체에 같은 크기를 쓴다 — 캐러셀에서 장마다 글자 크기가 다르면 튄다."""
-    sizes = []
+    """세트 전체에 같은 크기를 쓴다 — 캐러셀에서 장마다 글자 크기가 다르면 튄다. 반환 (size, {text: size})."""
+    per = {}
     for t in texts:
         s, _ = fit_caption(t, max_w)
         if s is None:
             raise SystemExit(f"캡션이 44px 에서도 안 들어간다: {t!r}")
-        sizes.append(s)
-    return min(sizes)
+        per[t] = s
+    return min(per.values()), per
 
 
 # ── 원본 검사(탭바·헤더) ─────────────────────────────────────────────────────────
-LINE_TOKEN = (0xE3, 0xE8, 0xEE)  # tailwind.config.js colors.line — 앱 셸의 hairline 보더(탭바 상단선)
-
-
 def find_tabbar_top(im: Image.Image) -> int | None:
     """하단 탭바 상단 보더 y. 화면 폭 전체가 `line` 토큰 색(±8)인 줄 두 칸 아래가 순백이면 탭바 상단선으로
-    본다(01·02 실측: y=1806 이 (227,232,238), 1808 부터 흰색). 랜딩처럼 탭바가 없으면 None."""
+    본다(01·02 실측: y=1806~1807 이 (227,232,238), 1808 부터 흰색). 랜딩처럼 탭바가 없으면 None."""
     px = im.convert("RGB").load()
     W, H = im.size
     xs = range(8, W - 8, 4)
@@ -170,7 +208,7 @@ def region_kind(im: Image.Image, box) -> tuple[str, int]:
 def draw_capsule(src: Image.Image, basis: str, *, size: int, alpha: float, margin: int, top: int):
     """안 A — 헤더 아래 우측 캡슐. 반환 (이미지, 메트릭)."""
     W, H = src.size
-    f = font(FONT_BOLD, size)
+    f = font("bold", size)
     tw, th, tl, tt = ink(f, basis)
     pad_x, pad_y = 26, 16
     cw, chh = tw + pad_x * 2, th + pad_y * 2
@@ -181,7 +219,6 @@ def draw_capsule(src: Image.Image, basis: str, *, size: int, alpha: float, margi
     box = (x0, y0, x1, y1)
 
     kind, spread = region_kind(src, box)
-    # 대비: 캡슐 밑 픽셀마다 합성한 뒤 흰 글자와의 최소 대비(가장 불리한 픽셀)
     under = src.convert("RGB").crop(box)
     worst = min(contrast(WHITE, blend(NAVY, p, alpha)) for p in set(under.getdata()))
 
@@ -204,34 +241,60 @@ def draw_capsule(src: Image.Image, basis: str, *, size: int, alpha: float, margi
     return base.convert("RGB"), metrics
 
 
-def draw_band(caption_lines, basis, *, band_h: int, cap_size: int, basis_size: int):
-    """상단 띠 이미지(1080×band_h) 와 메트릭."""
+def card_geometry(band_h: int):
+    """B-1 카드(축소 스크린샷)의 크기와 좌표. 반환 (scale, sw, sh, x)."""
+    W, H = CANVAS
+    sh = H - band_h
+    scale = sh / H
+    sw = round(W * scale)
+    x = (W - sw) // 2
+    return scale, sw, sh, x
+
+
+def draw_band(caption_lines, basis, *, band_h: int, cap_size: int, basis_size: int,
+              basis_pos: str = "below", stamp_right: int | None = None, stamp_gap: int = 12):
+    """상단 띠 이미지(1080×band_h) 와 메트릭.
+
+    basis_pos="below": 기준 월을 캡션 아래 가운데(기본).
+    basis_pos="stamp": 기준 월을 띠 우하단 스탬프로 — 오른쪽 끝을 ``stamp_right``(카드 우측선)에 맞추고
+                       잉크 아래를 카드 상단(band_h)에서 ``stamp_gap`` 위에 둔다. 캡션은 띠 세로 가운데."""
     W = CANVAS[0]
     band = Image.new("RGB", (W, band_h), NAVY)
     d = ImageDraw.Draw(band)
-    fc = font(FONT_BOLD, cap_size)
-    fb = font(FONT_REG, basis_size)
+    fc = font("bold", cap_size)
+    fb = font("medium", basis_size)
     line_h = round(cap_size * 1.28)
     gap = 14
     bw, bh, bl, bt = ink(fb, basis)
-    block_h = line_h * len(caption_lines) + gap + bh
+    block_h = line_h * len(caption_lines) + (gap + bh if basis_pos == "below" else 0)
     y = (band_h - block_h) // 2
+    top_pad = y
     widths = []
     for line in caption_lines:
         tw, th, tl, tt = ink(fc, line)
         widths.append(tw)
-        # 줄 상자 안에서 세로 가운데
         d.text(((W - tw) // 2 - tl, y + (line_h - th) // 2 - tt), line, font=fc, fill=WHITE)
         y += line_h
-    y += gap
-    d.text(((W - bw) // 2 - bl, y - bt), basis, font=fb, fill=CREAM)
+    if basis_pos == "below":
+        y += gap
+        d.text(((W - bw) // 2 - bl, y - bt), basis, font=fb, fill=CREAM)
+        basis_box = ((W - bw) // 2, y, (W + bw) // 2, y + bh)
+    else:
+        right = stamp_right if stamp_right is not None else W - CAPTION_SIDE_MARGIN
+        sx, sy = right - bw, band_h - stamp_gap - bh
+        d.text((sx - bl, sy - bt), basis, font=fb, fill=CREAM)
+        basis_box = (sx, sy, right, sy + bh)
     metrics = {
         "band_h": band_h,
         "band_ratio_of_1920": round(band_h / CANVAS[1], 3),
         "caption_font_px": cap_size,
         "caption_lines": len(caption_lines),
         "caption_width_px": max(widths),
+        "caption_block_top_pad": top_pad,
+        "caption_block_bottom_pad": band_h - (top_pad + block_h),
         "basis_font_px": basis_size,
+        "basis_pos": basis_pos,
+        "basis_box": basis_box,
         "contrast_caption": round(contrast(WHITE, NAVY), 2),
         "contrast_basis": round(contrast(CREAM, NAVY), 2),
     }
@@ -239,25 +302,21 @@ def draw_band(caption_lines, basis, *, band_h: int, cap_size: int, basis_size: i
 
 
 def compose_b1(src: Image.Image, band: Image.Image):
-    """B-1: 비율 유지 축소해 띠 아래 배치. 남는 좌우는 띠 색."""
+    """B-1: 비율 유지 축소해 띠 아래 배치. 남는 좌우는 띠 색. 위 모서리만 둥글게(카드)."""
     W, H = CANVAS
     bh = band.height
-    avail_h = H - bh
-    scale = avail_h / src.height
-    sw = round(src.width * scale)
-    scaled = src.convert("RGB").resize((sw, avail_h), Image.LANCZOS)
+    scale, sw, sh, x = card_geometry(bh)
+    scaled = src.convert("RGB").resize((sw, sh), Image.LANCZOS)
     canvas = Image.new("RGB", CANVAS, NAVY)
     canvas.paste(band, (0, 0))
-    x = (W - sw) // 2
-    # 위쪽 모서리만 둥글게(카드처럼) — 아래는 캔버스 끝에 닿는다
     r = 28
     mask = Image.new("L", scaled.size, 255)
     md = ImageDraw.Draw(mask)
     md.rectangle((0, 0, sw, r), fill=0)
     md.rounded_rectangle((0, 0, sw - 1, r * 2), radius=r, fill=255)
-    md.rectangle((0, r, sw, avail_h), fill=255)
+    md.rectangle((0, r, sw, sh), fill=255)
     canvas.paste(scaled, (x, bh), mask)
-    return canvas, {"scale": round(scale, 4), "scaled_size": (sw, avail_h), "side_gutter_px": x}
+    return canvas, {"scale": round(scale, 4), "scaled_size": (sw, sh), "side_gutter_px": x, "card_right_x": x + sw}
 
 
 def compose_b2(src: Image.Image, band: Image.Image):
@@ -267,7 +326,7 @@ def compose_b2(src: Image.Image, band: Image.Image):
     canvas = Image.new("RGB", CANVAS, NAVY)
     canvas.paste(band, (0, 0))
     canvas.paste(src.convert("RGB"), (0, bh))
-    cropped_from = H - bh  # 원본에서 이 y 이후가 사라진다
+    cropped_from = H - bh
     tab_top = find_tabbar_top(src)
     if tab_top is None:
         tab_cut = "탭바 없음"
@@ -307,12 +366,15 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--src", type=Path, default=SRC_DIR)
     ap.add_argument("--out", type=Path, default=OUT_DIR)
-    ap.add_argument("--shots", nargs="+", default=DEFAULT_SHOTS, help="파일명 stem (예: 01_home)")
-    ap.add_argument("--variants", nargs="+", default=["A", "B1", "B2"], choices=["A", "B1", "B2"])
+    ap.add_argument("--shots", nargs="+", default=DEFAULT_SHOTS, help="파일명 stem (예: 01_home). 기본 8장")
+    ap.add_argument("--variants", nargs="+", default=["B1"], choices=["A", "B1", "B2"])
+    ap.add_argument("--stamp-shots", nargs="*", default=["02_accuracy"],
+                    help="기준 월을 띠 우하단 스탬프로 옮긴 __B1s 도 낼 장(오너 선택용). 빈 값이면 안 냄")
     ap.add_argument("--basis", default="2026년 9월 기준")
-    ap.add_argument("--band-h", type=int, default=220, help="띠 높이(px) — 180~240 권장")
-    ap.add_argument("--basis-size", type=int, default=32, help="띠 안 기준 월 글자 크기")
-    ap.add_argument("--capsule-size", type=int, default=34, help="캡슐 글자 크기")
+    ap.add_argument("--band-h", type=int, default=250,
+                    help=f"띠 높이(px). 권장 {BAND_RECOMMENDED[0]}~{BAND_RECOMMENDED[1]}, Play 20% 상한 {PLAY_TAGLINE_MAX}")
+    ap.add_argument("--basis-size", type=int, default=32, help="띠 안 기준 월 글자 크기(Pretendard Medium)")
+    ap.add_argument("--capsule-size", type=int, default=34, help="캡슐 글자 크기(Pretendard Bold)")
     ap.add_argument("--capsule-alpha", type=float, default=0.90)
     ap.add_argument("--capsule-top", type=int, default=140, help="캡슐 상단 y (헤더 보더 126~127 아래)")
     ap.add_argument("--capsule-margin", type=int, default=32, help="캡슐 우측 여백")
@@ -322,13 +384,14 @@ def main(argv=None):
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
 
-    for p in (FONT_REG, FONT_BOLD):
-        if not p.exists():
-            raise SystemExit(f"맑은 고딕 폰트가 없다: {p} — 대체 폰트를 쓰지 않는다. 사람에게 보고할 것.")
-    if not (180 <= args.band_h <= 240):
-        print(f"경고: 띠 높이 {args.band_h}px 는 180~240 범위 밖", file=sys.stderr)
+    if args.band_h > PLAY_TAGLINE_MAX:
+        raise SystemExit(f"띠 {args.band_h}px 는 Play 태그라인 상한(이미지의 20% = {PLAY_TAGLINE_MAX}px)을 넘는다")
+    if not (BAND_RECOMMENDED[0] <= args.band_h <= BAND_RECOMMENDED[1]):
+        print(f"경고: 띠 높이 {args.band_h}px 는 권장 {BAND_RECOMMENDED[0]}~{BAND_RECOMMENDED[1]} 범위 밖"
+              f"(검수 -06: 220 은 2줄 캡션 여백 24px 로 빽빽, 250 채택)", file=sys.stderr)
 
     args.out.mkdir(parents=True, exist_ok=True)
+    fonts = ensure_fonts(args.out / "_fonts")
     head = git_head()
     (args.out / "HEAD").write_text(head + "\n", encoding="utf-8")
 
@@ -344,16 +407,30 @@ def main(argv=None):
             raise SystemExit(f"원본 규격이 {CANVAS} 가 아니다: {p} {im.size}")
         srcs[stem] = (p, im)
 
-    band_max_w = CANVAS[0] - 2 * 56
-    cap_size = uniform_caption_size([CAPTIONS[s] for s in args.shots], band_max_w)
+    band_max_w = CANVAS[0] - 2 * CAPTION_SIDE_MARGIN
+    cap_size, per_caption = uniform_caption_size([CAPTIONS[s] for s in args.shots], band_max_w)
+    binding = [s for s in args.shots if per_caption[CAPTIONS[s]] == cap_size]  # 값을 못 박은 장
 
     rows = []
-    metrics = {"HEAD": head, "basis": args.basis, "caption_font_px_uniform": cap_size, "shots": {}}
+    metrics = {
+        "HEAD": head,
+        "basis": args.basis,
+        "fonts": {k: str(v) for k, v in fonts.items()},
+        "band_h": args.band_h,
+        "caption_font_px_uniform": cap_size,
+        "caption_font_px_per_shot_alone": {s: per_caption[CAPTIONS[s]] for s in args.shots},
+        "caption_size_bound_by": binding,
+        "shots": {},
+    }
     thumbs = []
+    stamp_shots = set(args.stamp_shots or [])
     for stem, (p, im) in srcs.items():
         src_md5 = md5(p)
         m_shot = {"src": str(p), "src_md5": src_md5, "caption": CAPTIONS[stem], "variants": {}}
-        for v in args.variants:
+        jobs = list(args.variants)
+        if "B1" in jobs and stem in stamp_shots:
+            jobs.append("B1s")
+        for v in jobs:
             if v == "A":
                 out_im, m = draw_capsule(
                     im, args.basis, size=args.capsule_size, alpha=args.capsule_alpha,
@@ -361,10 +438,14 @@ def main(argv=None):
                 )
             else:
                 _, lines = fit_caption(CAPTIONS[stem], band_max_w, sizes=[cap_size])
-                band, mb = draw_band(lines, args.basis, band_h=args.band_h, cap_size=cap_size,
-                                     basis_size=args.basis_size)
-                out_im, mc = (compose_b1 if v == "B1" else compose_b2)(im, band)
+                _, sw, _, cx = card_geometry(args.band_h)
+                band, mb = draw_band(
+                    lines, args.basis, band_h=args.band_h, cap_size=cap_size, basis_size=args.basis_size,
+                    basis_pos="stamp" if v == "B1s" else "below", stamp_right=cx + sw,
+                )
+                out_im, mc = (compose_b2 if v == "B2" else compose_b1)(im, band)
                 m = {**mb, **mc}
+                m["dash_replaced_by_linebreak"] = (len(lines) == 2)  # 오너 승인 항목
             outp = args.out / f"{stem}__{v}.png"
             save_png(out_im, outp)
             m["out"] = str(outp)
@@ -376,12 +457,12 @@ def main(argv=None):
                 thumbs.append((outp.name, out_im))
         metrics["shots"][stem] = m_shot
 
-    # 1/4 축소본 + 컨택트시트 — 스토어 썸네일 가독성 판단용(눈으로 열어 본다)
+    # 1/4 축소본 + 컨택트시트(3열) — 스토어 썸네일 가독성 판단용(눈으로 열어 본다)
     if thumbs:
         tdir = args.out / "thumb"
         tdir.mkdir(exist_ok=True)
         tw, th = CANVAS[0] // 4, CANVAS[1] // 4
-        cols = len(args.variants)
+        cols = 3
         rows_n = (len(thumbs) + cols - 1) // cols
         gap = 12
         sheet = Image.new("RGB", (cols * tw + (cols + 1) * gap, rows_n * th + (rows_n + 1) * gap), (230, 230, 230))
@@ -396,22 +477,21 @@ def main(argv=None):
     (args.out / "metrics.json").write_text(json.dumps(metrics, ensure_ascii=False, indent=2, default=str),
                                            encoding="utf-8")
 
-    # md5 전부 상이한지(원본·출력 간)
     all_md5 = [r[2] for r in rows] + list({r[3] for r in rows})
     dup = len(all_md5) != len(set(all_md5))
 
     print(f"HEAD {head}")
-    print(f"캡션 글자 크기(세트 공통) {cap_size}px · 띠 {args.band_h}px({args.band_h / 19.2:.1f}% of 1920) "
+    print(f"글꼴 {', '.join(p.name for p in fonts.values())} · 캡션 글자 크기(세트 공통) {cap_size}px"
+          f"(못 박은 장: {', '.join(binding)}) · 띠 {args.band_h}px({args.band_h / 19.2:.1f}% of 1920) "
           f"· 기준 월 {args.basis_size}px · 캡슐 {args.capsule_size}px")
+    print("장별 단독 최대 크기: " + ", ".join(f"{s}={per_caption[CAPTIONS[s]]}" for s in args.shots))
     print()
     print("| 출력 | 규격 | md5 | 원본 md5 |")
     print("|---|---|---|---|")
     for name, size, h, sh in rows:
-        print(f"| `{name}` | {size[0]}×{size[1]} | `{h[:12]}…` | `{sh[:12]}…` |")
+        print(f"| `{name}` | {size[0]}×{size[1]} | `{h}` | `{sh[:12]}…` |")
     print()
     print("md5 전부 상이:", "아니오 — 중복 있음!" if dup else "예")
-    print()
-    print(json.dumps(metrics, ensure_ascii=False, indent=2, default=str))
     return 1 if dup else 0
 
 
