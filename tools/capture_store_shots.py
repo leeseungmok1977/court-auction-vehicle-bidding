@@ -11,6 +11,17 @@
     python tools/capture_store_shots.py --calendar    # 8번 05_calendar.png (달력·지난달 실적)
     python tools/capture_store_shots.py --all         # 제출 8장 전부
     python tools/capture_store_shots.py --audit       # 찍지 않고 제출 8장을 대조
+    python tools/capture_store_shots.py --scan        # 찍지 않고 대상 후보만 조사해 캐시에 남긴다
+    python tools/capture_store_shots.py --hero /vehicle/2026타경0000_1 --detail --slide5
+                                                      # 대상 물건을 직접 지정한다(탐색 생략)
+      ⚠ Git Bash 에서는 `/vehicle/…` 이 `C:/Program Files/Git/vehicle/…` 로 바뀐다(MSYS 경로
+        변환). `MSYS_NO_PATHCONV=1` 을 앞에 붙이거나 PowerShell 에서 실행한다 — `set_hero()` 의
+        꼴 검사가 이걸 실제로 잡았다(2026-09-24).
+
+⚠ 2026-09-24 3차: `pick_hero_vehicle()` 의 조사 결과가 **프로세스 안에만** 있었다. 도구를
+세 번 부르는 동안 같은 후보 10건을 세 번 다시 열었다 — 외부 이동 101회 중 66회(65%).
+이제 조사 결과는 `screenshots/store/hero_scan.json` 에 **날짜와 함께** 남고, `--hero` 로
+대상을 직접 줄 수 있다. 정기 재촬영(월 1회, 오너 승인)의 선결 과제다.
 
 ⚠ 2026-09-24 이전에는 **이 독스트링만 `--all` 을 안내하고 구현이 없었다**(인자는 `--slide5`·
 `--audit` 둘뿐이었다). 문서가 코드보다 앞서 있었고, 그 결과 홈·적중률·소개를 찍을 경로가
@@ -103,10 +114,16 @@ RETIRED = ("평균오차",)
 # 이번 회차에 실제로 저장된 장의 기준 커밋·시각. `stamp_head()` 가 기존 기록에 덧쓴다.
 _STAMPS: dict[str, dict] = {}
 
+# 이 프로세스가 한 **외부 페이지 이동** 수. 회차 끝에 찍는다 — 지시서가 매번 세어 적으라 한다.
+# (페이지가 끌어오는 CSS·JS·이미지 등 하위 리소스는 세지 않는다.)
+_MOVES = 0
+
 
 def _now_iso() -> str:
+    """시간대를 붙인다(`+09:00`). HEAD.json 의 기존 기록이 시간대를 달고 있는데 새 기록만
+    없으면 한 파일 안에서 시각 표기가 갈린다 — 찍는 사람과 보는 사람 사이의 함정 하나 더."""
     from datetime import datetime
-    return datetime.now().isoformat(timespec="seconds")
+    return datetime.now().astimezone().isoformat(timespec="seconds")
 
 
 def md5(p: pathlib.Path) -> str:
@@ -114,10 +131,12 @@ def md5(p: pathlib.Path) -> str:
 
 
 def polite_goto(pg, path: str, wait_until: str = "networkidle") -> None:
-    """외부 요청 전 지연(C.4 ②)을 넣고 이동한다."""
+    """외부 요청 전 지연(C.4 ②)을 넣고 이동한다. 이동 횟수를 센다."""
+    global _MOVES
     print(f"   … {POLITE_SEC}초 대기 후 {path}")
     time.sleep(POLITE_SEC)
     pg.goto(BASE + path, wait_until=wait_until, timeout=45000)
+    _MOVES += 1
 
 
 # 라벨이 **정말 화면 안에 그려졌는지** 좌표로 확인한다.
@@ -338,6 +357,71 @@ HERO_SCAN_MAX = 10          # C.4: 탐색도 요청이다. 상한을 반드시 �
 
 _HERO: dict | None = None   # 한 번 고르면 네 장이 같이 쓴다(같은 차를 다시 찾지 않는다)
 
+# ★ 조사 결과를 **디스크에** 남긴다. 2026-09-24 2차 실측: 캐시가 프로세스 안에만 있어서
+#   도구를 세 번 부르는 동안 같은 후보 10건을 **세 번 다시 열었다** — 외부 이동 101회 중
+#   66회(65%)가 그것이다. 정기 재촬영을 붙이면 매번 22회가 따라붙으므로 먼저 막는다.
+#   · 후보 목록(`hrefs`)과 후보별 사실(`results`)을 **각각 조사 시각과 함께** 적는다.
+#   · `HERO_CACHE_HOURS` 안이면 다시 열지 않는다. 유찰·기일·시세는 하루 단위로 움직이므로
+#     하루를 넘긴 기록은 믿지 않는다 — 낡은 캐시로 고른 대상은 공허 통과와 같다.
+#   · 후보의 **첫 사진**을 `hero_scan/<물건>.png` 로 잘라 둔다. 페이지가 이미 내려받은
+#     이미지를 자르는 것이라 요청이 늘지 않는다. 사진이 깨끗한지는 사람이 Read 로 본다
+#     (2026-09-24 3차 지시: 낙서·오염·다른 차가 주인공보다 큰 사진은 스토어에 못 쓴다).
+HERO_CACHE = "hero_scan.json"
+HERO_CACHE_HOURS = 24
+HERO_THUMB_DIR = "hero_scan"
+
+
+def _fresh(at: str | None) -> bool:
+    """캐시 항목의 조사 시각이 `HERO_CACHE_HOURS` 안인가."""
+    from datetime import datetime, timedelta
+    if not at:
+        return False
+    try:
+        t = datetime.fromisoformat(at)
+    except ValueError:
+        return False
+    # 시간대가 있는 기록과 없는 기록이 섞여도 터지지 않게 — 같은 종류끼리 뺀다.
+    now = datetime.now().astimezone() if t.tzinfo else datetime.now()
+    return now - t < timedelta(hours=HERO_CACHE_HOURS)
+
+
+def load_hero_cache() -> dict:
+    import json
+    p = OUT / HERO_CACHE
+    if not p.exists():
+        return {"hrefs": {}, "results": {}}
+    try:
+        c = json.loads(p.read_text(encoding="utf-8"))
+    except Exception:                                        # noqa: BLE001
+        return {"hrefs": {}, "results": {}}
+    c.setdefault("hrefs", {})
+    c.setdefault("results", {})
+    return c
+
+
+def save_hero_cache(cache: dict) -> None:
+    """후보 하나를 볼 때마다 적는다 — 중간에 예외가 나도 본 것은 남는다."""
+    import json
+    OUT.mkdir(parents=True, exist_ok=True)
+    (OUT / HERO_CACHE).write_text(json.dumps(cache, ensure_ascii=False, indent=2) + "\n",
+                                  encoding="utf-8")
+
+
+def _save_first_photo(pg, href: str) -> str | None:
+    """후보의 첫 사진(캐러셀 1/N)을 잘라 둔다. 요청이 늘지 않는다(이미 내려받은 이미지)."""
+    d = OUT / HERO_THUMB_DIR
+    d.mkdir(parents=True, exist_ok=True)
+    dest = d / (href.rstrip("/").rsplit("/", 1)[-1] + ".png")
+    try:
+        loc = pg.locator("#heroImg")
+        if loc.count() == 0:
+            return None
+        loc.first.screenshot(path=str(dest))
+        return str(dest.relative_to(OUT))
+    except Exception as e:                                   # noqa: BLE001
+        print(f"   ※ 첫 사진을 못 잘랐다({e})")
+        return None
+
 _JS_DETAIL_FACTS = """() => {
     const t = document.body.innerText;
     return {
@@ -364,13 +448,19 @@ _JS_REPORT_FACTS = """() => {
 }"""
 
 
-def hero_ok(d: dict, r: dict) -> list[str]:
-    """네 캡션을 못 떠받치는 이유를 **전부** 모아 돌려준다(빈 목록이면 합격)."""
+def hero_ok(d: dict, r: dict | None) -> list[str]:
+    """네 캡션을 못 떠받치는 이유를 **전부** 모아 돌려준다(빈 목록이면 합격).
+
+    `r=None` 은 **리포트를 아직 안 열었다**는 뜻이다 — 상세(4·5번) 조건만 본다.
+    상세에서 이미 탈락한 후보의 리포트까지 여는 건 요청 낭비다(C.4 ①).
+    """
     why = []
     for key, label in (("appraisal", "감정가"), ("fails", "유찰횟수"),
                        ("newcar", "당시 출시가"), ("cap", "입찰 상한선")):
         if not d.get(key):
             why.append(f"상세에 '{label}' 없음")
+    if r is None:
+        return why
     if not r.get("cap"):
         why.append("리포트에 '입찰 상한선' 없음")
     if not r.get("acc"):
@@ -380,8 +470,72 @@ def hero_ok(d: dict, r: dict) -> list[str]:
     return why
 
 
+def set_hero(href: str) -> dict:
+    """`--hero <href>` — 탐색 없이 대상을 지정한다.
+
+    지정된 물건이 캡션을 떠받치는지는 **각 촬영 함수가 스스로 검사한다**(`shoot_detail` 이
+    감정가·유찰횟수·당시 출시가를, `shoot_slide5` 가 상한선 값 블록을, `shoot_hexa` 가
+    6/6축을). 지정이 건너뛰는 것은 '한 물건이 네 캡션을 전부 떠받친다'는 **묶음 조건**뿐이다
+    — 2026-09-24 오너 결정으로 4·5번(상세)과 6·7번(리포트)을 다른 물건으로 찍을 수 있게 됐다
+    (6·7번은 사고 있고 주행 과다인 차라야 그 두 축이 왜 있는지 보인다는 근거).
+    """
+    global _HERO
+    if not href.startswith("/vehicle/") or href.count("/") != 2:
+        raise SystemExit(f"--hero 는 '/vehicle/<id>' 꼴이어야 한다: {href!r}")
+    _HERO = {"href": href, "title": "(--hero 로 지정)", "sale": "", "case_no": "",
+             "axes": None, "picked": "manual"}
+    print(f"→ 대상 지정: {href} (탐색 생략 — 캡션 조건은 촬영 함수가 각자 검사한다)")
+    return _HERO
+
+
+def candidate_hrefs(pg, cache: dict) -> list[str]:
+    """목록 두 페이지에서 후보 href 를 모은다. 캐시가 신선하면 **목록 페이지도 열지 않는다**."""
+    rec = cache.get("hrefs") or {}
+    if _fresh(rec.get("at")) and rec.get("items"):
+        print(f"   후보 목록 캐시 사용({rec['at']}, {len(rec['items'])}개) — 목록 페이지를 열지 않는다")
+        return list(rec["items"])
+    hrefs: list[str] = []
+    for lst in HERO_LISTS:
+        polite_goto(pg, lst)
+        got = pg.evaluate("""() => [...document.querySelectorAll('a')]
+            .map(a => a.getAttribute('href'))
+            .filter(h => h && h.startsWith('/vehicle/') && h.split('/').length === 3)""")
+        for h in got:
+            if h not in hrefs:
+                hrefs.append(h)
+    cache["hrefs"] = {"at": _now_iso(), "lists": list(HERO_LISTS), "items": hrefs}
+    save_hero_cache(cache)
+    return hrefs
+
+
+def survey_one(pg, h: str, cache: dict) -> dict:
+    """후보 하나의 사실(상세·리포트)을 얻는다 — 캐시가 신선하면 열지 않는다.
+
+    상세에서 이미 탈락하면 리포트는 열지 않는다(`report: None`). 결과는 즉시 디스크에 적는다.
+    """
+    rec = (cache.get("results") or {}).get(h)
+    if rec and _fresh(rec.get("at")):
+        print(f"   캐시 {h} ({rec['at']})")
+        return rec
+    polite_goto(pg, h)
+    pg.wait_for_timeout(600)
+    d = pg.evaluate(_JS_DETAIL_FACTS)
+    photo = _save_first_photo(pg, h)
+    r = None
+    if not hero_ok(d, None):
+        polite_goto(pg, h + "/report")
+        pg.wait_for_timeout(600)
+        r = pg.evaluate(_JS_REPORT_FACTS)
+    rec = {"at": _now_iso(), "commit": git_head(), "detail": d, "report": r,
+           "why": hero_ok(d, r) if r is not None else hero_ok(d, None) + ["리포트 미조사(상세에서 탈락)"],
+           "photo": photo}
+    cache.setdefault("results", {})[h] = rec
+    save_hero_cache(cache)
+    return rec
+
+
 def pick_hero_vehicle(pg) -> dict | None:
-    """네 캡션을 **전부** 떠받치는 물건을 고른다. 한 번 고르면 캐시한다.
+    """네 캡션을 **전부** 떠받치는 물건을 고른다. 한 번 고르면 캐시한다(메모리 + 디스크).
 
     동점 처리: 합격한 후보 중 **매각기일이 가장 먼 물건**을 쓴다. 스토어 스크린샷은 영구
     공개물인데 기일은 지나가므로, 같은 조건이면 수명이 긴 쪽이 낫다.
@@ -392,26 +546,15 @@ def pick_hero_vehicle(pg) -> dict | None:
     if _HERO:
         return _HERO
 
-    hrefs: list[str] = []
-    for lst in HERO_LISTS:
-        polite_goto(pg, lst)
-        got = pg.evaluate("""() => [...document.querySelectorAll('a')]
-            .map(a => a.getAttribute('href'))
-            .filter(h => h && h.startsWith('/vehicle/') && h.split('/').length === 3)""")
-        for h in got:
-            if h not in hrefs:
-                hrefs.append(h)
-    print(f"\n[대상 선정] 후보 {len(hrefs)}개 중 최대 {HERO_SCAN_MAX}개를 본다")
+    cache = load_hero_cache()
+    hrefs = candidate_hrefs(pg, cache)
+    print(f"\n[대상 선정] 후보 {len(hrefs)}개 중 최대 {HERO_SCAN_MAX}개를 본다"
+          f" (캐시 {HERO_CACHE} · {HERO_CACHE_HOURS}시간 안이면 다시 열지 않는다)")
 
     passed: list[dict] = []
     for h in hrefs[:HERO_SCAN_MAX]:
-        polite_goto(pg, h)
-        pg.wait_for_timeout(600)
-        d = pg.evaluate(_JS_DETAIL_FACTS)
-        polite_goto(pg, h + "/report")
-        pg.wait_for_timeout(600)
-        r = pg.evaluate(_JS_REPORT_FACTS)
-        why = hero_ok(d, r)
+        rec = survey_one(pg, h, cache)
+        d, r, why = rec["detail"], rec["report"], rec["why"]
         if why:
             print(f"   탈락 {h} — {'; '.join(why)}")
             continue
@@ -427,6 +570,36 @@ def pick_hero_vehicle(pg) -> dict | None:
           f" · 사건 {_HERO['case_no']} · 매각기일 {_HERO['sale']}"
           f" (합격 {len(passed)}개 중 기일이 가장 먼 물건)")
     return _HERO
+
+
+def scan(pg) -> int:
+    """`--scan` — 찍지 않고 후보만 조사해 캐시에 남긴다. 4·5번(상세)만 떠받치는 후보도 따로 센다.
+
+    6·7번과 물건을 나눠 찍는 경우(오너 결정 2026-09-24) 4·5번 후보는 **상세 조건만** 보면
+    되므로, 네 캡션 전부 합격한 목록과 별개로 '상세 합격' 목록을 낸다. 사진 판단은 사람이
+    `hero_scan/<물건>.png` 를 열어 한다 — 도구는 사진의 미관을 판정하지 않는다.
+    """
+    global _HERO
+    _HERO = None
+    pick_hero_vehicle(pg)
+    cache = load_hero_cache()
+    hrefs = (cache.get("hrefs") or {}).get("items") or []
+    print("\n=== 후보 조사 결과(캐시) ===")
+    print(f"  {'href':<28} {'상세4':<5} {'축':<4} {'기일':<11} 사진")
+    detail_only: list[str] = []
+    for h in hrefs[:HERO_SCAN_MAX]:
+        rec = (cache.get("results") or {}).get(h)
+        if not rec:
+            continue
+        d, r = rec["detail"], rec["report"] or {}
+        d_ok = not hero_ok(d, None)
+        if d_ok:
+            detail_only.append(h)
+        print(f"  {h:<28} {'합격' if d_ok else '탈락':<5} {str(r.get('axes', '-')):<4}"
+              f" {(r.get('sale') or d.get('sale') or ''):<11} {rec.get('photo') or '-'}"
+              f"   {d.get('title', '')[:40]}")
+    print(f"\n  상세(4·5번) 조건 합격 {len(detail_only)}건: {', '.join(detail_only) or '없음'}")
+    return 0
 
 
 def shoot_detail(pg) -> int:
@@ -710,8 +883,8 @@ def stamp_head(full: bool = True) -> None:
         (OUT / "HEAD").write_text(h + "\n", encoding="utf-8")
         print(f"기준 커밋 기록: screenshots/store/HEAD = {h}")
     elif not full:
-        print("※ 실패한 장이 있어 한 줄 HEAD 는 갱신하지 않는다"
-              " — 실패 회차의 커밋으로 덮으면 '이 커밋에서 찍었다'가 거짓이 된다")
+        print("※ 한 줄 HEAD 는 갱신하지 않는다(실패한 장이 있거나 여덟 장을 전부 찍은 회차가 아니다)"
+              " — 지금 커밋으로 덮으면 옛 커밋에서 찍은 장까지 '이 커밋에서 찍었다'가 된다")
     print(f"장별 기준 커밋: screenshots/store/{MANIFEST} ({len(man)}장)")
 
 
@@ -742,13 +915,20 @@ def main(argv=None) -> int:
     ap.add_argument("--calendar", action="store_true", help="8번 05_calendar.png (달력·지난달 실적)")
     ap.add_argument("--all", action="store_true", help="제출 8장 전부")
     ap.add_argument("--audit", action="store_true", help="촬영하지 않고 제출 8장을 대조")
+    ap.add_argument("--scan", action="store_true",
+                    help="촬영하지 않고 대상 후보만 조사해 캐시(hero_scan.json)에 남긴다")
+    ap.add_argument("--hero", metavar="HREF", default=None,
+                    help="대상 물건을 직접 지정한다(예: /vehicle/2026타경3364_1). 탐색을 건너뛴다")
     a = ap.parse_args(argv)
 
     if a.audit:
         return audit()
 
+    if a.hero:
+        set_hero(a.hero)
+
     todo = [(n, f) for n, f in SHOTS if a.all or getattr(a, n)]
-    if not todo:
+    if not todo and not a.scan:
         ap.print_help()
         return 2
 
@@ -758,6 +938,11 @@ def main(argv=None) -> int:
         ctx = b.new_context(viewport=VIEW, device_scale_factor=DPR,
                             is_mobile=True, has_touch=True, extra_http_headers=PUBLIC)
         pg = ctx.new_page()
+        if a.scan:
+            rc = scan(pg)
+            b.close()
+            print(f"\n외부 페이지 이동 {_MOVES}회")
+            return rc
         for name, fn in todo:
             try:
                 if fn(pg) != 0:
@@ -771,8 +956,12 @@ def main(argv=None) -> int:
         print(f"\n★ 실패: {', '.join(failed)} — 해당 파일은 **이전 판 그대로**다")
     # 실패한 장이 있어도 **저장에 성공한 장의 기준 커밋은 적는다.** 장별로 적으므로
     # 실패한 장이 남의 커밋을 뒤집어쓸 일이 없다 — 그게 한 줄 HEAD 와 다른 점이다.
-    stamp_head(full=not failed)
+    # ⚠ 한 줄 HEAD 는 **여덟 장을 전부 이번에 찍었을 때만** 갱신한다. 2026-09-24 3차 실측:
+    #   `--detail --slide5` 두 장만 찍어도 `full=not failed` 가 참이라 한 줄 HEAD 가 현재
+    #   커밋으로 덮였다 — 나머지 여섯 장은 옛 커밋에서 찍은 것인데.
+    stamp_head(full=not failed and len(todo) == len(SHOTS))
     rc_audit = audit()                   # 찍었으면 제출 8장 대조까지 하고 끝낸다
+    print(f"\n외부 페이지 이동 {_MOVES}회")
     return 1 if (failed or rc_audit) else 0
 
 

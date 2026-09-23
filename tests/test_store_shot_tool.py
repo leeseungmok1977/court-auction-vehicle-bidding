@@ -237,3 +237,90 @@ def test_값_블록을_본문_산문으로_대신_통과시키지_않는다():
     assert "산정 기준" in s, "shoot_slide5() 가 AI 카드의 끝을 가리키지 않는다"
     assert "판정" not in s, (
         "shoot_slide5() 가 '판정' 을 기대 라벨로 쓴다 — '사고판정' 에도 걸려 헛통과한다")
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# 2026-09-24 3차 — 조사 결과를 디스크에 남기고, 대상을 직접 지정할 수 있어야 한다.
+# 2차 실측: 캐시가 프로세스 안에만 있어서 도구를 세 번 부르는 동안 같은 후보 10건을
+# 세 번 다시 열었다 — 외부 이동 101회 중 66회(65%). 정기 재촬영(월 1회)의 선결 과제.
+# ──────────────────────────────────────────────────────────────────────────
+
+def test_대상_물건을_직접_지정하는_인자가_있고_main_이_그걸_쓴다():
+    """`--hero <href>` 가 없으면 재촬영마다 탐색 22회가 따라붙는다."""
+    assert "--hero" in _flags_in_argparse(), "--hero 인자가 없다"
+    _func("set_hero")
+    src = ast.get_source_segment(TEXT, _func("main")) or ""
+    assert re.search(r"set_hero\(\s*a\.hero\s*\)", src), "main() 이 --hero 값을 set_hero() 에 넘기지 않는다"
+    # 지정 값은 '/vehicle/<id>' 꼴이어야 한다 — 아무 경로나 받으면 엉뚱한 페이지를 찍는다.
+    s = ast.get_source_segment(TEXT, _func("set_hero")) or ""
+    assert '"/vehicle/"' in s, "set_hero() 가 href 꼴을 검사하지 않는다"
+
+
+def test_후보_조사_결과를_디스크에_날짜와_함께_남긴다():
+    """조사 결과는 파일로 남고, 항목마다 **조사 시각**이 붙어야 한다.
+
+    날짜가 없으면 언제 본 것인지 몰라 낡은 캐시로 대상을 고르게 된다 — 공허 통과와 같다.
+    """
+    m = re.search(r'HERO_CACHE\s*=\s*"([^"]+\.json)"', TEXT)
+    assert m, "조사 캐시 파일 이름(HERO_CACHE)이 없다"
+    h = re.search(r"HERO_CACHE_HOURS\s*=\s*(\d+)", TEXT)
+    assert h and 1 <= int(h.group(1)) <= 48, "캐시 유효 시간이 없거나 이틀을 넘는다(유찰·기일은 하루 단위로 움직인다)"
+    for fn in ("load_hero_cache", "save_hero_cache", "survey_one", "candidate_hrefs"):
+        _func(fn)
+    for fn in ("survey_one", "candidate_hrefs"):
+        src = ast.get_source_segment(TEXT, _func(fn)) or ""
+        assert '"at": _now_iso()' in src, f"{fn}() 이 조사 시각을 적지 않는다"
+        assert "save_hero_cache(" in src, f"{fn}() 이 결과를 디스크에 적지 않는다"
+
+
+def test_신선한_캐시가_있으면_같은_후보를_다시_열지_않는다():
+    """★ 변이 시험 대상. 캐시를 읽기만 하고 안 쓰면(= `_fresh` 검사를 지우면) 낭비가 되살아난다.
+
+    `survey_one()` 과 `candidate_hrefs()` 둘 다 **`polite_goto` 보다 앞에서** `_fresh()` 로
+    캐시를 보고 돌아가야 한다.
+    """
+    _func("_fresh")
+    for fn in ("survey_one", "candidate_hrefs"):
+        src = ast.get_source_segment(TEXT, _func(fn)) or ""
+        i_fresh, i_goto = src.find("_fresh("), src.find("polite_goto(")
+        assert i_fresh != -1, f"{fn}() 이 캐시의 신선도를 보지 않는다"
+        assert i_goto != -1, f"{fn}() 이 이동을 안 한다(?)"
+        assert i_fresh < i_goto, f"{fn}() 이 캐시를 보기 전에 먼저 이동한다 — 캐시가 있으나 마나다"
+        # 신선하면 **돌아가야** 한다. 검사만 하고 계속 진행하면 위 순서 검사는 통과하나 낭비는 그대로다.
+        head = src[i_fresh:i_goto]
+        assert "return" in head, f"{fn}() 이 신선한 캐시를 보고도 돌아가지 않는다"
+
+
+def test_상세에서_탈락한_후보는_리포트를_열지_않는다():
+    """C.4 ①: 탐색도 요청이다. 상세에서 이미 떨어진 후보의 리포트까지 여는 건 낭비다."""
+    src = ast.get_source_segment(TEXT, _func("survey_one")) or ""
+    assert re.search(r'if\s+not\s+hero_ok\(\s*d\s*,\s*None\s*\)\s*:\s*\n\s*polite_goto\(\s*pg\s*,\s*h\s*\+\s*"/report"', src), (
+        "survey_one() 이 상세 합격 여부와 무관하게 리포트를 연다")
+    # hero_ok(d, None) 이 '리포트 미조사'를 뜻해야 한다 — r=None 을 못 받으면 위 분기가 터진다.
+    s = ast.get_source_segment(TEXT, _func("hero_ok")) or ""
+    assert re.search(r"if\s+r\s+is\s+None\s*:\s*\n\s*return\s+why", s), "hero_ok() 가 r=None(리포트 미조사)을 처리하지 않는다"
+
+
+def test_한_줄_HEAD_는_여덟_장을_전부_찍은_회차에서만_갱신한다():
+    """3차 실측: `--detail --slide5` 두 장만 찍어도 `full=not failed` 가 참이라 한 줄 HEAD 가
+    현재 커밋으로 덮였다 — 나머지 여섯 장은 옛 커밋에서 찍은 것인데. PANEL-45 의 거울상."""
+    src = ast.get_source_segment(TEXT, _func("main")) or ""
+    assert re.search(r"stamp_head\(\s*full\s*=\s*not\s+failed\s+and\s+len\(todo\)\s*==\s*len\(SHOTS\)\s*\)", src), (
+        "일부만 찍은 회차에도 한 줄 HEAD 를 갱신한다 — 여덟 장 전부가 이 커밋에서 나온 것처럼 말하게 된다")
+
+
+def test_외부_이동_횟수를_센다():
+    """지시서가 회차마다 외부 이동 횟수를 적으라 한다 — 손으로 세면 틀린다(2차는 손으로 셌다)."""
+    src = ast.get_source_segment(TEXT, _func("polite_goto")) or ""
+    assert "_MOVES += 1" in src, "polite_goto() 가 이동 횟수를 세지 않는다"
+    m = ast.get_source_segment(TEXT, _func("main")) or ""
+    assert "_MOVES" in m, "main() 이 이동 횟수를 출력하지 않는다"
+
+
+def test_scan_인자가_상세_조건만_충족하는_후보를_따로_센다():
+    """4·5번(상세)과 6·7번(리포트)을 다른 물건으로 찍을 수 있게 됐다(오너 결정 2026-09-24).
+    그러면 4·5번 후보는 6/6축이 아니어도 된다 — 네 캡션 전부 합격 목록만 내면 후보를 놓친다."""
+    assert "--scan" in _flags_in_argparse(), "--scan 인자가 없다"
+    src = ast.get_source_segment(TEXT, _func("scan")) or ""
+    assert "hero_ok(d, None)" in src, "scan() 이 상세 조건만으로 합격을 따로 세지 않는다"
+    assert "detail_only" in src
