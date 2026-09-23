@@ -1469,7 +1469,13 @@ document.addEventListener('click', function(e){
     </div>
   </section>
   {% else %}
-  <section class="section"><div class="card"><p class="note" style="margin:0">시세가 아직 산정되지 않아 종합 리포트를 생성할 수 없습니다. 물건 상세에서 <b>[다시 분석]</b> 후 다시 시도하세요.</p></div></section>
+  {# PANEL-55 — `[다시 분석]` 은 detail.html 이 `is_admin(request)` 일 때만 그린다. 공개 사용자에게
+     그 버튼을 누르라고 하면 막다른 길이다(2026-09-24 라이브 재현). 보는 사람에 맞춰 갈라 쓴다 —
+     판정은 새로 만들지 않고 기존 is_admin 하나를 쓴다.
+     ⚠ 공개 문구에 시점 약속을 넣지 않는다. 0표본 재조회(service.requery_missing_market)는 기일이
+     30일 안에 남은 물건만 다시 묻고, 이 분기를 타는 공개 물건 대다수는 기일이 이미 지났다
+     (실측: reports/2026-09-24-panel55.md). "시세가 잡히면"조차 그들에겐 오지 않는다. #}
+  <section class="section"><div class="card"><p class="note" style="margin:0">{% if is_admin(request) %}시세가 아직 산정되지 않아 종합 리포트를 생성할 수 없습니다. 물건 상세에서 <b>[다시 분석]</b> 후 다시 시도하세요.{% else %}시세가 아직 산정되지 않아 종합 리포트를 만들 수 없습니다. 감정가·최저매각가 등 법원 자료는 물건 상세에서 그대로 확인하실 수 있습니다.{% endif %}</p></div></section>
   {% endif %}
 
   <div class="disc">

@@ -68,7 +68,8 @@ def test_unpriced_report_drops_the_tabs_instead_of_dangling_them(client):
     """시세 미산정이면 본문 01~12가 통째로 없다. 그때 탭 5개가 남아 있으면
     눌러도 아무 일이 없다 — 없는 목차를 보여주느니 목차를 내린다."""
     html = client.get("/vehicle/bare_nomed/report", headers=_PUB).text
-    assert "종합 리포트를 생성할 수 없습니다" in html
+    # PANEL-55: 문구가 관리자/공개로 갈린다 — 두 변형에 공통인 앞머리를 앵커로 잡는다
+    assert "시세가 아직 산정되지 않아 종합 리포트를" in html
     assert not _SEC_NO.findall(html), "본문이 없는데 섹션 번호가 있다"
     assert not _TAB.findall(html), "대상 없는 탭 앵커가 남았다"
 
