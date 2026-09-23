@@ -7,6 +7,13 @@
    운영자 PC의 데이터 상태에 달려 있으면 가드가 아니다.
 ③ 모듈 전역 캐시를 테스트마다 비운다. `_reduction_cache`·`_multi_lot_cache`는
    키가 없거나 약해서 앞 테스트의 결과가 뒤 테스트로 새어 나간다.
+   `_ACC_STRATA`(적중률 층 메모)도 같은 부류인데 목록에서 빠져 있었다(PANEL-39).
+   그 키는 `(sample, len(pred_pool), mae_pct)` 라 **pool 이 달라도 키는 같을 수 있다** —
+   실측: `test_personal_use.BT` 와 `test_dashboard_link_parity.BT` 가 둘 다 `(172, 40, 9.2)`
+   인데 pool 은 서로 다르다(시세 2,000만 vs 4,000만). 지금까지는 두 pool 이 모두 평평해
+   (모든 층 10.0) 차이가 안 보였을 뿐이고, 픽스처를 층별로 다르게 만드는 순간
+   **먼저 돈 파일의 층이 뒤 파일로 넘어간다.** 개별 파일이 각자 monkeypatch 하던 것을
+   (test_mae_stratum_parity:60-63 · test_accuracy_price_band:19-22) 여기서 구조로 막는다.
 ④ **테스트가 lifespan(startup)을 켜도 운영 DB에 쓰지 못하게 막는다.** 2026-09-23 실측:
    `with TestClient(app)`이 `@app.on_event("startup")`의 백필 데몬 스레드를 띄웠고, 그 스레드가
    테스트 종료 뒤(= monkeypatch가 풀려 DB_PATH가 `data/auction.db`로 복원된 뒤)까지 살아남아
@@ -41,6 +48,7 @@ def _isolate_db_and_caches(tmp_path, monkeypatch):
     for name, empty in (("_bt_cache", {"t": 0.0, "data": None, "key": None}),
                         ("_reduction_cache", {"key": None, "data": None}),
                         ("_multi_lot_cache", {"ids": None}),
+                        ("_ACC_STRATA", {"key": None, "data": None}),
                         ("_config_cache", None)):
         if not hasattr(service, name):
             continue

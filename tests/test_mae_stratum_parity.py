@@ -21,6 +21,13 @@
   그리고 층값(12.8)과 전체평균(9.3)을 **일부러 다르게** 둔다 — 같으면 이 테스트는
   아무것도 증명하지 못한다(오늘 `soft_cap` 에서 그 함정을 한 번 밟았다).
 
+★★ 그런데 **그 교훈을 적은 이 파일이 층과 층 사이에서는 같은 함정에 빠져 있었다**
+  (PANEL-39, 2026-09-23). 8행 전부 (BMW·유찰 0회·시세 3,000만)에 오차 12.8 이라
+  제조사·유찰횟수·가격대 **세 축이 전부 12.8** 이었다. 층값이 같으면 `accuracy_for` 가
+  어느 층을 고르든 12.8 이라, `accuracy_for` 에 가격대 층을 넣든 빼든(PANEL-30) 이 파일은
+  초록이었다 — 전체평균과는 달랐지만 **층끼리는 평평**했던 것이다. 아래 pool 은 축을
+  2×2×2 로 갈라 각 층이 서로 다른 평균을 갖게 한다.
+
 ★ 반드시 지킬 예외: **§실측 검증 타일(`report.html:1075`)은 전체평균이 맞다.**
   그 섹션은 이 물건이 아니라 예측 전체를 말한다("예측이 실제 낙찰을 얼마나 맞혔는가").
   (섹션 이름은 2026-09-23 에 '모델 검증 실적' → '실측 검증' 으로 홈과 통일됐다 —
@@ -37,12 +44,32 @@ import pytest
 from starlette.testclient import TestClient
 
 GLOBAL_MAE = 9.3        # 전체평균 — 물건별 자리에 나오면 안 된다
-STRATUM_MAE = 12.8      # 이 물건 유형(수입) — 물건별 자리에 나와야 한다
+STRATUM_MAE = 12.8      # 이 물건(수입·유찰 1회·시세 3,000만)이 고르는 층 — 물건별 자리에 나와야 한다
 
-# 수입차 8건(= ACCURACY_STRATUM_MIN_N). 오차를 전부 12.8 로 둬 층 평균이 정확히 12.8.
-_POOL = [{"err_pct": STRATUM_MAE, "median_price": 30_000_000, "fail_count": 0,
-          "maker": "BMW", "model": "520d", "actual": 30_000_000,
-          "sale_date": f"2026-08-{i:02d}"} for i in range(1, 9)]
+
+def _block(n, err, fail_count, median, maker, model):
+    """한 블록 안에서는 오차가 일정하다 — 층 평균을 손으로 검산할 수 있게."""
+    return [{"err_pct": err, "median_price": median, "actual": median,
+             "fail_count": fail_count, "maker": maker, "model": model,
+             "sale_date": f"2026-08-{i:02d}"} for i in range(1, n + 1)]
+
+
+# 블록마다 8건(= ACCURACY_STRATUM_MIN_N) — 제조사·유찰횟수·가격대를 2×2×2 로 갈라
+# **여섯 층이 전부 다른 값**을 내게 한다(PANEL-39). 손검산:
+#   수입 (10.0+8.0)/2=9.0   · 국산 (15.6+6.0)/2=10.8
+#   유찰 0~1회 (10.0+6.0)/2=8.0 · 유찰 3회 이상 (8.0+15.6)/2=11.8
+#   2,000만 이상 (10.0+15.6)/2=12.8 ← X1 이 고르는 층  · 500만 이하 (6.0+8.0)/2=7.0
+# X1(수입·유찰 1회·시세 3,000만)의 세 후보는 9.0 / 8.0 / 12.8 이고 '더 나쁜 쪽' 규칙이
+# 12.8 을 고른다. 가격대를 후보에서 빼면 9.0 으로 떨어져 아래 단언들이 깨진다 — 그게 핵심이다.
+_POOL = (_block(8, 10.0, 0, 30_000_000, "BMW", "520d")
+         + _block(8, 15.6, 3, 30_000_000, "현대", "쏘나타")
+         + _block(8, 6.0, 0, 3_000_000, "현대", "쏘나타")
+         + _block(8, 8.0, 3, 3_000_000, "BMW", "520d"))
+
+# 층 → 기대 mae. 자기 유효성 검사가 이 표와 대조한다(pool 이 평평해지면 빨간불).
+STRATA_EXPECTED = {("제조사", "수입"): 9.0, ("제조사", "국산"): 10.8,
+                   ("유찰횟수", "유찰 0~1회"): 8.0, ("유찰횟수", "유찰 3회 이상"): 11.8,
+                   ("가격대", "2,000만 이상"): STRATUM_MAE, ("가격대", "500만 이하"): 7.0}
 
 BT = {"discount_median": 0.74, "mae_pct": GLOBAL_MAE, "sample": 172, "pred_n": 249,
       "within10_pct": 61, "within20_pct": 95, "history_n": 244,
@@ -99,6 +126,27 @@ def test_전제_층값과_전체평균이_다르다():
     값이 같으면 배선이 끊겨도 전부 통과한다 — 오늘 soft_cap 테스트에서 실제로 밟은 함정이다.
     """
     assert STRATUM_MAE != GLOBAL_MAE, "층값과 전체평균이 같으면 이 파일 전체가 공허 통과다"
+
+
+def test_전제_층끼리도_값이_다르다():
+    """★ PANEL-39 — 전체평균과만 다르면 부족하다. **층끼리 같으면** 어느 층을 고르든
+    결과가 같아서 층 배선(제조사·유찰횟수·가격대)을 끊어도 이 파일이 안 울린다.
+    모범: tests/test_panel35_hero_tone_parity.py 의 자기검사 두 개."""
+    from web import service
+    rows = {(r["group"], r["label"]): r for r in service.accuracy_strata(BT)}
+    got = {k: rows[k]["mae"] for k in STRATA_EXPECTED if k in rows}
+    assert got == STRATA_EXPECTED, f"층값이 표와 다르다 — pool 이나 층 경계가 바뀌었다: {got}"
+    assert len(set(got.values())) == len(got), f"같은 값을 내는 층이 있다: {got}"
+
+
+def test_이_물건이_고르는_층은_가격대다(client):
+    """★ 반증 장치. X1 의 12.8 은 **가격대 층**에서 온다 — `accuracy_for` 후보에서
+    가격대를 빼면 9.0(수입)으로 떨어지고 아래 렌더 단언들이 전부 깨진다(PANEL-30 감시)."""
+    from web import db, service
+    acc = service.accuracy_for(db.get_vehicle("X1"), BT)
+    assert acc and acc["group"] == "가격대" and acc["mae"] == STRATUM_MAE, (
+        f"가격대 층이 이 물건의 오차를 좌우하지 않는다 — 배선을 끊어도 안 울린다: {acc}")
+    assert acc["label"] == "시세 2,000만 이상", f"축을 밝히는 라벨이 아니다: {acc['label']}"
 
 
 def test_픽스처가_유형별_오차를_실제로_만든다(client):

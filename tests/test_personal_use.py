@@ -16,14 +16,47 @@ from web import service
 
 # 실제 산식은 **최저매각가 × 유찰버킷 프리미엄**(소프트캡 = 시세×1.10)이다.
 # 이 필드를 빼면 '시세×할인율' 폴백으로 새 경로를 타 테스트가 의도를 못 지킨다.
+
+
+def _pred_block(n, err, fail_count, median):
+    """pred_pool 한 덩어리 — 한 블록 안에서는 오차가 일정하다(층 평균을 손으로 검산하려고)."""
+    return [{"err_pct": err, "maker": "현대", "model": "쏘나타",
+             "fail_count": fail_count, "median_price": median, "actual": median}
+            for _ in range(n)]
+
+
+# ★ pred_pool 은 **층마다 다른 값**을 내야 한다 (PANEL-39).
+#   예전 픽스처는 40행 전부 `median_price=20,000,000` · `fail_count=1` · 현대 쏘나타라
+#   가격대·유찰횟수·제조사 **세 층이 전부 10.0** 이었다. 층값이 같으면 accuracy_for 가
+#   어느 층을 고르든 결과가 같아서 **가격대 층 배선을 끊어도 테스트가 안 울린다.**
+#   (그 함정은 test_mae_stratum_parity.py:18-22 가 이미 문서화해 둔 것이다.)
+#   그래서 2×2 블록(유찰 0~1회/3회 이상 × 시세 1,500만/3,000만)으로 축을 갈라 둔다:
+#
+#     가격대 2,000만 이상   n=24  mae 10.0   ← 이 파일 픽스처(시세 4,000만)가 고르는 층
+#     가격대 1,000~2,000만  n=16  mae  4.0
+#     유찰 0~1회            n=20  mae  2.0
+#     유찰 3회 이상         n=20  mae 13.2
+#     제조사 국산           n=40  mae  7.6
+#
+#   ⚠ `2,000만 이상` 을 **10.0 에 맞춘 것은 의도**다. 고치기 전 accuracy_for 가 이 파일
+#   물건들에 내주던 값이 10.0 이라, 그대로 둬야 이 BT 를 빌려 쓰는 5개 모듈
+#   (test_terms · test_usepick_tiers · test_bid_state_nomarket · test_bucket_matches_bid_state ·
+#   test_panel_r2_fixes)의 오차 게이트 경계가 움직이지 않는다. 가격대 배선을 끊으면
+#   유찰 0~1회(2.0)로 떨어지고 "이득 83만 < 오차 316만" 이 뒤집힌다 — 그게 반증 장치다.
+PRED_POOL = (_pred_block(12, 2.0, 1, 30_000_000) + _pred_block(12, 18.0, 3, 30_000_000)
+             + _pred_block(8, 2.0, 1, 15_000_000) + _pred_block(8, 6.0, 3, 15_000_000))
+
+# 층 → 기대 mae. 아래 자기 유효성 검사가 이 표와 대조한다(픽스처가 평평해지면 빨간불).
+STRATA_EXPECTED = {("가격대", "2,000만 이상"): 10.0, ("가격대", "1,000~2,000만"): 4.0,
+                   ("유찰횟수", "유찰 0~1회"): 2.0, ("유찰횟수", "유찰 3회 이상"): 13.2,
+                   ("제조사", "국산"): 7.6}
+
 BT = {"discount_median": 0.74, "mae_pct": 9.2, "sample": 172,
       "min_premium_median": 1.13, "min_premium_by_fail": {"0": 1.20, "1": 1.13, "2+": 1.06},
       "min_premium_p25": 1.05, "min_premium_p75": 1.22,
       # accuracy_for()가 층별 오차를 내려면 pred_pool이 필요하다. 없으면 추천 게이트가
       # "오차를 모르면 추천하지 않는다"로 막아 픽스처가 전부 빠진다(의도된 동작).
-      "pred_pool": [{"err_pct": 8.0 + (i % 5), "maker": "현대", "model": "쏘나타",
-                     "fail_count": 1, "median_price": 20_000_000, "actual": 20_000_000}
-                    for i in range(40)],}
+      "pred_pool": PRED_POOL,}
 
 
 def v(**kw):
@@ -33,6 +66,33 @@ def v(**kw):
             "market_confidence_label": "높음", "accident_grade": "none", "judgment": "유찰 대기"}
     base.update(kw)
     return base
+
+
+# ── ★ 픽스처 자기 유효성 검사 (PANEL-39) ────────────────────────────────
+# 모범: tests/test_panel35_hero_tone_parity.py — 픽스처에 그 갈래가 **실재하는지**를
+# 테스트가 스스로 검사한다. 픽스처를 고쳐 놓아도 다음 사람이 조용히 평평하게 만들면
+# 아래 검사가 먼저 빨간불이 된다. 고친 뒤가 아니라 **고쳐진 상태를 지키는** 장치다.
+
+def test_픽스처의_세_축이_서로_다른_오차를_낸다():
+    """세 축이 같은 값이면 accuracy_for 가 어느 층을 골라도 결과가 같다 — 공허 통과."""
+    rows = {(r["group"], r["label"]): r for r in service.accuracy_strata(BT)}
+    got = {k: rows[k]["mae"] for k in STRATA_EXPECTED if k in rows}
+    assert got == STRATA_EXPECTED, f"층값이 표와 다르다 — 픽스처나 층 경계가 바뀌었다: {got}"
+    # 이 파일 물건(국산·유찰 1회·시세 4,000만)이 닿는 세 축이 모두 달라야 한다
+    axes = {g: rows[(g, lab)]["mae"] for g, lab in
+            [("가격대", "2,000만 이상"), ("유찰횟수", "유찰 0~1회"), ("제조사", "국산")]}
+    assert len(set(axes.values())) == 3, (
+        f"두 축 이상이 같은 값이다 — 배선을 끊어도 테스트가 안 울린다(PANEL-39): {axes}")
+
+
+def test_가격대_층이_이_픽스처의_오차를_실제로_좌우한다():
+    """★ 반증 장치. `accuracy_for` 후보에서 가격대를 빼면 10.0 → 2.0 으로 떨어지고,
+    그 순간 이 BT 를 쓰는 오차 게이트(test_terms·test_usepick_tiers)가 함께 깨진다."""
+    got = service.accuracy_for(v(), BT)
+    assert got and got["group"] == "가격대" and got["mae"] == 10.0, (
+        f"가격대 층이 판정을 좌우하지 않는다 — 이 픽스처로는 PANEL-30 배선을 감시 못 한다: {got}")
+    dom = service.accuracy_for(v(maker="현대", model="쏘나타"), BT)
+    assert dom["group"] == "가격대" and dom["mae"] == 10.0, dom
 
 
 def test_saving_is_positive_when_auction_beats_retail():

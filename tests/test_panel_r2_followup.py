@@ -10,6 +10,7 @@ import pytest
 from starlette.testclient import TestClient
 
 from web import service
+from tests.test_personal_use import PRED_POOL, STRATA_EXPECTED
 
 # min_premium_pool이 없으면 win_probability가 None → 템플릿이 else 분기만 탄다.
 # 4회차에 이것 때문에 "낙찰 확률" 분기의 UndefinedError(프로덕션 500)를 못 잡았다 —
@@ -20,9 +21,15 @@ BT = {"min_premium_pool": [round(1.00 + i * 0.004, 4) for i in range(60)],
       "min_premium_p25": 1.05, "min_premium_p75": 1.22,
       # accuracy_for()가 층별 오차를 내려면 pred_pool이 필요하다. 없으면 추천 게이트가
       # "오차를 모르면 추천하지 않는다"로 막아 픽스처가 전부 빠진다(의도된 동작).
-      "pred_pool": [{"err_pct": 8.0 + (i % 5), "maker": "현대", "model": "쏘나타",
-                     "fail_count": 1, "median_price": 20_000_000, "actual": 20_000_000}
-                    for i in range(40)],}
+      # ★ 층마다 다른 값을 내는 pool 을 test_personal_use 와 **공유**한다 (PANEL-39).
+      #   ⓐ 예전엔 40행 전부 median_price=20,000,000 이라 세 층이 전부 10.0 이었다 —
+      #      가격대 층 배선을 끊어도 안 울리는 공허 픽스처였다.
+      #   ⓑ 굳이 같은 객체를 쓰는 이유: `accuracy_strata` 의 메모 키가
+      #      `(sample, len(pool), mae_pct)` 인데 이 파일과 test_personal_use 의 BT 가
+      #      **둘 다 (172, 40, 9.2)** 다. 값만 서로 다르면 먼저 돈 파일의 층이 그대로
+      #      넘어온다(conftest 가 _ACC_STRATA 를 비우도록 고쳤지만, 같은 pool 을 쓰면
+      #      그 사고 자체가 성립하지 않는다).
+      "pred_pool": PRED_POOL,}
 
 
 def v(**kw):
@@ -30,6 +37,26 @@ def v(**kw):
             "market_confidence_label": "높음", "accident_grade": "none", "judgment": "유찰 대기"}
     base.update(kw)
     return base
+
+
+# ── ★ 픽스처 자기 유효성 검사 (PANEL-39) ────────────────────────
+def test_픽스처의_세_축이_서로_다른_오차를_낸다():
+    """층값이 같으면 이 파일의 오차 게이트 단언이 배선과 무관하게 통과한다(공허 통과).
+
+    모범: tests/test_panel35_hero_tone_parity.py 의 두 자기검사.
+    """
+    rows = {(r["group"], r["label"]): r for r in service.accuracy_strata(BT)}
+    got = {k: rows[k]["mae"] for k in STRATA_EXPECTED if k in rows}
+    assert got == STRATA_EXPECTED, f"층값이 표와 다르다 — pool 이 평평해졌는지 보라: {got}"
+    axes = {g: rows[(g, lab)]["mae"] for g, lab in
+            [("가격대", "2,000만 이상"), ("유찰횟수", "유찰 0~1회"), ("제조사", "국산")]}
+    assert len(set(axes.values())) == 3, f"두 축 이상이 같은 값이다(PANEL-39): {axes}"
+
+
+def test_가격대_층이_이_픽스처의_오차를_실제로_좌우한다():
+    """★ 반증 장치 — 후보에서 가격대를 빼면 10.0 → 2.0 으로 떨어진다."""
+    got = service.accuracy_for(v(), BT)
+    assert got and got["group"] == "가격대" and got["mae"] == 10.0, got
 
 
 # ── 입찰 상한선 ──────────────────────────────────────────────────
