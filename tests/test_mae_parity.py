@@ -109,3 +109,28 @@ def test_템플릿이_오차에_round_필터를_붙이지_않는다():
     assert not bad, (
         "오차 변수에 |round 가 붙어 있다 — 화면마다 다른 숫자가 된다: " + ", ".join(bad)
         + "  (근거: app.py 의 'round() 금지 — 적중률 페이지와 같은 표기여야 한다')")
+
+
+_FAKE_FALLBACK = re.compile(r"(?:mae|mae_pct|report\.mae)[^%{}]{0,40}else\s+30\b")
+
+
+def test_오차가_없을_때_30이라는_숫자를_지어내지_않는다():
+    """★ 표본이 없으면 '미산출'이 옳다 — 이 제품의 원칙이다.
+
+    2026-09-23 주간 패널 7회차 지적(PANEL-07). `{{ report.mae if report.mae else 30 }}`
+    같은 폴백이 리포트 음영 범례·참고 정확도·면책문과 목록 표 머리글에 있었다.
+    값이 없을 때 **실측이 아닌 30%가 정확도인 양** 인쇄된다.
+
+    ⚠ 렌더 검사로는 못 잡는다 — 그 분기는 시세가 없는 물건에서만 열리는데
+      테스트 픽스처는 항상 시세를 준다. 그래서 **소스에서 금지**한다.
+      실제로 나는 조사 결과가 준 목록(4곳)만 믿고 전수 검색을 건너뛰었다가
+      한 곳을 놓칠 뻔했다. 사람이 세지 말고 테스트가 세게 한다.
+    """
+    bad = []
+    for f in sorted(TPL.glob("*.html")):
+        for i, line in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
+            if _FAKE_FALLBACK.search(line):
+                bad.append(f"{f.name}:{i}")
+    assert not bad, (
+        "오차가 없을 때 30% 를 지어내 찍는 폴백이 있다: " + ", ".join(bad)
+        + "  — 값이 없으면 '미산출'로 적는다(표본이 없으면 미산출이 옳다)")
