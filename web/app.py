@@ -226,6 +226,29 @@ from src.paths import DATA_DIR  # noqa: E402  (배포 시 DATA_DIR 환경변수�
 JUDGMENTS = ["입찰 검토 가능", "유찰 대기", "시세 신뢰도 낮음, 수동 검토", "입찰 보류", "종결"]
 
 
+# 기일 시각이 지난 **당일** 물건에 쓰는 표시 문구.
+# ⚠ service.bid_state() 의 같은 상태 라벨(service.py:3805)과 **한 글자도 달라선 안 된다.**
+#   한 화면의 상단 배지와 히어로 칩이 같은 사실을 다른 낱말로 말하면 사용자는 둘 다 못 믿는다.
+#   어긋나면 tests/test_dday_after_bid_time.py 의 드리프트 가드가 잡는다.
+ELAPSED_LABEL = "기일 경과 — 결과 확인 전"
+
+
+def _bidding_over(v: dict, today: str) -> bool:
+    """오늘이 기일인데 **입찰 시각이 이미 지났는가.**
+
+    판정 엔진은 이미 시각을 본다(service.bid_state → sale_time_passed). 표시 계층도
+    **같은 함수**를 써야 한 카드가 반대되는 두 말을 하지 않는다 — 날짜만 비교하던 탓에
+    오전 10시에 끝난 경매가 같은 날 오후 3시에도 빨강 'D-DAY 입찰'로 떠 있었고,
+    같은 카드가 동시에 '기일 경과 — 결과 확인 전'이라고 말했다(2026-09-23 운영 실측 12장).
+
+    시각을 모르면 sale_time_passed 가 False 라 '지나지 않음'으로 남는다 — 보수적이 맞다.
+    끝나지 않은 경매를 끝났다고 말하는 쪽이 더 비싼 실수이기 때문이다.
+    """
+    return (str(v.get("sale_date") or "")[:10] == today
+            and v.get("auction_result") not in ("낙찰", "종결")
+            and service.sale_time_passed(v))
+
+
 def _display_judgment(v: dict, today: str):
     """표시용 판정 보정(신뢰): 이미 낙찰이면 '종결', 지난 기일인데 '입찰 검토 가능'으로
     남은 물건(다음 기일 미정)은 '유찰 대기'로 표기. 가짜 '검토 가능' 배지 방지.
@@ -238,6 +261,14 @@ def _display_judgment(v: dict, today: str):
     if (j == "입찰 검토 가능" and v.get("sale_date") and v.get("sale_date") < today
             and v.get("auction_result") not in ("낙찰", "종결")):
         return "유찰 대기"
+    # 오늘 기일이지만 **입찰 시각이 지났다.** '입찰 검토 가능'(초록)·'유찰 대기'(앰버)로
+    # 두면 이미 끝난 경매를 아직 참여할 수 있는 것처럼 말한다 — 상세 상단 배지가
+    # "유찰 대기"인데 바로 아래 히어로 칩은 "기일 경과"였다(2026-09-23 운영 실측).
+    # ⚠ 여기서 '입찰 보류'·'종결'·'시세 신뢰도 낮음'은 건드리지 않는다:
+    #   앞의 둘은 bid_state 가 다시 읽는 입력이고(blocked/closed 분기가 죽는다),
+    #   '시세 신뢰도 낮음'은 입찰 가능 여부가 아니라 **데이터 품질**을 말하는 문구다.
+    if j in ("입찰 검토 가능", "유찰 대기") and _bidding_over(v, today):
+        return ELAPSED_LABEL
     return j
 
 
@@ -358,14 +389,24 @@ def _startup():
     db.init_db()
     db.clear_orphaned_runs()   # 재시작으로 미완결된 좀비 'running' 런 정리
     service.start_scheduler()
+    # ⚠ 기동 백필 가드 — NC_NO_BACKGROUND=1 이면 아래 스레드를 아예 띄우지 않는다.
+    # 2026-09-23 실측: **앱을 켜는 것만으로** backfill_sale_results 가 확정 낙찰 전량을
+    # record_sale_result(ON CONFLICT DO UPDATE, db.py:901)로 재upsert 해, 운영 낙찰 이력의
+    # recorded_at 을 덮어썼다(sale_results 138행 중 134행이 15:10 → 15:27 로 갱신).
+    # 즉 검증용으로 서버를 켜는 모든 작업자가 학습 데이터의 기록 시각을 오염시켰다.
+    # 검증·개발로 띄울 때는 1 로 끈다. **운영은 미설정 = 켜짐**(백필은 그대로 수행된다).
+    if os.environ.get("NC_NO_BACKGROUND") == "1":
+        return
+    # target 은 background_task 로 감싼다 — 데몬 스레드에서 예외로 죽으면 흔적이 0이었다.
+    _bg = service.background_task
     # 기존 물건의 빈 주행거리를 저장된 요항에서 백필(무네트워크)
-    threading.Thread(target=service.backfill_mileage_from_files, daemon=True).start()
+    threading.Thread(target=_bg(service.backfill_mileage_from_files), daemon=True).start()
     # 확정 낙찰을 영구 히스토리에 백필(무네트워크) — 학습 데이터 누적 시작
-    threading.Thread(target=service.backfill_sale_results, daemon=True).start()
+    threading.Thread(target=_bg(service.backfill_sale_results), daemon=True).start()
     # 감정요항 검사만료일·상태등급 백필(무네트워크, 최초 1회) — 목록 필터·정렬용
-    threading.Thread(target=service.backfill_appraisal_signals, daemon=True).start()
+    threading.Thread(target=_bg(service.backfill_appraisal_signals), daemon=True).start()
     # 디스크엔 사진 있는데 photo_count=0으로 어긋난 물건 정정(목록 표시·감가 정합)
-    threading.Thread(target=service.backfill_photo_count, daemon=True).start()
+    threading.Thread(target=_bg(service.backfill_photo_count), daemon=True).start()
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -597,6 +638,15 @@ def vehicles(request: Request, judgment: str = "", maker: str = "", q: str = "",
         try:
             r["dday"] = (_date.fromisoformat(sd) - _tdy_d).days if sd else None
         except (ValueError, TypeError):
+            r["dday"] = None
+        # ★ 빨강 'D-DAY 입찰'은 이 앱에서 **가장 센 신호**다. 날짜만 빼서 계산하면
+        #   오전 10시에 끝난 경매가 같은 날 오후에도 "오늘 입찰"이라고 빨강으로 말한다.
+        #   그 차를 보고 법원에 가면 이미 끝난 경매다(2026-09-23 운영 실측: 배지가 붙은
+        #   카드 12장 전부가 같은 카드 안에서 '기일 경과 — 결과 확인 전'이라고도 말했다).
+        #   시각이 지났으면 배지를 끈다 → vehicles.html 의 show_dday 가 False 가 되고,
+        #   판정 칩(bidst.label)만 남아 카드가 **한 가지만** 말한다.
+        #   시각 미상이면 sale_time_passed 가 False 라 배지가 그대로 남는다(보수적).
+        if r["dday"] == 0 and _bidding_over(r, _tdy):
             r["dday"] = None
         av, mn = r.get("appraisal_value"), r.get("min_sale_price")   # 감정가 대비 %
         r["appr_pct"] = round(100 * mn / av) if (av and mn) else None

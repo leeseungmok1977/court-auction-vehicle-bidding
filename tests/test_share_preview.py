@@ -45,8 +45,10 @@ def client(tmp_path, monkeypatch):
     db.upsert_vehicle(dict(base, id="DONE1", case_no="2026타경8", sale_date="2020-05-01",
                            auction_result="낙찰", winning_price=10_000_000))
     from web.app import app
-    with TestClient(app) as c:
-        yield c
+    # ★ with(lifespan) 를 쓰지 않는다 — 켜면 백필 데몬 스레드가 join 없이 살아남아
+    #   monkeypatch 해제 뒤 운영 DB(data/auction.db) 에 쓴다(2026-09-23).
+    #   이 파일은 startup 산출물에 의존하지 않는다(init_db 는 위에서 직접 호출).
+    yield TestClient(app)
 
 
 def _og(html: str, prop: str):

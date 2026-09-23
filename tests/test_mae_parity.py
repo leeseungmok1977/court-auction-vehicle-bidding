@@ -56,8 +56,10 @@ def client(tmp_path, monkeypatch):
     ]:
         db.upsert_vehicle(r)
     from web.app import app
-    with TestClient(app) as c:
-        yield c
+    # ★ with(lifespan) 를 쓰지 않는다 — 켜면 백필 데몬 스레드가 join 없이 살아남아
+    #   monkeypatch 해제 뒤 운영 DB(data/auction.db) 에 쓴다(2026-09-23).
+    #   이 파일은 startup 산출물에 의존하지 않는다(init_db 는 위에서 직접 호출).
+    yield TestClient(app)
 
 
 # 오차를 말하는 자리에 붙는 라벨. 이 라벨 주변의 ± 만 본다 —

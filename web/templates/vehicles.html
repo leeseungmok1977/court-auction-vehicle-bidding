@@ -238,7 +238,7 @@ d.addEventListener('toggle',function(){try{localStorage.setItem('ncUsepickBasis'
           <th class="py-3 px-3 font-semibold text-center w-[86px]">판정</th>
           <th class="py-3 px-3 font-semibold text-right whitespace-nowrap w-[112px]">최저매각가 <span class="text-mut font-normal">경매 시작가</span></th>
           <th class="py-3 px-3 font-semibold text-right whitespace-nowrap w-[108px]" title="되팔이(재판매) 마진·부대비 차감 후 손익분기가 — 이 값 이하로 낙찰해야 차익. 예상낙찰가보다 낮은 것이 정상">상한가 <span class="text-mut font-normal">재판매</span></th>
-          <th class="py-3 px-3 font-semibold text-right whitespace-nowrap bg-primary/5 text-primary w-[158px]" title="일반 매수 실입찰 기준{% if mae %} — 모델 전체 평균오차 ±{{ mae }}%. 이 값은 전체 평균이라 개별 물건의 정확도가 아닙니다. 물건별 실측 오차는 상세·리포트에서 유형(제조사·유찰횟수)별로 표시합니다{% endif %}">예상낙찰가 <span class="text-mut font-normal">실입찰</span></th>
+          <th class="py-3 px-3 font-semibold text-right whitespace-nowrap bg-primary/5 text-primary w-[158px]" title="일반 매수 실입찰 기준{% if mae %} — 모델 전체 평균 오차 ±{{ mae }}%. 이 값은 전체 평균이라 개별 물건의 정확도가 아닙니다. 물건별 실측 오차는 상세·리포트에서 유형(제조사·유찰횟수)별로 표시합니다{% endif %}">예상낙찰가 <span class="text-mut font-normal">실입찰</span></th>
           <th class="py-3 px-3 font-semibold text-right whitespace-nowrap w-[124px]">시세중앙값 <span class="text-mut font-normal">·신뢰도</span></th>
           <th class="py-3 px-3 font-semibold whitespace-nowrap w-[100px]">매각기일</th>
           <th class="py-3 px-3 font-semibold text-right whitespace-nowrap w-[88px]">결과</th>
@@ -254,8 +254,16 @@ d.addEventListener('toggle',function(){try{localStorage.setItem('ncUsepickBasis'
         <tr class="even:bg-slate-50/60 hover:bg-slate-50 transition-colors border-l-2 {{ acc }}">
           <td class="py-2.5 px-3 text-amber-500 align-top"><span data-fav-star data-vid="{{ v.id }}" hidden>★</span></td>
           <td class="py-2.5 px-3">
-            <div class="flex items-stretch justify-between gap-3">
-              <div class="min-w-0 self-center">
+            {# ⚠ 썸네일 strip 은 shrink-0 · 176px(56×3+gap) 인데 이 칸의 **안폭은 1440px 에서 180px** 뿐이다.
+               축소 가능한 플렉스 자식이 텍스트 칸 하나뿐이라 `min-w-0` 이 그대로 **width:0px** 로 계산됐고,
+               폭 0 의 상자에서 한글이 한 글자씩 접혀 차량명이 세로로 쪼개졌다
+               (1440px 실측: 줄상자 28·44·50개, 행 높이 490·755·875px. 같은 행 판정 칸은 줄상자 1개).
+               ① 텍스트에 **바닥(160px)** 을 줘 다시는 0 으로 눌리지 않게 한다.
+               ② strip 은 뷰포트가 아니라 **칸이 실제로 넓을 때만** 켠다 — 아래 min-[1720px] 주석 참조.
+               ③ flex-wrap 은 예비 안전판이다. 그래도 안 맞으면 옆 칸으로 흘리지 않고 아랫줄로 내린다
+                  (한 줄로 들어가는 평상시에는 렌더가 한 픽셀도 바뀌지 않는다). #}
+            <div class="flex flex-wrap items-stretch justify-between gap-3">
+              <div class="min-w-[160px] self-center">
                 <a href="/vehicle/{{ v.id }}" class="text-primary font-semibold hover:underline block leading-tight" style="word-break:keep-all">{{ v.model|mdl }}</a>
                 <div class="text-xs text-mut mt-0.5" style="word-break:keep-all">{{ v.case_no }} · {{ (v.court or '—')|replace('지방법원','지법') }}{% if v.year %} · {{ v.year }}년{% endif %}{% if v.mileage_km %} · {{ v.mileage_km|won }}km{% endif %}</div>
                 {% if (v.fail_count and v.fail_count > 0) or (v.inspection_to and v.inspection_to < today) or v.condition_level in ('fair','poor') or v.photo_lot_mixed %}
@@ -269,7 +277,17 @@ d.addEventListener('toggle',function(){try{localStorage.setItem('ncUsepickBasis'
               </div>
               {% if v.photo_urls %}
               {# 썸네일: 행 높이는 좌측 텍스트가 결정, 배경이미지 div가 그 높이에 stretch(replaced img의 크기폭주 회피). 폭은 좌측 여백을 채움 #}
-              <div class="hidden xl:flex gap-1 shrink-0 items-stretch">
+              {# ⚠ 게이트는 **실측으로 정한 값**이다. xl(뷰포트 1280px)은 이 칸의 폭과 무관해서,
+                 칸이 204px 일 때도 176px 짜리 strip 을 켜 텍스트를 0px 로 밀어냈다(위 주석).
+                 칸 폭은 뷰포트를 따라가지 않는다 — 다른 열이 최소폭에 걸려 있는 동안 이 열은
+                 1480px 까지 210px 에 고정돼 있다가 그 뒤에야 늘어난다(실측 스위프):
+                   vw 1480 → 칸 210 · 1640 → 358 · 1680 → 398 · **1720 → 438** · 1920 → 638
+                 텍스트가 제 폭(201px)을 되찾아 줄상자 3개·행 높이 87px 로 **1920px 과 같아지는 지점이
+                 1720px** 이라 여기서 켠다. 1680px 은 텍스트 186px 에 4줄(103px)이라 아직 이르다.
+                 컨테이너 쿼리는 쓰지 않는다 — `container-type:inline-size` 는 내용 기반 폭 계산을 끊어
+                 auto 테이블 레이아웃에서 이 열의 min/max-content 기여가 0 이 되고, 1920px 에서 638px 이던
+                 열이 쪼그라들어 표 전체 배분이 뒤집힌다. #}
+              <div class="hidden min-[1720px]:flex gap-1 shrink-0 items-stretch">
                 {# background-image는 loading="lazy"가 안 먹어 12장 전부 즉시 내려받는다.
                    3G에서 목록 한 화면이 2.5MB·50초였고 그중 81%가 사진이었다(4회차 품질 실측).
                    축소본(/thumb, WebP 320px) + lazy img로 바꾼다. #}
@@ -373,9 +391,13 @@ d.addEventListener('toggle',function(){try{localStorage.setItem('ncUsepickBasis'
              같은 색이 되고, 정작 판정 칩보다 강하게 읽힌다. 중립으로 내린다. #}
           {% if v.fail_count and v.fail_count > 0 %}<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-black/55 text-white backdrop-blur-sm">유찰 {{ v.fail_count }}회</span>{% endif %}
           </div>
-        {# 카드에서 가장 강해야 할 것은 판정이다. 사진 위 칩 셋 중 판정만 옅은
-           배경 + 아웃라인이라 중립 정보(D-11·유찰 1회)보다 조용했다. stop/wait는
-           솔리드로 올려 눈이 먼저 닿게 한다. (5회차 디자인 2차) #}
+        {# 카드에서 가장 강해야 할 것은 판정이다 — stop(빨강)만 솔리드로 올려 눈이 먼저 닿게 한다.
+           ⚠ wait 까지 앰버 솔리드로 덮던 것을 걷어냈다(2026-09-23). 색은 bid_state 가 정한 톤
+             한 곳(_tone|tcls)에서만 나와야 하는데 여기서 다시 칠해, **같은 상태가 목록은 앰버·
+             상세는 회색**이었다. 게다가 wait 은 예외가 아니라 목록의 91.7%(1163건 중 1067건,
+             최다는 '지난 기일 — 다음 기일 공고 대기' 713건)다 — 기본값을 경고색으로 칠한 셈이라
+             같은 사진 안의 '외관손상'(진짜 상태 경고·앰버)과 색이 겹쳐 경고가 희석됐다
+             (과거 '빨간 칩 2개로 경고색 희석' 교훈과 같은 계열). #}
         {% set _tone = v.bidst.tone if v.bidst else '' %}
         {# '동급 시세 없음'은 경고가 아니라 **해당 없음**이다. tone 이 wait 이라 앰버 솔리드로
            나가면 같은 사진 안의 '외관손상'(진짜 차량 상태 경고)과 같은 색이 되어 경고가
@@ -389,7 +411,7 @@ d.addEventListener('toggle',function(){try{localStorage.setItem('ncUsepickBasis'
            경고가 아닌 채로 또렷해야 한다 — 조용한 게 목적이 아니었다.
            무채색 바탕 + sky 글자는 "해당 없음"이라는 뜻과도 맞고, 보라(일정)·앰버(상태경고)와
            충돌하지 않는다. #}
-        <span class="nc-judge ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap {% if _nm %}bg-black/55 text-sky-200 backdrop-blur-sm{% elif _tone == 'stop' %}bg-rose-600 text-white shadow-sm{% elif _tone == 'wait' %}bg-amber-500 text-white shadow-sm{% else %}{{ _tone|tcls }}{% endif %}">{{ v.bidst.label if v.bidst else (v.judgment|jshort if v.judgment else v.status|sstat) }}</span>
+        <span class="nc-judge ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap {% if _nm %}bg-black/55 text-sky-200 backdrop-blur-sm{% elif _tone == 'stop' %}bg-rose-600 text-white shadow-sm{% else %}{{ _tone|tcls }}{% endif %}">{{ v.bidst.label if v.bidst else (v.judgment|jshort if v.judgment else v.status|sstat) }}</span>
         </div>
         {# gap-2 + min-w-0 + 접힘: 왼쪽 정보(연식·주행·외관손상·사진 혼재)가 길면 카메라 아이콘이 카드 밖으로 밀려 잘렸다(큰글씨 320px 실측) #}
         <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent px-3 pt-6 pb-2 flex items-end justify-between gap-2">

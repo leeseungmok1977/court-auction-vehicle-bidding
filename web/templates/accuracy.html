@@ -23,7 +23,7 @@
 {# 핵심 지표 타일 #}
 <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
   <div class="bg-surface border border-line rounded-lg p-4">
-    <div class="text-xs text-mut">평균 오차</div>
+    <div class="text-xs text-mut">모델 전체 평균 오차</div>
     <div class="font-mono text-3xl font-bold text-primary tnum mt-1">±{{ bt.mae_pct }}<span class="text-lg text-mut">%</span></div>
     <div class="text-[11px] text-mut mt-1">예측이 실제 낙찰가에서 평균 이만큼 벗어남</div>
   </div>
@@ -80,7 +80,7 @@
   <h3 class="text-sm font-semibold text-txt mb-1">예측 낙찰가 vs 실제 낙찰가</h3>
   <p class="text-[11px] text-mut mb-2">점이 <b class="text-txt">대각선</b>에 가까울수록 정확. <span class="text-emerald-600 font-semibold">초록</span> = 오차 ±20% 이내, <span class="text-amber-600 font-semibold">주황</span> = 초과. (단위 만원){% if scatter_omitted %} · 고가 {{ scatter_omitted }}건은 가독성을 위해 그래프에서 생략(통계·평균 오차엔 포함){% endif %}</p>
   <div class="overflow-x-auto">
-    <svg viewBox="0 0 320 320" class="w-full max-w-[420px] mx-auto" role="img" aria-label="예측 대 실제 낙찰가 산점도 — 표본 {{ scatter|length }}건, 평균오차 ±{{ bt.mae_pct }}%">
+    <svg viewBox="0 0 320 320" class="w-full max-w-[420px] mx-auto" role="img" aria-label="예측 대 실제 낙찰가 산점도 — 표본 {{ scatter|length }}건, 모델 전체 평균 오차 ±{{ bt.mae_pct }}%">
       <!-- 축 -->
       <line x1="44" y1="280" x2="288" y2="280" stroke="#cbd5e1" stroke-width="1"/>
       <line x1="44" y1="36" x2="44" y2="280" stroke="#cbd5e1" stroke-width="1"/>

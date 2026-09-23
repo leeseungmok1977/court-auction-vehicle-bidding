@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import functools
 import json
+import logging
 import os
 import re
 import threading
@@ -2024,6 +2025,33 @@ def start_scheduler() -> None:
         return
     _scheduler_started = True
     threading.Thread(target=_scheduler_loop, daemon=True).start()
+
+
+# ── 백그라운드 스레드: 예외를 삼키지 않는다 ────────────────────────────
+_bg_log = logging.getLogger("naechaget.background")
+
+
+def background_task(fn):
+    """데몬 스레드 target 을 감싸, 죽을 때 **흔적을 남기는** 무인자 호출자를 돌려준다.
+
+    ⚠ 2026-09-23: 기동 백필 4종에 try/except 가 하나도 없었다. 데몬 스레드는 예외로 죽어도
+    프로세스가 그대로 살아 있어, 운영에서 같은 경로가 조용히 실패해도 아무도 모른다
+    (실제로 `backfill_sale_results` 가 `no such table: sale_results` 로 죽은 적이 있다).
+    예외를 **다시 던지지 않는 대신 반드시 기록**한다 — 한 백필이 죽어도 나머지는 돌아야 한다.
+    """
+    @functools.wraps(fn)
+    def _run(*a, **kw):
+        try:
+            return fn(*a, **kw)
+        except Exception:  # noqa: BLE001
+            # logger.exception = ERROR + 트레이스백. uvicorn/journald 에 그대로 남는다.
+            # ⚠ 로거 이름을 **메시지에도** 넣는다: uvicorn 은 root 로거에 핸들러를 달지 않아
+            # 기본 lastResort 가 '%(message)s' 만 찍는다(실측). 그러면 운영 로그에서 이 줄이
+            # 어느 계통인지 못 가린다 — 이 태그로 journald 를 grep 할 수 있게 둔다.
+            _bg_log.exception("[naechaget.background] 백그라운드 작업 실패: %s",
+                              getattr(fn, "__name__", fn))
+            return None
+    return _run
 
 
 # =========================================================================

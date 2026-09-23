@@ -44,7 +44,7 @@
   </h2>
   {% if backtest.mae_pct and backtest.pred_n %}
   <p class="text-xs text-mut mt-1 leading-relaxed" style="word-break:keep-all">
-    실제 낙찰 {{ backtest.pred_n }}건과 대조 · 평균 오차 ±{{ backtest.mae_pct }}% · 가입 없이 무료
+    실제 낙찰 {{ backtest.pred_n }}건과 대조 · 모델 전체 평균 오차 ±{{ backtest.mae_pct }}% · 가입 없이 무료
   </p>
   {# 이 링크가 첫 화면에서 소개 페이지로 가는 **유일한 문**이다(실측 도달률 0.9% · 6명).
      문장 끝에 12px 인라인으로 붙여 뒀더니 두 가지가 한꺼번에 잘못됐다 — 탭 상자가 20px 남짓이라
@@ -456,7 +456,11 @@
   {% if backtest.upper_hit_rate is not none and backtest.upper_hit_rate < 0.5 %}
   <div class="mt-3 text-xs bg-amber-50 border border-amber-200 text-amber-700 rounded-md px-3 py-2 leading-relaxed">
     ⚠ 실제 낙찰가가 산정 상한가를 넘는 경우가 많습니다({{ (100-backtest.upper_hit_rate*100)|round|int }}%). 현재 산정은 <b>리셀러 마진 기준(보수적)</b>이라 일반 매수 목적이면 상한가가 낮게 잡힙니다 —
-    <b class="text-txt">예상낙찰가(최저가 기반 · 실측 오차 ±{{ backtest.mae_pct }}%)</b>를 실입찰 기준으로 참고하세요.
+    {# '실측 오차'는 상세·리포트에서 **이 물건 유형**(제조사·유찰횟수)의 오차를 가리키는 이름이다.
+       여기 값은 backtest.mae_pct — 모델 전체 평균이라 모집단이 다르다. 같은 이름을 쓰면 홈에서
+       ±8.9%를 본 사람이 상세에서 ±12.8%를 보고 "데이터가 어긋난다"고 읽는다(2026-09-23 교차검수).
+       모델 전체를 가리키는 자리에는 이름에 모집단을 박는다 — 리포트 '예측 오차 / 모델 전체 평균'과 같은 규칙. #}
+    <b class="text-txt">예상낙찰가(최저가 기반 · 모델 전체 평균 오차 ±{{ backtest.mae_pct }}%)</b>를 실입찰 기준으로 참고하세요.
   </div>
   {% endif %}
   {% else %}
