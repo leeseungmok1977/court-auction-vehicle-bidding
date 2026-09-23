@@ -21,6 +21,47 @@ from web import service
 # 주입하지 않으면 plain_verdict → bid_state → backtest_stats() 가 **운영 DB**를 읽는다.
 # 4회차 품질 감사: 그 상태에서 이 파일의 회귀 가드 7건이 데이터에 따라 깨지거나
 # 조용히 통과했다. 회귀 가드의 실행 여부가 그날 PC의 데이터에 달려 있으면 가드가 아니다.
+
+
+def _blk(n, err, fail_count, median, maker="현대", model="쏘나타"):
+    """pred_pool 한 덩어리 — 블록 안에서는 오차가 일정하다(층 평균을 손으로 검산하려고)."""
+    return [{"err_pct": err, "maker": maker, "model": model, "fail_count": fail_count,
+             "median_price": median, "actual": median} for _ in range(n)]
+
+
+# ★ pred_pool 은 **층마다 다른 값**을 내야 한다 (PANEL-46).
+#   예전 픽스처는 40행 전부 `median_price=20,000,000` · `fail_count=1` · 현대 쏘나타라
+#   가격대·유찰횟수·제조사 **세 층이 전부 10.0** 이었다. 게다가 이 파일의 `_v()` 물건은
+#   maker 가 없어 '수입'으로 떨어지는데 pool 에 수입 표본이 하나도 없어 **제조사 후보가 아예
+#   None** 이었고, `_v()` 의 시세(830만~4,000만)가 만드는 세 가격대 층 중 pool 에 존재하는
+#   것은 `2,000만 이상` 하나뿐이었다. 결국 판정은 전부 유찰횟수 층(10.0)이 내고 있었고,
+#   `accuracy_for` 의 가격대 배선을 끊어도 이 파일은 **한 건도 울지 않았다**(실측 2026-09-23).
+#
+#   아래는 10행 블록 5개(=50행)로 축을 갈라 **일곱 층이 전부 다른 값**을 내게 한다. 손검산:
+#     가격대 1,000~2,000만  n=20  mae 10.0  ← _v(17_300_000)·_v(16_600_000)·_v(10_895_000)
+#     가격대 2,000만 이상   n=20  mae 10.2  ← _v(32_500_000)·_v(40_000_000)
+#     가격대 500~1,000만    n=10  mae 10.4  ← _v(8_300_000)
+#     유찰 0~1회            n=20  mae  5.0     유찰 3회 이상  n=30  mae 13.6
+#     제조사 수입           n=20  mae  7.0  ← _v() 가 닿는 축    제조사 국산  n=30  mae 12.3
+#
+#   ⚠ `1,000~2,000만` 을 **10.0 에 맞춘 것은 의도**다. 고치기 전 이 파일 물건들이 받던 값이
+#   10.0 이라, 정상 경로 가드(`test_verdict_still_recommends_when_below_retail`, 시세 1,730만)의
+#   오차 게이트 경계가 움직이지 않는다. 나머지 두 층은 10.2·10.4 로 **더 보수적인 쪽으로만**
+#   0.2~0.4 벌렸다 — 그 물건들은 전부 `blocked`(거절) 케이스라 오차가 커져도 판정이 더
+#   거절 쪽으로 갈 뿐 뒤집히지 않는다. 실측으로 확인했다: 고치기 전후 9개 케이스의
+#   state·tone·판정문이 **전부 동일**하다.
+#   ⚠ 행 수를 50 으로 둔 것도 의도다 — `_ACC_STRATA` 메모 키 `(sample, len(pred_pool), mae_pct)`
+#   가 `test_personal_use.BT`·`test_dashboard_link_parity.BT` 와 겹치지 않게 한다(PANEL-39).
+PRED_POOL = (_blk(10, 1.8, 1, 15_000_000, "BMW", "520d") + _blk(10, 18.2, 3, 15_000_000)
+             + _blk(10, 8.2, 1, 30_000_000) + _blk(10, 12.2, 3, 30_000_000, "BMW", "520d")
+             + _blk(10, 10.4, 3, 8_000_000))
+
+# 층 → 기대 mae. 아래 자기 유효성 검사가 이 표와 대조한다(픽스처가 평평해지면 빨간불).
+STRATA_EXPECTED = {("가격대", "1,000~2,000만"): 10.0, ("가격대", "2,000만 이상"): 10.2,
+                   ("가격대", "500~1,000만"): 10.4,
+                   ("유찰횟수", "유찰 0~1회"): 5.0, ("유찰횟수", "유찰 3회 이상"): 13.6,
+                   ("제조사", "수입"): 7.0, ("제조사", "국산"): 12.3}
+
 BT = {"discount_median": 0.74, "mae_pct": 9.2, "sample": 172, "within10_pct": 62,
       "within20_pct": 96, "pred_n": 135,
       "min_premium_median": 1.13, "min_premium_by_fail": {"0": 1.20, "1": 1.13, "2+": 1.06},
@@ -28,8 +69,7 @@ BT = {"discount_median": 0.74, "mae_pct": 9.2, "sample": 172, "within10_pct": 62
       "min_premium_pool": [round(1.00 + i * 0.004, 4) for i in range(60)],
       # 층별 오차(accuracy_for)를 내려면 pred_pool 이 있어야 한다. 없으면 판정이 "오차를 모르면 이득이라
       # 부르지 않는다"(주황 '오차 미산출')로 가서 **정상 경로** 회귀 가드가 성립하지 않는다(2026-09-14).
-      "pred_pool": [{"err_pct": 8.0 + (i % 5), "maker": "현대", "model": "쏘나타", "fail_count": 1,
-                     "median_price": 20_000_000, "actual": 20_000_000} for i in range(40)]}
+      "pred_pool": PRED_POOL}
 
 
 @pytest.fixture(autouse=True)
@@ -86,6 +126,41 @@ def _v(med, floor=None, upper=11_283_000):
             "upper_bid": upper, "market_confidence_label": "높음", "fail_count": 1}
 
 
+# ── ★ 픽스처 자기 유효성 검사 (PANEL-46) ──────────────────────────────
+# 모범: tests/test_panel35_hero_tone_parity.py · tests/test_personal_use.py(PANEL-39) —
+# 픽스처가 그 갈래를 **실제로 만들어 내는지**를 테스트가 스스로 검사한다.
+# 이 파일의 회귀 가드들은 손익분기·거절 불변식이라 오차값에 둔감하다. 그래서 층 배선이
+# 살아 있는지는 **여기서** 지킨다 — 이 검사가 없으면 pred_pool 이 평평해져도 아무도 모른다.
+
+def test_픽스처의_층값이_표와_같고_층끼리_서로_다르다():
+    """층끼리 같으면 accuracy_for 가 어느 층을 골라도 결과가 같다 — 공허 통과."""
+    rows = {(r["group"], r["label"]): r for r in service.accuracy_strata(BT)}
+    got = {k: rows[k]["mae"] for k in STRATA_EXPECTED if k in rows}
+    assert got == STRATA_EXPECTED, f"층값이 표와 다르다 — pool 이나 층 경계가 바뀌었다: {got}"
+    assert len(set(got.values())) == len(got), f"같은 값을 내는 층이 있다: {got}"
+
+
+@pytest.mark.parametrize("med,mae,label", [
+    (17_300_000, 10.0, "시세 1,000~2,000만"),   # 거절 가드 · 정상 경로 가드가 쓰는 시세
+    (32_500_000, 10.2, "시세 2,000만 이상"),
+    (8_300_000, 10.4, "시세 500~1,000만"),
+])
+def test_이_파일_물건의_오차를_좌우하는_것은_가격대_층이다(med, mae, label):
+    """★ 반증 장치 — `accuracy_for` 후보에서 가격대를 빼면 셋 다 제조사 수입(7.0)으로 떨어진다.
+
+    이 단언이 없으면 `service.accuracy_for` 의 `cands.append(rows.get(("가격대", band)))`
+    한 줄을 지워도 이 파일이 전부 초록이다(실측 2026-09-23: 배선 절단 시 0 failed).
+    """
+    v = _v(med)
+    acc = service.accuracy_for(v, BT)
+    assert acc and acc["group"] == "가격대" and acc["mae"] == mae, (
+        f"시세 {med}: 가격대 층이 오차를 좌우하지 않는다 — 배선을 끊어도 안 울린다: {acc}")
+    assert acc["label"] == label, f"축을 밝히는 라벨이 아니다: {acc['label']}"
+    rows = {(r["group"], r["label"]): r for r in service.accuracy_strata(BT)}
+    axes = [rows[("제조사", "수입")]["mae"], rows[("유찰횟수", "유찰 0~1회")]["mae"], acc["mae"]]
+    assert len(set(axes)) == 3, f"두 축 이상이 같은 값이다(PANEL-46): {axes}"
+
+
 # 문구가 아니라 **불변식**을 검사한다. 3회차에 판정이 bid_state 단일 소스로 바뀌면서
 # 같은 물건이 더 강한 'blocked'(최저가조차 손익분기 초과 → "입찰하지 마세요")를 받게 됐다.
 # 문구를 박아두면 판정이 강해질 때마다 테스트가 깨지고, 약해질 때는 안 깨진다 — 방향이 반대다.
@@ -136,6 +211,25 @@ def test_verdict_still_recommends_when_below_retail():
     """시세보다 싼 물건까지 막으면 제품이 죽는다 — 정상 경로는 그대로여야 한다."""
     r = service.plain_verdict(_v(17_300_000, 11_000_000), {"price": 12_110_000})
     assert r["tone"] == "ok" and "입찰할 수 있고" in r["text"]
+
+
+def test_이득이_이_유형의_오차를_못_넘으면_초록불을_켜지_않는다():
+    """★ 자기검사가 아니라 **제품 동작** 가드다 (PANEL-46). P0-3 과 같은 계열 —
+    근거가 뒷받침하지 않는 낙관을 화면에 띄우지 않는다.
+
+    바로 위 정상 경로(최저 1,100만)보다 29만원 비싼 1,129만원짜리다. 이득이 **이 유형의
+    실측 오차(가격대 층 10.0%)에 잠기는** 구간이라 톤은 초록(ok)이 아니라 주의(caution)여야
+    한다. `accuracy_for` 후보에서 가격대를 빼면 오차가 제조사 수입(7.0%)으로 **작아져**
+    같은 물건에 초록불이 켜진다 — 데이터가 좋아진 게 아니라 덜 본 것이다.
+    ⚠ 경계값이다. 뒤집히는 최저매각가 구간은 실측 11,120,000~11,460,000(폭 34만)이고
+    아래 값은 그 한가운데다. 이 단언이 깨지면 값을 움직이기 전에 **오차 게이트가 바뀐 것은
+    아닌지** 먼저 보라.
+    """
+    st = service.bid_state(_v(17_300_000, 11_290_000), BT)
+    assert service.accuracy_for(_v(17_300_000, 11_290_000), BT)["group"] == "가격대", (
+        "전제: 이 물건의 오차는 가격대 층에서 온다")
+    assert st["tone"] == "caution", (
+        f"이득이 오차에 잠기는데 초록불을 켰다(tone={st['tone']}) — 가격대 층 배선을 보라")
 
 
 # ── P0-1 리포트 비율 ────────────────────────────────────────

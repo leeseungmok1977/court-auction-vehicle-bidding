@@ -24,9 +24,38 @@ import pytest
 
 from web import db, service
 
-BT_POOL = [{"err_pct": 8.0 + (i % 5), "maker": "현대", "model": "쏘나타",
-            "fail_count": 1, "median_price": 40_000_000, "actual": 30_000_000}
-           for i in range(40)]
+def _blk(n, err, fail_count, median, maker="현대", model="쏘나타"):
+    """pred_pool 한 덩어리 — 블록 안에서는 오차가 일정하다(층 평균을 손으로 검산하려고)."""
+    return [{"err_pct": err, "maker": maker, "model": model, "fail_count": fail_count,
+             "median_price": median, "actual": 30_000_000} for _ in range(n)]
+
+
+# ★ pred_pool 은 **층마다 다른 값**을 내야 한다 (PANEL-46).
+#   예전 픽스처는 40행 전부 `median_price=40,000,000` · `fail_count=1` · 현대 쏘나타라
+#   가격대·유찰횟수·제조사 **세 층이 전부 10.0** 이었다. 층값이 같으면 `accuracy_for` 가
+#   어느 층을 고르든 결과가 같아서 **가격대 층 배선을 끊어도 이 파일이 울지 않았다**
+#   (실측 2026-09-23: 배선 절단 시 0 failed).
+#
+#   아래는 8행 블록 5개(=40행)로 축을 갈라 **여섯 층이 전부 다른 값**을 내게 한다. 손검산:
+#     가격대 2,000만 이상   n=16  mae 10.0  ← 이 파일 물건(시세 3,000만·4,000만)이 고르는 층
+#     가격대 1,000~2,000만  n=16  mae 10.1
+#     가격대 500만 이하     n=8   mae  3.0
+#     유찰 0~1회            n=16  mae  4.0     유찰 3회 이상  n=24  mae 11.7
+#     제조사 국산           n=40  mae  8.6
+#
+#   ⚠ `2,000만 이상` 을 **10.0 에 맞춘 것은 의도**다. 고치기 전 이 파일 물건들이 받던 값이
+#   10.0 이라, 그대로 둬야 `personal_use_tier`·`bid_state` 의 오차 게이트 경계가 움직이지
+#   않는다(캐러셀에 무엇이 오르는지가 이 파일의 전부다). 가격대 배선을 끊으면 국산(8.6)으로
+#   떨어진다 — 그게 반증 장치다.
+BT_POOL = (_blk(8, 2.0, 1, 30_000_000) + _blk(8, 18.0, 3, 30_000_000)
+           + _blk(8, 6.0, 1, 15_000_000) + _blk(8, 14.2, 3, 15_000_000)
+           + _blk(8, 3.0, 3, 3_000_000))
+
+# 층 → 기대 mae. 아래 자기 유효성 검사가 이 표와 대조한다(픽스처가 평평해지면 빨간불).
+STRATA_EXPECTED = {("가격대", "2,000만 이상"): 10.0, ("가격대", "1,000~2,000만"): 10.1,
+                   ("가격대", "500만 이하"): 3.0,
+                   ("유찰횟수", "유찰 0~1회"): 4.0, ("유찰횟수", "유찰 3회 이상"): 11.7,
+                   ("제조사", "국산"): 8.6}
 BT = {"discount_median": 0.74, "mae_pct": 9.3, "sample": 172, "pred_n": 249,
       "within10_pct": 61, "within20_pct": 95, "history_n": 244,
       "min_premium_median": 1.13, "min_premium_by_fail": {}, "discount_by_fail": {},
@@ -56,6 +85,36 @@ def env(tmp_path, monkeypatch):
 
 def _kinds(picks):
     return {p.get("pick_kind") for p in picks}
+
+
+# ── ★ 픽스처 자기 유효성 검사 (PANEL-46) ──────────────────────────────
+# 모범: tests/test_panel35_hero_tone_parity.py · tests/test_personal_use.py(PANEL-39) —
+# 픽스처가 그 갈래를 **실제로 만들어 내는지**를 테스트가 스스로 검사한다.
+
+def test_픽스처의_층값이_표와_같고_층끼리_서로_다르다():
+    """층끼리 같으면 accuracy_for 가 어느 층을 골라도 결과가 같다 — 공허 통과."""
+    rows = {(r["group"], r["label"]): r for r in service.accuracy_strata(BT)}
+    got = {k: rows[k]["mae"] for k in STRATA_EXPECTED if k in rows}
+    assert got == STRATA_EXPECTED, f"층값이 표와 다르다 — pool 이나 층 경계가 바뀌었다: {got}"
+    assert len(set(got.values())) == len(got), f"같은 값을 내는 층이 있다: {got}"
+
+
+@pytest.mark.parametrize("med", [40_000_000, 30_000_000])
+def test_이_파일_물건의_오차를_좌우하는_것은_가격대_층이다(env, med):
+    """★ 반증 장치 — `accuracy_for` 후보에서 가격대를 빼면 10.0 → 제조사 국산 8.6 으로 떨어진다.
+
+    이 단언이 없으면 `service.accuracy_for` 의 `cands.append(rows.get(("가격대", band)))`
+    한 줄을 지워도 이 파일이 전부 초록이다(실측 2026-09-23: 배선 절단 시 0 failed).
+    """
+    v = env("ACC", min_sale_price=16_000_000, median_price=med,
+            appraisal_value=30_000_000, judgment="유찰 대기")
+    acc = service.accuracy_for(v, BT)
+    assert acc and acc["group"] == "가격대" and acc["mae"] == 10.0, (
+        f"시세 {med}: 가격대 층이 오차를 좌우하지 않는다 — 배선을 끊어도 안 울린다: {acc}")
+    assert acc["label"] == "시세 2,000만 이상", f"축을 밝히는 라벨이 아니다: {acc['label']}"
+    rows = {(r["group"], r["label"]): r for r in service.accuracy_strata(BT)}
+    axes = [rows[("제조사", "국산")]["mae"], rows[("유찰횟수", "유찰 0~1회")]["mae"], acc["mae"]]
+    assert len(set(axes)) == 3, f"두 축 이상이 같은 값이다(PANEL-46): {axes}"
 
 
 def test_실사용_추천만_있어도_캐러셀이_빈손이_아니다(env):
@@ -92,6 +151,28 @@ def test_신뢰도가_높음이_아니면_두_축_어디로도_못_들어온다(
 
     picks = service.compute_daily_picks(5)
     assert not picks, f"신뢰도 '보통'인 물건이 캐러셀에 올라왔다: {picks}"
+
+
+def test_오차보다_작은_이득은_캐러셀에_못_올라온다(env):
+    """★ 자기검사가 아니라 **제품 동작** 가드다 (PANEL-46). 이 파일의 주제 그대로 —
+    보여줄 것을 늘리되 기준은 1mm도 낮추지 않는다.
+
+    시세 4,000만 · 최저 2,975만 물건은 최저가 기준 이득이 있지만 그 이득이 **이 유형의
+    실측 오차(가격대 층 10.0%)보다 작다.** `accuracy_for` 후보에서 가격대를 빼면 오차가
+    제조사 국산(8.6%)으로 작아져 같은 물건이 캐러셀 첫 화면에 올라온다 — 데이터가 좋아진
+    게 아니라 **덜 본 것**인데 추천 수만 늘어난다.
+    ⚠ 경계값이다. 뒤집히는 최저매각가 구간은 이 파일 BT 기준 실측 29,600,000~29,950,000
+    (폭 35만)이고 아래 값은 그 한가운데다. 같은 성격의 가드가 `test_dashboard_link_parity`
+    에도 있는데 거기는 2,950만이다 — BT 의 `min_premium_by_fail` 이 달라 예상낙찰가가
+    다르기 때문이다(그 파일 값을 여기 복사하지 말 것).
+    """
+    v = env("BRD", min_sale_price=29_750_000, median_price=40_000_000,
+            appraisal_value=40_000_000, judgment="유찰 대기")
+    assert service.accuracy_for(v, BT)["mae"] == 10.0, "전제: 이 물건의 오차는 가격대 층 10.0"
+    assert service.personal_use_tier(v, BT) is None, (
+        "오차보다 작은 이득을 '실사용 추천'으로 올렸다 — 가격대 층 배선이 끊겼는지 보라")
+    assert not service.compute_daily_picks(5), (
+        "오차를 못 넘는 물건이 홈 첫 화면 캐러셀에 올라왔다")
 
 
 def test_아침에_고른_뒤_축이_바뀌면_화면에서_빠진다(env):
