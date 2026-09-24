@@ -98,6 +98,10 @@ body{background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:
 .badges{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
 .badge{font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;padding:5px 12px;border-radius:99px;border:1px solid rgba(255,255,255,.3);color:rgba(255,255,255,.9)}
 .badge.fill{background:rgba(255,255,255,.12)}.badge b{color:#8FD9AE}
+/* PANEL-56 3회차 — 시세 없는 분기의 판정 알약만. .badge 는 `시세 신뢰도 81/100` 숫자용 mono 10.5px .06em 이라
+   한글 판정문을 찍으면 어절이 벌어져 태그·메타로 읽혔다(app-design-expert). 상세 h1 칩과 같은 sans 12/600.
+   색·외곽선은 .badge 그대로 — 의미색 없음. 시세 있는 물건은 이 클래스를 안 탄다(마스트헤드 md5 테스트가 감시). */
+.badge.judge{font-family:var(--sans);font-size:12px;font-weight:600;letter-spacing:0;padding:6px 12px}
 .mh-eyebrow{font-family:var(--mono);font-size:11.5px;color:rgba(255,255,255,.6);margin:22px 0 6px}
 .mh-title{font-weight:700;font-size:clamp(22px,4vw,30px);line-height:1.28;letter-spacing:-.01em}
 .mh-meta{margin-top:20px;padding-top:16px;border-top:1px solid rgba(255,255,255,.18);display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px 24px}
@@ -111,6 +115,8 @@ body{background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:
 .verdict{border:1px solid var(--line-strong);border-top:3px solid var(--cobalt)}
 /* 결론이 부정이면 카드 상단 바도 로즈. 파란 바만 두면 판정이 바뀌어도 카드가 같아 보인다. */
 .verdict.is-stop{border-top-color:var(--red)}
+/* 시세 없는 stop 물건(침수·전손/시동 불가)의 유일한 본문 — 왼쪽 레일만 로즈, 글자색은 그대로(PANEL-56 3회차). */
+.sec-empty.is-stop{border-left-color:var(--red)}
 /* stop 화면에서 초록 신뢰도 배지가 "좋은 물건"으로 오독된다 — 시세 신뢰도일 뿐이다. */
 .masthead.is-stop .badge b{color:#C9D4E8}
 .vgrid{display:grid;grid-template-columns:auto 1fr;gap:28px;align-items:start}
@@ -613,6 +619,7 @@ details.raw summary{cursor:pointer;font-size:12px;color:var(--cobalt);font-weigh
   html.nc-large .brand-name{font-size:19px}
   html.nc-large .brand-sub{font-size:13px}
   html.nc-large .badge{font-size:13px}
+  html.nc-large .badge.judge{font-size:14px}
   html.nc-large .mh-eyebrow{font-size:14.5px}
   html.nc-large .mh-meta dt{font-size:14px}
   html.nc-large .mh-meta dd{font-size:16px}
@@ -852,9 +859,11 @@ document.addEventListener('click', function(e){
            시세가 없으면 판정 단일 소스 bidst.label 을 상세와 같은 말로 찍고, bidst 마저 없으면 아무것도
            그리지 않는다(측정하지 않은 것을 말하지 않는다). 긴 라벨은 detail.html 과 같은 ui.judge_label 로
            ' — ' 뒤에서만 접는다. 색은 .badge 그대로 — 의미색 없음('해당 없음'이지 경고가 아니다).
+           3회차: 서체만 `.badge.judge`(sans 12/600, 자간 0) — mono 자간이 판정문을 태그로 읽히게 했다. stop 톤 경고는
+           마스트헤드가 아니라 본문 첫 문장이 맡는다(아래 {% else %} 가지) — 남색 위 의미색 중화가 이 헤더의 설계다.
            ⚠ 이 주석은 conf 게이트와 **같은 줄**에서 끝난다. 줄을 더하면 시세 있는 물건의 렌더 바이트가 바뀐다
            (tests/test_panel56_masthead_badge.py 가 마스트헤드 md5 로 감시). #}{% if conf %}<div class="badge fill">시세 신뢰도 <b>{{ conf }}</b>/100 <span style="font-weight:400;opacity:.75">· {{ conf_scale }}</span></div>
-        <div class="badge">{{ v.market_confidence_label or '—' }}</div>{% elif bidst %}<div class="badge">{{ ui.judge_label(bidst.label) }}</div>{% endif %}
+        <div class="badge">{{ v.market_confidence_label or '—' }}</div>{% elif bidst %}<div class="badge judge">{{ ui.judge_label(bidst.label) }}</div>{% endif %}
       </div>
     </div>
     <div class="mh-eyebrow">차량 경매 분석 리포트 · {{ v.court }} · {{ now }}</div>
@@ -1490,7 +1499,18 @@ document.addEventListener('click', function(e){
         관리자 문구의 `아직` 은 유지(행동할 수 있는 사람이다).
      ③ '물건 상세' 는 sticky 바 `상세로` 와 **같은 핸들러**(_reportBack)로 링크 — 히스토리 설계를 우회하지 않는다.
         리포트에 본문 링크 색 규칙이 없어 잉크색+밑줄을 인라인으로. 빨강·앰버 금지 — '해당 없음'이지 경고가 아니다. #}
-  <section class="section"><div class="sec-empty">{% if is_admin(request) %}<b style="color:var(--ink)">시세가 아직 산정되지 않아 종합 리포트를 생성할 수 없습니다.</b> 물건 상세에서 <b>[다시 분석]</b> 후 다시 시도하세요.{% else %}<b style="color:var(--ink)">시세가 산정되지 않아 종합 리포트를 만들 수 없습니다.</b> 감정가·최저매각가 등 법원 자료는 <a href="/vehicle/{{ v.id }}" onclick="return _reportBack(event)" style="color:var(--ink);text-decoration:underline">물건 상세</a>에서 그대로 확인하실 수 있습니다.{% endif %}</div></section>
+  {# PANEL-56 3회차(교차검수 처방, 지시서 2026-09-24-13) — stop 톤(침수·전손 의심 / 시동·운행 불가)이면 **본문 첫 문장이 판정**이다.
+     이 분기는 본문(핵심 결론·리스크)이 없어 stop 물건에서 마스트헤드 알약이 유일한 위험 신호였는데, 그 알약은 wait 와 같은 흰
+     외곽선이다 — 남색 위 의미색 중화가 이 헤더의 설계 의도(`.masthead.is-stop .badge b` 가 빨강이 아니라 청회색인 것이 증거).
+     그래서 마스트헤드가 아니라 본문이 말한다: `{{ bidst.label }}입니다.`(판정 단일 소스 원문, 새 낱말·약속 없음. 접미가 '판정입니다'면 `… — 판정 보류 판정입니다` 가 돼 13건이 어색했다) 뒤에
+     "시세가 산정되지 않아 종합 리포트**도** 만들 수 없습니다" — '도' 한 글자가 두 사실의 순서를 세운다. PDF 로 저장해도 남는다.
+     그릇의 왼쪽 레일만 `.sec-empty.is-stop` 으로 로즈(`.verdict.is-stop` 과 같은 꼴). wait 톤은 문구·레일 그대로.
+     `_tone0` 는 마스트헤드가 이미 쓰는 그 값(bidst.tone) — 판정을 새로 계산하지 않는다. 관리자도 stop 이면 같은 첫 문장,
+     뒤는 관리자 문구(`아직`·`[다시 분석]` 유지). 굵기는 첫 문장(사실)에만.
+     design-critic 3: `감정가·최저매각가` 는 nowrap(390 에서 `감정가·` 가 줄끝 고아). 관리자 동사는 공개와 같은 `만들 수 없습니다`,
+     관리자의 '물건 상세' 도 공개와 같은 `_reportBack` 링크(거기 가서 [다시 분석] 을 누르라는 사람이 관리자다). #}
+  {% set _stop0 = (_tone0 == 'stop') %}
+  <section class="section"><div class="sec-empty{{ ' is-stop' if _stop0 }}">{% if _stop0 %}<b style="color:var(--ink)">{{ bidst.label }}입니다.</b> 시세가 {{ '아직 ' if is_admin(request) }}산정되지 않아 종합 리포트도 만들 수 없습니다.{% elif is_admin(request) %}<b style="color:var(--ink)">시세가 아직 산정되지 않아 종합 리포트를 만들 수 없습니다.</b>{% else %}<b style="color:var(--ink)">시세가 산정되지 않아 종합 리포트를 만들 수 없습니다.</b>{% endif %} {% if is_admin(request) %}<a href="/vehicle/{{ v.id }}" onclick="return _reportBack(event)" style="color:var(--ink);text-decoration:underline">물건 상세</a>에서 <b>[다시 분석]</b> 후 다시 시도하세요.{% else %}<span style="white-space:nowrap">감정가·최저매각가</span> 등 법원 자료는 <a href="/vehicle/{{ v.id }}" onclick="return _reportBack(event)" style="color:var(--ink);text-decoration:underline">물건 상세</a>에서 그대로 확인하실 수 있습니다.{% endif %}</div></section>
   {% endif %}
 
   <div class="disc">

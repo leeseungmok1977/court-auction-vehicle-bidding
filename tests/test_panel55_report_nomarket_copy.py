@@ -18,6 +18,16 @@
 '물건 상세' 를 sticky 바의 `상세로` 와 같은 핸들러(`_reportBack`)로 링크했다. 관리자 문구의 `아직` 은
 유지한다(행동할 수 있는 사람이다). 앵커는 두 변형이 모두 품는 `산정되지 않아 종합 리포트를` 로 옮겼다.
 반증(2회차): 공개 문구에 `아직` 을 되돌리면 `test_public_copy_promises_no_timing` 이 실패한다.
+
+3회차(PANEL-56 교차검수 처방, 지시서 2026-09-24-13): stop 톤(`침수·전손 의심 — 입찰 보류` 6건 · `시동·운행 불가 — 판정 보류`
+13건)은 이 분기에서 본문이 없어 마스트헤드 알약이 유일한 위험 신호였는데 그 알약은 wait 와 같은 흰 외곽선(남색 위 의미색
+중화가 설계 의도). 두 검수자가 같이 잡았다 — 침수차에 대해 페이지가 "시세만 없다"고 말한다. 처방(design-critic 안 채택):
+마스트헤드에 빨강을 넣지 않고 **본문 첫 문장이 판정**이 된다 — `<b>{bidst.label}입니다.</b> 시세가 산정되지 않아 종합
+리포트**도** 만들 수 없습니다.` 그릇에는 `is-stop` 클래스 → 왼쪽 레일만 로즈(`.verdict.is-stop` 과 같은 꼴). wait 톤은 그대로.
+자잘한 셋(design-critic 3): `감정가·최저매각가` nowrap · 관리자 동사 `생성할`→`만들` 통일 · 관리자 '물건 상세' 도 같은 링크.
+⚠ 동사 통일로 `종합 리포트를 만들 수 없습니다` 는 더는 공개 전용 조각이 아니다 — 관리자/공개를 가르는 것은 `아직`·`[다시 분석]`
+(관리자) 과 `감정가·최저매각가 … 그대로 확인하실 수 있습니다`(공개) 다.
+반증(3회차): stop 분기(`{% if _stop0 %}…`)를 지우면 `test_stop_tone_copy_leads_with_the_verdict` 가 실패한다.
 """
 import pathlib
 import re
@@ -33,14 +43,26 @@ _TUNNEL = {"host": "127.0.0.1"}
 _TPL = pathlib.Path(__file__).resolve().parents[1] / "web" / "templates"
 
 # 두 변형에 공통인 조각 — 분기 자체가 렌더됐는지 확인하는 앵커
-# (앞머리는 더는 공통이 아니다: 관리자 '시세가 아직 산정되지 않아 …' / 공개 '시세가 산정되지 않아 …')
-_ANCHOR = "산정되지 않아 종합 리포트를"
-# 문구를 담는 그릇 — 각주(.note)가 아니라 빈 섹션 블록(.sec-empty). 여는 태그 원문이 앵커다.
+# (앞머리는 더는 공통이 아니다: 관리자 '시세가 아직 산정되지 않아 …' / 공개 '시세가 산정되지 않아 …';
+#  3회차부터 조사도 갈린다: wait '종합 리포트를' / stop '종합 리포트도' — 그래서 조사 앞에서 끊는다)
+_ANCHOR = "산정되지 않아 종합 리포트"
+# 문구를 담는 그릇 — 각주(.note)가 아니라 빈 섹션 블록(.sec-empty). wait 톤의 여는 태그 원문.
 _BOX_OPEN = '<div class="sec-empty">'
+# stop 톤은 `is-stop` 이 붙는다 — 두 꼴을 모두 품는 접두
+_BOX_OPEN_ANY = '<div class="sec-empty'
+# 템플릿 원문의 여는 태그(렌더 전) — 원문 검사는 이걸로 그릇을 찾는다
+_BOX_OPEN_SRC = "<div class=\"sec-empty{{ ' is-stop' if _stop0 }}\">"
+_BOX_OPEN_STOP = '<div class="sec-empty is-stop">'
 # 관리자 변형에만 있어야 하는 것: 존재하는 버튼의 이름
 _ADMIN_ONLY = "다시 분석"
-# 공개 변형에 있어야 하는 것
+# 공개 변형에 있어야 하는 것 (3회차부터 관리자도 같은 동사를 쓴다 — 공개 **전용** 조각은 아래 _PUBLIC_TAIL)
 _PUBLIC_LINE = "종합 리포트를 만들 수 없습니다"
+# 공개 변형에만 있는 꼬리 — 관리자는 [다시 분석] 을 시키지 법원 자료를 안내하지 않는다
+_PUBLIC_TAIL = "그대로 확인하실 수 있습니다"
+# 390 에서 `감정가·` 가 줄끝 고아가 됐다(design-critic 3) — 한 덩어리로 묶는다
+_NOWRAP_PAIR = '<span style="white-space:nowrap">감정가·최저매각가</span>'
+# 3회차에 버린 동사 — 관리자 '생성할' / 공개 '만들' 이 갈려 있었다
+_OLD_VERB = "생성할"
 # 공개 문구가 **하면 안 되는 약속** — 코드로 보장되지 않는 시점 (지시서 ⚠)
 # `아직` 도 시점 약속이다(2회차 검수 지적 3): 열에 아홉에게는 '영영'이다.
 _TIMING_WORDS = ("곧", "매일", "잠시 후", "자동으로 다시", "다시 시도", "아직")
@@ -58,6 +80,16 @@ def client(tmp_path, monkeypatch):
     db.upsert_vehicle({**_BASE, "id": "nomed_1", "folder_key": "nomed_1", "case_no": "2026타경5501",
                        "judgment": "시세 정보 없음", "min_sale_price": 9_000_000,
                        "appraisal_value": 12_000_000, "median_price": None})
+    # stop 톤 둘 — 운영 실측(2026-09-24) 침수 6건(`2025타경53062_1`) · 시동 불가 13건(`2025타경6000_1`) 과 같은 상태.
+    # bid_state 는 accident_grade=='flood' → blocked/stop, runnable=='no' → lowconf/stop (service.bid_state 원문).
+    db.upsert_vehicle({**_BASE, "id": "nomed_flood", "folder_key": "nomed_flood", "case_no": "2026타경5502",
+                       "judgment": "시세 신뢰도 낮음, 수동 검토", "accident_grade": "flood",
+                       "market_confidence": 0, "market_confidence_label": "낮음",
+                       "min_sale_price": 9_000_000, "appraisal_value": 12_000_000, "median_price": None})
+    db.upsert_vehicle({**_BASE, "id": "nomed_nostart", "folder_key": "nomed_nostart", "case_no": "2026타경5503",
+                       "judgment": "시세 신뢰도 낮음, 수동 검토", "runnable": "no",
+                       "market_confidence": 0, "market_confidence_label": "낮음",
+                       "min_sale_price": 9_000_000, "appraisal_value": 12_000_000, "median_price": None})
     import web.app as A
     return TestClient(A.app)
 
@@ -65,7 +97,13 @@ def client(tmp_path, monkeypatch):
 def _note(html: str) -> str:
     """앵커가 든 `.sec-empty` 블록 하나만 잘라 낸다 — 페이지 다른 곳의 낱말이 검사를 오염시키지 않게."""
     i = html.index(_ANCHOR)
-    return html[html.rindex(_BOX_OPEN, 0, i):html.index("</div>", i)]
+    return html[html.rindex(_BOX_OPEN_ANY, 0, i):html.index("</div>", i)]
+
+
+def _bidst(vid: str) -> dict:
+    """판정 단일 소스 — 화면의 첫 문장이 이 라벨을 원문 그대로 말해야 한다."""
+    from web import db
+    return service.bid_state(db.get_vehicle(vid), BT, service.load_config())
 
 
 def test_fixture_actually_hits_the_unpriced_branch(client):
@@ -129,8 +167,10 @@ def test_admin_copy_keeps_the_button_it_actually_has(client):
     assert r.status_code == 200
     note = _note(r.text)
     assert "[" + _ADMIN_ONLY + "]" in note
-    assert _PUBLIC_LINE not in note
+    assert _PUBLIC_TAIL not in note and _NOWRAP_PAIR not in note, "관리자에게 공개 꼬리(법원 자료 안내)가 나갔다"
     assert "아직" in note, "관리자 문구의 '아직' 은 유지한다 — 다시 분석을 누를 수 있는 사람이다"
+    # 3회차: 동사는 공개와 같다 — '생성할' 은 버렸다
+    assert "만들 수 없습니다" in note and _OLD_VERB not in note
 
 
 def test_forged_loopback_host_with_xff_gets_public_copy(client):
@@ -139,18 +179,132 @@ def test_forged_loopback_host_with_xff_gets_public_copy(client):
     assert _ADMIN_ONLY not in _note(r.text)
 
 
+# ── 3회차: stop 톤이면 본문 첫 문장이 판정이다 (PANEL-56 교차검수 처방) ─────────
+
+def test_stop_fixtures_actually_hit_stop_tone(client):
+    """공허 통과 방지: 두 픽스처가 실제로 stop 톤 · 시세 없는 분기를 탄다."""
+    for vid, state in (("nomed_flood", "blocked"), ("nomed_nostart", "lowconf")):
+        st = _bidst(vid)
+        assert st["tone"] == "stop" and st["state"] == state, f"{vid}: {st['state']}/{st['tone']}"
+        assert " — " in st["label"]
+        html = client.get(f"/vehicle/{vid}/report", headers=_PUB).text
+        assert _ANCHOR in html and '<span class="sec-no">' not in html
+
+
+@pytest.mark.parametrize("vid", ["nomed_flood", "nomed_nostart"])
+@pytest.mark.parametrize("hdr", [_PUB, _TUNNEL], ids=["public", "admin"])
+def test_stop_tone_copy_leads_with_the_verdict(client, vid, hdr):
+    """stop 이면 첫 문장 = `{bidst.label}입니다.`(라벨 원문 그대로, 굵게), 다음 문장은 '종합 리포트**도**'.
+    그릇에 `is-stop` — 왼쪽 레일이 로즈가 되는 훅(규칙은 템플릿 <style>, 인라인 빨강은 없다)."""
+    html = client.get(f"/vehicle/{vid}/report", headers=hdr).text
+    note = _note(html)
+    label = _bidst(vid)["label"]
+    lead = f'{_BOX_OPEN_STOP}<b style="color:var(--ink)">{label}입니다.</b> 시세가 '
+    assert note.startswith(lead), f"첫 문장이 판정이 아니다: {note[:160]}"
+    rest = note[len(lead):]
+    if hdr is _TUNNEL:
+        assert rest.startswith("아직 산정되지 않아 종합 리포트도 만들 수 없습니다. ")
+        assert "[" + _ADMIN_ONLY + "]" in rest and _PUBLIC_TAIL not in rest
+    else:
+        assert rest.startswith("산정되지 않아 종합 리포트도 만들 수 없습니다. ")
+        assert _NOWRAP_PAIR in rest and _PUBLIC_TAIL in rest and _ADMIN_ONLY not in rest
+    # 판정 문장은 하나뿐, 라벨은 접지 않는다(judge_label 의 nowrap span 이 본문에 오지 않는다)
+    assert note.count("입니다.</b>") == 1
+    assert "whitespace-nowrap" not in note
+    for banned in ("var(--red)", "var(--amber)", 'class="note"'):
+        assert banned not in note, f"{banned} 가 본문에 인라인으로 들어왔다"
+    # 마스트헤드 알약에는 여전히 의미색이 없다(처방: 빨강은 본문 레일에만)
+    mh = html[html.index("<!-- 마스트헤드 -->"):html.index("</header>")]
+    assert 'class="masthead is-stop"' in mh
+    badges = mh[mh.index('<div class="badges">'):mh.index('<div class="mh-eyebrow">')]
+    assert '<div class="badge judge">' in badges, "판정 알약이 없다 — 픽스처가 점수 배지 쪽으로 갔다"
+    assert "var(--red)" not in badges and "style=" not in badges and "rgba(225,29,72" not in badges
+
+
+@pytest.mark.parametrize("hdr", [_PUB, _TUNNEL], ids=["public", "admin"])
+def test_wait_tone_copy_is_unchanged(client, hdr):
+    """wait 톤(nomed_1)은 3회차 전과 같은 첫 문장 — 판정 문장도, is-stop 도 붙지 않는다."""
+    note = _note(client.get("/vehicle/nomed_1/report", headers=hdr).text)
+    assert _bidst("nomed_1")["tone"] != "stop"
+    first = ('<div class="sec-empty"><b style="color:var(--ink)">시세가 아직 산정되지 않아 종합 리포트를 만들 수 없습니다.</b> '
+             if hdr is _TUNNEL else
+             '<div class="sec-empty"><b style="color:var(--ink)">시세가 산정되지 않아 종합 리포트를 만들 수 없습니다.</b> ')
+    assert note.startswith(first), note[:160]
+    assert "입니다.</b>" not in note and "is-stop" not in note and "리포트도" not in note
+
+
+@pytest.mark.parametrize("vid", ["nomed_1", "nomed_flood"])
+@pytest.mark.parametrize("hdr", [_PUB, _TUNNEL], ids=["public", "admin"])
+def test_copy_never_says_generate(client, vid, hdr):
+    """동사 통일 — 관리자 '생성할 수 없습니다' 는 버렸다. 공개·관리자·wait·stop 전부 '만들 수 없습니다'."""
+    note = _note(client.get(f"/vehicle/{vid}/report", headers=hdr).text)
+    assert _OLD_VERB not in note and "만들 수 없습니다" in note
+
+
+@pytest.mark.parametrize("vid", ["nomed_1", "nomed_flood"])
+def test_appraisal_pair_never_leaves_an_orphan(client, vid):
+    """`감정가·최저매각가` 는 한 덩어리(nowrap) — 390 에서 `감정가·` 만 줄끝에 남았다."""
+    note = _note(client.get(f"/vehicle/{vid}/report", headers=_PUB).text)
+    assert _NOWRAP_PAIR in note
+    assert note.count("감정가") == 1, "묶이지 않은 '감정가' 가 따로 있다"
+
+
+def test_admin_detail_link_uses_the_same_back_handler(client):
+    """관리자 문구의 '물건 상세' 도 링크다 — 거기 가서 [다시 분석] 을 누르라는 사람이 관리자다. 핸들러는 공개와 같은 _reportBack."""
+    html = client.get("/vehicle/nomed_1/report", headers=_TUNNEL).text
+    note = _note(html)
+    m = re.search(r'<a href="/vehicle/nomed_1"([^>]*)>물건 상세</a>에서 <b>\[다시 분석\]</b>', note)
+    assert m, f"관리자 문구에 '물건 상세' 링크가 없다: {note}"
+    assert _BACK_HANDLER in m.group(0)
+    assert html.count(_BACK_HANDLER) == 2, "핸들러 사용처가 2(버튼+링크)가 아니다"
+
+
 # ── 템플릿 원문 검사 — 렌더 검사가 못 보는 '구조'를 본다 ──────────────────
+
+def test_stop_rail_rule_sits_beside_the_verdict_rule():
+    """`.sec-empty.is-stop{border-left-color:var(--red)}` 는 `.verdict.is-stop` 바로 옆에 — 같은 관례, 같은 자리.
+    app.css(Tailwind)가 아니라 템플릿 <style> 안이다."""
+    src = (_TPL / "report.html").read_text(encoding="utf-8")
+    v = ".verdict.is-stop{border-top-color:var(--red)}"
+    r = ".sec-empty.is-stop{border-left-color:var(--red)}"
+    assert src.count(r) == 1
+    assert 0 < src.index(r) - src.index(v) < 400, "레일 규칙이 verdict 규칙 옆에 있지 않다"
+    assert ".masthead.is-stop .badge.judge" not in src, "버린 처방(알약에 rose)이 들어왔다"
+    assert ".sec-empty.is-stop" not in (_TPL.parent / "static" / "app.css").read_text(encoding="utf-8")
+
+
+def test_stop_lead_uses_the_label_verbatim_from_the_same_source():
+    """첫 문장은 `{{ bidst.label }}입니다.` — 새 낱말·접기 없이 원문. 톤은 마스트헤드가 쓰는 `_tone0` 에서 —
+    판정을 새로 계산하지 않는다(bid_state 호출 없음)."""
+    src = (_TPL / "report.html").read_text(encoding="utf-8")
+    p_start = src.index(_BOX_OPEN_SRC)
+    block = src[p_start:src.index("</div>", src.index(_ANCHOR, p_start))]
+    assert src.count(_BOX_OPEN_SRC) == 1
+    assert "{% if _stop0 %}<b style=\"color:var(--ink)\">{{ bidst.label }}입니다.</b> " in block
+    assert "judge_label" not in block and "bid_state(" not in block
+    assert "{% set _stop0 = (_tone0 == 'stop') %}" in src
+    # _tone0 는 마스트헤드 주석과 <header> 사이에서 한 번만 정의되고, 이 그릇은 그 뒤에 온다
+    assert src.count("{% set _tone0 = ") == 1
+    assert src.index("<!-- 마스트헤드 -->") < src.index("{% set _tone0 = ") < src.index('<header class="masthead') < src.index(_BOX_OPEN_SRC)
+    assert _OLD_VERB not in block
+
+
 
 def test_report_template_gates_the_button_mention():
     """report.html 에서 `[다시 분석]` 은 `{% if is_admin(request) %}` 안에서만 나와야 한다.
     줄 번호가 아니라 앵커 문자열로 그 `<p>` 를 찾는다(CLAUDE.md 규칙 8)."""
     src = (_TPL / "report.html").read_text(encoding="utf-8")
-    i = src.index(_ANCHOR)
-    p_start = src.rindex(_BOX_OPEN, 0, i)
+    # 그릇을 먼저 찾는다 — 바로 위 주석에도 같은 문장이 있어 앵커부터 찾으면 주석에 걸린다
+    p_start = src.index(_BOX_OPEN_SRC)
+    i = src.index(_ANCHOR, p_start)
     block = src[p_start:src.index("</div>", i)]
     assert "{% if is_admin(request) %}" in block, "게이트가 없다 — 누구에게나 관리자 문구가 나간다"
-    assert block.index("{% if is_admin(request) %}") < block.index(_ADMIN_ONLY), "버튼 언급이 게이트 앞에 있다"
-    assert "{% else %}" in block and _PUBLIC_LINE in block.split("{% else %}", 1)[1]
+    g = block.index("{% if is_admin(request) %}")
+    assert g < block.index(_ADMIN_ONLY), "버튼 언급이 게이트 앞에 있다"
+    # 그 게이트의 else(= 공개 가지)는 게이트 뒤 첫 {% else %} — 공개 꼬리는 그 뒤에만, 버튼은 그 앞에만
+    e = block.index("{% else %}", g)
+    assert _PUBLIC_TAIL in block[e:] and _ADMIN_ONLY not in block[e:]
+    assert _PUBLIC_LINE in block, "wait 톤 공개 문장이 원문에 없다"
 
 
 def test_premise_detail_button_is_still_admin_only():

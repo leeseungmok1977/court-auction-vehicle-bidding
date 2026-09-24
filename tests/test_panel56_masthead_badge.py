@@ -18,6 +18,11 @@
 반증 기록(2026-09-24): 라벨 배지를 게이트 밖(원래 자리)으로 되돌리면
 `test_unpriced_masthead_never_shows_a_bare_low_badge` · `test_unpriced_masthead_says_what_detail_says` ·
 `test_closed_vehicle_masthead_reads_closed_not_low` · `test_template_gates_label_badge_with_score_badge` 가 실패한다.
+
+3회차(교차검수 처방, 지시서 2026-09-24-13): 이 분기의 알약은 `.badge` 가 원래 숫자용(mono 10.5px .06em)이라
+한글 판정문이 타자기 태그처럼 읽혔다(app-design-expert 1). 그 분기에만 `class="badge judge"` — sans 12px/600,
+자간 0, 6×12 padding, 큰글씨 14px. 색·외곽선은 `.badge` 그대로(의미색 없음 — stop 톤 경고는 본문 첫 문장이 맡는다,
+`test_panel55_report_nomarket_copy.py`). 시세 있는 물건은 이 분기를 안 타므로 `_PRICED_MASTHEAD_MD5` 는 그대로다.
 """
 import hashlib
 import pathlib
@@ -63,6 +68,9 @@ def client(tmp_path, monkeypatch):
     # 시세 없음 + 기일 미도래 — 목록에 지금 뜨는 물건(2026타경51876_1)과 같은 상태 → 'lowconf'(' — ' 있는 긴 라벨)
     db.upsert_vehicle({**_BASE, "id": "nomed_up", "folder_key": "nomed_up", "case_no": "2026타경90012",
                        "judgment": "시세 신뢰도 낮음, 판정 보류", **_NOMED})
+    # 시세 없음 + 침수 — stop 톤(운영 6건, `2025타경53062_1` 과 같은 상태). 알약에 의미색이 붙지 않아야 한다.
+    db.upsert_vehicle({**_BASE, "id": "nomed_flood", "folder_key": "nomed_flood", "case_no": "2026타경90013",
+                       "judgment": "시세 신뢰도 낮음, 수동 검토", "accident_grade": "flood", **_NOMED})
     import web.app as A
     return TestClient(A.app)
 
@@ -101,6 +109,7 @@ def test_unpriced_masthead_never_shows_a_bare_low_badge(client, vid, hdr):
     """명사 없는 `낮음` 은 절대 안 나온다. '—' 자리표시도 안 나온다."""
     badges = _badges(client.get(f"/vehicle/{vid}/report", headers=hdr).text)
     assert '<div class="badge">낮음</div>' not in badges, f"{vid}: 홀로 찍힌 '낮음'"
+    assert '<div class="badge judge">낮음</div>' not in badges, f"{vid}: 홀로 찍힌 '낮음'"
     assert ">—<" not in badges
     assert "시세 신뢰도 <b>" not in badges
 
@@ -112,7 +121,8 @@ def test_unpriced_masthead_says_what_detail_says(client, vid):
     label = _label_of(vid)
     for part in label.split(" — "):
         assert part in badges, f"{vid}: 배지에 '{part}' 가 없다 — {badges}"
-    assert badges.count('<div class="badge">') == 1, "배지는 하나(판정 라벨)만"
+    assert badges.count('<div class="badge judge">') == 1, "배지는 하나(판정 라벨)만"
+    assert '<div class="badge">' not in badges and "badge fill" not in badges
     if " — " not in label:
         assert "낮음" not in badges, f"{vid}: '낮음' 이 남아 있다"
 
@@ -120,7 +130,7 @@ def test_unpriced_masthead_says_what_detail_says(client, vid):
 def test_closed_vehicle_masthead_reads_closed_not_low(client):
     """라이브 재현 물건(낙찰·종결)의 마스트헤드가 상세와 같은 '매각 종료' 를 말한다."""
     badges = _badges(client.get("/vehicle/nomed_closed/report", headers=_PUB).text)
-    assert '<div class="badge">매각 종료</div>' in badges
+    assert '<div class="badge judge">매각 종료</div>' in badges
     assert "낮음" not in badges
 
 
@@ -133,10 +143,10 @@ def test_long_label_folds_only_after_the_dash(client):
 
 def test_no_semantic_color_on_the_badge(client):
     """'해당 없음' 은 경고가 아니다 — .badge 그대로, 빨강·앰버·초록 금지."""
-    for vid in ("nomed_closed", "nomed_up"):
+    for vid in ("nomed_closed", "nomed_up", "nomed_flood"):
         badges = _badges(client.get(f"/vehicle/{vid}/report", headers=_PUB).text)
-        assert 'class="badge"' in badges
-        for banned in ("var(--red)", "var(--amber)", "var(--green)", "style="):
+        assert 'class="badge judge"' in badges
+        for banned in ("var(--red)", "var(--amber)", "var(--green)", "style=", "rgba(225,29,72"):
             assert banned not in badges, f"{vid}: 배지에 {banned}"
 
 
@@ -164,6 +174,48 @@ def test_template_gates_label_badge_with_score_badge():
     assert "market_confidence_label" in seg, "라벨 배지가 conf 게이트 밖에 있다"
     assert mh.count("market_confidence_label") == 1, "마스트헤드에 라벨 배지가 둘 이상"
     assert "{% elif bidst %}" in seg and "ui.judge_label(bidst.label)" in seg.split("{% elif bidst %}", 1)[1]
+    assert '<div class="badge judge">' in seg.split("{% elif bidst %}", 1)[1], "판정 알약에 judge 클래스가 없다"
     assert "{% else %}" not in seg, "bidst 가 없을 때도 무언가를 그린다 — 측정하지 않은 것을 말하지 않는다"
     # 본문 02 근거 점검의 같은 표기는 그대로다({% if report %} 안이라 시세 있을 때만 렌더)
     assert src.count("{{ v.market_confidence_label or '—' }}") == 2
+
+
+# ── 3회차: 판정 알약 서체 `.badge.judge` — 시세 없는 분기에만 ──────────────────
+
+def test_judge_class_only_in_the_unpriced_branch(client):
+    """`badge judge` 는 시세 없는 물건에 정확히 하나, 시세 있는 물건에는 0 — 렌더와 원문 둘 다."""
+    assert "badge judge" not in client.get("/vehicle/priced_1/report", headers=_PUB).text
+    for vid in ("nomed_closed", "nomed_up", "nomed_flood"):
+        html = client.get(f"/vehicle/{vid}/report", headers=_PUB).text
+        assert html.count('class="badge judge"') == 1, vid
+    src = (_TPL / "report.html").read_text(encoding="utf-8")
+    assert src.count('class="badge judge"') == 1
+    mh = src[src.index(_MH_START):src.index(_MH_END, src.index(_MH_START))]
+    assert 'class="badge judge"' in mh.split("{% elif bidst %}", 1)[1].split("{% endif %}", 1)[0]
+
+
+def test_judge_badge_rules_and_base_badge_untouched():
+    """`.badge.judge` 는 sans 12/600·자간 0·6×12, 큰글씨 14px. 공용 `.badge` 규칙은 한 글자도 안 바뀐다.
+    버린 처방(`.masthead.is-stop .badge.judge` rose)은 없다. app.css 에는 아무것도 없다(템플릿 <style> 안)."""
+    src = (_TPL / "report.html").read_text(encoding="utf-8")
+    assert src.count(".badge.judge{font-family:var(--sans);font-size:12px;font-weight:600;letter-spacing:0;padding:6px 12px}") == 1
+    assert src.count("html.nc-large .badge.judge{font-size:14px}") == 1
+    assert src.count(".badge{font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;padding:5px 12px;border-radius:99px;"
+                     "border:1px solid rgba(255,255,255,.3);color:rgba(255,255,255,.9)}") == 1, "공용 .badge 규칙이 바뀌었다"
+    assert src.count("html.nc-large .badge{font-size:13px}") == 1
+    assert ".masthead.is-stop .badge.judge" not in src
+    assert "--sans:" in src, "리포트 sans 스택 변수가 없다 — .badge.judge 가 빈 폰트를 가리킨다"
+    assert ".badge.judge" not in (_TPL.parent / "static" / "app.css").read_text(encoding="utf-8")
+
+
+def test_stop_tone_badge_stays_neutral_but_header_is_marked(client):
+    """stop 톤(침수)도 알약은 흰 외곽선 그대로 — 경고는 본문이 맡는다. 헤더의 is-stop 훅은 그대로 붙는다."""
+    html = client.get("/vehicle/nomed_flood/report", headers=_PUB).text
+    mh = _masthead(html)
+    assert 'class="masthead is-stop"' in mh
+    badges = _badges(html)
+    label = _label_of("nomed_flood")
+    assert label == "침수·전손 의심 — 입찰 보류"
+    for part in label.split(" — "):
+        assert part in badges
+    assert 'class="badge judge"' in badges and "style=" not in badges
