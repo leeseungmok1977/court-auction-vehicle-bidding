@@ -28,7 +28,16 @@
 ⚠ 동사 통일로 `종합 리포트를 만들 수 없습니다` 는 더는 공개 전용 조각이 아니다 — 관리자/공개를 가르는 것은 `아직`·`[다시 분석]`
 (관리자) 과 `감정가·최저매각가 … 그대로 확인하실 수 있습니다`(공개) 다.
 반증(3회차): stop 분기(`{% if _stop0 %}…`)를 지우면 `test_stop_tone_copy_leads_with_the_verdict` 가 실패한다.
+
+4회차(오너 결정 2026-09-24, 지시서 2026-09-24-14): 이용 안내 및 면책(.disc) 끝의 빨간 굵은 문장 "…권장가는 무효입니다" 는
+시세 미산정 분기에서 페이지에서 채도가 가장 높은 글자인데, 그 분기에는 권장가·예상낙찰가·상한선이 하나도 없다(교차검수 공통 지적).
+처방: 문장·어휘는 그대로, 빨간 `<b>` 여닫이만 `{% if report %}`(본문과 같은 술어)로 감싼다 — 시세 있는 쪽은 .disc 바이트 불변
+(변경 전 렌더 md5 `0aaec683…` 으로 고정). 새 판정·새 클래스 없음(app.css md5 `bcfe1da6…` 불변).
+반증(4회차, 바이트 백업 → 복원 → md5 대조): 두 `{% if report %}…{% endif %}` 를 지워 무조건 빨간 `<b>` 로 되돌리면
+`test_disc_last_sentence_is_plain_when_there_is_no_report` 6케이스 · `test_disc_differs_only_by_the_red_tag` ·
+`test_disc_gate_uses_the_body_predicate_and_writes_the_sentence_once` 가 실패한다(8 failed / 28 passed).
 """
+import hashlib
 import pathlib
 import re
 
@@ -90,6 +99,11 @@ def client(tmp_path, monkeypatch):
                        "judgment": "시세 신뢰도 낮음, 수동 검토", "runnable": "no",
                        "market_confidence": 0, "market_confidence_label": "낮음",
                        "min_sale_price": 9_000_000, "appraisal_value": 12_000_000, "median_price": None})
+    # 4회차: 시세 있는 물건 — 면책의 빨간 문장이 **그대로** 남아야 하는 쪽(변경 전 .disc md5 로 고정).
+    # test_panel56_masthead_badge.py 의 priced_1 과 같은 정의.
+    db.upsert_vehicle({**_BASE, "id": "priced_1", "folder_key": "priced_1", "case_no": "2026타경90001",
+                       "judgment": "유찰 대기", "min_sale_price": 10_000_000, "appraisal_value": 12_000_000,
+                       "median_price": 13_000_000})
     import web.app as A
     return TestClient(A.app)
 
@@ -315,3 +329,77 @@ def test_premise_detail_button_is_still_admin_only():
     assert gate in src, "detail.html 의 [다시 분석] 게이트가 바뀌었다 — report.html 의 갈라 쓴 문구를 재검토하라"
     after = src[src.index(gate):]
     assert re.search(r"다시 분석</button>", after[:1200]), "게이트 바로 아래에 [다시 분석] 버튼이 없다"
+
+
+# ── 4회차: 면책 끝 문장의 빨간 굵기는 리포트 본문이 있을 때만 (오너 결정 2026-09-24, 지시서 2026-09-24-14) ──
+# 이용 안내 및 면책(.disc) 의 마지막 문장 "…권장가는 무효입니다" 는 페이지에서 채도가 가장 높은 글자였다.
+# 시세 미산정 분기에는 권장가·예상낙찰가·상한선이 하나도 없다 — 없는 것을 무효로 선언했다(교차검수 공통 지적).
+# 처방: 문장·어휘는 그대로, 빨간 <b> 만 `{% if report %}`(본문과 같은 술어)로 감싼다. 시세 있는 쪽은 바이트 불변.
+_DISC_OPEN = '<div class="disc">'
+_DISC_LAST = "입찰 중단 기준에 해당하는 사실을 미리 발견하면 권장가는 무효입니다."
+_RED_B = '<b style="color:var(--red)">'
+# 변경 **전**(HEAD 3170098, report.html md5 84302824…) 렌더의 .disc 블록 md5 — priced_1, 공개·관리자 동일(367자).
+# 시세 있는 물건의 면책은 한 바이트도 바뀌면 안 된다.
+_PRICED_DISC_MD5 = "0aaec683ae6614f938f8c14f13627e2b"
+
+
+def _disc(html: str) -> str:
+    """`.disc` 블록만 잘라 낸다(여는 태그부터 닫는 </div> 까지 — 안에 다른 div 는 없다)."""
+    i = html.index(_DISC_OPEN)
+    return html[i:html.index("</div>", i) + len("</div>")]
+
+
+def test_priced_fixture_actually_renders_the_body(client):
+    """공허 통과 방지: priced_1 은 본문 01~12 가 있고(`{% if report %}` 참), 시세 없는 안내는 없다."""
+    html = client.get("/vehicle/priced_1/report", headers=_PUB).text
+    assert '<span class="sec-no">' in html and _ANCHOR not in html
+
+
+@pytest.mark.parametrize("vid", ["nomed_1", "nomed_flood", "nomed_nostart"])
+@pytest.mark.parametrize("hdr", [_PUB, _TUNNEL], ids=["public", "admin"])
+def test_disc_last_sentence_is_plain_when_there_is_no_report(client, vid, hdr):
+    """(a) 시세 없는 물건(공개·관리자): 문장은 **있되** 빨간 굵은 태그 안에 있지 않다 — 면책 본문과 같은 일반 글자."""
+    html = client.get(f"/vehicle/{vid}/report", headers=hdr).text
+    assert '<span class="sec-no">' not in html, "본문이 렌더됐다 — 시세 미산정 분기가 아니다"
+    disc = _disc(html)
+    assert disc.count(_DISC_LAST) == 1, f"면책 끝 문장이 없거나 둘이다: {disc}"
+    assert _RED_B not in disc and "var(--red)" not in disc, f"시세 없는 분기에 빨간 강조가 남았다: {disc}"
+    # 문장은 앞 문장 뒤에 태그 없이 이어지고, 그릇의 마지막 글자다
+    assert re.search(r"대체하지 않습니다\. " + re.escape(_DISC_LAST) + r"\s*</div>$", disc), disc[-200:]
+    # 굵은 태그는 제목 하나뿐(`<b>이용 안내 및 면책</b><br>`)
+    assert len(re.findall(r"<b[\s>]", disc)) == 1 and disc.index("<b>이용 안내 및 면책</b><br>") > 0  # <br> 은 세지 않는다
+
+
+@pytest.mark.parametrize("hdr", [_PUB, _TUNNEL], ids=["public", "admin"])
+def test_disc_unchanged_byte_for_byte_when_priced(client, hdr):
+    """(b) 시세 있는 픽스처: 변경 전과 .disc 블록 md5 가 같다 — 빨간 굵은 태그 안에 그 문장이 그대로."""
+    disc = _disc(client.get("/vehicle/priced_1/report", headers=hdr).text)
+    assert (_RED_B + _DISC_LAST + "</b>") in disc, disc[-200:]
+    assert hashlib.md5(disc.encode("utf-8")).hexdigest() == _PRICED_DISC_MD5, \
+        f"시세 있는 물건의 면책이 바뀌었다(len {len(disc)}): {disc}"
+
+
+def test_disc_differs_only_by_the_red_tag(client):
+    """두 분기의 .disc 는 **빨간 태그 유무만** 다르다 — 문장 텍스트는 바이트 동일, 다른 어휘 변화 없음."""
+    priced = _disc(client.get("/vehicle/priced_1/report", headers=_PUB).text)
+    for vid in ("nomed_1", "nomed_flood"):
+        for hdr in (_PUB, _TUNNEL):
+            unpriced = _disc(client.get(f"/vehicle/{vid}/report", headers=hdr).text)
+            assert unpriced == priced.replace(_RED_B + _DISC_LAST + "</b>", _DISC_LAST), \
+                f"{vid}: 태그 말고 다른 것이 갈렸다"
+
+
+def test_disc_gate_uses_the_body_predicate_and_writes_the_sentence_once():
+    """원문 검사: 게이트는 본문과 같은 `{% if report %}` 하나(새 판정 없음), 문장은 한 번만 적혀 있고 태그만 감싼다."""
+    src = (_TPL / "report.html").read_text(encoding="utf-8")
+    d0 = src.index(_DISC_OPEN)
+    block = src[d0:src.index("</div>", d0)]
+    assert src.count(_DISC_LAST) == 1, "문장이 두 번 적혔다 — 두 분기가 따로 놀 수 있다"
+    assert ("{% if report %}" + _RED_B + "{% endif %}" + _DISC_LAST + "{% if report %}</b>{% endif %}") in block
+    # 이 블록의 if 는 셋뿐 — 본문 게이트와 같은 술어 둘 + 기존 MAE 게이트 하나
+    assert re.findall(r"{% if [^%]*%}", block) == ["{% if expected and expected.acc %}", "{% if report %}", "{% if report %}"]
+    for banned in ("is_admin", "bid_state(", "_stop0", "_tone0", "median"):
+        assert banned not in block, f"면책 게이트에 다른 판정이 들어왔다: {banned}"
+    # 본문 자체가 같은 술어로 갈린다(그 else 가지에 시세 없는 안내 그릇이 있다)
+    body_if = src.rindex("{% if report %}", 0, src.index(_BOX_OPEN_SRC))
+    assert "{% else %}" in src[body_if:src.index(_BOX_OPEN_SRC)]

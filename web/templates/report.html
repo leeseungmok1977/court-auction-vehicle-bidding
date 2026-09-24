@@ -1513,9 +1513,13 @@ document.addEventListener('click', function(e){
   <section class="section"><div class="sec-empty{{ ' is-stop' if _stop0 }}">{% if _stop0 %}<b style="color:var(--ink)">{{ bidst.label }}입니다.</b> 시세가 {{ '아직 ' if is_admin(request) }}산정되지 않아 종합 리포트도 만들 수 없습니다.{% elif is_admin(request) %}<b style="color:var(--ink)">시세가 아직 산정되지 않아 종합 리포트를 만들 수 없습니다.</b>{% else %}<b style="color:var(--ink)">시세가 산정되지 않아 종합 리포트를 만들 수 없습니다.</b>{% endif %} {% if is_admin(request) %}<a href="/vehicle/{{ v.id }}" onclick="return _reportBack(event)" style="color:var(--ink);text-decoration:underline">물건 상세</a>에서 <b>[다시 분석]</b> 후 다시 시도하세요.{% else %}<span style="white-space:nowrap">감정가·최저매각가</span> 등 법원 자료는 <a href="/vehicle/{{ v.id }}" onclick="return _reportBack(event)" style="color:var(--ink);text-decoration:underline">물건 상세</a>에서 그대로 확인하실 수 있습니다.{% endif %}</div></section>
   {% endif %}
 
+  {# PANEL-56 4회차(오너 결정 2026-09-24): 면책 끝 문장의 빨간 굵기는 리포트 본문이 있을 때만 — 시세 미산정
+     분기에는 권장가·예상낙찰가·상한선이 하나도 없는데 페이지에서 채도가 가장 높은 글자가 없는 것을 무효로
+     선언했다(교차검수 공통 지적). 술어는 본문과 같은 `report` 하나 — 새 판정 없음. 문장은 한 번만 적고
+     태그만 감싼다(두 분기 바이트 동일). 어휘는 한 글자도 바꾸지 않았다. #}
   <div class="disc">
     <b>이용 안내 및 면책</b><br>
-    본 리포트는 대법원 법원경매정보·감정평가서·보험이력과 소매 시세 참고 정보를 기반으로 발행 시점에 자동 생성된 참고자료입니다. 시세·낙찰 경쟁·차량 상태는 매각기일까지 변동될 수 있으며, 최종 입찰 판단과 결과의 책임은 입찰자 본인에게 있습니다. 예상낙찰가는 실측 통계 기반 중심 추정치로 오차{% if expected and expected.acc %}(±{{ expected.acc.mae }}%){% endif %}가 있고 단일 경매를 정밀 예측하지 않습니다. 본 리포트는 투자 권유가 아니며, 차량 실물 확인·등기/공부 열람을 대체하지 않습니다. <b style="color:var(--red)">입찰 중단 기준에 해당하는 사실을 미리 발견하면 권장가는 무효입니다.</b>
+    본 리포트는 대법원 법원경매정보·감정평가서·보험이력과 소매 시세 참고 정보를 기반으로 발행 시점에 자동 생성된 참고자료입니다. 시세·낙찰 경쟁·차량 상태는 매각기일까지 변동될 수 있으며, 최종 입찰 판단과 결과의 책임은 입찰자 본인에게 있습니다. 예상낙찰가는 실측 통계 기반 중심 추정치로 오차{% if expected and expected.acc %}(±{{ expected.acc.mae }}%){% endif %}가 있고 단일 경매를 정밀 예측하지 않습니다. 본 리포트는 투자 권유가 아니며, 차량 실물 확인·등기/공부 열람을 대체하지 않습니다. {% if report %}<b style="color:var(--red)">{% endif %}입찰 중단 기준에 해당하는 사실을 미리 발견하면 권장가는 무효입니다.{% if report %}</b>{% endif %}
   </div>
   <footer class="foot">
     <span>차량경매 분석 리포트 · {{ v.case_no }}</span>
