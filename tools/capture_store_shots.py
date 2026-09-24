@@ -13,10 +13,19 @@
     python tools/capture_store_shots.py --audit       # 찍지 않고 제출 8장을 대조
     python tools/capture_store_shots.py --scan        # 찍지 않고 대상 후보만 조사해 캐시에 남긴다
     python tools/capture_store_shots.py --hero /vehicle/2026타경0000_1 --detail --slide5
-                                                      # 대상 물건을 직접 지정한다(탐색 생략)
+                                                      # 네 장(4·5·6·7번)에 **같은** 물건을 지정한다(탐색 생략)
+    python tools/capture_store_shots.py --all --hero-detail /vehicle/A --hero-report /vehicle/B
+                                                      # 4·5번(상세)과 6·7번(리포트)을 **다른** 물건으로
+    python tools/capture_store_shots.py --all --pick   # SUBMIT_TARGETS 를 무시하고 탐색으로 고른다(폴백 경로)
       ⚠ Git Bash 에서는 `/vehicle/…` 이 `C:/Program Files/Git/vehicle/…` 로 바뀐다(MSYS 경로
         변환). `MSYS_NO_PATHCONV=1` 을 앞에 붙이거나 PowerShell 에서 실행한다 — `set_hero()` 의
         꼴 검사가 이걸 실제로 잡았다(2026-09-24).
+
+⚠ 2026-09-24 4차: 오너가 4·5번과 6·7번을 **다른 물건**으로 확정했는데(G90 / SM6) `--hero` 하나로는
+둘을 못 갈랐다 — `--all` 이 네 장을 한 물건으로 찍는다. 이제 `SUBMIT_TARGETS` 가 역할별 대상을
+들고 있고 `--hero-detail`/`--hero-report` 가 그걸 덮어쓴다. 대상이 비어 있거나 `--pick` 이면
+예전 경로(`pick_hero_vehicle()` 탐색 + `hero_scan.json` 캐시)로 간다. `tools/store_final.py`
+가 이 인자로 `--all` 을 부른다.
 
 ⚠ 2026-09-24 3차: `pick_hero_vehicle()` 의 조사 결과가 **프로세스 안에만** 있었다. 도구를
 세 번 부르는 동안 같은 후보 10건을 세 번 다시 열었다 — 외부 이동 101회 중 66회(65%).
@@ -355,7 +364,24 @@ def shoot_accuracy(pg) -> int:
 HERO_LISTS = ("/vehicles?bucket=review&sort=expected", "/vehicles?sort=sale_date")
 HERO_SCAN_MAX = 10          # C.4: 탐색도 요청이다. 상한을 반드시 건다.
 
-_HERO: dict | None = None   # 한 번 고르면 네 장이 같이 쓴다(같은 차를 다시 찾지 않는다)
+# ★ 제출 대상 물건 — **오너 결정(2026-09-24, docs/STORE_LISTING.md "현재 대상 물건")**.
+#   4·5번(상세)은 사진이 깨끗한 물건(상세는 사진이 크게 나와 첫인상 손해가 크다),
+#   6·7번(리포트)은 사고 있고 주행 과다인 물건(캡션이 이름으로 세는 '사고·주행' 축이 왜 있는지
+#   보여야 한다). 그래서 두 역할이 **다른 물건**이고, `--hero` 하나로는 둘을 못 가른다.
+#   · 값을 None 으로 비우면(기일이 지났을 때) 그 역할은 `pick_hero_vehicle()` 탐색 폴백으로 간다.
+#   · `--hero-detail`/`--hero-report` 가 이 표를 덮어쓰고, `--pick` 은 표를 무시하고 탐색한다.
+#   · 지정된 물건이 캡션을 떠받치는지는 **촬영 함수가 각자 검사한다**(set_hero 독스트링).
+SUBMIT_TARGETS: dict[str, str | None] = {
+    "detail": "/vehicle/2025타경34553_1",     # 4·5번 — 현대 G90 (광주지법, 유찰 2회, 번호판 브래킷 빔)
+    "report": "/vehicle/2026타경3364_1",      # 6·7번 — SM6 (사고·주행 과다, 6/6축 산출)
+}
+ROLES = ("detail", "report")
+
+# 역할별로 정해진 대상. CLI 지정 > SUBMIT_TARGETS > 탐색 폴백(`_SCANNED`, 두 역할이 같이 쓴다).
+_HEROES: dict[str, dict | None] = {r: None for r in ROLES}
+_SCANNED: dict | None = None    # 탐색 폴백이 고른 물건 — 한 번 고르면 다시 찾지 않는다
+_SCAN_TRIED = False             # 탐색이 '없음'으로 끝난 것도 기억한다(역할마다 다시 돌지 않게)
+_PICK_ONLY = False              # --pick: SUBMIT_TARGETS 를 무시하고 탐색으로 고른다
 
 # ★ 조사 결과를 **디스크에** 남긴다. 2026-09-24 2차 실측: 캐시가 프로세스 안에만 있어서
 #   도구를 세 번 부르는 동안 같은 후보 10건을 **세 번 다시 열었다** — 외부 이동 101회 중
@@ -470,8 +496,8 @@ def hero_ok(d: dict, r: dict | None) -> list[str]:
     return why
 
 
-def set_hero(href: str) -> dict:
-    """`--hero <href>` — 탐색 없이 대상을 지정한다.
+def set_hero(role: str, href: str, picked: str = "manual") -> dict:
+    """`--hero`·`--hero-detail`·`--hero-report`·`SUBMIT_TARGETS` — 탐색 없이 역할별 대상을 지정한다.
 
     지정된 물건이 캡션을 떠받치는지는 **각 촬영 함수가 스스로 검사한다**(`shoot_detail` 이
     감정가·유찰횟수·당시 출시가를, `shoot_slide5` 가 상한선 값 블록을, `shoot_hexa` 가
@@ -479,13 +505,26 @@ def set_hero(href: str) -> dict:
     — 2026-09-24 오너 결정으로 4·5번(상세)과 6·7번(리포트)을 다른 물건으로 찍을 수 있게 됐다
     (6·7번은 사고 있고 주행 과다인 차라야 그 두 축이 왜 있는지 보인다는 근거).
     """
-    global _HERO
+    if role not in ROLES:
+        raise SystemExit(f"역할은 {ROLES} 중 하나여야 한다: {role!r}")
     if not href.startswith("/vehicle/") or href.count("/") != 2:
-        raise SystemExit(f"--hero 는 '/vehicle/<id>' 꼴이어야 한다: {href!r}")
-    _HERO = {"href": href, "title": "(--hero 로 지정)", "sale": "", "case_no": "",
-             "axes": None, "picked": "manual"}
-    print(f"→ 대상 지정: {href} (탐색 생략 — 캡션 조건은 촬영 함수가 각자 검사한다)")
-    return _HERO
+        raise SystemExit(f"대상은 '/vehicle/<id>' 꼴이어야 한다({role}): {href!r}")
+    _HEROES[role] = {"href": href, "title": f"({picked} 로 지정)", "sale": "", "case_no": "",
+                     "axes": None, "picked": picked, "role": role}
+    print(f"→ [{role}] 대상 지정: {href} ({picked} — 탐색 생략, 캡션 조건은 촬영 함수가 각자 검사한다)")
+    return _HEROES[role]
+
+
+def resolve_target(role: str) -> dict | None:
+    """외부 요청 없이 정해지는 대상 — CLI 지정 > `SUBMIT_TARGETS`. 둘 다 없으면 None(탐색 폴백).
+
+    `--pick` 이면 `SUBMIT_TARGETS` 를 보지 않는다(CLI 로 직접 준 것은 그래도 쓴다).
+    """
+    if _HEROES.get(role):
+        return _HEROES[role]
+    if not _PICK_ONLY and SUBMIT_TARGETS.get(role):
+        return set_hero(role, SUBMIT_TARGETS[role], picked="SUBMIT_TARGETS")
+    return None
 
 
 def candidate_hrefs(pg, cache: dict) -> list[str]:
@@ -534,18 +573,33 @@ def survey_one(pg, h: str, cache: dict) -> dict:
     return rec
 
 
-def pick_hero_vehicle(pg) -> dict | None:
-    """네 캡션을 **전부** 떠받치는 물건을 고른다. 한 번 고르면 캐시한다(메모리 + 디스크).
+def pick_hero_vehicle(pg, role: str = "report") -> dict | None:
+    """역할(`detail`=4·5번, `report`=6·7번)의 대상을 돌려준다.
+
+    지정된 대상(`resolve_target`)이 있으면 **요청 없이** 그걸 쓴다. 없을 때만 `_scan_pick()`
+    으로 탐색한다 — 탐색은 한 번만 하고 두 역할이 같은 결과를 나눠 쓴다(같은 차를 다시 찾지
+    않는다). 탐색이 '없음'으로 끝난 것도 기억해 역할마다 다시 돌지 않는다.
+    """
+    global _SCANNED, _SCAN_TRIED
+    hero = resolve_target(role)
+    if hero:
+        return hero
+    if not _SCAN_TRIED:
+        _SCANNED = _scan_pick(pg)
+        _SCAN_TRIED = True
+    if _SCANNED:
+        _HEROES[role] = _SCANNED
+    return _SCANNED
+
+
+def _scan_pick(pg) -> dict | None:
+    """네 캡션을 **전부** 떠받치는 물건을 탐색으로 고른다(디스크 캐시 `hero_scan.json` 사용).
 
     동점 처리: 합격한 후보 중 **매각기일이 가장 먼 물건**을 쓴다. 스토어 스크린샷은 영구
     공개물인데 기일은 지나가므로, 같은 조건이면 수명이 긴 쪽이 낫다.
     ⚠ 이건 **이번 회차의 동점 처리**이지 '영구 공개물 vs 지나가는 기일' 구조 문제의
     해법이 아니다 — 어느 물건을 찍어도 기일은 결국 지나간다. 결정은 오너 몫이다.
     """
-    global _HERO
-    if _HERO:
-        return _HERO
-
     cache = load_hero_cache()
     hrefs = candidate_hrefs(pg, cache)
     print(f"\n[대상 선정] 후보 {len(hrefs)}개 중 최대 {HERO_SCAN_MAX}개를 본다"
@@ -565,11 +619,12 @@ def pick_hero_vehicle(pg) -> dict | None:
     if not passed:
         print("★ 네 캡션을 전부 떠받치는 물건이 없다 — 촬영하지 않는다")
         return None
-    _HERO = max(passed, key=lambda x: x["sale"] or "")
-    print(f"→ 대상 확정: {_HERO['href']} · {_HERO['title']}"
-          f" · 사건 {_HERO['case_no']} · 매각기일 {_HERO['sale']}"
+    hero = max(passed, key=lambda x: x["sale"] or "")
+    hero["picked"] = "scan"
+    print(f"→ 대상 확정: {hero['href']} · {hero['title']}"
+          f" · 사건 {hero['case_no']} · 매각기일 {hero['sale']}"
           f" (합격 {len(passed)}개 중 기일이 가장 먼 물건)")
-    return _HERO
+    return hero
 
 
 def scan(pg) -> int:
@@ -579,9 +634,9 @@ def scan(pg) -> int:
     되므로, 네 캡션 전부 합격한 목록과 별개로 '상세 합격' 목록을 낸다. 사진 판단은 사람이
     `hero_scan/<물건>.png` 를 열어 한다 — 도구는 사진의 미관을 판정하지 않는다.
     """
-    global _HERO
-    _HERO = None
-    pick_hero_vehicle(pg)
+    global _SCANNED, _SCAN_TRIED
+    _SCANNED, _SCAN_TRIED = None, False
+    _scan_pick(pg)                  # SUBMIT_TARGETS 와 무관하게 후보를 조사한다
     cache = load_hero_cache()
     hrefs = (cache.get("hrefs") or {}).get("items") or []
     print("\n=== 후보 조사 결과(캐시) ===")
@@ -603,8 +658,8 @@ def scan(pg) -> int:
 
 
 def shoot_detail(pg) -> int:
-    """4번 `07_detail.png` — 캡션 '감정가·유찰이력·당시 출시가까지 한 화면에'."""
-    hero = pick_hero_vehicle(pg)
+    """4번 `07_detail.png` — 캡션 '감정가·유찰이력·당시 출시가까지 한 화면에'. 대상 역할 `detail`."""
+    hero = pick_hero_vehicle(pg, "detail")
     if not hero:
         return 1
     print(f"\n[4] 07_detail.png — {hero['href']}")
@@ -623,9 +678,9 @@ def shoot_slide5(pg) -> int:
     """5번 `08_detail_lower.png` — 캡션 '입찰 상한선까지 계산해 드립니다'.
 
     `판정` 라벨도 함께 요구한다. `bb28dd8`·`ff87396` 이 칩의 색·글자를 한 원천으로 묶었는데,
-    그 칩이 프레임 밖이면 이 장은 바뀐 것을 하나도 보여주지 못한다.
+    그 칩이 프레임 밖이면 이 장은 바뀐 것을 하나도 보여주지 못한다. 대상 역할 `detail`(4번과 같은 물건).
     """
-    hero = pick_hero_vehicle(pg)
+    hero = pick_hero_vehicle(pg, "detail")
     if not hero:
         return 1
     print(f"\n[5] 08_detail_lower.png — {hero['href']}")
@@ -650,9 +705,9 @@ def shoot_report(pg) -> int:
 
     `입찰 상한선` 과 **유형별** `실측 오차` 를 **둘 다** 한 프레임에 요구한다.
     9/22 판은 여기에 `실측 평균오차`(전체평균) 가 박혀 있었다 — `no_forbidden()` 의
-    RETIRED 검사가 그 표기를 만나면 저장 자체를 막는다.
+    RETIRED 검사가 그 표기를 만나면 저장 자체를 막는다. 대상 역할 `report`.
     """
-    hero = pick_hero_vehicle(pg)
+    hero = pick_hero_vehicle(pg, "report")
     if not hero:
         return 1
     print(f"\n[6] 09_report.png — {hero['href']}/report")
@@ -713,8 +768,9 @@ def shoot_hexa(pg) -> int:
 
     캡션이 **여섯 축을 이름으로 센다.** 그러니 그림도 여섯을 다 그려야 한다 —
     육각형 도형이 프레임 안에 통째로 들어오고, 축 이름 6개가 다 있고, '미산출'이 없어야 한다.
+    대상 역할 `report`(6번과 같은 물건).
     """
-    hero = pick_hero_vehicle(pg)
+    hero = pick_hero_vehicle(pg, "report")
     if not hero:
         return 1
     print(f"\n[7] 10_report_lower.png — {hero['href']}/report")
@@ -918,14 +974,28 @@ def main(argv=None) -> int:
     ap.add_argument("--scan", action="store_true",
                     help="촬영하지 않고 대상 후보만 조사해 캐시(hero_scan.json)에 남긴다")
     ap.add_argument("--hero", metavar="HREF", default=None,
-                    help="대상 물건을 직접 지정한다(예: /vehicle/2026타경3364_1). 탐색을 건너뛴다")
+                    help="4·5·6·7번 **네 장에 같은** 물건을 지정한다(예: /vehicle/2026타경3364_1). 탐색을 건너뛴다")
+    ap.add_argument("--hero-detail", metavar="HREF", default=None,
+                    help=f"4·5번(상세) 대상. 기본 SUBMIT_TARGETS['detail']={SUBMIT_TARGETS['detail']}")
+    ap.add_argument("--hero-report", metavar="HREF", default=None,
+                    help=f"6·7번(리포트) 대상. 기본 SUBMIT_TARGETS['report']={SUBMIT_TARGETS['report']}")
+    ap.add_argument("--pick", action="store_true",
+                    help="SUBMIT_TARGETS 를 무시하고 탐색(pick_hero_vehicle)으로 고른다 — 대상 미지정 폴백 경로")
     a = ap.parse_args(argv)
 
     if a.audit:
         return audit()
 
+    global _PICK_ONLY
+    if a.pick:
+        _PICK_ONLY = True
     if a.hero:
-        set_hero(a.hero)
+        for role in ROLES:
+            set_hero(role, a.hero)
+    if a.hero_detail:
+        set_hero("detail", a.hero_detail)
+    if a.hero_report:
+        set_hero("report", a.hero_report)
 
     todo = [(n, f) for n, f in SHOTS if a.all or getattr(a, n)]
     if not todo and not a.scan:

@@ -22,11 +22,11 @@ TEXT = SRC.read_text(encoding="utf-8")
 
 def _flags_in_docstring() -> set[str]:
     doc = ast.get_docstring(TREE) or ""
-    return set(re.findall(r"(--[a-z0-9]+)", doc))
+    return set(re.findall(r"(--[a-z0-9][a-z0-9-]*)", doc))
 
 
 def _flags_in_argparse() -> set[str]:
-    return set(re.findall(r'add_argument\(\s*"(--[a-z0-9]+)"', TEXT))
+    return set(re.findall(r'add_argument\(\s*"(--[a-z0-9][a-z0-9-]*)"', TEXT))
 
 
 def _func(name: str) -> ast.FunctionDef:
@@ -246,11 +246,19 @@ def test_값_블록을_본문_산문으로_대신_통과시키지_않는다():
 # ──────────────────────────────────────────────────────────────────────────
 
 def test_대상_물건을_직접_지정하는_인자가_있고_main_이_그걸_쓴다():
-    """`--hero <href>` 가 없으면 재촬영마다 탐색 22회가 따라붙는다."""
-    assert "--hero" in _flags_in_argparse(), "--hero 인자가 없다"
+    """`--hero <href>` 가 없으면 재촬영마다 탐색 22회가 따라붙는다.
+
+    2026-09-24 4차: 오너가 4·5번과 6·7번을 **다른 물건**으로 확정해 `--hero` 하나로는 못 가른다 —
+    `--hero-detail`/`--hero-report` 가 역할별로 들어가고, `--hero` 는 네 장에 같은 물건을 준다.
+    """
+    flags = _flags_in_argparse()
+    for f in ("--hero", "--hero-detail", "--hero-report", "--pick"):
+        assert f in flags, f"{f} 인자가 없다"
     _func("set_hero")
     src = ast.get_source_segment(TEXT, _func("main")) or ""
-    assert re.search(r"set_hero\(\s*a\.hero\s*\)", src), "main() 이 --hero 값을 set_hero() 에 넘기지 않는다"
+    assert re.search(r"set_hero\(\s*role\s*,\s*a\.hero\s*\)", src), "main() 이 --hero 값을 두 역할에 넘기지 않는다"
+    assert re.search(r'set_hero\(\s*"detail"\s*,\s*a\.hero_detail\s*\)', src), "main() 이 --hero-detail 을 넘기지 않는다"
+    assert re.search(r'set_hero\(\s*"report"\s*,\s*a\.hero_report\s*\)', src), "main() 이 --hero-report 를 넘기지 않는다"
     # 지정 값은 '/vehicle/<id>' 꼴이어야 한다 — 아무 경로나 받으면 엉뚱한 페이지를 찍는다.
     s = ast.get_source_segment(TEXT, _func("set_hero")) or ""
     assert '"/vehicle/"' in s, "set_hero() 가 href 꼴을 검사하지 않는다"
@@ -324,3 +332,21 @@ def test_scan_인자가_상세_조건만_충족하는_후보를_따로_센다():
     src = ast.get_source_segment(TEXT, _func("scan")) or ""
     assert "hero_ok(d, None)" in src, "scan() 이 상세 조건만으로 합격을 따로 세지 않는다"
     assert "detail_only" in src
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# 2026-09-24 4차 — 역할별 제출 대상(SUBMIT_TARGETS). `tools/store_final.py` 가 이 인자로 --all 을 부른다.
+# 더 깊은 검사(두 물건이 G90/SM6 인지, 촬영 함수가 역할을 쓰는지)는 tests/test_store_final.py (e) 에 있다.
+# ──────────────────────────────────────────────────────────────────────────
+
+def test_제출_대상은_역할별_상수이고_비면_탐색_폴백으로_간다():
+    """대상 미지정(값 None 또는 --pick)일 때만 `pick_hero_vehicle()` 의 탐색·캐시 경로를 탄다."""
+    m = re.search(r"SUBMIT_TARGETS[^=]*=\s*\{(.*?)\n\}", TEXT, re.S)
+    assert m, "SUBMIT_TARGETS 가 없다"
+    assert '"detail"' in m.group(1) and '"report"' in m.group(1), "두 역할(detail/report)이 다 있어야 한다"
+    src = ast.get_source_segment(TEXT, _func("resolve_target")) or ""
+    assert "SUBMIT_TARGETS.get(role)" in src, "resolve_target() 이 SUBMIT_TARGETS 를 보지 않는다"
+    assert "return None" in src, "대상이 비었을 때 None(탐색 폴백)을 돌려주지 않는다"
+    pk = ast.get_source_segment(TEXT, _func("pick_hero_vehicle")) or ""
+    assert "_scan_pick(pg)" in pk, "pick_hero_vehicle() 에 탐색 폴백이 없다"
+    _func("_scan_pick")
