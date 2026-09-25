@@ -40,7 +40,7 @@
 | **제품기획** | `pm-orchestrator` | 티켓 분해·배분·검수, 부서 간 조정 |
 | **개발부** | `backend-engineer` `frontend-engineer` `qa-engineer` | 구현과 테스트 게이트 |
 | **데이터신뢰부** | `insight` `auction-expert` `usedcar-expert` `app-qa-auditor` `photo-classifier` | 숫자를 세고, 그 숫자가 진실인지 검증 |
-| **성장부** | `growth` `voice` | 유입·이탈·리텐션 / 고객의 소리 |
+| **성장부** | `growth` `voice` `bidder-insight` | 유입·이탈·리텐션 / 고객의 소리 / 경매 참여자(잠재 고객) 조사 |
 | **운영준법부** | `compliance-officer` `monetization-engineer` | 법적 리스크, 수익 모델 |
 | **디자인(겸임)** | `app-design-expert` `design-critic` | 화면 검수 — 제품기획 직할 |
 
