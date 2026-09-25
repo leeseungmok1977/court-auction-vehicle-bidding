@@ -77,6 +77,11 @@ python tools/agent_dashboard.py --host 0.0.0.0     # 같은 망에 열기 — �
 
 ### 한계 (감추지 않는다)
 
+- **매분 PowerShell 창이 깜빡였다(2026-09-25 오너 신고).** Interactive 계정으로 도는 작업은 `-WindowStyle Hidden` 이 있어도
+  콘솔이 한순간 보인다. 관리자 없이 막는 처방: 작업 동작을 `wscript.exe //B //Nologo toolsun_hidden.vbs <ps1>` 로 감쌌다
+  (wscript 는 콘솔이 없어 창이 생기지 않는다). **적용 시 함정**: 동작을 바꾸는 .ps1 을 BOM 없는 UTF-8 로 쓰면
+  PowerShell 5.1 이 ANSI 로 읽어 **한글 경로가 깨진 채 등록**된다 — 실제로 2분간 실패(`0x8007010B`)했고 UTF-8 **BOM** 으로
+  다시 써서 복구했다. S4U 로 올리면(아래) 래퍼 없이도 창이 안 뜨고 로그오프 후에도 돈다.
 - **로그온 중에만 갱신된다.** S4U 등록이 권한 부족(`Access is denied`)으로 실패해
   현재는 로그온 상태에서만 돈다. 로그오프·재부팅 후 미로그온 구간에는 화면이 낡는다.
   올리려면 **관리자 PowerShell** 에서 한 번:
