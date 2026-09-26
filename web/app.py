@@ -562,13 +562,40 @@ VEHICLES_PAGE_SIZE = 12
 USEPICK_VALUES = ("1", "now", "cheap")
 
 
-def _price_key(request: Request, price: str) -> str:
-    """가격대 파라미터 정규화(FEAT-1). service.PRICE_BANDS 화이트리스트 밖·빈값은 ""(필터 없음).
-    **중복**(?price=a&price=b)도 "" — 어느 값이 의도인지 고르지 않는다. FastAPI 는 마지막 값을 집는데,
-    그걸로 거르면 사용자가 모르는 필터가 걸린 채 '총 N건'이 찍힌다."""
-    if len(request.query_params.getlist("price")) > 1:
+def _single_key(request: Request, name: str, value: str, resolve) -> str:
+    """셀렉트형 필터 파라미터 정규화(FEAT-1·FEAT-2 공용). `resolve(value)` 가 None 이면(화이트리스트 밖·빈값) "".
+    **중복**(?name=a&name=b, 같은 값 2개 포함)도 "" — 어느 값이 의도인지 고르지 않는다. FastAPI 는 마지막 값을
+    집는데, 그걸로 거르면 사용자가 모르는 필터가 걸린 채 '총 N건'이 찍힌다."""
+    if len(request.query_params.getlist(name)) > 1:
         return ""
-    return price if service.price_band_range(price) is not None else ""
+    return value if resolve(value) is not None else ""
+
+
+def _price_key(request: Request, price: str) -> str:
+    """가격대 파라미터 정규화(FEAT-1). service.PRICE_BANDS 화이트리스트."""
+    return _single_key(request, "price", price, service.price_band_range)
+
+
+def _year_min_key(request: Request, year_min: str) -> str:
+    """연식 하한 파라미터 정규화(FEAT-2). service.YEAR_MIN_OPTIONS 화이트리스트(문자열 정확 일치 — '2018.0' 은 "")."""
+    return _single_key(request, "year_min", year_min, service.year_min_value)
+
+
+def _km_max_key(request: Request, km_max: str) -> str:
+    """주행거리 상한 파라미터 정규화(FEAT-2). service.KM_MAX_OPTIONS 화이트리스트."""
+    return _single_key(request, "km_max", km_max, service.km_max_value)
+
+
+# 파이썬 경로(segment·bucket·usepick·picks)의 축 3종 필터. `skip` 축만 빼고 적용한다 — 패싯 규칙
+# ("자기 축만 뺀 나머지 필터로 센다")을 축마다 같은 한 함수로 적용해 세 축이 서로를 반영한다.
+def _apply_axes(rows, price: str, year_min: str, km_max: str, skip: str = ""):
+    if skip != "price":
+        rows = service.filter_price_band(rows, price)
+    if skip != "year_min":
+        rows = service.filter_year_min(rows, year_min)
+    if skip != "km_max":
+        rows = service.filter_km_max(rows, km_max)
+    return rows
 
 
 @app.get("/vehicles", response_class=HTMLResponse)
@@ -576,7 +603,7 @@ def vehicles(request: Request, judgment: str = "", maker: str = "", q: str = "",
              sort: str = "recent", upcoming: str = "", result: str = "", status: str = "",
              cond: str = "", page: int = 1, date: str = "", court: str = "", promising: str = "",
              segment: str = "", all: str = "", usepick: str = "", bucket: str = "", picks: str = "",
-             price: str = ""):
+             price: str = "", year_min: str = "", km_max: str = ""):
     # upcoming은 str로 받아 빈값/오염값에 견고하게 파싱(폼 hidden 빈값·손편집 URL 대비)
     up = int(upcoming) if upcoming.strip().lstrip("-").isdigit() else 0
     if up < 0:
@@ -586,29 +613,38 @@ def vehicles(request: Request, judgment: str = "", maker: str = "", q: str = "",
     # 가격대(FEAT-1) — 축은 최저매각가. 화이트리스트 밖·빈값·중복은 ""(필터 없음, 500 금지).
     price = _price_key(request, price)
     _pb = service.price_band_range(price)                     # (lo, hi) | None
-    # segment·bucket·usepick·picks 는 SQL 밖(파이썬)에서 거른다. 그 경로에서는 구간별 건수도
-    # 파이썬으로 세야 셀렉트 라벨의 숫자가 목록 '총 N건'과 맞는다(가격만 뺀 나머지 필터 전부 적용).
-    # SQL 로만 거르는 보통 경로에서만 WHERE 조각 + 한 쿼리 COUNT(db.count_by_price_band)를 쓴다.
+    # 연식 하한·주행거리 상한(FEAT-2) — 같은 규칙. year_min·km_max 는 정규화된 key 문자열("2018"·"100000") 또는 "".
+    year_min = _year_min_key(request, year_min)
+    km_max = _km_max_key(request, km_max)
+    _ym = service.year_min_value(year_min)                     # int | None
+    _km = service.km_max_value(km_max)                         # int | None
+    # segment·bucket·usepick·picks 는 SQL 밖(파이썬)에서 거른다. 그 경로에서는 축별 건수도
+    # 파이썬으로 세야 셀렉트 라벨의 숫자가 목록 '총 N건'과 맞는다(자기 축만 뺀 나머지 필터 전부 적용).
+    # SQL 로만 거르는 보통 경로에서만 WHERE 조각 + 축마다 한 쿼리 COUNT(db.count_by_price_band·count_by_year_min·
+    # count_by_km_max)를 쓴다.
     _py_filtered = bool(segment or bucket or usepick in USEPICK_VALUES or picks == "1")
     _sql_filters = dict(judgment=judgment or None, maker=maker or None, q=q or None,
                         result=result or None, status=status or None, cond=cond or None,
                         upcoming_days=up or None, hide_incomplete=_hide_incomplete,
                         date=date or None, court=court or None, promising=bool(promising))
     _sql_price = {"price_min": _pb[0], "price_max": _pb[1]} if (_pb and not _py_filtered) else {}
-    rows = db.list_vehicles(sort=sort, **_sql_filters, **_sql_price)
+    _sql_year = {"year_min": _ym} if (_ym is not None and not _py_filtered) else {}
+    _sql_km = {"km_max": _km} if (_km is not None and not _py_filtered) else {}
+    rows = db.list_vehicles(sort=sort, **_sql_filters, **_sql_price, **_sql_year, **_sql_km)
     if segment:      # 차종 프리셋(상용·패밀리·SUV·세단·경차) — 모델명 근사 분류로 필터
         rows = [r for r in rows if service.vehicle_segment(r) == segment]
     _bt = service.backtest_stats()
     if bucket:       # 대시보드 카드 링크 — 카드 수와 목록 수가 정확히 같아야 한다
         rows = [r for r in rows if service.in_lifecycle_bucket(r, bucket, _bt)]
-    # 파이썬 경로의 구간별 건수 모수 = 가격대만 뺀 나머지 필터를 전부 통과한 행(패싯 규칙).
+    # 파이썬 경로의 축별 건수 모수 = 축 3종(가격대·연식·주행거리)만 뺀 나머지 필터를 전부 통과한 행(패싯 규칙).
+    # 각 축의 건수는 _apply_axes(_band_basis, skip=그 축) 으로 나머지 두 축까지 얹어 센다.
     _band_basis = rows if _py_filtered else None
     if _py_filtered:
-        rows = service.filter_price_band(rows, price)   # 아래 usepick 칩 수도 같은 가격대를 본다
+        rows = _apply_axes(rows, price, year_min, km_max)   # 아래 usepick 칩 수도 같은 축 3종을 본다
     use_counts = None
     if usepick in USEPICK_VALUES:   # 실사용 추천 — 되팔이 마진이 아니라 '소매보다 싼가'로 거른다(두 갈래)
-        # 갈래 판정은 가격대 적용 **전** 모수(_band_basis ⊇ rows, 같은 dict 객체)에서 한 번만 한다 —
-        # 구간별 건수(가격 제외 모수)와 갈래 칩 수(가격 적용 모수)를 한 계산에서 갈라 낸다.
+        # 갈래 판정은 축 3종 적용 **전** 모수(_band_basis ⊇ rows, 같은 dict 객체)에서 한 번만 한다 —
+        # 축별 건수(자기 축 제외 모수)와 갈래 칩 수(축 3종 적용 모수)를 한 계산에서 갈라 낸다.
         tiered_all = []
         for r in _band_basis:
             t = service.personal_use_tier(r, _bt)
@@ -617,7 +653,7 @@ def vehicles(request: Request, judgment: str = "", maker: str = "", q: str = "",
                 r["use_saving"] = t.get("saving")
                 tiered_all.append(r)
         _band_basis = [r for r in tiered_all if usepick == "1" or r["use_tier"]["tier"] == usepick]
-        tiered = service.filter_price_band(tiered_all, price)
+        tiered = _apply_axes(tiered_all, price, year_min, km_max)
         use_counts = {"all": len(tiered),
                       "now": sum(1 for r in tiered if r["use_tier"]["tier"] == "now"),
                       "cheap": sum(1 for r in tiered if r["use_tier"]["tier"] == "cheap")}
@@ -627,12 +663,26 @@ def vehicles(request: Request, judgment: str = "", maker: str = "", q: str = "",
                                  -(r.get("use_saving") or 0), -(r["use_tier"].get("room") or 0)))
     if picks == "1":     # 홈 '유망 물건 → 전체 보기' — 두 추천 칸의 근거 순위 전체(홈의 8대 ⊂ 이 목록)
         _band_basis = service.promising_rows(_bt)
-        rows = service.filter_price_band(_band_basis, price)
-    # 구간별 건수(셀렉트 라벨). SQL 경로 +1 쿼리 / 파이썬 경로 +0(이미 읽은 행에서 센다).
-    band_counts = (service.price_band_counts(_band_basis) if _band_basis is not None
-                   else db.count_by_price_band(service.PRICE_BANDS, **_sql_filters))
+        rows = _apply_axes(_band_basis, price, year_min, km_max)
+    # 축별 건수(셀렉트 라벨). SQL 경로 축마다 +1 쿼리(합 +3) / 파이썬 경로 +0(이미 읽은 행에서 센다).
+    # 패싯 규칙: 자기 축만 빼고 나머지 두 축은 얹는다 — 연식을 고르면 가격대·주행거리 셀렉트의 숫자가 그것을 반영한다.
+    if _band_basis is not None:
+        band_counts = service.price_band_counts(_apply_axes(_band_basis, price, year_min, km_max, skip="price"))
+        year_counts = service.year_min_counts(_apply_axes(_band_basis, price, year_min, km_max, skip="year_min"))
+        km_counts = service.km_max_counts(_apply_axes(_band_basis, price, year_min, km_max, skip="km_max"))
+    else:
+        band_counts = db.count_by_price_band(service.PRICE_BANDS, **_sql_filters, **_sql_year, **_sql_km)
+        year_counts = db.count_by_year_min(service.YEAR_MIN_OPTIONS, **_sql_filters, **_sql_price, **_sql_km)
+        km_counts = db.count_by_km_max(service.KM_MAX_OPTIONS, **_sql_filters, **_sql_price, **_sql_year)
     price_bands = [{"key": k, "label": lbl, "count": band_counts.get(k, 0)}
                    for k, _lo, _hi, lbl in service.PRICE_BANDS]
+    year_options = [{"key": k, "label": lbl, "count": year_counts.get(k, 0)}
+                    for k, _val, lbl in service.YEAR_MIN_OPTIONS]
+    km_options = [{"key": k, "label": lbl, "count": km_counts.get(k, 0)}
+                  for k, _val, lbl in service.KM_MAX_OPTIONS]
+    # 주행거리 미상(NULL·0 이하) 건수 — 주행거리 축만 뺀 현재 모수 기준. km_max 를 고르면 정확히 이만큼이 목록에서
+    # 빠진다("주행거리 미상 N건 제외" 요약 줄·툴팁 재료). 안 골랐을 때는 '고르면 빠질 건수'(같은 값).
+    km_unknown_excluded = km_counts.get(None, 0)
     disc = _bt.get("discount_median")
     mae = _bt.get("mae_pct")
     # 예상낙찰가 계산은 비용이 있으므로 '예상낙찰가순' 정렬처럼 전체가 필요할 때만 전 행 계산,
@@ -672,7 +722,7 @@ def vehicles(request: Request, judgment: str = "", maker: str = "", q: str = "",
                 "upcoming": up or "", "result": result, "status": status, "cond": cond,
                 "date": date, "court": court, "promising": promising, "segment": segment,
                 "bucket": bucket, "usepick": usepick, "all": all, "picks": picks,
-                "price": price}
+                "price": price, "year_min": year_min, "km_max": km_max}
 
     def _qs(*drop: str) -> str:
         return urlencode({k: v for k, v in _filters.items() if v and k not in drop})
@@ -684,6 +734,8 @@ def vehicles(request: Request, judgment: str = "", maker: str = "", q: str = "",
     qs_no_bucket = _qs("bucket")        # 버킷 해제 칩용
     qs_no_usepick = _qs("usepick")      # 실사용 갈래 칩(전체/지금 사면/싸게 낙찰되면)용
     qs_no_price = _qs("price")          # 가격대 셀렉트 옵션·해제 칩용(FEAT-1)
+    qs_no_year_min = _qs("year_min")    # 연식 하한 셀렉트 옵션·해제 칩용(FEAT-2)
+    qs_no_km_max = _qs("km_max")        # 주행거리 상한 셀렉트 옵션·해제 칩용(FEAT-2)
     # UX-1(2026-09-26): 날짜·결과·법원·검색어 활성 칩의 ✕ 가 **그 조건만** 풀고 나머지를 유지하게 하는 링크 재료.
     # 예전 칩 ✕ 는 href="/vehicles"(전부 초기화)·"/courts"(이탈)였다. qs_no_bucket 관례와 같은 방식.
     qs_no_date = _qs("date")
@@ -748,6 +800,11 @@ def vehicles(request: Request, judgment: str = "", maker: str = "", q: str = "",
         "qs_no_bucket": qs_no_bucket, "bucket": bucket,
         # 가격대(FEAT-1): price=선택 key 또는 "" · price_bands=[{key,label,count}] (PRICE_BANDS 순서, 5개 고정)
         "price": price, "price_bands": price_bands, "qs_no_price": qs_no_price,
+        # 연식 하한·주행거리 상한(FEAT-2): year_min·km_max=선택 key 또는 "" · year_options·km_options=[{key,label,count}]
+        # (각 4개 고정, 누적 건수) · km_unknown_excluded=주행거리 미상(NULL·0 이하) 건수(주행거리 축만 뺀 현재 모수)
+        "year_min": year_min, "year_options": year_options, "qs_no_year_min": qs_no_year_min,
+        "km_max": km_max, "km_options": km_options, "qs_no_km_max": qs_no_km_max,
+        "km_unknown_excluded": km_unknown_excluded,
         # UX-1 칩 ✕ 링크 재료(그 조건만 해제) / UX-3 매각기일순 구분 줄 재료(다른 정렬·파이썬 경로는 None)
         "qs_no_date": qs_no_date, "qs_no_result": qs_no_result, "qs_no_court": qs_no_court, "qs_no_q": qs_no_q,
         "sale_split": sale_split,
@@ -762,23 +819,31 @@ def vehicles(request: Request, judgment: str = "", maker: str = "", q: str = "",
 def vehicles_count(request: Request, judgment: str = "", maker: str = "", q: str = "",
                    result: str = "", status: str = "", cond: str = "", upcoming: str = "",
                    date: str = "", court: str = "", segment: str = "", all: str = "",
-                   bucket: str = "", usepick: str = "", picks: str = "", price: str = ""):
+                   bucket: str = "", usepick: str = "", picks: str = "", price: str = "",
+                   year_min: str = "", km_max: str = ""):
     """저장한 검색의 '새 매물' 감지용 — 동일 필터의 현재 건수만 반환(JSON). 외부 데이터 없음.
 
     ⚠️ `/vehicles`와 **같은 모수**를 써야 한다. 예전엔 hide_incomplete를 넘기지 않아
     "현재 1,320건"이라고 알린 뒤 눌러 들어가면 1,167건이 나왔다(2026-09-12 패널 지적).
-    가격대(price, FEAT-1)도 /vehicles 와 같은 규칙: SQL 경로는 WHERE 조각, 파이썬 경로
-    (segment·bucket·usepick·picks)는 마지막에 파이썬으로 거른다 — 술어가 독립이라 순서는 총수에 무관.
+    가격대(price, FEAT-1)·연식 하한(year_min)·주행거리 상한(km_max, FEAT-2)도 /vehicles 와 같은 규칙:
+    SQL 경로는 WHERE 조각, 파이썬 경로(segment·bucket·usepick·picks)는 마지막에 파이썬으로 거른다 —
+    술어가 독립이라 순서는 총수에 무관.
     """
     up = int(upcoming) if upcoming.strip().lstrip("-").isdigit() else 0
     price = _price_key(request, price)
     _pb = service.price_band_range(price)
+    year_min = _year_min_key(request, year_min)
+    km_max = _km_max_key(request, km_max)
+    _ym = service.year_min_value(year_min)
+    _km = service.km_max_value(km_max)
     _py_filtered = bool(segment or bucket or usepick in USEPICK_VALUES or picks == "1")
     _sql_price = {"price_min": _pb[0], "price_max": _pb[1]} if (_pb and not _py_filtered) else {}
+    _sql_year = {"year_min": _ym} if (_ym is not None and not _py_filtered) else {}
+    _sql_km = {"km_max": _km} if (_km is not None and not _py_filtered) else {}
     rows = db.list_vehicles(judgment=judgment or None, maker=maker or None, q=q or None,
                             result=result or None, status=status or None, cond=cond or None,
                             upcoming_days=(up or None), date=date or None, court=court or None,
-                            hide_incomplete=(all != "1"), **_sql_price)
+                            hide_incomplete=(all != "1"), **_sql_price, **_sql_year, **_sql_km)
     if segment:
         rows = [r for r in rows if service.vehicle_segment(r) == segment]
     if bucket or usepick in USEPICK_VALUES:     # /vehicles와 같은 필터를 타야 건수가 일치한다
@@ -791,7 +856,7 @@ def vehicles_count(request: Request, judgment: str = "", maker: str = "", q: str
     if picks == "1":                 # 유망 물건 전체 — /vehicles?picks=1 과 같은 함수
         rows = service.promising_rows(service.backtest_stats())
     if _py_filtered:
-        rows = service.filter_price_band(rows, price)
+        rows = _apply_axes(rows, price, year_min, km_max)
     return {"total": len(rows)}
 
 

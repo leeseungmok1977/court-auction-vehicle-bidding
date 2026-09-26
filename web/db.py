@@ -404,12 +404,13 @@ def _vehicles_where(judgment: Optional[str] = None, maker: Optional[str] = None,
                     cond: Optional[str] = None, hide_incomplete: bool = False,
                     date: Optional[str] = None, court: Optional[str] = None,
                     promising: bool = False,
-                    price_min: Optional[int] = None, price_max: Optional[int] = None
+                    price_min: Optional[int] = None, price_max: Optional[int] = None,
+                    year_min: Optional[int] = None, km_max: Optional[int] = None
                     ) -> tuple[list[str], list]:
     """`list_vehicles` 의 WHERE 조각과 바인딩 값.
 
-    `count_by_price_band` 가 목록과 **같은 필터**로 세어야 가격대 셀렉트의 건수가 목록 건수와
-    맞는다(FEAT-1). 그래서 조각 조립을 SELECT·정렬과 분리해 두 함수가 한 조립을 쓴다.
+    `count_by_price_band`(FEAT-1)·`count_by_year_min`·`count_by_km_max`(FEAT-2)가 목록과 **같은 필터**로
+    세어야 셀렉트의 건수가 목록 건수와 맞는다. 그래서 조각 조립을 SELECT·정렬과 분리해 네 함수가 한 조립을 쓴다.
     필터 인자의 의미는 list_vehicles 와 같다(sort 만 없다)."""
     where, params = [], []
     if promising:                    # 검토 추천 = 신뢰도 높음 + 오매칭(시세≫최저가) 아님 (집계 카드와 동일 기준)
@@ -494,6 +495,15 @@ def _vehicles_where(judgment: Optional[str] = None, maker: Optional[str] = None,
         where.append("min_sale_price >= ?"); params.append(int(price_min))
     if price_max is not None:
         where.append("min_sale_price < ?"); params.append(int(price_max))
+    # 연식 하한·주행거리 상한(FEAT-2, 오너 승인 2026-09-26) — 옵션 정의(키·값·라벨)는 service.YEAR_MIN_OPTIONS·
+    # KM_MAX_OPTIONS 한 곳이고 여기는 숫자만 받는다. 정확히 2018 은 '2018년 이후'에 포함(>=), 정확히 100,000 은
+    # '10만km 이하'에 포함(<=). year 는 INTEGER|NULL(parse _to_int), `NULL >= ?` 는 NULL(거짓)·`0 >= 2015` 는 거짓이라
+    # 연식 미상·0 은 하한을 고르면 자동으로 빠진다. 주행거리는 NULL 과 **0 이하를 함께** 미상으로 본다(MILEAGE_SORT 와
+    # 같은 판정 — 0 저장 4건은 선박류) → `> 0` 을 명시한다. 파이썬 술어는 service.year_min_match·km_max_match.
+    if year_min is not None:
+        where.append("year >= ?"); params.append(int(year_min))
+    if km_max is not None:
+        where.append("mileage_km > 0 AND mileage_km <= ?"); params.append(int(km_max))
     return where, params
 
 
@@ -516,12 +526,14 @@ def list_vehicles(judgment: Optional[str] = None, maker: Optional[str] = None,
                   cond: Optional[str] = None, hide_incomplete: bool = False,
                   date: Optional[str] = None, court: Optional[str] = None,
                   promising: bool = False,
-                  price_min: Optional[int] = None, price_max: Optional[int] = None) -> list[dict]:
+                  price_min: Optional[int] = None, price_max: Optional[int] = None,
+                  year_min: Optional[int] = None, km_max: Optional[int] = None) -> list[dict]:
     where, params = _vehicles_where(judgment=judgment, maker=maker, q=q, starred=starred,
                                     upcoming_days=upcoming_days, status=status, result=result,
                                     cond=cond, hide_incomplete=hide_incomplete, date=date,
                                     court=court, promising=promising,
-                                    price_min=price_min, price_max=price_max)
+                                    price_min=price_min, price_max=price_max,
+                                    year_min=year_min, km_max=km_max)
     sql = "SELECT * FROM vehicles"
     if where:
         sql += " WHERE " + " AND ".join(where)
@@ -587,6 +599,48 @@ def count_by_price_band(bands, **filters) -> dict:
     for r in rows:
         out[r["band"]] = out.get(r["band"], 0) + r["c"]
     return out
+
+
+def _count_cumulative(options, cond_sql: str, unknown_sql: str, axis: str, **filters) -> dict:
+    """누적 옵션(연식 하한·주행거리 상한, FEAT-2)의 옵션별 건수 — **한 쿼리**(SUM(CASE WHEN …) 옵션 수만큼 + 미상 1).
+
+    가격대(count_by_price_band)는 구간이 서로 배타라 CASE…GROUP BY 한 열로 충분했지만, '2018년 이후'는 '2020년 이후'를
+    **포함**하므로 한 행이 여러 옵션에 든다 → 옵션마다 SUM(CASE WHEN <cond_sql ?> THEN 1 ELSE 0 END) 열을 두고 한 번에 읽는다.
+    `axis` 는 이 축의 필터 인자 이름 — 축 자체를 필터로 얹으면 그 아래 옵션이 전부 0 이 되므로 TypeError.
+    반환: {key: n (모든 key, 없으면 0), None: 미상 행 수(unknown_sql 참)}."""
+    if axis in filters:
+        raise TypeError(f"{axis} 는 이 축 자체라 필터로 받지 않는다(패싯 규칙: 자기 축만 뺀 나머지 필터로 센다)")
+    where, params = _vehicles_where(**filters)
+    cols, cparams = [], []
+    for i, (_key, val, *_rest) in enumerate(options):
+        cols.append(f"SUM(CASE WHEN {cond_sql} THEN 1 ELSE 0 END) AS c{i}")
+        cparams.append(int(val))
+    cols.append(f"SUM(CASE WHEN {unknown_sql} THEN 1 ELSE 0 END) AS unknown_n")
+    sql = f"SELECT {', '.join(cols)} FROM vehicles"
+    if where:
+        sql += " WHERE " + " AND ".join(where)
+    conn = connect()
+    row = conn.execute(sql, cparams + params).fetchone()
+    conn.close()
+    out: dict = {key: int(row[f"c{i}"] or 0) for i, (key, *_r) in enumerate(options)}
+    out[None] = int(row["unknown_n"] or 0)      # 행이 0 이면 SUM 은 NULL → 0
+    return out
+
+
+def count_by_year_min(options, **filters) -> dict:
+    """연식 하한 옵션별 건수(누적, 한 쿼리). `options` = service.YEAR_MIN_OPTIONS (key, value, label) — db 는 service 를
+    import 하지 않으므로(순환) 인자로 받는다. 술어는 _vehicles_where 의 조각과 같은 `year >= ?`.
+    `filters` 는 list_vehicles 와 같은 필터 인자(price_min/price_max·km_max 포함 가능 — 자기 축 year_min 만 금지).
+    반환 {key: n, …, None: 연식 미상(NULL·0 이하) 행 수}."""
+    return _count_cumulative(options, "year >= ?", "year IS NULL OR year <= 0", "year_min", **filters)
+
+
+def count_by_km_max(options, **filters) -> dict:
+    """주행거리 상한 옵션별 건수(누적, 한 쿼리). `options` = service.KM_MAX_OPTIONS. 술어는 _vehicles_where 의 조각과
+    같은 `mileage_km > 0 AND mileage_km <= ?`. 자기 축 km_max 만 금지.
+    반환 {key: n, …, None: 주행거리 미상(NULL·0 이하) 행 수} — None 항이 화면의 '주행거리 미상 N건 제외'(km_unknown_excluded)."""
+    return _count_cumulative(options, "mileage_km > 0 AND mileage_km <= ?",
+                             "mileage_km IS NULL OR mileage_km <= 0", "km_max", **filters)
 
 
 def update_fields(vid: str, **fields) -> None:

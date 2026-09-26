@@ -13,10 +13,16 @@
    라벨은 전부 기존 원천(jshort·price_bands·segment_presets·sort_labels·활성 칩 문구)을 그대로 — 새 낱말·경계 값을 적지
    않는다(FEAT-1 규칙). 기본 상태(필터 없음·recent·1페이지)면 비어 있어 두 곳 다 그리지 않는다.
    ⚠ namespace 를 쓰는 이유: 이 환경엔 jinja2.ext.do 가 없어 `{% do %}` 를 못 쓴다. `{% set _ = ns.parts.append(x) %}` 가 그 대용. #}
-{% set _cs = namespace(parts=[]) %}
+{% set _cs = namespace(parts=[], km_idx=-1) %}
 {% if judgment %}{% set _ = _cs.parts.append(judgment|jshort) %}{% endif %}
 {% if maker %}{% set _ = _cs.parts.append(maker) %}{% endif %}
 {% if price %}{% for b in price_bands if b.key == price %}{% set _ = _cs.parts.append(b.label) %}{% endfor %}{% endif %}
+{# 연식 하한·주행거리 상한(FEAT-2, 2026-09-27) — 라벨은 year_options/km_options 에서 key 일치 항목만(가격대와 같은 규칙, 손으로 적지 않는다).
+   '주행거리 미상 N건 제외' 는 부품이 **아니다** — 접힌 머리의 `외 N` 이 부품 수를 조건 수로 세므로 부품에 넣지 않고, 아래 #condSummary 가
+   **주행거리 부품 바로 뒤**에 mut 톤으로 붙인다(디자인 검수 2026-09-27 조건 1 — 맨 뒤에 붙이면 `매각기일순 (주행거리 미상 N건 제외)` 처럼
+   엉뚱한 조건이 손실의 원인으로 읽힌다). 그 자리를 찾으려고 km_idx 에 주행거리 부품의 인덱스를 기억한다(부품이 없으면 -1). #}
+{% if year_min %}{% for o in year_options if o.key == year_min %}{% set _ = _cs.parts.append(o.label) %}{% endfor %}{% endif %}
+{% if km_max %}{% for o in km_options if o.key == km_max %}{% set _cs.km_idx = _cs.parts|length %}{% set _ = _cs.parts.append(o.label) %}{% endfor %}{% endif %}
 {% if q %}{% set _ = _cs.parts.append('“' ~ q ~ '”') %}{% endif %}
 {% if upcoming %}{% set _ = _cs.parts.append('입찰예정 ' ~ upcoming ~ '일') %}{% endif %}
 {% if cond == 'insp_expired' %}{% set _ = _cs.parts.append('검사 경과') %}{% elif cond == 'damaged' %}{% set _ = _cs.parts.append('외관 손상') %}{% endif %}
@@ -35,7 +41,7 @@
 {% if page > 1 %}{% set _ = _cs.parts.append(page ~ '/' ~ total_pages ~ '페이지') %}{% endif %}
 {% set cond_summary = _cs.parts|join(' · ') %}
 {# 활성 조건(필터 초기화 칩·링크의 표시 조건) — 정렬·페이지는 조건이 아니다. UX-7 판정: 초기화는 정렬까지 되돌린다(첫 진입과 같은 상태). #}
-{% set has_filter = judgment or maker or q or price or upcoming or cond or date or court or segment or bucket or usepick or picks or result or promising %}
+{% set has_filter = judgment or maker or q or price or year_min or km_max or upcoming or cond or date or court or segment or bucket or usepick or picks or result or promising %}
 {# 매각기일순 구분 줄 문구(UX-3) — 표(lg+)·카드 두 자리가 이 한 문자열을 쓴다. '참고' 는 낙찰에만 건다: 유찰 대기 물건은 다음 회차에 더 낮은
    최저가로 다시 나올 후보라 '후보 아님'으로 읽히면 안 된다(디자인 검수 2026-09-26 지적 2 — 예전 `낙찰 결과·다음 기일 대기 참고` 는 `참고` 가 둘 다를 받았다). #}
 {% set split_note = '낙찰은 결과 참고 · 유찰은 다음 기일 대기' %}
@@ -89,14 +95,33 @@
       {% for b in price_bands %}<option value="{{ b.key }}" {% if price == b.key %}selected{% endif %}>{{ b.label }} ({{ b.count }})</option>{% endfor %}
       </optgroup>
     </select>
+    {# 연식 하한·주행거리 상한(FEAT-2, 2026-09-27) — 라벨·경계·건수는 service.YEAR_MIN_OPTIONS·KM_MAX_OPTIONS 가 유일한 원천이고
+       여기서는 컨텍스트 year_options·km_options 를 그대로 돌린다(다시 적지 않는다 — tests/test_feat2_year_km_select.py 가 소스 리터럴을 막는다).
+       건수는 자기 축만 뺀 나머지 현재 필터(가격대·다른 축 포함) 기준 — "그 옵션으로 바꾸면 나올 총수"(패싯 규칙, 축 3종 상호 반영).
+       ⚠ 옵션은 **누적**(하한·상한)이라 앞 옵션이 뒤 옵션을 포함한다 — 가격대와 달리 건수 합이 총수가 아니다.
+       ⚠ hidden 으로 같은 이름을 또 넣지 말 것 — 서버가 중복을 필터 없음으로 떨어뜨린다(가격대와 같은 규칙).
+       optgroup 은 두지 않는다 — 라벨 자체가 축(년 이후·km 이하)을 말한다(가격대는 '최저매각가' 축이 라벨에 없어 optgroup 이 필요했다).
+       좁은 폭 배치(2026-09-27 실측, 측정이 정했다): 반 칸을 먼저 시도했으나 선택된 라벨 '연도년 이후 (746)'·'NN만km 이하 (148)'(글자폭 108~110px)이
+       반 칸의 글자 영역(320px 80px · 360px 100px = 셀 − 패딩 24 − 네이티브 화살표 20.6)을 넘어 **320·360 에서 잘렸다**(390 부터 115px 로 들어감).
+       가격대와 같은 이유로 둘 다 전폭(col-span-2). sm 이상은 래퍼가 contents 라 col-span 이 의미를 잃고 고유 폭(가장 긴 옵션 기준)으로 돌아간다. #}
+    <select name="year_min" aria-label="연식 하한 필터" class="inp py-1.5 min-w-0 col-span-2" title="괄호 건수는 현재 적용된 조건 기준">
+      <option value="">전체 연식</option>
+      {% for o in year_options %}<option value="{{ o.key }}" {% if year_min == o.key %}selected{% endif %}>{{ o.label }} ({{ o.count }})</option>{% endfor %}
+    </select>
+    {# 주행거리 상한을 고르면 주행거리 미상(NULL·0) 물건이 빠진다 — 그 수(km_unknown_excluded)를 title 과 아래 요약 줄에 말한다.
+       ⚠ 안 골랐을 때는 '제외' 라고 쓰지 않는다(빠진 것이 없다 — 서버 계약 §2.3). 골랐어도 미상이 0건이면 빠진 것이 없으니 같은 이유로 쓰지 않는다. #}
+    <select name="km_max" aria-label="주행거리 상한 필터" class="inp py-1.5 min-w-0 col-span-2" title="괄호 건수는 현재 적용된 조건 기준{% if km_max and km_unknown_excluded %} · 주행거리 미상 {{ km_unknown_excluded }}건 제외{% endif %}">
+      <option value="">전체 주행거리</option>
+      {% for o in km_options %}<option value="{{ o.key }}" {% if km_max == o.key %}selected{% endif %}>{{ o.label }} ({{ o.count }})</option>{% endfor %}
+    </select>
     <select name="sort" aria-label="정렬 기준" class="inp py-1.5 min-w-0">
       {% if usepick %}<option value="" selected>이득 큰 순</option>{% endif %}
       {# 옵션 문구는 위 sort_labels(조건 요약 줄과 한 원천)에서 돌린다 — 여기 손으로 적지 않는다. #}
       {% for k, lbl in sort_labels.items() %}<option value="{{ k }}" {% if sort == k and not (k == 'recent' and usepick) %}selected{% endif %}>{{ lbl }}</option>
       {% endfor %}
     </select>
-    {# 빈 셀을 남기지 않는다. 셀렉트가 넷(판정·제조사·가격대·정렬)이 되면서 가격대가 전폭(위 주석)을
-       쓰므로 2 + 1 + 2 = 세 줄이고, [적용]은 정렬 옆 여섯째 칸에 들어간다(FEAT-1, 2026-09-26).
+    {# 빈 셀을 남기지 않는다. 셀렉트가 여섯(판정·제조사·가격대·연식·주행거리·정렬)이고 가격대·연식·주행거리가 전폭(위 주석)을
+       쓰므로 2 + 1 + 1 + 1 + 2 = 다섯 줄이고, [적용]은 정렬 옆 마지막 칸에 들어간다(FEAT-1 2026-09-26 → FEAT-2 2026-09-27).
        sm 이상에서는 sm:contents 로 그리드가 사라져 원래 자리(검색창 뒤)로 흐른다. #}
     {# ⚠ .btn-ghost 는 @layer 밖 평문 CSS라 유틸리티보다 뒤에 온다 — 버튼에 직접
        hidden/sm:hidden 을 걸면 display:inline-flex 가 이겨서 [적용]이 두 개 보인다.
@@ -196,6 +221,14 @@
     {% if price %}{% for b in price_bands if b.key == price %}
     <a href="/vehicles{% if qs_no_price %}?{{ qs_no_price }}{% endif %}" class="text-xs bg-primary/10 text-primary border border-primary/20 rounded-full px-3 py-1 inline-flex items-center gap-1 whitespace-nowrap shrink-0" title="가격대 필터 해제">{{ b.label }} ✕</a>
     {% endfor %}{% endif %}
+    {# 연식·주행거리 해제 칩(FEAT-2) — 가격대 칩과 같은 톤·규칙(라벨은 옵션 목록에서 key 일치 항목만, 축 접두 없음, nowrap·shrink-0).
+       ✕ 는 그 조건만 푼다(qs_no_year_min·qs_no_km_max). 320px 첫 활성 칩 ✕ 가 페이드(줄 우변 − 16) 앞이어야 한다(UX-4 규칙) — 측정값은 보고서. #}
+    {% if year_min %}{% for o in year_options if o.key == year_min %}
+    <a href="/vehicles{% if qs_no_year_min %}?{{ qs_no_year_min }}{% endif %}" class="text-xs bg-primary/10 text-primary border border-primary/20 rounded-full px-3 py-1 inline-flex items-center gap-1 whitespace-nowrap shrink-0" title="연식 필터 해제">{{ o.label }} ✕</a>
+    {% endfor %}{% endif %}
+    {% if km_max %}{% for o in km_options if o.key == km_max %}
+    <a href="/vehicles{% if qs_no_km_max %}?{{ qs_no_km_max }}{% endif %}" class="text-xs bg-primary/10 text-primary border border-primary/20 rounded-full px-3 py-1 inline-flex items-center gap-1 whitespace-nowrap shrink-0" title="주행거리 필터 해제">{{ o.label }} ✕</a>
+    {% endfor %}{% endif %}
     {% if upcoming %}
     <a href="/vehicles?{{ qs_no_upcoming }}" class="text-xs bg-primary/10 text-primary border border-primary/20 rounded-full px-3 py-1 inline-flex items-center gap-1 whitespace-nowrap shrink-0">입찰예정 {{ upcoming }}일 ✕</a>
     {% else %}
@@ -252,7 +285,10 @@
 <div class="space-y-1.5">
 {% if cond_summary %}
 <p id="condSummary" class="px-1 text-xs text-mut leading-5 tnum" style="word-break:keep-all">
-  {%- for part in _cs.parts %}{% if not loop.first %}<span aria-hidden="true"> · </span>{% endif %}<span class="text-txt whitespace-nowrap">{{ part }}</span>{% endfor -%}
+  {#- 주행거리 미상 제외(FEAT-2) — 조건이 아니라 주석이라 mut 톤·괄호, 부품(_cs.parts)에 넣지 않는다. km_max 없거나 미상 0건이면 빠진 게 없어 그리지 않는다.
+      자리는 주행거리 부품(_cs.km_idx) **바로 뒤** — 괄호는 바로 앞 낱말을 꾸미므로 맨 뒤(정렬·페이지 뒤)에 두면 손실 원인이 엉뚱한 조건으로 읽힌다(디자인 검수 2026-09-27 조건 1). -#}
+  {%- for part in _cs.parts %}{% if not loop.first %}<span aria-hidden="true"> · </span>{% endif %}<span class="text-txt whitespace-nowrap">{{ part }}</span>
+  {%- if loop.index0 == _cs.km_idx and km_max and km_unknown_excluded %} <span class="text-mut whitespace-nowrap">(주행거리 미상 {{ km_unknown_excluded }}건 제외)</span>{% endif %}{% endfor -%}
   {%- if has_filter %}<span aria-hidden="true" class="sm:hidden"> · </span><a href="/vehicles" class="sm:hidden inline-flex items-center min-h-[40px] -my-2.5 px-1 -mx-1 text-primary hover:underline whitespace-nowrap" title="모든 필터와 정렬을 처음 상태로">필터 초기화</a>{% endif -%}
 </p>
 {% endif %}
@@ -652,7 +688,7 @@ d.addEventListener('toggle',function(){try{localStorage.setItem('ncUsepickBasis'
     {% endfor %}
   </div>
   <div class="bg-surface border-t border-line px-4 py-3 flex items-center justify-between gap-3 flex-wrap text-sm">
-    <span class="text-xs text-mut">{{ range_start }}–{{ range_end }} / 총 <b class="text-txt">{{ total }}</b>건{% if judgment or maker or q or result or price %} (필터 적용){% endif %}</span>
+    <span class="text-xs text-mut">{{ range_start }}–{{ range_end }} / 총 <b class="text-txt">{{ total }}</b>건{% if judgment or maker or q or result or price or year_min or km_max %} (필터 적용){% endif %}</span>
     {% if total_pages > 1 %}
     <nav class="flex items-center gap-1">
       {% if page > 1 %}<a href="/vehicles?{{ qs }}&page={{ page-1 }}" class="px-2.5 py-1.5 rounded-md border border-line text-txt hover:bg-slate-50 transition-colors">‹ 이전</a>
@@ -674,7 +710,7 @@ d.addEventListener('toggle',function(){try{localStorage.setItem('ncUsepickBasis'
 <div class="bg-surface border border-line rounded-lg p-10 sm:p-14 text-center">
   <span class="material-symbols-outlined text-mut text-5xl">search_off</span>
   <p class="text-txt font-medium mt-3">조건에 맞는 물건이 없습니다</p>
-  {% if judgment or maker or q or result or upcoming or price %}
+  {% if judgment or maker or q or result or upcoming or price or year_min or km_max %}
   <p class="text-sm text-mut mt-1">필터를 바꾸거나 초기화해 보세요.</p>
   <a href="/vehicles" class="btn-ghost inline-flex items-center gap-1 mt-4 text-sm"><span class="material-symbols-outlined text-base">restart_alt</span> 필터 초기화</a>
   {% else %}
@@ -696,10 +732,15 @@ function ncSaveSearch(){
     var seg={commercial:'상용·화물',minivan:'패밀리·7인승',compact:'경차',suv:'SUV',sedan:'세단'};
     // 가격대(FEAT-1) key→라벨 — service.PRICE_BANDS 를 Jinja 로 주입한다(여기 손으로 적지 않는다)
     var PB={ {% for b in price_bands %}{{ b.key|tojson }}:{{ b.label|tojson }}{% if not loop.last %},{% endif %}{% endfor %} };
+    // 연식 하한·주행거리 상한(FEAT-2) key→라벨 — service.YEAR_MIN_OPTIONS·KM_MAX_OPTIONS 를 Jinja 로 주입(PB 와 같은 방식, 손으로 안 적는다). 라벨이 축을 말하므로 접두 없음
+    var YM={ {% for o in year_options %}{{ o.key|tojson }}:{{ o.label|tojson }}{% if not loop.last %},{% endif %}{% endfor %} };
+    var KM={ {% for o in km_options %}{{ o.key|tojson }}:{{ o.label|tojson }}{% if not loop.last %},{% endif %}{% endfor %} };
     var parts=[];
     if(p.get('q')) parts.push('"'+p.get('q')+'"');
     if(p.get('maker')) parts.push(p.get('maker'));
     var pb=p.get('price'); if(pb&&PB[pb]) parts.push('최저가 '+PB[pb]);   // 화이트리스트 밖 key 는 서버도 무시하므로 라벨에 안 넣는다. '최저가 ' 는 축 접두(라벨 아님) — 폭 제약 없는 즐겨찾기 카드라 붙인다(해제 칩에는 320px 실측으로 안 붙임)
+    var ym=p.get('year_min'); if(ym&&YM[ym]) parts.push(YM[ym]);   // 화이트리스트 밖 key 는 서버도 무시(가격대와 같은 규칙)
+    var km=p.get('km_max'); if(km&&KM[km]) parts.push(KM[km]);
     if(p.get('segment')) parts.push(seg[p.get('segment')]||p.get('segment'));
     if(p.get('judgment')) parts.push(p.get('judgment'));
     var ct=p.get('court'); if(ct) parts.push(ct.indexOf(',')>=0?('법원 '+ct.split(',').length+'곳'):ct.replace('지방법원','지법'));   // 법원 칩과 같은 규칙(예전 '법원 지정')

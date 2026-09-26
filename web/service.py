@@ -3241,6 +3241,135 @@ def filter_price_band(rows, key):
     return [r for r in rows if price_band_key(r.get("min_sale_price")) == key]
 
 
+# ── 연식 하한·주행거리 상한 필터(FEAT-2, 오너 승인 2026-09-26 UX-6 순서 1) ──
+# FEAT-1(PRICE_BANDS)과 같은 골격 — 옵션 정의(키·값·라벨)는 **이 두 튜플 하나**이고 라우트(app.vehicles·
+# vehicles_count)·COUNT(db.count_by_year_min·count_by_km_max)·템플릿·테스트가 전부 여기를 본다.
+# 가격대와 다른 점: 구간(반열림)이 아니라 **누적 옵션**이다 — '2018년 이후'는 2020년 이후를 포함한다.
+# 그래서 옵션별 건수는 CASE…GROUP BY 가 아니라 SUM(CASE WHEN year >= ? THEN 1 END) 로 센다.
+#  · year_min: `year >= ?` — 정확히 2018 은 '2018년 이후'에 **포함**. year NULL·0 은 선택 시 자동 제외
+#    (`NULL >= ?` 는 NULL(거짓), `0 >= 2015` 는 거짓).
+#  · km_max: `mileage_km > 0 AND mileage_km <= ?` — 정확히 100,000 은 '10만km 이하'에 **포함**. NULL·0 이하는
+#    선택 시 제외(0 저장 4건 = 선박류, UX-3 과 같은 판정)하고 그 수를 km_unknown_excluded 로 화면에 준다.
+# key 는 URL 파라미터 문자열(?year_min=2018 · ?km_max=100000) 그대로 — 화이트리스트 밖 key 는 필터 없음(500 금지).
+# 옵션 근거(라이브 공개 입찰예정 425건, 2026-09-26 22시): 연식 NULL 14 · 2015+ 377 · 2018+ 279 · 2020+ 167 ·
+# 2022+ 93 · 주행 NULL/0 60 · ≤5만 66 · ≤10만 147 · ≤15만 247.
+YEAR_MIN_OPTIONS = (
+    # key      value  label
+    ("2015",   2015,  "2015년 이후"),
+    ("2018",   2018,  "2018년 이후"),
+    ("2020",   2020,  "2020년 이후"),
+    ("2022",   2022,  "2022년 이후"),
+)
+KM_MAX_OPTIONS = (
+    # key       value     label
+    ("50000",   50_000,   "5만km 이하"),
+    ("100000",  100_000,  "10만km 이하"),
+    ("150000",  150_000,  "15만km 이하"),
+    ("200000",  200_000,  "20만km 이하"),
+)
+YEAR_MIN_KEYS = tuple(o[0] for o in YEAR_MIN_OPTIONS)
+YEAR_MIN_LABELS = {o[0]: o[2] for o in YEAR_MIN_OPTIONS}
+KM_MAX_KEYS = tuple(o[0] for o in KM_MAX_OPTIONS)
+KM_MAX_LABELS = {o[0]: o[2] for o in KM_MAX_OPTIONS}
+
+
+def _option_value(options, key) -> Optional[int]:
+    """key(문자열 그대로) → 정수 값. 화이트리스트 밖·빈값·문자열 아님·'2018.0'·' 2018' → None(필터 없음).
+    int() 파싱이 아니라 **정확한 문자열 일치**다 — '02018'·'+2018' 도 필터 없음(사용자가 모르는 필터를 걸지 않는다)."""
+    if not isinstance(key, str) or not key:
+        return None
+    for k, val, _lbl in options:
+        if k == key:
+            return val
+    return None
+
+
+def year_min_value(key) -> Optional[int]:
+    """연식 하한 key → 연도(int). 화이트리스트 밖 → None."""
+    return _option_value(YEAR_MIN_OPTIONS, key)
+
+
+def km_max_value(key) -> Optional[int]:
+    """주행거리 상한 key → km(int). 화이트리스트 밖 → None."""
+    return _option_value(KM_MAX_OPTIONS, key)
+
+
+def _as_int(x) -> Optional[int]:
+    """NULL·bool·숫자 아님 → None. 파이썬 술어와 SQL 조각이 같은 답을 내기 위한 공통 변환."""
+    if x is None or isinstance(x, bool):
+        return None
+    try:
+        return int(x)
+    except (TypeError, ValueError):
+        return None
+
+
+def year_min_match(year, year_min: int) -> bool:
+    """SQL `year >= ?` 와 같은 술어. NULL·숫자 아님 → False(연식 미상은 하한을 고르면 빠진다)."""
+    y = _as_int(year)
+    return y is not None and y >= int(year_min)
+
+
+def km_max_match(mileage_km, km_max: int) -> bool:
+    """SQL `mileage_km > 0 AND mileage_km <= ?` 와 같은 술어. NULL·0 이하 → False(주행거리 미상은 상한을 고르면 빠진다)."""
+    km = _as_int(mileage_km)
+    return km is not None and 0 < km <= int(km_max)
+
+
+def km_unknown(mileage_km) -> bool:
+    """'주행거리 미상' 판정 — NULL 또는 0 이하(db.MILEAGE_SORT · count_by_km_max 의 unknown 항과 같은 규칙)."""
+    km = _as_int(mileage_km)
+    return km is None or km <= 0
+
+
+def year_min_counts(rows) -> dict:
+    """행 목록의 연식 하한 옵션별 건수(파이썬 집계, **누적**). 반환 모양은 db.count_by_year_min 과 같다 —
+    {key: n (모든 key, 없으면 0), None: 연식 미상(NULL·0 이하) 행 수}."""
+    out: dict = {k: 0 for k in YEAR_MIN_KEYS}
+    out[None] = 0
+    for r in rows:
+        y = _as_int(r.get("year"))
+        if y is None or y <= 0:
+            out[None] += 1
+            continue
+        for k, val, _lbl in YEAR_MIN_OPTIONS:
+            if y >= val:
+                out[k] += 1
+    return out
+
+
+def km_max_counts(rows) -> dict:
+    """행 목록의 주행거리 상한 옵션별 건수(파이썬 집계, **누적**). 반환 모양은 db.count_by_km_max 와 같다 —
+    {key: n (모든 key, 없으면 0), None: 주행거리 미상(NULL·0 이하) 행 수 = km_unknown_excluded 재료}."""
+    out: dict = {k: 0 for k in KM_MAX_KEYS}
+    out[None] = 0
+    for r in rows:
+        km = _as_int(r.get("mileage_km"))
+        if km is None or km <= 0:
+            out[None] += 1
+            continue
+        for k, val, _lbl in KM_MAX_OPTIONS:
+            if km <= val:
+                out[k] += 1
+    return out
+
+
+def filter_year_min(rows, key):
+    """연식 하한 key 로 행을 거른다(파이썬). 화이트리스트 밖·빈 key 면 그대로 돌려준다(필터 없음)."""
+    val = year_min_value(key)
+    if val is None:
+        return rows
+    return [r for r in rows if year_min_match(r.get("year"), val)]
+
+
+def filter_km_max(rows, key):
+    """주행거리 상한 key 로 행을 거른다(파이썬). 화이트리스트 밖·빈 key 면 그대로 돌려준다(필터 없음)."""
+    val = km_max_value(key)
+    if val is None:
+        return rows
+    return [r for r in rows if km_max_match(r.get("mileage_km"), val)]
+
+
 # ── 법원별 회차 저감률 ────────────────────────────────────────────────
 # 경매 전문가가 1·2회차 연속으로 요구한 값. 외부 자료가 아니라 **우리가 이미 가진
 # 기일내역**에서 실측한다 — 연속 회차의 최저매각가 비율을 세면 나온다.

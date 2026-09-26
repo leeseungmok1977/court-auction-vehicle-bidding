@@ -13,7 +13,8 @@
      저장 검색 라벨에는 축 접두 `최저가 ` 가 붙는다(`현대 · 최저가 3,000만~`) — 폭 제약이 없는 즐겨찾기 카드라 칩과 달리 붙인다.
      사전 값(PB)은 서버 라벨 그대로
   ⑥ 페이지네이션 · '입찰예정 30일만' 링크가 `price=` 를 유지한다
-  ⑦ 좁은 폭 그리드: 셀렉트 4개 중 가격대만 전폭(col-span-2) + [적용]은 정렬 옆 — 2+1+2 세 줄, 빈 셀 없음·건수 안 잘림
+  ⑦ 좁은 폭 그리드: 가격대는 전폭(col-span-2) + [적용]은 정렬 옆 — 빈 셀 없음·건수 안 잘림
+     (FEAT-2 2026-09-27: 연식·주행거리 셀렉트 2개가 더해져 셀렉트 6개·2+1+1+1+2 다섯 줄 — tests/test_feat2_year_km_select.py)
      (빌드된 app.css 에 유틸리티 존재)
 검사는 전부 **앵커 문자열**로 한다 — 줄 번호·매직 오프셋 창(`d[i:i+4200]` 류)을 쓰지 않는다.
 """
@@ -242,13 +243,13 @@ def test_pagination_and_upcoming_links_keep_price(client):
 def test_narrow_grid_has_four_selects_and_full_width_apply(client):
     html = _get(client, "/vehicles")
     grid = _grid_block(html)
-    assert grid.count("<select ") == 4, "판정·제조사·가격대·정렬"
+    assert grid.count("<select ") == 6, "판정·제조사·가격대·연식·주행거리·정렬 (FEAT-2 2026-09-27 에서 연식·주행거리 추가 — tests/test_feat2_year_km_select.py)"
     m_sel = re.search(r'<select name="price"[^>]*class="([^"]*)"', grid)
     assert m_sel and "col-span-2" in m_sel.group(1), \
         "가격대 셀렉트는 좁은 폭에서 전폭 — 반 칸(360px 147px)에는 '라벨 (건수)' 가 '(41' 로 잘린다(2026-09-26 실측)"
     m = re.search(r'<button class="([^"]*)">\s*<span class="material-symbols-outlined text-base">filter_list</span> 적용</button>', grid)
     assert m and "w-full" in m.group(1) and "col-span" not in m.group(1), \
-        "2 + 1 + 2 = 세 줄: [적용]은 정렬 옆 여섯째 칸 — 전폭으로 두면 일곱째 칸이 빈다"
+        "2 + 1 + 1 + 1 + 2 = 다섯 줄(FEAT-2 뒤): [적용]은 정렬 옆 마지막 칸 — 전폭으로 두면 그 앞 칸이 빈다"
     css = APP_CSS.read_text(encoding="utf-8", errors="ignore")
     assert ".col-span-2{" in css, "npm run build:css 가 col-span-2 를 내보내야 한다"
 
