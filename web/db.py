@@ -397,13 +397,20 @@ def get_vehicle(vid: str) -> Optional[dict]:
     return _decode(row) if row else None
 
 
-def list_vehicles(judgment: Optional[str] = None, maker: Optional[str] = None,
-                  q: Optional[str] = None, starred: Optional[bool] = None,
-                  sort: str = "sale_date", upcoming_days: Optional[int] = None,
-                  status: Optional[str] = None, result: Optional[str] = None,
-                  cond: Optional[str] = None, hide_incomplete: bool = False,
-                  date: Optional[str] = None, court: Optional[str] = None,
-                  promising: bool = False) -> list[dict]:
+def _vehicles_where(judgment: Optional[str] = None, maker: Optional[str] = None,
+                    q: Optional[str] = None, starred: Optional[bool] = None,
+                    upcoming_days: Optional[int] = None,
+                    status: Optional[str] = None, result: Optional[str] = None,
+                    cond: Optional[str] = None, hide_incomplete: bool = False,
+                    date: Optional[str] = None, court: Optional[str] = None,
+                    promising: bool = False,
+                    price_min: Optional[int] = None, price_max: Optional[int] = None
+                    ) -> tuple[list[str], list]:
+    """`list_vehicles` 의 WHERE 조각과 바인딩 값.
+
+    `count_by_price_band` 가 목록과 **같은 필터**로 세어야 가격대 셀렉트의 건수가 목록 건수와
+    맞는다(FEAT-1). 그래서 조각 조립을 SELECT·정렬과 분리해 두 함수가 한 조립을 쓴다.
+    필터 인자의 의미는 list_vehicles 와 같다(sort 만 없다)."""
     where, params = [], []
     if promising:                    # 검토 추천 = 신뢰도 높음 + 오매칭(시세≫최저가) 아님 (집계 카드와 동일 기준)
         where.append("market_confidence_label='높음'")
@@ -478,6 +485,31 @@ def list_vehicles(judgment: Optional[str] = None, maker: Optional[str] = None,
         where.append("(model LIKE ? ESCAPE '\\' OR maker LIKE ? ESCAPE '\\' "
                      "OR case_no LIKE ? ESCAPE '\\' OR court LIKE ? ESCAPE '\\')")
         params += [like, like, like, like]
+    # 가격대(FEAT-1, 오너 승인 2026-09-26) — 축은 **최저매각가**(감정가·시세 아님). 반열림 [lo, hi):
+    # 정확히 5,000,000 은 '500~1,000만'. price_max None 은 상한 없음. `NULL >= ?` 는 NULL(거짓)이라
+    # 최저가 미상 행은 구간을 고르면 자동으로 빠진다 — 별도 IS NOT NULL 조각을 두지 않는 이유.
+    # 구간 정의(키·경계·라벨)는 service.PRICE_BANDS 한 곳이고 여기는 숫자만 받는다
+    # (0 도 값이다 → truthiness 가 아니라 `is not None`).
+    if price_min is not None:
+        where.append("min_sale_price >= ?"); params.append(int(price_min))
+    if price_max is not None:
+        where.append("min_sale_price < ?"); params.append(int(price_max))
+    return where, params
+
+
+def list_vehicles(judgment: Optional[str] = None, maker: Optional[str] = None,
+                  q: Optional[str] = None, starred: Optional[bool] = None,
+                  sort: str = "sale_date", upcoming_days: Optional[int] = None,
+                  status: Optional[str] = None, result: Optional[str] = None,
+                  cond: Optional[str] = None, hide_incomplete: bool = False,
+                  date: Optional[str] = None, court: Optional[str] = None,
+                  promising: bool = False,
+                  price_min: Optional[int] = None, price_max: Optional[int] = None) -> list[dict]:
+    where, params = _vehicles_where(judgment=judgment, maker=maker, q=q, starred=starred,
+                                    upcoming_days=upcoming_days, status=status, result=result,
+                                    cond=cond, hide_incomplete=hide_incomplete, date=date,
+                                    court=court, promising=promising,
+                                    price_min=price_min, price_max=price_max)
     sql = "SELECT * FROM vehicles"
     if where:
         sql += " WHERE " + " AND ".join(where)
@@ -497,6 +529,41 @@ def list_vehicles(judgment: Optional[str] = None, maker: Optional[str] = None,
     rows = conn.execute(sql, params).fetchall()
     conn.close()
     return [_decode(r) for r in rows]
+
+
+def count_by_price_band(bands, **filters) -> dict:
+    """가격대(최저매각가) 구간별 건수 — **한 쿼리**(CASE WHEN … GROUP BY). FEAT-1 셀렉트 라벨용.
+
+    `bands`: (key, lo, hi, …) 순서열(service.PRICE_BANDS). hi None 은 상한 없음. db 는 service 를
+    import 하지 않으므로(순환) 구간 정의를 인자로 받는다 — 여기서 새로 적지 않는다.
+    `filters`: list_vehicles 와 같은 필터 인자(judgment·maker·q·cond·upcoming_days·hide_incomplete …).
+    price_min/price_max 는 받지 않는다 — 구간 자체가 축이라 그 필터를 얹으면 다른 구간이 전부 0 이 된다.
+    반환: {key: n, …} 에 **모든 key 가 들어 있고**(없으면 0) `None` 키에 어느 구간에도 못 넣은 행 수
+    (= min_sale_price NULL). 그래서 sum(구간) + out[None] == 같은 필터의 list_vehicles 건수."""
+    if "price_min" in filters or "price_max" in filters:
+        raise TypeError("count_by_price_band: price_min/price_max 는 구간 축 자체라 필터로 받지 않는다")
+    where, params = _vehicles_where(**filters)
+    case, cparams = ["CASE"], []
+    for key, lo, hi, *_ in bands:
+        if hi is None:
+            case.append("WHEN min_sale_price >= ? THEN ?")
+            cparams += [int(lo), key]
+        else:
+            case.append("WHEN min_sale_price >= ? AND min_sale_price < ? THEN ?")
+            cparams += [int(lo), int(hi), key]
+    case.append("END")
+    sql = f"SELECT {' '.join(case)} AS band, COUNT(*) AS c FROM vehicles"
+    if where:
+        sql += " WHERE " + " AND ".join(where)
+    sql += " GROUP BY band"
+    conn = connect()
+    rows = conn.execute(sql, cparams + params).fetchall()
+    conn.close()
+    out: dict = {key: 0 for key, *_ in bands}
+    out[None] = 0
+    for r in rows:
+        out[r["band"]] = out.get(r["band"], 0) + r["c"]
+    return out
 
 
 def update_fields(vid: str, **fields) -> None:

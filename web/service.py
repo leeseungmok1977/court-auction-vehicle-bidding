@@ -3180,6 +3180,67 @@ def vehicle_segment(v: dict) -> Optional[str]:
     return None
 
 
+# ── 가격대 필터(FEAT-1, 오너 승인 2026-09-26) — 축은 **최저매각가**(min_sale_price) ──
+# 감정가·시세가 아니다. 같은 파일의 `_price_band`(정확도 층)는 **시세(median_price) 축**의 다른 개념이라
+# 섞지 말 것. 반열림 [lo, hi): 정확히 5,000,000 은 '500~1,000만'. hi None 은 상한 없음.
+# 라우트(app.vehicles·vehicles_count)·COUNT(db.count_by_price_band)·템플릿·테스트가 **전부 이 튜플 하나**를
+# 쓴다 — 경계·라벨을 다른 곳에 다시 적지 않는다. 화이트리스트 밖 key 는 필터 없음(500 금지).
+# 구간 근거(라이브 공개 입찰예정 383건, 2026-09-26): ~500만 27 · 500~1,000만 72 · 1,000~2,000만 144 ·
+# 2,000~3,000만 60 · 3,000만~ 80, 중앙값 1,540만.
+PRICE_BANDS = (
+    # key          lo            hi            label
+    ("0-500",      0,            5_000_000,    "~500만"),
+    ("500-1000",   5_000_000,    10_000_000,   "500~1,000만"),
+    ("1000-2000",  10_000_000,   20_000_000,   "1,000~2,000만"),
+    ("2000-3000",  20_000_000,   30_000_000,   "2,000~3,000만"),
+    ("3000-",      30_000_000,   None,         "3,000만~"),
+)
+PRICE_BAND_KEYS = tuple(b[0] for b in PRICE_BANDS)
+PRICE_BAND_LABELS = {b[0]: b[3] for b in PRICE_BANDS}
+
+
+def price_band_range(key) -> Optional[tuple[int, Optional[int]]]:
+    """가격대 key → (lo, hi). hi None 은 상한 없음. 화이트리스트 밖·빈값·문자열 아님 → None(필터 없음)."""
+    if not isinstance(key, str) or not key:
+        return None
+    for k, lo, hi, _lbl in PRICE_BANDS:
+        if k == key:
+            return lo, hi
+    return None
+
+
+def price_band_key(min_sale_price) -> Optional[str]:
+    """최저매각가 → 구간 key. NULL·숫자 아님 → None(어느 구간에도 안 넣는다 — db 의 SQL 조각과 같은 규칙:
+    `NULL >= lo` 는 거짓). 파이썬 쪽에서 거르는 목록(segment·bucket·usepick·picks)이 쓴다."""
+    if min_sale_price is None or isinstance(min_sale_price, bool):
+        return None
+    try:
+        p = int(min_sale_price)
+    except (TypeError, ValueError):
+        return None
+    for k, lo, hi, _lbl in PRICE_BANDS:
+        if p >= lo and (hi is None or p < hi):
+            return k
+    return None
+
+
+def price_band_counts(rows) -> dict:
+    """행 목록의 구간별 건수(파이썬 집계). 반환 모양은 db.count_by_price_band 와 같다 —
+    {key: n (모든 key, 없으면 0), None: 구간 밖 행 수(최저가 NULL)}."""
+    out: dict = {k: 0 for k in PRICE_BAND_KEYS}
+    out[None] = 0
+    for r in rows:
+        out[price_band_key(r.get("min_sale_price"))] += 1
+    return out
+
+
+def filter_price_band(rows, key):
+    """구간 key 로 행을 거른다(파이썬). 화이트리스트 밖·빈 key 면 그대로 돌려준다(필터 없음)."""
+    if price_band_range(key) is None:
+        return rows
+    return [r for r in rows if price_band_key(r.get("min_sale_price")) == key]
+
+
 # ── 법원별 회차 저감률 ────────────────────────────────────────────────
 # 경매 전문가가 1·2회차 연속으로 요구한 값. 외부 자료가 아니라 **우리가 이미 가진
 # 기일내역**에서 실측한다 — 연속 회차의 최저매각가 비율을 세면 나온다.
