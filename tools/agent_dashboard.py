@@ -782,6 +782,44 @@ def concentration(roster: list[dict]) -> dict:
     }
 
 
+# ── 흐름: 지시서 대기열·인계 (2026-09-26 오너 지시) ─────────────────────────
+# 오너 질문: *"뭔가 돌아가는 것 같지 않고, 살아있는 것 같지 않다."* 이 화면은 그때까지
+# '누가 몇 번 불렸나'(사후 사실)만 그렸다. 조직이 도는지는 **일이 자리 사이를 흐르는가**로 보인다 —
+# 지시서가 쌓이고, 닫히고, 다음 자리로 넘어가는 것. 그 원천은 tools/org_runtime.py 한 곳이다.
+ORDER_RULE_SINCE = "2026-09-26"      # 호출 라벨을 지시서 번호로 시작하게 한 날(CLAUDE.md 지휘 절)
+FLOW_STALE_H = 2                     # 매시 스캔인데 두 시간 넘게 안 돌았으면 순환이 멈춘 것이다
+
+
+def read_flow(calls: list[dict]) -> tuple[dict, str | None]:
+    """순환계 대기열 요약 + '지시서를 거친 호출' 비율.
+
+    ★ 순환계가 없으면 0 으로 채우지 않는다 — `enabled: False` 로 화면이 '미가동'이라고 말하게 한다
+      (훅 미설치를 '0명'으로 그리지 않은 것과 같은 원칙).
+    """
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import org_runtime                                   # noqa: WPS433
+        org = org_runtime.Org(ROOT)
+        b = org.board()
+    except Exception as e:                                   # noqa: BLE001
+        return {"enabled": False}, f"순환계를 읽지 못했다: {type(e).__name__}: {e}"[:160]
+    since = max((datetime.now() - timedelta(days=7)).date().isoformat(), ORDER_RULE_SINCE)
+    recent = [c for c in calls if str(c.get("ts", ""))[:10] >= since]
+    via = [c for c in recent if org_runtime.ORDER_REF.search(str(c.get("desc", "")))]
+    b["via_orders"] = {"since": since, "total": len(recent), "via": len(via),
+                       "share": round(len(via) / len(recent) * 100, 1) if recent else None}
+    age_h = None
+    if b.get("last_scan"):
+        try:
+            age_h = round((datetime.now() - datetime.fromisoformat(b["last_scan"])).total_seconds() / 3600, 1)
+        except ValueError:
+            age_h = None
+    b["scan_age_h"] = age_h
+    b["scan_age_min"] = None if age_h is None else int(age_h * 60)
+    b["scan_stale"] = age_h is None or age_h > FLOW_STALE_H
+    return b, None
+
+
 # ── 조립 ────────────────────────────────────────────────────────────────────
 def build_state(rescan: bool = False) -> dict:
     problems: list[str] = []
@@ -818,6 +856,12 @@ def build_state(rescan: bool = False) -> dict:
     live = read_agent_events()
     if live.get("error"):
         problems.append(live["error"])
+    flow, e = read_flow(stats["calls"])
+    if e:
+        problems.append(e)
+    problems.extend(flow.get("warnings") or [])
+    fq = flow.get("queue") or {}
+    fseats = flow.get("seats") or {}
     running_now = {r["agent"] for r in live.get("running", [])}
 
     per_agent = stats["per_agent"]
@@ -842,7 +886,11 @@ def build_state(rescan: bool = False) -> dict:
                 "running": name in running_now,               # 훅이 알려준 '지금 가동 중'
                 "avg_sec": live.get("durations", {}).get(name),
                 "description": d.get("description", "")[:120],
-                "tools": d.get("tools", ""), "model": d.get("model", "")}
+                "tools": d.get("tools", ""), "model": d.get("model", ""),
+                # 순환계 — 이 자리에 쌓인 지시서와 계약. 계약이 없으면 일을 받을 길이 없다.
+                "queue": fq.get(name) or {},
+                "contract": (fseats.get(name) if flow.get("enabled") else None),
+                "auto": bool((fseats.get(name) or {}).get("auto"))}
 
     placed: set[str] = set()
     dept_out = []
@@ -929,6 +977,7 @@ def build_state(rescan: bool = False) -> dict:
             "unstaffed": sum(1 for d in deleg if d["calls"] == 0 and (d["commits"] or 0) > 0),
         },
         "live": live,
+        "flow": flow,
         "departments": dept_out,
         "never_used": [a["name"] for a in never],
         "outside_roster": [{"name": k, "calls": v} for k, v in outside],

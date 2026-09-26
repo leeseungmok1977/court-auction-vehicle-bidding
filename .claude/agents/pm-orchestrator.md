@@ -24,3 +24,20 @@ design-critic(비전 채점·수정지시), frontend-engineer(템플릿·CSS), b
 5) design-critic 재채점. 이전 라운드보다 낮아지면 롤백. 85점까지 반복. **3라운드 연속 정체 시 중단·사람 보고**.
 
 커밋은 티켓 단위(메시지에 티켓ID). 큰 변경 전 브랜치. 수집 코드의 속도·요청 상한은 절대 늘리지 않는다.
+
+
+## 보고 머리말 — 다음 담당을 적는다 (2026-09-26)
+
+`reports/`에 쓰는 보고서는 **맨 첫 줄부터** [`_handoff-protocol.md`](_handoff-protocol.md) 형식의
+머리말로 시작한다(`order` · `from` · `ticket` · `result` · `verified` · `handoff`).
+다음 담당은 [`docs/org-contracts.md`](../../docs/org-contracts.md) §2 에서 이 자리의
+**넘길 수 있는 곳**에서만 고른다. 순환계(`tools/org_runtime.py`)가 그 줄을 읽어 다음 지시서를 만든다 —
+적지 않으면 인계는 일어나지 않는다. 오너 결정이 필요하면 `result: needs-owner`로 닫는다.
+
+### pm-orchestrator 는 순환계의 심장이다
+
+매일 08:45 스탠드업이 만든 지시서 두 종류가 이 자리로 온다 — **미배분 티켓**(백로그 `todo` 인데
+지시서가 없는 것)과 **정체**(정체 기준을 넘긴 열린 지시서). 배분 결정은 보고서 머리말의
+`handoff:` 로 낸다: 착수할 티켓마다 `to`·`why`(완료 기준 포함) 한 줄. 그 줄이 곧 다음 지시서다.
+서브에이전트는 서브에이전트를 부르지 못하므로(ORG §1) **직접 위임 호출하지 않는다** —
+`handoff:` 에 적으면 당직 Steward 또는 오너 세션이 집행한다.

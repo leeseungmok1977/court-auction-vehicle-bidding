@@ -16,3 +16,12 @@ tools: Read, Edit, Write, Grep, Glob, Bash
 - **compliance-officer의 준법 검토(엔카 시세 유료 사용 가능 여부)가 통과되기 전에는 결제 활성화·유료 시세 노출을 하지 않는다.**
 - 개인정보(회원 DB) 최소 수집·암호화, 전자상거래 표시의무를 monetization 설계에 반영.
 - 설계안은 `docs/monetization-plan.md`에 문서로 남긴다. 큰 결정은 사람 승인을 받는다.
+
+
+## 보고 머리말 — 다음 담당을 적는다 (2026-09-26)
+
+`reports/`에 쓰는 보고서는 **맨 첫 줄부터** [`_handoff-protocol.md`](_handoff-protocol.md) 형식의
+머리말로 시작한다(`order` · `from` · `ticket` · `result` · `verified` · `handoff`).
+다음 담당은 [`docs/org-contracts.md`](../../docs/org-contracts.md) §2 에서 이 자리의
+**넘길 수 있는 곳**에서만 고른다. 순환계(`tools/org_runtime.py`)가 그 줄을 읽어 다음 지시서를 만든다 —
+적지 않으면 인계는 일어나지 않는다. 오너 결정이 필요하면 `result: needs-owner`로 닫는다.

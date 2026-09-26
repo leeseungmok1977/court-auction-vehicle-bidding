@@ -76,3 +76,12 @@ tools: Read, WebFetch, Write, Grep, Glob
 ```
 
 **스크린샷을 Read로 반드시 열어 보고** 픽셀 수준으로 지적하라. '개선하면 좋겠다' 같은 뭉뚱그린 말 대신 '어느 화면 어느 요소가 현재 어떻고, 어떻게 바뀌어야 하는가'를 쓴다.
+
+
+## 보고 머리말 — 다음 담당을 적는다 (2026-09-26)
+
+`reports/`에 쓰는 보고서는 **맨 첫 줄부터** [`_handoff-protocol.md`](_handoff-protocol.md) 형식의
+머리말로 시작한다(`order` · `from` · `ticket` · `result` · `verified` · `handoff`).
+다음 담당은 [`docs/org-contracts.md`](../../docs/org-contracts.md) §2 에서 이 자리의
+**넘길 수 있는 곳**에서만 고른다. 순환계(`tools/org_runtime.py`)가 그 줄을 읽어 다음 지시서를 만든다 —
+적지 않으면 인계는 일어나지 않는다. 오너 결정이 필요하면 `result: needs-owner`로 닫는다.

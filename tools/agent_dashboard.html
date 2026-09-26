@@ -162,6 +162,59 @@
   .ag.never.v-wait .cnt,.ag.never.v-by .cnt{color:var(--faint)}
   .ag.never.v-wait .dot,.ag.never.v-by .dot{background:#2a3441;box-shadow:none}
 
+  /* 흐름 — 2026-09-26 오너: "살아있는 것 같지 않다." 호출 횟수(사후 사실)만으로는 조직이 도는지
+     보이지 않는다. 지시서가 **쌓이고 · 넘어가고 · 막히는 것**을 한 곳에 둔다.
+     타일은 4장이다 — 위 KPI 와 같은 4열 그리드라 4·2·1 로 고르게 접힌다. */
+  .flowcols{display:grid;grid-template-columns:3fr 2fr;gap:16px;align-items:start;margin-top:12px}
+  @media (max-width:900px){ .flowcols{grid-template-columns:1fr} }
+  .flowcols>*{min-width:0}
+  .ord .who{white-space:nowrap}
+  /* 지시서 번호는 한 줄이다 — 1440px 에서 `2026-09- / 26-11` 로 갈렸다(2026-09-26 첫 캡처). */
+  .ord td:first-child{white-space:nowrap}
+  /* ★ 620px 이하에서는 4열 표를 버리고 행마다 카드로 쌓는다. 390px 첫 캡처에서 번호 칸이
+     `20 / 26 / -0 / 9-` 로 **한두 글자씩** 갈려 행 하나가 화면 높이만큼 늘어났다 —
+     리포트 띠에서 이미 겪은 것(.band 320px 주석)과 같은 병이다. 가로 스크롤보다 쌓기가 낫다.
+     배치: [받는 자리 · 상태] / [무엇을] / [번호 · 사유]. */
+  @media (max-width:620px){
+    .ord, .ord tbody{display:block}
+    .ord tr:first-child{display:none}
+    /* minmax(0,1fr): 1fr 의 최소폭이 auto 라 긴 이름(frontend-engineer ← pm-orchestrator)이 칸을
+       밀어 320px 에서 5개가 화면 밖으로 나갔다(2026-09-26 재측정). 이름 칸은 카드에서 줄바꿈을 허용한다. */
+    .ord tr{display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"who st" "pp pp" "id id";
+      gap:3px 10px;padding:9px 12px;border-top:1px solid var(--line)}
+    .ord tr:nth-child(2){border-top:0}
+    .ord td{display:block;padding:0;border-top:0}
+    .ord td:nth-child(1){grid-area:id;color:var(--faint);font-size:11px}
+    .ord td:nth-child(1) .sb{display:inline;margin-left:6px}
+    .ord td:nth-child(2){grid-area:who;white-space:normal;min-width:0;overflow-wrap:anywhere}
+    .ord td:nth-child(2) .sb{display:inline;margin-left:6px}
+    .ord td:nth-child(3){grid-area:pp}
+    .ord td:nth-child(4){grid-area:st;text-align:right}
+  }
+  .ord .pp{color:var(--soft);font-size:11.5px}
+  .ord td:nth-child(4) .sb{white-space:nowrap}
+  /* ★ '대기'는 순환계가 **정확히 아는** 정상 상태다. 처음에 `.pill.mute`(확인 불가)를 썼다가
+     design-critic 검수(2026-09-26)에 걸렸다 — 모름과 대기가 같은 색이면 진짜 '확인 불가'가 옆에
+     섰을 때 구분이 안 되고, 테두리 칩 9개가 하나뿐인 주황 '막힘'을 묻는다. 조직도의 `.vd.wait` 값을 쓴다. */
+  .pill.idle{background:#1f2430;color:var(--soft)}
+  /* 결재함 행 — 오너·Steward 가 봐야 하는 것. 빨강이 아니라 주황이다: '멈춤'이 아니라 '결정 대기'다. */
+  tr.inbox td{background:#1d1a12}
+  .feed{list-style:none;margin:0;padding:0;background:var(--panel);border:1px solid var(--line);
+    border-radius:10px;font-size:12px}
+  .feed li{padding:7px 12px;border-top:1px solid var(--line);display:flex;gap:9px;align-items:baseline}
+  .feed li:first-child{border-top:0}
+  .feed .t{color:var(--faint);font-variant-numeric:tabular-nums;white-space:nowrap;font-size:11px}
+  .feed .k{white-space:nowrap;font-weight:600;font-size:11px}
+  .feed .k.handoff{color:var(--cobalt)} .feed .k.warn{color:var(--warn)} .feed .k.ok{color:var(--good)}
+  /* 피드는 '누가 누구에게'만 — 문장은 왼쪽 표에 있다. 두 줄에서 자른다(design-critic 2026-09-26 ③). */
+  .feed .x{min-width:0;overflow-wrap:anywhere;color:var(--soft);
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  /* 조직도 카드 안 대기열 칩 — 0 이면 그리지 않는다(빈 칩을 늘어놓으면 칩이 뜻을 잃는다). */
+  .q{display:inline-block;margin-top:3px;font-size:10.5px;color:var(--soft);white-space:nowrap}
+  .q b{color:var(--ink);font-weight:600}
+  .q .blk{color:var(--warn)}
+  .q.none{color:var(--warn)}
+
   /* 업무 분포 — 편중을 숫자가 아니라 길이로 본다 */
   .shr{display:grid;gap:6px;background:var(--panel);border:1px solid var(--line);
     border-radius:10px;padding:13px 15px}
@@ -237,6 +290,15 @@
   <div id="supply"></div>
   <div class="kpis" id="kpis"></div>
 
+  <!-- ★ 흐름을 조직도 **위**에 둔다. 오너 질문이 "돌아가는가"이고, 조직도는 '누가 있는가'를 답한다.
+       순서: 도는가(흐름) → 누가 있는가(조직도) → 쏠렸는가(분포) → 끊겼는가(리듬). -->
+  <h2>흐름 <small>지시서가 쌓이고 · 넘어가고 · 막히는 것 — orders/ · docs/org-contracts.md</small></h2>
+  <div class="kpis" id="flowkpis"></div>
+  <div class="flowcols">
+    <div><div id="orders"></div></div>
+    <div><div id="feed"></div></div>
+  </div>
+
   <h2>조직도 <small>docs/ORG.md 부서표에서 읽는다 — 문서를 고치면 이 화면이 따라온다</small></h2>
   <div class="org" id="org"></div>
 
@@ -288,6 +350,8 @@
 
 <script>
 const $ = s => document.querySelector(s);
+// 순환계 문장에는 마크다운 백틱이 들어 있다(`PANEL-56`). 화면에서는 떼고 읽는다.
+const tx = s => String(s == null ? '' : s).replace(/`/g, '');
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => (
   {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const hhmm = ts => ts ? String(ts).slice(0,16).replace('T',' ') : '—';
@@ -300,11 +364,98 @@ const RPILL = s => s === '정상' ? 'ok' : ((s === '끊김' || s === '없음') ?
 
 // level: true|'alert' = 빨강(오늘 조치) · 'warn' = 주황(구조 상태) · 'mute' = 판정 보류
 //        · 그 밖 = 무채색(정상). 심각도 순서: 정상 < 확인 불가 < 이상 < 멈춤.
-function kpi(k, v, s, level){
+// sHtml: 부제 안 일부만 색을 줄 때 — **호출자가 이미 esc 한 HTML** 을 넘긴다.
+function kpi(k, v, s, level, sHtml){
   const cls = (level === true || level === 'alert') ? ' alert'
             : (level === 'warn' ? ' warn' : (level === 'mute' ? ' mute' : ''));
   return `<div class="kpi${cls}"><div class="k">${esc(k)}</div>
-    <div class="v">${esc(v)}</div><div class="s">${esc(s)}</div></div>`;
+    <div class="v">${esc(v)}</div><div class="s">${sHtml != null ? sHtml : esc(s)}</div></div>`;
+}
+
+// 조직도 카드의 대기열 칩. 순환계가 없으면 아무것도 그리지 않는다(없는 것을 0 으로 그리지 않는다).
+function qchip(a){
+  if (a.contract === undefined) return '';
+  if (a.contract === null) return '<span class="q none">배선 없음 — org-contracts §2 에 없는 자리</span>';
+  const q = a.queue || {};
+  const wait = (q.open || 0), doing = (q.doing || 0), blk = (q.blocked || 0);
+  const bits = [];
+  if (doing) bits.push(`진행 <b>${doing}</b>`);
+  if (wait) bits.push(`대기 <b>${wait}</b>`);
+  if (blk) bits.push(`<span class="blk">막힘 <b>${blk}</b></span>`);
+  if (!bits.length) return '';
+  return `<span class="q">${bits.join(' · ')}${a.auto ? '' : ' · 오너 세션에서 처리'}</span>`;
+}
+
+// 사유 코드 → 사람이 읽는 말. 매핑에 없으면 코드를 그대로 보인다(숨기지 않는다).
+const RSN = {handoff:'인계', rhythm:'리듬 중단', unassigned:'미배분', stale:'정체', cap:'왕복 상한',
+             owner:'오너 결정', route:'계약 밖 경로', result:'반려 판정', routine:'정기', manual:'Steward'};
+const EVK = {'handoff':['인계','handoff'], 'handoff.capped':['상한 초과','warn'],
+             'handoff.rejected':['경로 거부','warn'], 'order.created':['지시서','handoff'],
+             'order.done':['완료','ok'], 'order.blocked':['막힘','warn'], 'order.doing':['착수',''],
+             'order.cancelled':['취소',''], 'dispatch.start':['당직 호출',''], 'dispatch.end':['당직 끝','']};
+
+function renderFlow(d){
+  const f = d.flow || {};
+  if (!f.enabled){
+    $('#flowkpis').innerHTML = '';
+    $('#orders').innerHTML = '<div class="empty">순환계 미가동 — docs/org-contracts.md 가 없거나 읽지 못했다. '
+      + '지시서 대기열을 재지 않는다(0 이 아니라 모름).</div>';
+    $('#feed').innerHTML = '';
+    return;
+  }
+  const t = f.totals || {}, v = f.via_orders || {}, st = f.settings || {};
+  const on = st['자동 디스패치'] === '켜짐';
+  $('#flowkpis').innerHTML = [
+    kpi('결재함', `${t.inbox || 0}건`,
+        t.inbox ? '오너·Steward 가 결정할 것 — 아래 표 맨 위' : '결정 대기 없음',
+        t.inbox ? 'warn' : ''),
+    // ★ 타일 전체를 주황으로 칠하지 않는다 — 문제는 '9건'이 아니라 막힘 '1건'이다(design-critic ②).
+    //   주황 타일은 결재함 하나로 둬야 '오늘 볼 것 = 결재함'이 한눈에 선다.
+    kpi('열린 지시서', `${(t.open || 0) + (t.doing || 0) + (t.blocked || 0)}건`, '', '',
+        `진행 ${t.doing || 0} · ` + (t.blocked
+          ? `<span style="color:var(--warn);font-weight:600">막힘 ${t.blocked}</span>` : '막힘 0')),
+    // 우회 호출 — 지시서 번호 없이 부른 것. 규칙 시행일(2026-09-26) 이전 호출은 세지 않는다.
+    kpi('지시서 경유 호출', v.share == null ? '—' : v.share + '%',
+        v.total ? `${v.since} 이후 ${v.total}회 중 ${v.via}회 — 나머지는 우회`
+                : `${v.since || ''} 이후 호출 없음`,
+        (v.share != null && v.share < 50) ? 'warn' : ''),
+    // 순환계 자체의 맥박. 매시 스캔이 두 시간 넘게 멈췄으면 위 숫자들은 낡은 것이다.
+    // 살아 있는지는 **경과 시간**으로 읽힌다 — 절대시각은 머릿속 뺄셈을 시킨다(design-critic ③).
+    kpi('마지막 순환', !f.last_scan ? '없음'
+          : (f.scan_age_min != null && f.scan_age_min < 60 ? `${f.scan_age_min}분 전` : `${f.scan_age_h}시간 전`),
+        !f.last_scan ? '스캔한 적 없음 — naechaget-org-heartbeat 등록 필요'
+          : `${hhmm(f.last_scan).slice(11)} · ` + (f.scan_stale ? '매시 스캔이 멈췄다'
+              : `당직 ${on ? '켜짐' : '꺼짐'} · 오늘 호출 ${f.dispatched_today || 0}/${st['하루 디스패치 상한'] ?? '—'}`),
+        !f.last_scan ? 'mute' : (f.scan_stale ? 'alert' : '')),
+  ].join('');
+
+  const ol = f.open || [];
+  $('#orders').innerHTML = ol.length ? `<table class="ord">
+    <tr><th>지시서</th><th>받는 자리</th><th>무엇을</th><th>상태</th></tr>
+    ${ol.slice(0, 14).map(o => `<tr class="${o.to === 'steward' ? 'inbox' : ''}">
+      <td>${esc(o.id)}<i class="sb">${esc(RSN[o.reason] || o.reason || '')}${o.round > 1 ? ' · ' + o.round + '회차' : ''}</i></td>
+      <td class="who">${o.to === 'steward' ? '<b>결재함</b>' : esc(o.to)}
+        <i class="sb">${o.from ? '← ' + esc(o.from) : ''}</i></td>
+      <td class="pp">${esc(tx(o.purpose))}</td>
+      <td><span class="pill ${o.status === 'blocked' ? 'warn' : (o.status === 'doing' ? 'ok' : 'idle')}">${
+        esc({open:'대기', doing:'진행', blocked:'막힘'}[o.status] || o.status)}</span>
+        <i class="sb">${o.age == null ? '' : (o.age === 0 ? '오늘' : o.age + '일째')}${o.to !== 'steward' && !o.auto ? ' · 오너 세션' : ''}</i></td>
+    </tr>`).join('')}</table>
+    ${ol.length > 14 ? `<div class="legend">그 밖 ${ol.length - 14}건 — orders/ 폴더</div>` : ''}`
+    : `<div class="empty">열린 지시서가 없다${f.last_scan ? '' : ' — 아직 한 번도 스캔하지 않았다'}.</div>`;
+
+  const fd = f.feed || [];
+  const rt = f.routes_7d || [];
+  $('#feed').innerHTML = (fd.length ? `<ul class="feed">${fd.slice(0, 14).map(e => {
+      const [lb, cls] = EVK[e.kind] || [e.kind, ''];
+      const who = e.frm ? `${esc(e.frm)} → ${esc(e.to || '')}` : esc(e.to || '');
+      return `<li><span class="t">${esc(String(e.ts || '').slice(5, 16).replace('T', ' '))}</span>
+        <span class="k ${cls}">${esc(lb)}</span>
+        <span class="x">${who}${e.order ? ' · ' + esc(e.order) : ''}${
+          e.note && e.kind !== 'order.created' ? ' — ' + esc(tx(e.note)) : ''}</span></li>`;
+    }).join('')}</ul>` : '<div class="empty">지난 7일 움직임 기록이 없다.</div>')
+    + (rt.length ? `<div class="legend" style="margin-top:8px">지난 7일 인계 경로: ${
+        rt.slice(0, 6).map(r => `${esc(r.from)} → ${esc(r.to)} ${r.n}`).join(' · ')}</div>` : '');
 }
 
 function render(d){
@@ -420,6 +571,8 @@ function render(d){
         k.sched_never > 0 || k.sched_bad > 0),
   ].join('');
 
+  renderFlow(d);
+
   // 조직도
   $('#org').innerHTML = d.departments.map(dep => `
     <div class="dept">
@@ -433,6 +586,7 @@ function render(d){
               ? `<span class="vd ${VDC[a.verdict]}">${esc(a.verdict)}</span>` : ''}</span>
             <span class="sub">${esc(a.calls > 0 ? (a.last_desc || a.description || '')
                                                 : (a.why || a.description || ''))}</span>
+            ${qchip(a)}
           </span>
           <span class="cnt">${a.calls > 0 ? a.calls + '회' : '호출 없음'}
             <i>${a.calls > 0
