@@ -684,9 +684,29 @@ def vehicles(request: Request, judgment: str = "", maker: str = "", q: str = "",
     qs_no_bucket = _qs("bucket")        # 버킷 해제 칩용
     qs_no_usepick = _qs("usepick")      # 실사용 갈래 칩(전체/지금 사면/싸게 낙찰되면)용
     qs_no_price = _qs("price")          # 가격대 셀렉트 옵션·해제 칩용(FEAT-1)
+    # UX-1(2026-09-26): 날짜·결과·법원·검색어 활성 칩의 ✕ 가 **그 조건만** 풀고 나머지를 유지하게 하는 링크 재료.
+    # 예전 칩 ✕ 는 href="/vehicles"(전부 초기화)·"/courts"(이탈)였다. qs_no_bucket 관례와 같은 방식.
+    qs_no_date = _qs("date")
+    qs_no_result = _qs("result")
+    qs_no_court = _qs("court")
+    qs_no_q = _qs("q")
     from datetime import date as _date
     _tdy = _date.today().isoformat()
     _tdy_d = _date.today()
+    # UX-3 구분 줄 재료(sale_split) — `매각기일순` 일 때만. 분류는 db.SALE_DATE_SORT 의 CASE 와 **같은 3분류**
+    # (0=오늘 이후·오늘 포함 / 1=지난 기일 / 2=NULL) 를 같은 "오늘"(로컬 날짜: SQL date('now','localtime') ↔
+    # 파이썬 date.today())로 파이썬에서 다시 센다. rows 는 SQL 정렬 그대로이므로(파이썬 경로 제외) 첫 '지난 기일'
+    # 행의 전역 인덱스는 하나뿐이고, 그것이 **이 페이지 범위 [start, start+len(page_rows)) 안에 있을 때만**
+    # page_first_past_idx 에 페이지 내 0-based 인덱스를 준다(경계가 앞 페이지였거나 지난 기일이 없으면 None) —
+    # 구분 줄은 경계가 놓인 페이지에 한 번만 그려진다. usepick·picks 는 순서를 다시 매기므로 None(정렬 순서를 보증할 수
+    # 없는 곳에 구분 줄을 그리지 않는다). segment·bucket 은 SQL 순서를 보존하므로 계산한다(지시서 -23, backend 보고 §못 한 것).
+    sale_split = None
+    if sort == "sale_date" and not (usepick in USEPICK_VALUES or picks == "1"):
+        _blocks = [2 if r.get("sale_date") is None else (0 if r["sale_date"] >= _tdy else 1) for r in rows]
+        _first_past = next((i for i, b in enumerate(_blocks) if b == 1), None)
+        _on_page = _first_past is not None and start <= _first_past < start + len(page_rows)
+        sale_split = {"upcoming": _blocks.count(0), "past": _blocks.count(1), "undated": _blocks.count(2),
+                      "page_first_past_idx": (_first_past - start) if _on_page else None}
     for r in page_rows:      # 표시용 판정 보정(지난기일 검토가능→유찰대기, 낙찰→종결) — 신뢰
         r["judgment"] = _display_judgment(r, _tdy)
         # 목록 카드 칩도 상세·리포트와 **같은 판정**을 말해야 한다. 예전엔 레거시
@@ -728,6 +748,9 @@ def vehicles(request: Request, judgment: str = "", maker: str = "", q: str = "",
         "qs_no_bucket": qs_no_bucket, "bucket": bucket,
         # 가격대(FEAT-1): price=선택 key 또는 "" · price_bands=[{key,label,count}] (PRICE_BANDS 순서, 5개 고정)
         "price": price, "price_bands": price_bands, "qs_no_price": qs_no_price,
+        # UX-1 칩 ✕ 링크 재료(그 조건만 해제) / UX-3 매각기일순 구분 줄 재료(다른 정렬·파이썬 경로는 None)
+        "qs_no_date": qs_no_date, "qs_no_result": qs_no_result, "qs_no_court": qs_no_court, "qs_no_q": qs_no_q,
+        "sale_split": sale_split,
         "range_start": start + 1 if total else 0,
         "range_end": start + len(page_rows),
     })

@@ -3,16 +3,58 @@
 {% block pagetitle %}물건 목록{% endblock %}
 {% block content %}
 
+{# 정렬 라벨 — 아래 정렬 셀렉트의 옵션과 조건 요약 줄(UX-5)이 **한 원천**을 쓴다. 두 곳에 따로 적으면 어긋난다. 순서 = 셀렉트 순서. #}
+{% set sort_labels = {'recent': '최근 등록순', 'sale_date': '매각기일순', 'expected': '예상낙찰가 높은순', 'upper_bid': '상한가 높은순',
+                      'min_sale_price': '최저매각가순', 'mileage': '짧은 주행거리순', 'fail_count': '유찰 많은순', 'inspection': '검사만료 임박순'} %}
+{# 버킷 이름표 — 버킷 해제 칩과 조건 요약 줄이 같이 쓴다. ⚠ service.LIFECYCLE_BUCKETS 와 따로 관리된다(버킷 칩 주석·tests/test_bucket_labels.py). #}
+{% set bucket_labels = {'wait':'유찰 대기','lowconf':'신뢰도 낮음','nomarket':'건설기계·선박 등','other':'기타·미분석','review':'지금 입찰 추천','usepick':'실사용 추천','won':'낙찰·종결'} %}
+{# 조건 요약(UX-2 디자인 ④·UX-5 E1, 2026-09-26): "현대 · <가격대 라벨> · 매각기일순 · 2/14페이지". 한 번 만들어
+   ⑴ 큰글씨 접힌 머리(`검색 · 필터 — …`) ⑵ '판정 표시 설명 · 총 N건' 줄 바로 위, 두 곳에서 쓴다.
+   라벨은 전부 기존 원천(jshort·price_bands·segment_presets·sort_labels·활성 칩 문구)을 그대로 — 새 낱말·경계 값을 적지
+   않는다(FEAT-1 규칙). 기본 상태(필터 없음·recent·1페이지)면 비어 있어 두 곳 다 그리지 않는다.
+   ⚠ namespace 를 쓰는 이유: 이 환경엔 jinja2.ext.do 가 없어 `{% do %}` 를 못 쓴다. `{% set _ = ns.parts.append(x) %}` 가 그 대용. #}
+{% set _cs = namespace(parts=[]) %}
+{% if judgment %}{% set _ = _cs.parts.append(judgment|jshort) %}{% endif %}
+{% if maker %}{% set _ = _cs.parts.append(maker) %}{% endif %}
+{% if price %}{% for b in price_bands if b.key == price %}{% set _ = _cs.parts.append(b.label) %}{% endfor %}{% endif %}
+{% if q %}{% set _ = _cs.parts.append('“' ~ q ~ '”') %}{% endif %}
+{% if upcoming %}{% set _ = _cs.parts.append('입찰예정 ' ~ upcoming ~ '일') %}{% endif %}
+{% if cond == 'insp_expired' %}{% set _ = _cs.parts.append('검사 경과') %}{% elif cond == 'damaged' %}{% set _ = _cs.parts.append('외관 손상') %}{% endif %}
+{# 날짜는 칩(`YYYY-MM-DD 매각 ✕`)과 같은 ISO 표기. 한때 `9/1 매각` 으로 줄였다가 한 화면에 세 번째 날짜 문법(월/일, 연도 없음)을 들인 것으로
+   잡혔다(디자인 검수 2026-09-26 지적 1 — 12월에 1월 기일을 걸면 연도를 잃는다). 320 에서도 `2026-09-01 매각 · 매각기일순 · 필터 초기화` 1줄(실측). #}
+{% if date %}{% set _ = _cs.parts.append(date ~ ' 매각') %}{% endif %}
+{% if court %}{% set _ = _cs.parts.append(('법원 ' ~ (court.split(',')|length) ~ '곳') if ',' in court else court|replace('지방법원','지법')) %}{% endif %}
+{% if segment %}{% for k, lbl in segment_presets if k == segment %}{% set _ = _cs.parts.append(lbl) %}{% endfor %}{% endif %}
+{% if result %}{% set _ = _cs.parts.append('결과=' ~ result) %}{% endif %}
+{% if bucket %}{% set _ = _cs.parts.append(bucket_labels.get(bucket, bucket)) %}{% endif %}
+{% if usepick %}{% set _ = _cs.parts.append('실사용 추천' ~ ((' · ' ~ use_tier_labels[usepick_val]) if usepick_val in ('now', 'cheap') else '')) %}{% endif %}
+{% if picks %}{% set _ = _cs.parts.append('유망 물건') %}{% endif %}
+{% if promising %}{% set _ = _cs.parts.append('검토 추천') %}{% endif %}
+{% if sort in sort_labels and sort != 'recent' %}{% set _ = _cs.parts.append(sort_labels[sort]) %}{% elif usepick %}{% set _ = _cs.parts.append('이득 큰 순') %}{% endif %}
+{# 페이지 위치는 2페이지부터 — 1페이지는 '기본 상태'(필터 없음·recent·1페이지면 줄을 안 그린다)라 첫 진입 화면이 1/110페이지 를 말하지 않게 #}
+{% if page > 1 %}{% set _ = _cs.parts.append(page ~ '/' ~ total_pages ~ '페이지') %}{% endif %}
+{% set cond_summary = _cs.parts|join(' · ') %}
+{# 활성 조건(필터 초기화 칩·링크의 표시 조건) — 정렬·페이지는 조건이 아니다. UX-7 판정: 초기화는 정렬까지 되돌린다(첫 진입과 같은 상태). #}
+{% set has_filter = judgment or maker or q or price or upcoming or cond or date or court or segment or bucket or usepick or picks or result or promising %}
+{# 매각기일순 구분 줄 문구(UX-3) — 표(lg+)·카드 두 자리가 이 한 문자열을 쓴다. '참고' 는 낙찰에만 건다: 유찰 대기 물건은 다음 회차에 더 낮은
+   최저가로 다시 나올 후보라 '후보 아님'으로 읽히면 안 된다(디자인 검수 2026-09-26 지적 2 — 예전 `낙찰 결과·다음 기일 대기 참고` 는 `참고` 가 둘 다를 받았다). #}
+{% set split_note = '낙찰은 결과 참고 · 유찰은 다음 기일 대기' %}
+
 <!-- 필터 바 -->
 {# 큰글씨(125%)에서는 이 카드가 화면 2/3를 먹어 첫 물건 카드의 **가격이 폴드 밖으로 밀렸다**
    (3회차 패널 4개 맥락 — 35·58세: "큰글씨를 켜는 사람한테서 제일 중요한 가격을 뺏어간 셈").
    큰글씨에서만 접는다. details 를 open 으로 두고 summary 를 숨겨 **일반 모드 렌더는 한 픽셀도
    바뀌지 않는다**(리포트 nc-large 처방과 같은 방식). 아래 스크립트가 큰글씨일 때만 open 을 뗀다. #}
 <details id="listFilter" open class="bg-surface border border-line rounded-lg p-3">
-  <summary class="hidden cursor-pointer list-none text-sm font-medium text-txt select-none items-center gap-1 py-0.5">
+  <summary class="hidden cursor-pointer list-none text-sm font-medium text-txt select-none items-center gap-1 py-0.5 whitespace-nowrap">
     {# '총 N건'을 여기 넣었더니 바로 아래 '판정 표시 설명' 줄의 건수와 **두 번 나왔다**(검수 실측).
        건수는 아래 줄이 이미 갖고 있으므로 여기엔 펼침 표시만 둔다(#listLegend 와 같은 기호). #}
     <span class="material-symbols-outlined text-[18px] leading-none">filter_list</span>검색 · 필터
+    {# U8(2026-09-26): 접힌 머리가 활성 필터를 말하지 않아 큰글씨 사용자는 "왜 159건인지" 알 길이 없었다(디자인 D-U8).
+       부품 단위로 줄인다 — 첫 부품 + `외 N`(`검색 · 필터 — 현대 외 3`), 부품이 하나면 그것만. 한때 cond_summary 전문을 글자 단위 truncate 로
+       잘랐더니 360 큰글씨에서 `현대 · 1,000~2,…` 처럼 숫자 가운데가 갈렸다(디자인 검수 2026-09-26 지적 3). 두 줄로 풀지 않는다(접는 이유가
+       폴드 확보). 전문은 title 과 아래 요약 줄(#condSummary)이 맡는다. truncate 는 첫 부품이 아주 길 때(긴 검색어)의 안전망으로만 남긴다. #}
+    {% if cond_summary %}<span class="min-w-0 truncate text-mut font-normal" title="{{ cond_summary }}">— {{ _cs.parts[0] }}{% if _cs.parts|length > 1 %} 외 {{ _cs.parts|length - 1 }}{% endif %}</span>{% endif %}
     <span class="material-symbols-outlined ml-auto text-[20px] leading-none text-mut">expand_more</span></summary>
   {# 320×568에서 첫 물건 카드가 폴드 아래로 밀렸다. 필터를 접는 건 검색·정렬이
      이 화면의 존재 이유라 하지 않는다 — 대신 압축한다. 셀렉트 3개가 각자 한 줄을
@@ -39,7 +81,9 @@
        닫힌 셀렉트 폭(2026-09-26 실측): 좁은 폭은 grid 가 정하므로 무변화, sm 이상 고유 폭 176→190(+14 — Chromium 이
        optgroup 안 옵션의 들여쓰기를 고유 폭에 넣는다; 라벨을 비워도 190). 글자 잘림 없음.
        ⚠ 옵션 텍스트 자체에 축을 넣지 말 것('(41' 잘림으로 회귀). 첫 옵션은 optgroup 밖. #}
-    <select name="price" aria-label="가격대 필터 (최저매각가 기준)" class="inp py-1.5 min-w-0 col-span-2">
+    {# E3(2026-09-26): 괄호 건수는 **지금 적용된** 다른 조건 기준이다 — 셀렉트를 바꾸기만 하고 [적용] 전이면 그 조합이 아니다
+       (현대 선택(미적용)에서 `(451)` → 적용 후 `(159)`). 재계산 대신 기준을 말한다(자동 제출 금지). #}
+    <select name="price" aria-label="가격대 필터 (최저매각가 기준)" class="inp py-1.5 min-w-0 col-span-2" title="괄호 건수는 현재 적용된 조건 기준">
       <option value="">전체 가격대</option>
       <optgroup label="최저매각가 기준">
       {% for b in price_bands %}<option value="{{ b.key }}" {% if price == b.key %}selected{% endif %}>{{ b.label }} ({{ b.count }})</option>{% endfor %}
@@ -47,14 +91,9 @@
     </select>
     <select name="sort" aria-label="정렬 기준" class="inp py-1.5 min-w-0">
       {% if usepick %}<option value="" selected>이득 큰 순</option>{% endif %}
-      <option value="recent" {% if sort=='recent' and not usepick %}selected{% endif %}>최근 등록순</option>
-      <option value="sale_date" {% if sort=='sale_date' %}selected{% endif %}>매각기일순</option>
-      <option value="expected" {% if sort=='expected' %}selected{% endif %}>예상낙찰가 높은순</option>
-      <option value="upper_bid" {% if sort=='upper_bid' %}selected{% endif %}>상한가 높은순</option>
-      <option value="min_sale_price" {% if sort=='min_sale_price' %}selected{% endif %}>최저매각가순</option>
-      <option value="mileage" {% if sort=='mileage' %}selected{% endif %}>짧은 주행거리순</option>
-      <option value="fail_count" {% if sort=='fail_count' %}selected{% endif %}>유찰 많은순</option>
-      <option value="inspection" {% if sort=='inspection' %}selected{% endif %}>검사만료 임박순</option>
+      {# 옵션 문구는 위 sort_labels(조건 요약 줄과 한 원천)에서 돌린다 — 여기 손으로 적지 않는다. #}
+      {% for k, lbl in sort_labels.items() %}<option value="{{ k }}" {% if sort == k and not (k == 'recent' and usepick) %}selected{% endif %}>{{ lbl }}</option>
+      {% endfor %}
     </select>
     {# 빈 셀을 남기지 않는다. 셀렉트가 넷(판정·제조사·가격대·정렬)이 되면서 가격대가 전폭(위 주석)을
        쓰므로 2 + 1 + 2 = 세 줄이고, [적용]은 정렬 옆 여섯째 칸에 들어간다(FEAT-1, 2026-09-26).
@@ -67,16 +106,29 @@
     </div>
     <div class="relative flex-1 min-w-[180px] sm:flex-none sm:w-72">
       <span class="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-mut text-[19px] leading-none pointer-events-none">search</span>
-      <input name="q" value="{{ q }}" style="padding-left:2.3rem" class="inp py-1.5 w-full" placeholder="차명·제조사·사건번호·법원">
+      {# U7(2026-09-26): type=search — 브라우저가 지우기(✕)를 준다. 활성 검색어는 아래 칩(“…” ✕)이 그 조건만 푼다. #}
+      <input type="search" name="q" value="{{ q }}" style="padding-left:2.3rem" class="inp py-1.5 w-full" placeholder="차명·제조사·사건번호·법원">
     </div>
     {% if upcoming %}<input type="hidden" name="upcoming" value="{{ upcoming }}">{% endif %}
     {% if result %}<input type="hidden" name="result" value="{{ result }}">{% endif %}
     {% if status %}<input type="hidden" name="status" value="{{ status }}">{% endif %}
     {% if cond %}<input type="hidden" name="cond" value="{{ cond }}">{% endif %}
+    {# UX-1(2026-09-26): 차종 카드·달력 날짜·법원 선택·검토 추천에서 온 뒤 [적용]을 누르면 아래 넷이 빠져
+       모수가 조용히 바뀌었다(SUV 88→128, 9/1 28→1,316). 위 hidden 과 같은 관례로 값이 있을 때만 싣는다.
+       court 는 콤마 구분 다중값 그대로. ⚠ price 는 셀렉트가 있으므로 여기 넣지 말 것(위 주석). #}
+    {% if segment %}<input type="hidden" name="segment" value="{{ segment }}">{% endif %}
+    {% if date %}<input type="hidden" name="date" value="{{ date }}">{% endif %}
+    {% if court %}<input type="hidden" name="court" value="{{ court }}">{% endif %}
+    {% if promising %}<input type="hidden" name="promising" value="{{ promising }}">{% endif %}
     {# 폼 제출로 버킷·추천 필터가 조용히 풀리면 사용자가 다른 모수를 보게 된다 #}
     {% if bucket %}<input type="hidden" name="bucket" value="{{ bucket }}">{% endif %}
     {% if usepick %}<input type="hidden" name="usepick" value="{{ usepick_val }}">{% endif %}
     {% if picks %}<input type="hidden" name="picks" value="1">{% endif %}
+    {# all=1(상태 분해 KPI 링크 → 불완전 물건 포함) 진입 뒤 [적용]이 all 을 버려 모수가 조용히 바뀌었다(1,418→377, qa 반증 2026-09-26 §4-1).
+       ⚠ all 은 라우트가 템플릿 컨텍스트로 넘기지 않는다(_filters 지역 dict → qs 안에만) — request.query_params 에서 읽는다(app.py 무접촉).
+       값은 페이지네이션 qs 와 같이 원값 그대로: 서버는 정확히 "1" 일 때만 숨김을 푸므로 `all=0` 같은 무효값을 `1` 로 승격시키지 않는다. #}
+    {% set all = request.query_params.get('all', '') %}
+    {% if all %}<input type="hidden" name="all" value="{{ all }}">{% endif %}
     <span class="hidden sm:contents"><button class="btn-ghost text-sm">
       <span class="material-symbols-outlined text-base">filter_list</span> 적용</button></span>
     {# 칩들은 좁은 폭에서 두 줄을 먹는다 — 한 줄 가로 스크롤로 묶어 한 줄만 쓴다.
@@ -89,15 +141,29 @@
                 sm:contents sm:overflow-visible sm:[mask-image:none]">
     <button type="button" onclick="ncSaveSearch()" class="btn-ghost text-sm whitespace-nowrap shrink-0" title="현재 검색 조건을 저장 — 즐겨찾기 탭에서 새 매물을 확인합니다">
       <span aria-hidden="true">🔖</span> 검색 저장</button>
-    {% if usepick %}<a href="/vehicles" class="text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full px-3 py-1 inline-flex items-center gap-1 whitespace-nowrap shrink-0" title="실사용 추천 해제"><span class="material-symbols-outlined text-[13px] leading-none">directions_car</span>실사용 추천{% if usepick_val in ('now', 'cheap') %} · {{ use_tier_labels[usepick_val] }}{% endif %} ✕</a>{% endif %}
-    {% if picks %}<a href="/vehicles" class="text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full px-3 py-1 inline-flex items-center gap-1 whitespace-nowrap shrink-0" title="유망 물건 해제"><span class="material-symbols-outlined text-[13px] leading-none">check_circle</span>유망 물건 {{ total }} ✕</a>{% endif %}
+    {# 필터 초기화 칩(UX-2 디자인 ③, 2026-09-26) — 활성 조건이 하나라도 있으면 상시. 예전엔 0건 빈 상태 블록 안에만 있었다.
+       정렬까지 되돌린다(UX-7 판정: 초기화 후 = 첫 진입과 같은 상태). 비활성 톤(경고색 금지) — 필터를 푸는 일은 위험이 아니다.
+       ⚠ sm 미만에서는 숨긴다(hidden sm:inline-flex). 이 줄은 가로 스크롤인데 `검색 저장`(우변 140) 뒤에 이 칩(89px)이 서면
+         첫 활성 칩이 237 에서 시작해 320·360·390 **전부**에서 해제 ✕ 가 페이드(275·315·345) 뒤로 밀린다 — 2026-09-26 실측:
+         날짜 칩 우변 276→365, 가격대 칩 265→354, 검색어 칩 →318. UX-4 DoD("해제 ✕ 첫 화면 안") 회귀라 좁은 폭의 초기화는
+         아래 조건 요약 줄 끝의 같은 링크가 맡는다(디자인 ④ 원문 "… · 2페이지 · [초기화]"). sm 이상은 지시서대로 여기. #}
+    {% if has_filter %}<a href="/vehicles" class="hidden sm:inline-flex items-center text-xs border border-line text-mut rounded-full px-3 py-1 whitespace-nowrap shrink-0 hover:text-txt hover:bg-slate-50" title="모든 필터와 정렬을 처음 상태로">필터 초기화</a>{% endif %}
+    {# 실사용·유망 칩의 아이콘을 뺐다(2026-09-26 실측 높이 34 ≠ 이웃 26). `.material-symbols-outlined` 가 @layer 밖 평문 규칙이라
+       `text-[13px]` 를 이겨 24px 로 그려진다(날짜·법원 칩과 같은 원인, 아래 날짜 칩 주석). 문구·색·href 는 그대로. #}
+    {% if usepick %}<a href="/vehicles" class="text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full px-3 py-1 inline-flex items-center gap-1 whitespace-nowrap shrink-0" title="실사용 추천 해제">실사용 추천{% if usepick_val in ('now', 'cheap') %} · {{ use_tier_labels[usepick_val] }}{% endif %} ✕</a>{% endif %}
+    {% if picks %}<a href="/vehicles" class="text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full px-3 py-1 inline-flex items-center gap-1 whitespace-nowrap shrink-0" title="유망 물건 해제">유망 물건 {{ total }} ✕</a>{% endif %}
+    {% if promising %}{# 집계 카드 '검토 추천'에서 진입 — 신뢰도 높음+오매칭 제외 큐레이션. 클릭 시 전체 보기.
+       2026-09-26: 줄 끝(상태 토글 뒤)에 있던 것을 다른 진입 칩 옆으로 옮기고 nowrap(4줄·74px → 1줄). 이모지는 320px 에서
+       해제 ✕ 가 페이드 앞이면 유지한다는 규칙으로 측정해 유지. #}
+    <a href="/vehicles?judgment=입찰 검토 가능&sort=expected" class="text-xs bg-amber-50 text-amber-700 border border-amber-200 rounded-full px-3 py-1 inline-flex items-center gap-1 whitespace-nowrap shrink-0" title="신뢰도 높음 + 오매칭 제외한 검토 추천만. 클릭하면 전체 검토가능을 봅니다.">🎯 검토 추천 ✕</a>
+    {% endif %}
     {# ⚠ 이 이름표는 service.LIFECYCLE_BUCKETS 와 따로 관리된다 — 버킷을 늘리면서 여기를
        잊으면 아래 폴백이 걸려 **영문 키가 그대로 칩에 찍힌다**(2026-09-19 실제 발생:
        'filter_alt nomarket 1 ✕'). tests/test_bucket_labels.py 가 이 누락을 잡는다. #}
     {# 2026-09-21: review·usepick·won 이 빠져 있어 `?bucket=review` 로 열면 칩에 **영문 키가
        그대로** 찍혔다("review 13 ✕"). 주석이 경고한 그대로 당했다 — 대시보드 추천 카드 링크를
        bucket 기준으로 바꾸면서 이 경로가 사용자에게 열렸다. 이름은 카드 문구와 맞춘다. #}
-    {% if bucket %}{% set _bkl = {'wait':'유찰 대기','lowconf':'신뢰도 낮음','nomarket':'건설기계·선박 등','other':'기타·미분석','review':'지금 입찰 추천','usepick':'실사용 추천','won':'낙찰·종결'} %}
+    {% if bucket %}{% set _bkl = bucket_labels %}{# 사전 본문은 이 파일 머리(bucket_labels) — 조건 요약 줄과 한 원천 #}
     {# ⚠ nowrap 이 없으면 좁은 폭에서 이름이 3줄로 접혀 칩 높이가 58px 이 된다(이웃 칩 40px).
        필터 바 한 줄만 기형적으로 커지고 옆 칩이 잘린다(2026-09-20 실측 320~430px).
        이 바는 원래 **가로 스크롤**로 넘치는 칩을 처리하므로(위 overflow-x) 한 줄을 유지한다.
@@ -107,9 +173,20 @@
        이 앱이 이미 한 번 겪은 블로커다(큰글씨 모드에서 필터가 사라진 건). 이름은
        범위 층 정보라 줄이지 않고, 아이콘만 뺀다(옆 칩들도 아이콘 없이 텍스트만 쓴다). #}
     <a href="/vehicles{% if qs_no_bucket %}?{{ qs_no_bucket }}{% endif %}" class="text-xs bg-sky-50 text-sky-700 border border-sky-200 rounded-full px-3 py-1 inline-flex items-center gap-1 whitespace-nowrap shrink-0" title="{{ _bkl.get(bucket, bucket) }} 필터 해제">{{ _bkl.get(bucket, bucket) }} {{ total }} ✕</a>{% endif %}
-    {% if result %}<a href="/vehicles" class="text-xs bg-sky-50 text-sky-700 border border-sky-200 rounded-full px-3 py-1">결과={{ result }} ✕</a>{% endif %}
-    {% if date %}<a href="/vehicles" class="text-xs bg-primary/10 text-primary border border-primary/20 rounded-full px-3 py-1 inline-flex items-center gap-1" title="날짜 필터 해제"><span class="material-symbols-outlined text-[13px] leading-none">event</span>{{ date }} 매각 ✕</a>{% endif %}
-    {% if court %}<a href="/courts" class="text-xs bg-primary/10 text-primary border border-primary/20 rounded-full px-3 py-1 inline-flex items-center gap-1" title="법원 선택으로"><span class="material-symbols-outlined text-[13px] leading-none">gavel</span>{% if ',' in court %}법원 {{ court.split(',')|length }}곳{% else %}{{ court|replace('지방법원','지법') }}{% endif %} ✕</a>{% endif %}
+    {# UX-1 뒷부분(2026-09-26): 결과·날짜·법원 칩의 ✕ 는 `/vehicles`(필터 전부 초기화)·`/courts`(이탈)였다 — 달력 9/1 에서
+       제조사·정렬까지 함께 사라졌다(S11-56). qs_no_bucket 관례대로 **그 조건만** 뺀 링크(qs_no_result/date/court)로. #}
+    {% if result %}<a href="/vehicles{% if qs_no_result %}?{{ qs_no_result }}{% endif %}" class="text-xs bg-sky-50 text-sky-700 border border-sky-200 rounded-full px-3 py-1 whitespace-nowrap shrink-0" title="결과 필터 해제">결과={{ result }} ✕</a>{% endif %}
+    {# UX-4(2026-09-26): 날짜 칩에서 event 아이콘을 뺐다. nowrap 을 주자 320px 에서 아이콘 포함 pill 우변이 305 로
+       이 줄의 페이드 시작 275(줄 우변 291 − 16)를 넘어 해제 ✕ 가 페이드 안에 들었다(FEAT-1 r2 와 같은 규칙으로 잼).
+       아이콘 없는 우변은 276.5(✕ 글리프 우변 263.5), 높이 26 = 이웃. ⚠ 아이콘은 `text-[13px]` 를 써도 24px 로
+       그려진다 — `.material-symbols-outlined` 가 @layer 밖 평문 규칙이라 유틸리티를 이긴다(.btn-ghost 와 같은 현상).
+       그래서 아이콘이 있는 칩은 높이 34 로 이웃(26)보다 크다. #}
+    {% if date %}<a href="/vehicles{% if qs_no_date %}?{{ qs_no_date }}{% endif %}" class="text-xs bg-primary/10 text-primary border border-primary/20 rounded-full px-3 py-1 inline-flex items-center gap-1 whitespace-nowrap shrink-0" title="날짜 필터 해제">{{ date }} 매각 ✕</a>{% endif %}
+    {# 법원 칩: gavel 아이콘을 뺐다(2026-09-26 실측 높이 34 ≠ 이웃 26 — 위 날짜 칩 주석의 24px 아이콘 원인). ✕ 는 법원 조건만 푼다. #}
+    {% if court %}<a href="/vehicles{% if qs_no_court %}?{{ qs_no_court }}{% endif %}" class="text-xs bg-primary/10 text-primary border border-primary/20 rounded-full px-3 py-1 inline-flex items-center gap-1 whitespace-nowrap shrink-0" title="법원 필터 해제">{% if ',' in court %}법원 {{ court.split(',')|length }}곳{% else %}{{ court|replace('지방법원','지법') }}{% endif %} ✕</a>{% endif %}
+    {# 검색어 활성 칩(UX-5 U7, 2026-09-26) — 검색어를 지우는 손잡이가 없었다(type=text·칩 없음). 그 조건만 푼다(qs_no_q).
+       긴 검색어는 낱말만 말줄임하고 ✕ 는 남긴다(✕ 가 잘리면 푸는 손잡이가 사라진다). #}
+    {% if q %}<a href="/vehicles{% if qs_no_q %}?{{ qs_no_q }}{% endif %}" class="text-xs bg-primary/10 text-primary border border-primary/20 rounded-full px-3 py-1 inline-flex items-center gap-1 whitespace-nowrap shrink-0" title="검색어 해제"><span class="truncate max-w-[9rem]">“{{ q }}”</span> ✕</a>{% endif %}
     {# 가격대 해제 칩(FEAT-1) — 라벨은 price_bands 에서 key==price 인 항목만 쓴다(하드코딩 금지).
        가격대는 경고가 아니라 범위 선택이므로 '입찰예정' 칩과 같은 primary 소프트 톤. 좁은 폭에서
        이 줄은 가로 스크롤이라 nowrap·shrink-0 으로 한 줄을 지킨다(위 버킷 칩 주석과 같은 이유).
@@ -120,23 +197,20 @@
     <a href="/vehicles{% if qs_no_price %}?{{ qs_no_price }}{% endif %}" class="text-xs bg-primary/10 text-primary border border-primary/20 rounded-full px-3 py-1 inline-flex items-center gap-1 whitespace-nowrap shrink-0" title="가격대 필터 해제">{{ b.label }} ✕</a>
     {% endfor %}{% endif %}
     {% if upcoming %}
-    <a href="/vehicles?{{ qs_no_upcoming }}" class="text-xs bg-primary/10 text-primary border border-primary/20 rounded-full px-3 py-1 flex items-center gap-1">입찰예정 {{ upcoming }}일 ✕</a>
+    <a href="/vehicles?{{ qs_no_upcoming }}" class="text-xs bg-primary/10 text-primary border border-primary/20 rounded-full px-3 py-1 inline-flex items-center gap-1 whitespace-nowrap shrink-0">입찰예정 {{ upcoming }}일 ✕</a>
     {% else %}
     <a href="/vehicles?{% if qs %}{{ qs }}&{% endif %}upcoming=30" class="text-xs border border-line text-mut rounded-full px-3 py-1 whitespace-nowrap shrink-0 hover:text-txt hover:bg-slate-50">입찰예정 30일만</a>
     {% endif %}
     {# 상태 퀵필터 — 검사경과 / 외관손상 #}
     {% if cond=='insp_expired' %}
-    <a href="/vehicles?{{ qs_no_cond }}" class="text-xs bg-rose-50 text-rose-600 border border-rose-200 rounded-full px-3 py-1">검사 경과 ✕</a>
+    <a href="/vehicles?{{ qs_no_cond }}" class="text-xs bg-rose-50 text-rose-600 border border-rose-200 rounded-full px-3 py-1 whitespace-nowrap shrink-0">검사 경과 ✕</a>
     {% else %}
     <a href="/vehicles?{% if qs_no_cond %}{{ qs_no_cond }}&{% endif %}cond=insp_expired" class="text-xs border border-line text-mut rounded-full px-3 py-1 whitespace-nowrap shrink-0 hover:text-txt hover:bg-slate-50">검사 경과</a>
     {% endif %}
     {% if cond=='damaged' %}
-    <a href="/vehicles?{{ qs_no_cond }}" class="text-xs bg-amber-50 text-amber-700 border border-amber-200 rounded-full px-3 py-1">외관 손상 ✕</a>
+    <a href="/vehicles?{{ qs_no_cond }}" class="text-xs bg-amber-50 text-amber-700 border border-amber-200 rounded-full px-3 py-1 whitespace-nowrap shrink-0">외관 손상 ✕</a>
     {% else %}
     <a href="/vehicles?{% if qs_no_cond %}{{ qs_no_cond }}&{% endif %}cond=damaged" class="text-xs border border-line text-mut rounded-full px-3 py-1 whitespace-nowrap shrink-0 hover:text-txt hover:bg-slate-50">외관 손상</a>
-    {% endif %}
-    {% if promising %}{# 집계 카드 '검토 추천'에서 진입 — 신뢰도 높음+오매칭 제외 큐레이션. 클릭 시 전체 보기 #}
-    <a href="/vehicles?judgment=입찰 검토 가능&sort=expected" class="text-xs bg-amber-50 text-amber-700 border border-amber-200 rounded-full px-3 py-1 flex items-center gap-1" title="신뢰도 높음 + 오매칭 제외한 검토 추천만. 클릭하면 전체 검토가능을 봅니다.">🎯 검토 추천 ✕</a>
     {% endif %}
     </div>
     {# '총 N건'은 스크롤 컨테이너 안에 두면 ml-auto가 스크롤 끝으로 밀어 화면 밖으로
@@ -170,6 +244,18 @@
    안 보였다(첫 카드 top=563px, 폴드 743px). 처음 온 사람에겐 필요하지만
    재방문자가 매번 볼 것은 아니다 — 접어 두고 상태를 기기에 기억한다.
    물건 목록에서 첫 화면에 물건이 없는 것보다 나쁜 것은 없다. (5회차) #}
+{# 조건 요약 줄(UX-2 디자인 ④·UX-5 E1, 2026-09-26) — '판정 표시 설명 · 총 N건' 줄 바로 위. #appscroll 의 space-y-6 슬롯을
+   범례와 나눠 쓰도록 한 래퍼에 넣는다(줄이 따로 24px 간격을 먹으면 첫 카드가 그만큼 내려간다 — 위 범례 주석의 폴드 싸움).
+   기본 상태면 비어 있어 래퍼만 남는다(렌더 무변화). 값은 딥네이비·구분점은 mut, 낱말 안에서는 접지 않는다(nowrap + keep-all).
+   sm 미만에서는 줄 끝에 `필터 초기화` 링크 — 위 칩 줄의 같은 링크는 sm 이상에서만 보인다(칩 주석의 320px 실측 이유).
+   히트영역: 링크는 40px(min-h) 이되 음수 마진으로 줄 높이(20px)는 그대로. #}
+<div class="space-y-1.5">
+{% if cond_summary %}
+<p id="condSummary" class="px-1 text-xs text-mut leading-5 tnum" style="word-break:keep-all">
+  {%- for part in _cs.parts %}{% if not loop.first %}<span aria-hidden="true"> · </span>{% endif %}<span class="text-txt whitespace-nowrap">{{ part }}</span>{% endfor -%}
+  {%- if has_filter %}<span aria-hidden="true" class="sm:hidden"> · </span><a href="/vehicles" class="sm:hidden inline-flex items-center min-h-[40px] -my-2.5 px-1 -mx-1 text-primary hover:underline whitespace-nowrap" title="모든 필터와 정렬을 처음 상태로">필터 초기화</a>{% endif -%}
+</p>
+{% endif %}
 <details id="listLegend" class="px-1">
   <summary class="cursor-pointer list-none text-xs text-mut hover:text-txt select-none flex items-center gap-0.5 py-0.5">
     <span class="material-symbols-outlined text-[14px] leading-none">expand_more</span>판정 표시 설명
@@ -197,6 +283,7 @@
   <span class="text-mut ml-0 lg:ml-auto">미분석 = 대시보드 <b class="text-txt">[시세 분석]</b> 또는 물건 클릭</span>
 </div>
 </details>
+</div>
 <script>(function(){var d=document.getElementById('listLegend');if(!d)return;
 try{if(localStorage.getItem('ncListLegend')==='1')d.open=true;}catch(e){}
 d.addEventListener('toggle',function(){try{localStorage.setItem('ncListLegend',d.open?'1':'0');}catch(e){}});})();</script>
@@ -289,6 +376,12 @@ d.addEventListener('toggle',function(){try{localStorage.setItem('ncUsepickBasis'
            특이도를 이겨 되살리지 않는 이유: 최근 등록순 첫 8행 중 **4행이 stop** 이라 로즈 레일이
            바로 옆 로즈 칩과 겹쳐 한 행에 경고색이 둘이 된다 — 이 저장소가 반복해 막아 온
            **경고색 희석**이다. 판정 색은 3번째 칸 칩(:320)이 이미 같은 원천(bid_state.tone)에서 말한다. #}
+        {# UX-3 구분 줄(2026-09-26): `매각기일순`은 [오늘 이후 가까운 순] → [지난 기일 최근 종료 먼저]. 경계가 이 페이지에
+           있을 때(sale_split.page_first_past_idx) 그 행 **앞**에 한 번만. 모수는 그대로다(입찰예정 자동 짝짓기 금지 — 4자리 합의).
+           mut 톤·캔버스색 띠 — 경고가 아니라 구획이다. 카드 마크업은 건드리지 않는다. #}
+        {% if sale_split and loop.index0 == sale_split.page_first_past_idx %}
+        <tr data-sale-split class="bg-background"><td colspan="9" class="px-3 py-2 text-xs text-mut" style="word-break:keep-all">지난 기일 <b class="text-txt tnum">{{ '{:,}'.format(sale_split.past) }}</b>건 — {{ split_note }}</td></tr>
+        {% endif %}
         <tr class="even:bg-slate-50/60 hover:bg-slate-50 transition-colors">
           <td class="py-2.5 px-3 text-amber-500 align-top"><span data-fav-star data-vid="{{ v.id }}" hidden>★</span></td>
           <td class="py-2.5 px-3">
@@ -426,6 +519,10 @@ d.addEventListener('toggle',function(){try{localStorage.setItem('ncUsepickBasis'
        신뢰도는 한 방향으로 커지는 양이므로 **단일 색조의 농담**으로 그린다.
        의미색(초록·앰버·로즈)은 판정 칩 전용으로 남긴다. #}
     {% set confbar = 'bg-slate-500' if v.market_confidence_label=='높음' else 'bg-slate-400' if v.market_confidence_label=='보통' else 'bg-slate-300' %}
+    {# UX-3 구분 줄 — 표 루프의 같은 규칙(위 주석). divide-y 가 위아래 hairline 을 준다. #}
+    {% if sale_split and loop.index0 == sale_split.page_first_past_idx %}
+    <div data-sale-split class="px-4 py-2 text-xs text-mut bg-background" style="word-break:keep-all">지난 기일 <b class="text-txt tnum">{{ '{:,}'.format(sale_split.past) }}</b>건 — {{ split_note }}</div>
+    {% endif %}
     <a href="/vehicle/{{ v.id }}" class="block hover:bg-slate-50 transition-colors">
       <div class="relative w-full h-40 bg-slate-100 {% if not v.photo_urls %}flex items-center justify-center text-mut/30{% endif %}">
         {% if v.photo_urls %}
@@ -605,10 +702,21 @@ function ncSaveSearch(){
     var pb=p.get('price'); if(pb&&PB[pb]) parts.push('최저가 '+PB[pb]);   // 화이트리스트 밖 key 는 서버도 무시하므로 라벨에 안 넣는다. '최저가 ' 는 축 접두(라벨 아님) — 폭 제약 없는 즐겨찾기 카드라 붙인다(해제 칩에는 320px 실측으로 안 붙임)
     if(p.get('segment')) parts.push(seg[p.get('segment')]||p.get('segment'));
     if(p.get('judgment')) parts.push(p.get('judgment'));
-    if(p.get('court')) parts.push('법원 지정');
+    var ct=p.get('court'); if(ct) parts.push(ct.indexOf(',')>=0?('법원 '+ct.split(',').length+'곳'):ct.replace('지방법원','지법'));   // 법원 칩과 같은 규칙(예전 '법원 지정')
     if(p.get('upcoming')) parts.push('입찰예정 '+p.get('upcoming')+'일');
     if(p.get('cond')==='insp_expired') parts.push('검사경과');
     if(p.get('cond')==='damaged') parts.push('외관손상');
+    // 기존 틈(qa 반증 2026-09-26 §4-2): date·result·bucket·usepick·picks·promising 을 안 읽어 `?date=…` 저장이 '전체 물건'으로 찍혔다.
+    // 낱말은 활성 칩과 같다. 사전이 필요한 버킷·실사용 갈래는 Jinja 로 주입(bucket_labels·use_tier_labels — 칩·요약 줄과 같은 원천, 손으로 안 적는다).
+    // ⚠ 요약 줄 부품(_cs.parts) 전체를 주입하는 안은 FEAT-1 ⑤(tests/test_feat1_price_select.py)가 이 함수의 JS 원천(p.get('price')·'최저가 ' 접두)을
+    //   고정하고 있어 그 판정 변경을 수반 — 이번 회차는 최소 추가(reports/2026-09-26-ux-round3-frontend.md 항목 7).
+    var BL={{ bucket_labels|tojson }}, UT={{ use_tier_labels|tojson }};
+    if(p.get('date')) parts.push(p.get('date')+' 매각');
+    if(p.get('result')) parts.push('결과='+p.get('result'));
+    if(p.get('bucket')) parts.push(BL[p.get('bucket')]||p.get('bucket'));
+    var up=p.get('usepick'); if(up) parts.push('실사용 추천'+((up==='now'||up==='cheap')&&UT[up]?' · '+UT[up]:''));
+    if(p.get('picks')==='1') parts.push('유망 물건');
+    if(p.get('promising')) parts.push('검토 추천');
     var label=parts.length?parts.join(' · '):'전체 물건';
     var KEY='naechaget:searches', list;
     try{ list=JSON.parse(localStorage.getItem(KEY)||'[]'); }catch(e){ list=[]; }
@@ -619,6 +727,23 @@ function ncSaveSearch(){
     alert('검색을 저장했습니다.\n즐겨찾기 탭 → 저장한 검색에서 새 매물을 확인하세요.');
   }catch(e){ alert('저장에 실패했습니다.'); }
 }
+(function(){
+  /* [적용] 변경 표시(UX-5 U6·디자인 E3, 2026-09-26) — 필터 폼 값이 바뀌면 두 [적용](좁은 폭·넓은 폭 각 1개)에 is-dirty
+     (primary 채움, 글자 '적용' 그대로). 자동 제출은 하지 않는다. 로드·pageshow(bfcache 복귀)에 떼서 채워진 채 남지 않게.
+     ⚠ 셀렉터는 #listFilter 안의 폼 — `form[action="/vehicles"]` 는 헤더 검색 폼(데스크톱)이 먼저 잡힌다. */
+  var f=document.querySelector('#listFilter form'); if(!f) return;
+  var btns=f.querySelectorAll('button.btn-ghost:not([type])');   // 검색 저장은 type=button 이라 제외
+  function mark(on){ btns.forEach(function(b){ b.classList.toggle('is-dirty', on); }); }
+  /* 되돌림(디자인 검수 2026-09-26 Q6): 로드 시 폼 직렬화를 잡아 두고 바뀔 때마다 비교 — 셀렉트를 바꿨다 원래 값으로 돌리면 다시 뗀다.
+     예전엔 change/input 이 mark(true) 만 해서 원래 값으로 돌려도 채워진 채 남았다. pageshow(bfcache 복귀)는 그대로 뗀다. */
+  function ser(){ try{ return new URLSearchParams(new FormData(f)).toString(); }catch(e){ return ''; } }
+  var base=ser();
+  function sync(){ mark(ser()!==base); }
+  mark(false);
+  window.addEventListener('pageshow', function(){ mark(false); });
+  f.addEventListener('change', sync);
+  f.addEventListener('input', sync);
+})();
 (function(){
   var res=document.getElementById('listResults'), sk=document.getElementById('listSkeleton');
   if(!res||!sk) return;

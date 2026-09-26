@@ -112,6 +112,10 @@ table, thead, tbody, tr, th, td { word-break: keep-all; overflow-wrap: break-wor
 .btn-ghost:hover { background: #f6f9fc; border-color: #cdd7e3; }
 .btn-ghost:active { transform: scale(.97); }
 .btn-ghost:disabled { opacity: .45; cursor: default; transform: none; }
+/* [적용] 변경 표시(UX-5 U6·디자인 E3, 2026-09-26) — 목록 필터 폼의 값이 바뀌었는데 아직 누르지 않았을 때만 primary 채움.
+   자동 제출은 하지 않는다. vehicles.html 스크립트가 change/input 에 붙이고 로드·pageshow 에 뗀다. 색은 .btn-primary 와 같다. */
+.btn-ghost.is-dirty { background: #533afd; color: #fff; border-color: transparent; }
+.btn-ghost.is-dirty:hover { background: #4434d4; }
 
 /* 카드 깊이감 — 레이어드 그림자(Jakub Krehel: 보더 대신 은은한 다층 그림자) */
 .bg-surface.rounded-lg, .bg-surface.rounded-xl {

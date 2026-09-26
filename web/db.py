@@ -497,9 +497,21 @@ def _vehicles_where(judgment: Optional[str] = None, maker: Optional[str] = None,
     return where, params
 
 
+# 매각기일순 ORDER BY 원문(UX-3). 3분류 키 → 미래 블록 안 ASC 키 → 과거 블록 안 DESC 키.
+#  - 1열: 0=오늘 이후(오늘 포함) / 1=지난 기일 / 2=NULL
+#  - 2열: 미래 블록만 sale_date(ASC), 나머지는 NULL(동률)
+#  - 3열: sale_date DESC — 과거 블록에서만 실질 작용(미래 블록은 2열에서 이미 갈렸다)
+SALE_DATE_SORT = ("CASE WHEN sale_date IS NULL THEN 2 "
+                  "WHEN sale_date >= date('now','localtime') THEN 0 ELSE 1 END, "
+                  "CASE WHEN sale_date >= date('now','localtime') THEN sale_date END, "
+                  "sale_date DESC")
+# 짧은 주행거리순 ORDER BY 원문(UX-3): NULL·0 이하를 한 블록으로 뒤에, 양수는 오름차순.
+MILEAGE_SORT = "(mileage_km IS NULL OR mileage_km <= 0), mileage_km"
+
+
 def list_vehicles(judgment: Optional[str] = None, maker: Optional[str] = None,
                   q: Optional[str] = None, starred: Optional[bool] = None,
-                  sort: str = "sale_date", upcoming_days: Optional[int] = None,
+                  sort: str = "sale_date_asc", upcoming_days: Optional[int] = None,
                   status: Optional[str] = None, result: Optional[str] = None,
                   cond: Optional[str] = None, hide_incomplete: bool = False,
                   date: Optional[str] = None, court: Optional[str] = None,
@@ -514,10 +526,21 @@ def list_vehicles(judgment: Optional[str] = None, maker: Optional[str] = None,
     if where:
         sql += " WHERE " + " AND ".join(where)
     sort_cols = {"recent": "collected_at DESC, rowid DESC",   # 최근 등록순(수집일 최신 먼저, 미상은 뒤로)
-                 "sale_date": "sale_date", "min_sale_price": "min_sale_price",
+                 # 매각기일순(UX-3, 오너 승인 2026-09-26): ① 오늘 이후 가까운 순 → ② 지난 기일은 **최근 종료 먼저**
+                 # → ③ 기일 미상(NULL) 맨 뒤. 예전 방향 없는 ASC 는 끝난 경매(1·2페이지 24건 전부 '매각 종료')부터
+                 # 보여 줘 이름과 반대로 동작했다. "오늘"은 upcoming_days 조각과 **같은 식** date('now','localtime').
+                 # 모수(WHERE)는 건드리지 않는다 — 지난 기일도 뒤에서 참고할 수 있어야 한다(`입찰예정` 강제 짝짓기 금지).
+                 # app.py vehicles() 의 sale_split(구분 줄 재료)이 이 3분류를 파이썬에서 똑같이 센다 — 둘을 같이 고칠 것.
+                 "sale_date": SALE_DATE_SORT,
+                 # 내부 호출(기본값 sort="sale_date_asc")은 예전 그대로 방향 없는 ASC — 수집기(update_results 의
+                 # 법원 순회 순서·review_daily_anomalies 의 상한 끊김)가 순회 순서에 기대므로 UI 규칙 변경과 분리한다.
+                 "sale_date_asc": "sale_date",
+                 "min_sale_price": "min_sale_price",
                  "upper_bid": "upper_bid DESC", "median_price": "median_price DESC",
                  "fail_count": "fail_count DESC",
-                 "mileage": "mileage_km IS NULL, mileage_km",   # 짧은 주행거리순(NULL 뒤로)
+                 # 짧은 주행거리순: NULL 과 0 이하를 **함께** 뒤로(UX-3). 0 만 있던 '동력선 진솔호'(mileage_km=0,
+                 # 운영 DB 0 행 4건)가 첫 카드로 나오던 것 — 0 은 '가장 짧은 주행'이 아니라 '주행거리 없음'이다.
+                 "mileage": MILEAGE_SORT,
                  "inspection": "inspection_to IS NULL, inspection_to"}
     # ⚠️ 폴백은 **키 이름이 아니라 컬럼식**이어야 한다. 과거 기본값이 'sale_date'였을 땐
     # 그것이 우연히 실제 컬럼명이라 동작했으나, 'recent'로 바꾸면서 미지의 sort가 오면

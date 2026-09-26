@@ -26,8 +26,12 @@
 {% endif %}
 
 <!-- 헤더 -->
+{# 제목 열 최소 폭(qa 반증 2026-09-26 D-1): 제목 열이 flex-1(basis 0) 라 액션 줄(공개 뷰 5버튼 624px)이 남는 폭을 다 가져가면 제목이
+   768 공개 뷰에서 96px, 640 에서 0 으로 눌려 `기아 카니발` 이 두 줄·법원/사건 줄이 네 줄이 됐다(HEAD 도 640~700 은 36~96px 로 깨져 있었다).
+   sm 이상에서 12rem(192px) 을 못 박고 액션 줄이 그만큼 줄어 자기 안에서 접힌다(flex-wrap) — 넘침 없음. 192 > HEAD 768 의 164.
+   sm 미만은 세로 쌓임이라 영향 없음. 폭이 넉넉하면(1440) 예전과 같이 제목이 남는 폭을 다 쓴다. #}
 <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-  <div class="min-w-0 flex-1">
+  <div class="min-w-0 flex-1 sm:min-w-[12rem]">
     <div class="flex items-center gap-3 flex-wrap">
       {% set _mdl = v.model|mdl %}
       {% set _name = car_name(v.maker, v.model) %}
@@ -49,7 +53,12 @@
     </div>
     <p class="text-sm text-mut mt-1">{{ v.court }} · 사건 {{ v.case_no }} · 물건 {{ v.item_no }}</p>
   </div>
-  <div class="flex flex-wrap gap-2 sm:shrink-0">
+  {# sm:shrink-0 을 뺐다(2026-09-26): ← 에 '목록으로' 라벨이 붙어 이 줄이 623px(공개 뷰, 감정평가서 있는 물건)가 되자
+     640~655px 에서 헤더 폭(vw−32)을 넘어 오른쪽 버튼이 잘렸다(shrink-0 은 줄을 한 줄로 못 박고 넘치게 한다). 축소를 허용하면
+     flex-wrap 이 살아 두 줄로 접힌다. ⚠ "768 이상은 렌더 무변화" 는 관리자 뷰(6버튼) 기준이었고 공개 뷰 768 에서 제목 열이
+     164→96px 로 눌렸다(qa 반증 D-1) — 위 제목 열의 sm:min-w-[12rem] 이 그 처방. 이 줄은 제목 열이 192px 을 갖고 남는 폭 안에서
+     접힌다(768 공개 뷰: 한 줄 → 두 줄, 넘침 0). #}
+  <div class="flex flex-wrap gap-2">
     {% if can_analyze and v.status == '완료' and is_admin(request) %}
     <form method="post" action="/vehicle/{{ v.id }}/analyze"
           onsubmit="var b=this.querySelector('button');b.innerHTML='<span class=&quot;material-symbols-outlined text-lg animate-spin&quot;>progress_activity</span> 분석 중…';b.disabled=true;">
@@ -82,12 +91,13 @@
     <button type="button" onclick="_share(this)" data-share-title="{% if _sdone %}[매각 종료] {% endif %}{{ _snm if _snm != '—' else '법원경매 차량' }}{% if v.year %} {{ v.year }}년{% endif %} · {{ v.court }} {{ v.case_no }}"
             class="btn-ghost text-sm flex items-center gap-1.5" title="이 물건 링크를 카톡·메시지로 보내기">
       <span class="material-symbols-outlined text-lg">share</span> <span data-share-label aria-live="polite">공유하기</span></button>
-    {# '뒤로'만 아이콘 전용으로 줄인다 — 화살표 단독으로 오독 위험이 없는 유일한 칩이고(시스템 백
-       제스처로도 중복 제공), 큰글씨 320px 에서 액션 줄이 한 줄 줄어 히어로 사진이 첫 화면에 들어온다.
-       '감정평가서'(gavel)·'리포트'는 아이콘만으로는 안 읽히므로 라벨을 남긴다(검수 1). #}
-    <a href="{{ back_url or '/vehicles' }}" onclick="return _goBack(event)" aria-label="뒤로" title="뒤로"
-       class="btn-ghost text-sm flex items-center justify-center" style="padding-left:0;padding-right:0;width:2.75rem">
-      <span class="material-symbols-outlined text-lg">arrow_back</span></a>
+    {# ← 에 '목록으로' 라벨(UX-2, 2026-09-26). 한때 아이콘 전용(폭 2.75rem)으로 줄였었다 — 큰글씨 320px 에서 액션 줄을
+       한 줄 아끼려고. 검색 UX 점검에서 "상태를 지키는 유일한 손잡이가 라벨 없는 아이콘 하나"(디자인 지적 1·중고차 지적 2)
+       로 잡혔다: 하단 탭 `차량목록`은 빛나는데 초기화하고, 돌아가는 길은 이름이 없었다. 탭이 복귀형이 된 지금도 이 버튼이
+       **어디로** 가는지는 글자로 말한다. _goBack 동작·href(back_url) 무변경. #}
+    <a href="{{ back_url or '/vehicles' }}" onclick="return _goBack(event)" aria-label="목록으로" title="목록으로"
+       class="btn-ghost text-sm flex items-center gap-1.5">
+      <span class="material-symbols-outlined text-lg">arrow_back</span> 목록으로</a>
     <script>
       /* 공유 시트가 있으면 그걸 쓰고(모바일), 없으면 링크를 복사한다(데스크톱).
          둘 다 막히면 버튼이 조용히 실패하지 않도록 라벨로 결과를 알린다. */

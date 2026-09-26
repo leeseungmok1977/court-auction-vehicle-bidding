@@ -44,8 +44,23 @@
   // 해시로 전달된 '내부 경로'만 iframe에 로드(외부 URL 주입 차단)
   var p = "/";
   try { p = decodeURIComponent((location.hash || "#/").slice(1)) || "/"; } catch (e) { p = "/"; }
-  if (!p.startsWith("/") || p.startsWith("//")) p = "/";
+  // 역슬래시 거부(qa 반증 2026-09-26 §4-3): `#/\evil.com` 이 iframe.src 로 들어가면 브라우저가 `\`→`/` 로 정규화해 `//evil.com`(외부)을
+  // 폰 프레임 안에 띄웠다(피싱 벡터). `\` 를 하나라도 포함하면 거부하고, 풀린 URL 의 출처까지 대조한다. 거부 = '/'.
+  if (!p.startsWith("/") || p.startsWith("//") || p.indexOf("\\") !== -1) p = "/";
+  try { if (new URL(p, location.origin).origin !== location.origin) p = "/"; } catch (e) { p = "/"; }
   document.getElementById("f").src = p;
+  // UX-2(2026-09-26): iframe 이 이동할 때마다 바깥 해시를 따라 갱신 — F5 를 눌러도 마지막 경로로 다시 열린다
+  // (예전엔 처음 들어온 해시로 되돌아가 필터·페이지가 날아갔다, 검색 UX 워크스루 S9-18). 같은 출처의 내부 경로만
+  // (교차 출처면 contentWindow.location 접근이 throw → catch 로 무시), '//' 시작은 위 로드 규칙과 같이 거른다.
+  document.getElementById("f").addEventListener("load", function () {
+    try {
+      var l = this.contentWindow.location;
+      if (l.origin !== location.origin) return;                          // 같은 출처만(교차 출처는 위 접근에서 이미 throw)
+      var np = l.pathname + l.search;
+      if (!np.startsWith("/") || np.startsWith("//") || np.indexOf("\\") !== -1) return;   // 초기 로드 가드와 같은 규칙
+      if (("#" + np) !== location.hash) history.replaceState(null, "", "#" + np);
+    } catch (e) {}
+  });
   // 설치 안내 칩은 8초 뒤 자연스럽게 사라짐
   setTimeout(function(){ var h=document.getElementById("hint"); if(h){ h.style.opacity="0"; setTimeout(function(){ h.style.display="none"; }, 600); } }, 8000);
   // 프레임 페이지에서도 설치 가능하도록 서비스워커 등록(설치 시 데스크톱 화면으로 열림)
