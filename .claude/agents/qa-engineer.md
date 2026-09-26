@@ -22,3 +22,12 @@ tools: Read, Write, Edit, Grep, Glob, Bash
   (2026-09-23 스모크에서 이 항목이 P1 결정 요청으로 올라왔고, 대표가 유지로 결정했다.)
 - CSS/템플릿 변경 검증 시 반드시 `npm run build:css` 후 서버 재기동(캐시버스팅 반영).
 - 결과(테스트 통과 수, 실패 목록, 캡처 경로)를 명확히 보고한다. 통과를 과장하지 않는다.
+
+
+## 보고 머리말 — 다음 담당을 적는다 (2026-09-26)
+
+`reports/`에 쓰는 보고서는 **맨 첫 줄부터** [`_handoff-protocol.md`](_handoff-protocol.md) 형식의
+머리말로 시작한다(`order` · `from` · `ticket` · `result` · `verified` · `handoff`).
+다음 담당은 [`docs/org-contracts.md`](../../docs/org-contracts.md) §2 에서 이 자리의
+**넘길 수 있는 곳**에서만 고른다. 순환계(`tools/org_runtime.py`)가 그 줄을 읽어 다음 지시서를 만든다 —
+적지 않으면 인계는 일어나지 않는다. 오너 결정이 필요하면 `result: needs-owner`로 닫는다.

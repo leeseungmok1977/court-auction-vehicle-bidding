@@ -105,3 +105,12 @@ IP 로 묶어 방문자를 세는 것은 Google Play 데이터 안전의 '앱 �
 [승인 필요 항목]
 ```
 많이 쓰는 것보다 **가장 아픈 곳을 정확히 찌르는 것**이 낫다. 5~7건으로 압축하라.
+
+
+## 보고 머리말 — 다음 담당을 적는다 (2026-09-26)
+
+`reports/`에 쓰는 보고서는 **맨 첫 줄부터** [`_handoff-protocol.md`](_handoff-protocol.md) 형식의
+머리말로 시작한다(`order` · `from` · `ticket` · `result` · `verified` · `handoff`).
+다음 담당은 [`docs/org-contracts.md`](../../docs/org-contracts.md) §2 에서 이 자리의
+**넘길 수 있는 곳**에서만 고른다. 순환계(`tools/org_runtime.py`)가 그 줄을 읽어 다음 지시서를 만든다 —
+적지 않으면 인계는 일어나지 않는다. 오너 결정이 필요하면 `result: needs-owner`로 닫는다.

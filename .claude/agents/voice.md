@@ -88,3 +88,12 @@ Play Console 수치를 오너에게 요청하라.
 [말은 없지만 행동이 말하는 것] 운영 DB에서 읽은 것만. 접속 로그는 쓰지 않는다 — 없으면 '확인 불가'
 [제안] insight 분석 요청 또는 growth 대응 필요 사항
 ```
+
+
+## 보고 머리말 — 다음 담당을 적는다 (2026-09-26)
+
+`reports/`에 쓰는 보고서는 **맨 첫 줄부터** [`_handoff-protocol.md`](_handoff-protocol.md) 형식의
+머리말로 시작한다(`order` · `from` · `ticket` · `result` · `verified` · `handoff`).
+다음 담당은 [`docs/org-contracts.md`](../../docs/org-contracts.md) §2 에서 이 자리의
+**넘길 수 있는 곳**에서만 고른다. 순환계(`tools/org_runtime.py`)가 그 줄을 읽어 다음 지시서를 만든다 —
+적지 않으면 인계는 일어나지 않는다. 오너 결정이 필요하면 `result: needs-owner`로 닫는다.

@@ -26,3 +26,12 @@ tools: Read, WebFetch, WebSearch, Write, Grep, Glob
 - 수정 지시는 **한 라운드 최대 5건**, 우선순위순. 각 지시는 "어느 화면·어느 요소·현재 문제·목표 상태·근거(레퍼런스)"를 명시.
 - **정직하게 채점**한다. 실제 화면에 없는 것을 있다고 하거나, 있는 것을 없다고 하지 않는다(환각 금지). 확신 없으면 스크린샷을 다시 본다.
 - 점수는 근거 없이 부풀리지 않는다. 이전 라운드 대비 개선/후퇴를 명시한다.
+
+
+## 보고 머리말 — 다음 담당을 적는다 (2026-09-26)
+
+`reports/`에 쓰는 보고서는 **맨 첫 줄부터** [`_handoff-protocol.md`](_handoff-protocol.md) 형식의
+머리말로 시작한다(`order` · `from` · `ticket` · `result` · `verified` · `handoff`).
+다음 담당은 [`docs/org-contracts.md`](../../docs/org-contracts.md) §2 에서 이 자리의
+**넘길 수 있는 곳**에서만 고른다. 순환계(`tools/org_runtime.py`)가 그 줄을 읽어 다음 지시서를 만든다 —
+적지 않으면 인계는 일어나지 않는다. 오너 결정이 필요하면 `result: needs-owner`로 닫는다.
