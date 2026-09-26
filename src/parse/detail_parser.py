@@ -263,7 +263,6 @@ def grade_accident(appraisal_text: str, spec_remark: str = "",
     sr = spec_remark or ""
     both = f"{at}\n{sr}"
     hist = parse_insurance_history(both)             # 카운트: 두 소스 모두
-    report_present = bool(hist)
     cleaned = _strip_report(at)                       # 손상 키워드: 감정 요항 본문만(명세 정형구 오탐 방지)
     acc_kw = (config or {}).get("accident_keywords", _DEFAULT_ACCIDENT)
     fld_kw = (config or {}).get("flood_keywords", _DEFAULT_FLOOD)
@@ -273,8 +272,15 @@ def grade_accident(appraisal_text: str, spec_remark: str = "",
         flood_hits.append("침수이력")
     if hist.get("total_loss", 0) > 0:
         flood_hits.append("전손이력")
-    if not report_present:                            # 리포트 카운트 없을 때만 자유서술로 침수 보조판정
-        flood_hits += [k for k in fld_kw if k in cleaned]
+    # 자유서술의 침수·전손 낱말은 **보험이력 카운트가 있어도** 본다(PANEL-60).
+    # 예전엔 카운트가 있으면 자유서술을 건너뛰었다(초기 커밋) — 그때는 정형구("침수 보험사고 : 0건")를
+    # 못 지워 카운트 문장 자체가 오탐원이었기 때문이다. 지금은 _strip_report 가 정형구·0건·부정문·
+    # 확인요청을 먼저 지우므로 그 이유가 사라졌고, 게이트만 남아 **진짜 전손을 놓쳤다**:
+    #   2026타경10406_1 "전손 사고 이력 : 보험사고 이력(2019-03-19, 수리비 39,080,000원) 존재함"
+    #   → '차량번호 변경 1회' 카운트가 있어 자유서술을 건너뛰고 accident 로 내렸다. 같은 텍스트를
+    #   calculator._is_flood 는 게이트 없이 읽어 '입찰 보류'로 판정 — 등급과 판정이 갈렸다.
+    # 로컬 1,340건 실측: 게이트를 풀어 바뀌는 행은 이 한 건뿐(부정문 11건은 그대로 none/accident).
+    flood_hits += [k for k in fld_kw if k in cleaned]
     if hist.get("own_damage", 0) > 0:
         accident_hits.append(f"내차피해{hist['own_damage']}회")
     if hist.get("opp_damage", 0) > 0:
