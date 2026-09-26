@@ -202,8 +202,15 @@ table, thead, tbody, tr, th, td { word-break: keep-all; overflow-wrap: break-wor
   mask-image:linear-gradient(to right,#000 calc(100% - 24px),rgba(0,0,0,.3))}
 /* › 는 칩 위가 아니라 바의 오른쪽 여백(padding 20px, 순수 종이) 위에. 칩 위에 종이색 원으로 얹었더니
    가장자리 칩에 구멍을 내 '⚠ 리 ›' — 가장 강해야 할 경고 칩의 낱말을 훼손했다(최종 검수). */
+/* PANEL-58 — overflow:hidden 은 **아이콘 폰트가 오기 전의 리거처 이름** 때문이다. Material Symbols 가
+   적용되기 전(첫 방문 수백 ms) 또는 못 받았을 때 `chevron_right` 가 13글자 낱말(18px 에서 약 111px)로
+   그려져 20px 상자를 뚫고 나간다. 상자가 바 오른쪽 여백 끝(right:-20px = 뷰포트 끝)에 걸려 있어
+   문서가 그만큼 넓어졌다 — 시세 있는 리포트 320·360px 에서 scrollWidth +91px(워크플로 -14 실측,
+   woff2 차단으로 재현). 넘친 것은 요소가 아니라 **글자 줄**이라 요소 rect 만 세는 측정에는 섹션 칩만
+   잡혔다. `html.ms-pending` 의 visibility:hidden 과 font-display:block 은 글자를 안 보이게 할 뿐
+   자리는 그대로 차지한다 — 상자 안에서 잘라야 한다. 글리프(› 1em)는 20px 안에 들어가 잘리지 않는다. */
 .secnav-more{position:absolute;right:-20px;width:20px;text-align:center;top:50%;transform:translateY(-50%);
-  font-size:18px;color:var(--ink-faint);pointer-events:none;display:none;line-height:1}
+  font-size:18px;color:var(--ink-faint);pointer-events:none;display:none;line-height:1;overflow:hidden}
 .secnav-wrap.can-scroll .secnav-more{display:block}
 .secnav::-webkit-scrollbar{display:none}
 /* 버튼 라벨 축약: 일반 모드 ≤400px, 큰글씨는 아래 screen 블록에서 ≤430px.
