@@ -238,3 +238,14 @@ def test_dashboard_flow_counts_calls_via_orders():
     v = b["via_orders"]
     assert (v["total"], v["via"]) == (2, 1)                 # 시행일(09-26) 이전 호출은 분모에 넣지 않는다
     assert v["share"] == 50.0
+
+
+def test_standup_briefing_only_does_not_claim_nothing_to_dispatch(org, monkeypatch):
+    """--dispatch 0 은 '부를 것이 없다'가 아니라 '이번엔 안 불렀다'다 — 2026-09-27 첫 실제 실행에서 잡힌 문구."""
+    calls = []
+    monkeypatch.setattr(org, "dispatch", lambda oid, dry_run=False: calls.append(oid) or {"ok": True})
+    text = org.standup(dispatch=0, now=NOW).read_text(encoding="utf-8")
+    assert calls == []
+    assert "브리핑만" in text and "없거나" not in text
+    assert "pm-orchestrator" in text.split("## 오늘 당직이 부르는 것")[1]   # 부를 수 있었던 것을 보여 준다
+

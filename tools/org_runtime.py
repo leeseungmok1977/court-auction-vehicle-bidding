@@ -563,7 +563,11 @@ class Org:
         settings = b["settings"]
         on = str(settings.get("자동 디스패치")) == "켜짐"
         cap = int(settings.get("하루 디스패치 상한") or 0)
-        plan = self.dispatch_plan(b, limit=min(dispatch, max(0, cap - b["dispatched_today"])) if on else 0)
+        # 부를 수 있는 것(계약·상한 기준)과 이번에 실제로 부르는 것(--dispatch)을 따로 센다.
+        # 브리핑만 요청한 실행에서 "부를 것이 없다"고 적으면 거짓이다 — 2026-09-27 첫 실제 실행에서 그렇게 적혔다.
+        room = max(0, cap - b["dispatched_today"]) if on else 0
+        eligible = self.dispatch_plan(b, limit=room)
+        plan = eligible[:max(0, dispatch)]
         t = b["totals"]
         since = now - timedelta(days=1)
         ev = [e for e in self.events(since=since) if e.get("kind") in
@@ -601,11 +605,17 @@ class Org:
         L += ["## 오늘 당직이 부르는 것", ""]
         if not on:
             L.append("- `자동 디스패치`가 `꺼짐`이다(org-contracts §1) — 부르지 않는다.")
+        elif dispatch <= 0:
+            L.append("- 이 실행은 **브리핑만** 했다(디스패치 요청 0건). 당직이 부를 수 있는 지시서는 "
+                     f"{len(eligible)}건이다" + (":" if eligible else "."))
+            L += [f"  - `{o['id']}` → `{o['to']}` · {o['purpose'][:90]}" for o in eligible]
         elif not plan:
-            L.append("- 없음 — 자동 실행 가능한 열린 지시서가 없거나 하루 상한을 다 썼다"
-                     f"(오늘 {b['dispatched_today']}/{cap}).")
+            L.append("- 없음 — " + ("자동 실행 가능한 열린 지시서가 없다" if room else "하루 상한을 다 썼다")
+                     + f"(오늘 {b['dispatched_today']}/{cap}).")
         else:
             L += [f"- `{o['id']}` → `{o['to']}` · {o['purpose'][:90]}" for o in plan]
+            if len(eligible) > len(plan):
+                L.append(f"- 그 밖 {len(eligible) - len(plan)}건은 다음 당직 차례다.")
         if res["warnings"]:
             L += ["", "## 읽지 못한 것", ""] + [f"- {w}" for w in res["warnings"]]
 
