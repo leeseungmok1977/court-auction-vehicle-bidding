@@ -813,15 +813,18 @@ def read_flow(calls: list[dict]) -> tuple[dict, str | None]:
     via = [c for c in recent if org_runtime.ORDER_REF.search(str(c.get("desc", "")))]
     b["via_orders"] = {"since": since, "total": len(recent), "via": len(via),
                        "share": round(len(via) / len(recent) * 100, 1) if recent else None}
-    age_h = None
+    # ★ 분·시간·낡음을 **원시 초에서** 각각 계산한다. 전에는 0.1시간으로 반올림한 값에서 분을 만들어
+    #   분이 6분 간격(0·6·…·54)으로만 나왔고, 1.95~2.05시간은 같은 '2시간 전'이 두 색으로 갈렸다
+    #   (design-critic 2026-09-27 지적 — 코드로 확인).
+    age_s = None
     if b.get("last_scan"):
         try:
-            age_h = round((datetime.now() - datetime.fromisoformat(b["last_scan"])).total_seconds() / 3600, 1)
+            age_s = (datetime.now() - datetime.fromisoformat(b["last_scan"])).total_seconds()
         except ValueError:
-            age_h = None
-    b["scan_age_h"] = age_h
-    b["scan_age_min"] = None if age_h is None else int(age_h * 60)
-    b["scan_stale"] = age_h is None or age_h > FLOW_STALE_H
+            age_s = None
+    b["scan_age_h"] = None if age_s is None else round(age_s / 3600, 1)
+    b["scan_age_min"] = None if age_s is None else max(0, int(age_s // 60))
+    b["scan_stale"] = age_s is None or age_s > FLOW_STALE_H * 3600
     return b, None
 
 

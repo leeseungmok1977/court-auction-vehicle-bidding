@@ -102,7 +102,9 @@ try {
         $hbAct = New-ScheduledTaskAction -Execute 'wscript.exe' -WorkingDirectory $root `
                    -Argument ('//B //Nologo "{0}" "{1}"' -f $vbs, (Join-Path $root 'tools\org_heartbeat.ps1'))
     }
-    $hbTrig  = New-ScheduledTaskTrigger -Once -At (Get-Date).Date.AddMinutes(5) `
+    # First scan 1 minute after registration, then hourly. Starting at today 00:05 left the
+    # dashboard with no scan for up to 55 minutes right after the owner registered (2026-09-27 review).
+    $hbTrig  = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) `
                  -RepetitionInterval (New-TimeSpan -Hours 1)
     $hbSet   = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
                  -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 10) `

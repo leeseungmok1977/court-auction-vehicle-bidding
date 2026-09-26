@@ -394,6 +394,44 @@ const EVK = {'handoff':['인계','handoff'], 'handoff.capped':['상한 초과','
              'order.done':['완료','ok'], 'order.blocked':['막힘','warn'], 'order.doing':['착수',''],
              'order.cancelled':['취소',''], 'dispatch.start':['당직 호출',''], 'dispatch.end':['당직 끝','']};
 
+// '마지막 순환' 타일 — **예약 상태를 나이보다 먼저** 본다(design-critic 2026-09-27 ②).
+// ★ 전에는 나이가 2시간을 넘을 때만 예약을 봤다. 그래서 ⓐ 수동 스캔 직후엔 미등록이 가려졌고
+//   ⓑ 오너가 타일 지시대로 등록하면 첫 실행 전까지 빨강 "멈췄다"가 떴다 — 없애려던 거짓 빨강을
+//   등록 직후로 옮긴 셈이었다. 출처는 정기 작업 표와 **같은 목록**(d.schedule)이라 둘이 다른 말을 못 한다.
+//   빈 목록은 '예약 없음'이 아니라 '못 읽음'이다(사유는 맨 위 띠에).
+// 색: 미등록 = 주황(할 일이 있는 구조 상태 — 우리는 등록 안 된 것을 **안다**, 그래서 '모름'의 mute 가 아니다)
+//     · 첫 실행 대기 = 중립 · 등록됐는데 늙음 = 빨강 · 목록을 못 읽고 늙음 = 빨강(원인은 단정하지 않는다).
+// 작업·스크립트 이름은 nowrap — 줄 끝 하이픈은 이어 붙일 때 지우는 표시라 `naechaget-orgheartbeat`로 읽힌다(③).
+//   U+2011(줄바꿈 없는 하이픈)은 쓰지 않는다 — 복사해 -TaskName 에 붙이면 다른 글자라 작업을 못 찾는다.
+function heartbeatTile(f, d, on, st){
+  const nw = x => `<span style="white-space:nowrap">${esc(x)}</span>`;
+  const sched = d.schedule || [];
+  const known = sched.length > 0;
+  const hb = sched.find(x => /org-heartbeat/i.test(x.name || ''));
+  const age = !f.last_scan ? '없음'
+    : (f.scan_age_min < 60 ? `${f.scan_age_min}분 전` : `${Math.floor(f.scan_age_h)}시간 전`);
+  const at = f.last_scan ? esc(hhmm(f.last_scan).slice(11)) + ' · ' : '';
+  let lv = '', sub;
+  if (known && !hb){
+    lv = 'warn';
+    // '로 등록'도 묶는다 — 1041px(4열 전환 직후, 타일 안쪽 약 212px)에서 '로 / 등록'으로 조사가 홀로 떨어졌다.
+    sub = at + '매시 스캔 예약이 없다 — ' + nw('register_org_heartbeat_task.ps1') + ' ' + nw('로 등록');
+  } else if (hb && hb.never_ran && hb.next_run){
+    sub = at + `첫 매시 스캔 ${esc(String(hb.next_run).slice(11, 16))} 예정`;
+  } else if (!f.last_scan){
+    lv = hb ? 'alert' : 'mute';
+    sub = hb ? '예약은 돌았는데 스캔 기록이 없다 — ' + nw('naechaget-org-heartbeat') + ' 결과 확인'
+             : '스캔한 적 없음 — 예약 목록을 못 읽었다';
+  } else if (f.scan_stale){
+    lv = 'alert';
+    sub = at + (hb ? '매시 스캔이 멈췄다 — 예약 작업 ' + nw('naechaget-org-heartbeat') + ' 확인'
+                   : '2시간 넘게 스캔 없음 — 예약 목록을 못 읽었다');
+  } else {
+    sub = at + esc(`당직 ${on ? '켜짐' : '꺼짐'} · 오늘 호출 ${f.dispatched_today || 0}/${st['하루 디스패치 상한'] ?? '—'}`);
+  }
+  return kpi('마지막 순환', age, '', lv, sub);
+}
+
 function renderFlow(d){
   const f = d.flow || {};
   if (!f.enabled){
@@ -405,6 +443,9 @@ function renderFlow(d){
   }
   const t = f.totals || {}, v = f.via_orders || {}, st = f.settings || {};
   const on = st['자동 디스패치'] === '켜짐';
+  // 매시 스캔 예약이 등록돼 있는가 — 정기 작업 표와 **같은 목록**(d.schedule)에서 본다. 목록이 비어 있으면
+  // 못 읽은 것(problems 에 사유가 있다)이지 '없다'가 아니므로 hbKnown=false 로 둔다.
+
   $('#flowkpis').innerHTML = [
     kpi('결재함', `${t.inbox || 0}건`,
         t.inbox ? '오너·Steward 가 결정할 것 — 아래 표 맨 위' : '결정 대기 없음',
@@ -420,13 +461,7 @@ function renderFlow(d){
                 : `${v.since || ''} 이후 호출 없음`,
         (v.share != null && v.share < 50) ? 'warn' : ''),
     // 순환계 자체의 맥박. 매시 스캔이 두 시간 넘게 멈췄으면 위 숫자들은 낡은 것이다.
-    // 살아 있는지는 **경과 시간**으로 읽힌다 — 절대시각은 머릿속 뺄셈을 시킨다(design-critic ③).
-    kpi('마지막 순환', !f.last_scan ? '없음'
-          : (f.scan_age_min != null && f.scan_age_min < 60 ? `${f.scan_age_min}분 전` : `${f.scan_age_h}시간 전`),
-        !f.last_scan ? '스캔한 적 없음 — naechaget-org-heartbeat 등록 필요'
-          : `${hhmm(f.last_scan).slice(11)} · ` + (f.scan_stale ? '매시 스캔이 멈췄다'
-              : `당직 ${on ? '켜짐' : '꺼짐'} · 오늘 호출 ${f.dispatched_today || 0}/${st['하루 디스패치 상한'] ?? '—'}`),
-        !f.last_scan ? 'mute' : (f.scan_stale ? 'alert' : '')),
+    heartbeatTile(f, d, on, st),
   ].join('');
 
   const ol = f.open || [];
@@ -598,7 +633,10 @@ function render(d){
   // 정기 작업 — 한 번도 안 돈 것을 가장 강하게 표시한다
   $('#sched').innerHTML = d.schedule.length ? `<table>
     <tr><th>작업</th><th>상태</th><th>마지막 실행</th><th>다음</th></tr>
-    ${d.schedule.map(s => `<tr class="${(s.never_ran || !s.ok) ? 'bad' : ''}">
+    ${d.schedule.map(s => `<tr class="${
+      /* 행 배경은 칩과 같은 심각도 — '아직 때가 안 됨'(주황 칩)을 빨강 행에 두지 않는다.
+         등록 직후의 heartbeat 가 정확히 이 상태라 흐름 타일과 같은 순간에 눈에 띈다(design-critic 2026-09-27). */
+      (s.never_ran ? (s.next_run ? 'late' : 'bad') : (s.ok ? '' : 'bad'))}">
       <td>${esc(s.name)}</td>
       <td>${s.never_ran
             ? (s.next_run
