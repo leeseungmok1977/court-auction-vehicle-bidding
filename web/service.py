@@ -2388,23 +2388,38 @@ def _appraisal_signals(text: str, config: Optional[dict] = None,
     }
 
 
+def _stale_flood_flag(v: dict) -> bool:
+    """condition_flags 가 '침수'를 주장하는 행 — 현재 파서는 이 플래그를 만들지 않는다(PANEL-60).
+    남아 있으면 옛 파서의 산물이므로 backfill_appraisal_signals 가 다시 읽을 대상이다."""
+    return "침수" in (v.get("condition_flags") or [])
+
+
 def backfill_appraisal_signals(force: bool = False) -> int:
     """저장된 감정요항(appraisal.txt)에서 검사만료일·상태등급·시동여부를 채운다(무네트워크).
 
     기본은 condition_level이 아직 없는(NULL) 물건만 처리 → 시작 시엔 빠르게 통과.
     force=True면 전건 재파싱한다 — 파서 규칙이 바뀌었을 때 쓴다(2026-09-12: '시동이
-    걸리지 않는' 표현 미탐을 고쳐 재파싱이 필요했다)."""
-    import os
+    걸리지 않는' 표현 미탐을 고쳐 재파싱이 필요했다).
+
+    ★ condition_flags 에 '침수'가 남은 행은 level 이 있어도 다시 읽는다(PANEL-60).
+      지금 파서는 그 플래그를 만들지 않으므로(appraisal._LEVEL_ONLY_KW) 남아 있는 것은 전부
+      2026-09-21 이전 파서의 산물이다 — 그날 backfill_accident_grades 가 등급은 flood→none 으로
+      내렸지만 이 함수는 level 이 채워진 행을 건너뛰어 플래그가 낡은 채 남았다(라이브
+      2025타경53062_1: accident_grade='none' 인데 condition_flags=["침수","탈거"]). 한 번 다시
+      읽으면 플래그가 사라지므로 다음 기동부터는 다시 걸리지 않는다(멱등).
+    ⚠ 경로는 DATA_DIR 기준 — 다른 백필(backfill_mileage_from_files·backfill_accident_grades)과
+      같은 원천. 상대경로 "data" 는 작업 디렉터리가 바뀌면 조용히 0건이 된다."""
+    from src.paths import DATA_DIR
     updated = 0
     for v in db.list_vehicles():
-        if v.get("condition_level") and not force:
+        if v.get("condition_level") and not force and not _stale_flood_flag(v):
             continue
         fk = v.get("folder_key") or v.get("id")
-        fp = os.path.join("data", fk, "appraisal.txt")
-        if not os.path.exists(fp):
+        fp = DATA_DIR / fk / "appraisal.txt"
+        if not fp.exists():
             continue
         try:
-            sig = _appraisal_signals(open(fp, encoding="utf-8").read(),
+            sig = _appraisal_signals(fp.read_text(encoding="utf-8"),
                                      item_no=v.get("item_no"))
         except Exception:  # noqa: BLE001
             sig = {}

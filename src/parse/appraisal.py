@@ -35,7 +35,16 @@ _OPTION_KW = {
 _DAMAGE_MINOR = ["긁", "벗겨", "찍", "스크래치", "스크레치", "스크렛치", "스크레취",
                  "변색", "마모", "손상", "훼손", "회손", "기스"]
 _DAMAGE_MAJOR = ["파손", "깨", "찌그러", "찌그럼", "찌그름", "우그러", "부식", "누수", "누유",
-                 "탈거", "찢", "침수"]
+                 "탈거", "찢"]
+# 등급(poor)에만 반영하고 damage(condition_flags)에는 넣지 않는 낱말 (PANEL-60).
+# 침수 여부의 원천은 detail_parser.grade_accident → accident_grade **하나**다. 예전엔 '침수'가
+# _DAMAGE_MAJOR 에도 있어 condition_flags 가 **독립적으로** 침수를 주장했고, 2026-09-21 파서
+# 수정(부정문·확인요청 제거)으로 등급이 flood→none 으로 내려간 뒤에도 플래그는 재파싱되지 않아
+# 두 열이 서로 다른 말을 했다. 로컬 사본 실측: 플래그 '침수' 18행 중 11행이 부정문 오독이었다
+# ("전손, 도난, 침수 보험사고 이력 … 없는 것으로 조회되었음" 을 침수로 읽음 — 2025타경53062_1).
+# 여기로 옮기면 level 은 1,309건 전부 그대로(실측 변화 0건)이고, 플래그만 침수를 말하지 않는다.
+# 부정어 lookahead(_kw_present)는 그대로 쓴다 — `in` 으로 바꾸면 "침수 아님"이 poor 가 된다.
+_LEVEL_ONLY_KW = ["침수"]
 # 전반적 관리불량 표현 — "양호치 못함"·"양호하지 않음"처럼 부정 어미가 붙는 형태 포함
 _POOR_KW = ["좋지 못", "좋지못", "양호치 못", "양호치못", "양호하지 못", "양호하지 않",
             "불량", "노후", "심한 편", "열악", "관리가 안"]
@@ -218,7 +227,8 @@ def parse_appraisal(text: str, today: Optional[date] = None) -> Optional[dict]:
     minor = sorted({k for k in _DAMAGE_MINOR if _kw_present(clean, k)})
     major = sorted({k for k in _DAMAGE_MAJOR if _kw_present(clean, k)})
     damage = minor + major
-    poor = any(k in clean for k in _POOR_KW)
+    poor = (any(k in clean for k in _POOR_KW)
+            or any(_kw_present(clean, k) for k in _LEVEL_ONLY_KW))   # 등급만, 플래그 아님(PANEL-60)
     # "시동상태 보통"도 시동이 걸린다는 뜻이다(다물건 감정서에서 흔한 표현).
     # 판정은 _runnable_of 한 곳에서 — 문장 단위로 보고 회복·가정법까지 가른다(위 주석).
     runnable = _runnable_of(clean)
