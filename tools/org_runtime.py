@@ -712,7 +712,12 @@ class Org:
     def _claude_cmd(self) -> list[str]:
         # ★ 예약 작업(S4U)에는 대화형 PATH 가 보장되지 않는다 — npm 전역 폴더가 빠지면 which 가 못 찾는다.
         #   그래서 등록 스크립트가 전체 경로를 --claude 로 넘긴다(register_daily_report_task.ps1 의 python 과 같은 이유).
-        exe = self.claude_exe or shutil.which("claude") or shutil.which("claude.cmd")
+        # ★ 2026-09-27 실측: 이 PC 의 claude 는 **VS Code 확장 안에만** 있다(PATH 에 없음) —
+        #   `…/extensions/anthropic.claude-code-<버전>-win32-x64/resources/native-binary/claude.exe`.
+        #   경로에 버전이 박혀 있어 확장이 업데이트되면 --claude 로 넘긴 경로가 사라진다. 그때 당직이
+        #   조용히 '보고서 없음 blocked' 로 쌓이지 않게, 넘긴 경로가 없으면 가장 새 확장을 다시 찾는다.
+        exe = self.claude_exe if (self.claude_exe and Path(self.claude_exe).exists()) else ""
+        exe = exe or shutil.which("claude") or shutil.which("claude.cmd") or _vscode_claude()
         if not exe:
             return []
         return [exe, "-p", "--output-format", "json",
@@ -721,6 +726,29 @@ class Org:
 
 
 # ── CLI ─────────────────────────────────────────────────────────────────────
+def _vscode_claude(home: Path | None = None) -> str:
+    """VS Code 확장에 번들된 claude.exe 중 **버전이 가장 높은 것**의 경로. 없으면 "".
+
+    폴더 이름 `anthropic.claude-code-2.1.282-win32-x64` 의 버전을 숫자 튜플로 비교한다 —
+    문자열 정렬이면 2.1.99 가 2.1.282 보다 뒤에 온다. 파일이 실제로 있는 폴더만 센다
+    (업데이트 직후 옛 폴더가 비어 남는 경우가 있다)."""
+    base = (home or Path.home()) / ".vscode" / "extensions"
+    best, best_v = "", ()
+    try:
+        dirs = list(base.glob("anthropic.claude-code-*"))
+    except OSError:
+        return ""
+    for d in dirs:
+        exe = d / "resources" / "native-binary" / ("claude.exe" if os.name == "nt" else "claude")
+        m = re.match(r"anthropic\.claude-code-(\d+(?:\.\d+)*)", d.name)
+        if not m or not exe.is_file():
+            continue
+        v = tuple(int(x) for x in m.group(1).split("."))
+        if v > best_v:
+            best, best_v = str(exe), v
+    return best
+
+
 def _wrap_console() -> None:
     """Windows 콘솔(cp949)에서 '—'·'★' 로 죽지 않게 — main 에서만 부른다(agent_dashboard 와 같은 이유)."""
     for s in ("stdout", "stderr"):

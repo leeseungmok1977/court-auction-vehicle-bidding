@@ -249,3 +249,43 @@ def test_standup_briefing_only_does_not_claim_nothing_to_dispatch(org, monkeypat
     assert "브리핑만" in text and "없거나" not in text
     assert "pm-orchestrator" in text.split("## 오늘 당직이 부르는 것")[1]   # 부를 수 있었던 것을 보여 준다
 
+
+
+# ── 당직의 claude 찾기(2026-09-27) ──────────────────────────────────────────────
+# 이 PC 의 claude 는 VS Code 확장 안에만 있고 경로에 버전이 박혀 있다. 확장이 업데이트되면
+# 등록 때 넘긴 --claude 경로가 사라진다 — 그때 가장 새 확장을 다시 찾는지 본다.
+
+def _fake_ext(home, ver, with_exe=True):
+    d = home / ".vscode" / "extensions" / f"anthropic.claude-code-{ver}-win32-x64" / "resources" / "native-binary"
+    d.mkdir(parents=True)
+    exe = d / ("claude.exe" if rt.os.name == "nt" else "claude")
+    if with_exe:
+        exe.write_bytes(b"")
+    return exe
+
+
+def test_vscode_claude_picks_highest_version_numerically(tmp_path):
+    _fake_ext(tmp_path, "2.1.99")
+    newest = _fake_ext(tmp_path, "2.1.282")                 # 문자열 정렬이면 2.1.99 가 이긴다
+    _fake_ext(tmp_path, "2.1.300", with_exe=False)          # 업데이트 뒤 비어 남은 폴더는 세지 않는다
+    assert rt._vscode_claude(tmp_path) == str(newest)
+
+
+def test_vscode_claude_empty_when_no_extension(tmp_path):
+    assert rt._vscode_claude(tmp_path) == ""
+
+
+def test_claude_cmd_falls_back_when_registered_path_vanished(org, monkeypatch, tmp_path):
+    org.claude_exe = str(tmp_path / "gone" / "claude.exe")  # 등록 때 넘긴 경로 — 확장 업데이트로 사라짐
+    monkeypatch.setattr(rt.shutil, "which", lambda name: None)
+    monkeypatch.setattr(rt, "_vscode_claude", lambda home=None: "C:/new/claude.exe")
+    cmd = org._claude_cmd()
+    assert cmd[0] == "C:/new/claude.exe" and "-p" in cmd
+
+
+def test_claude_cmd_keeps_registered_path_when_it_exists(org, monkeypatch, tmp_path):
+    exe = tmp_path / "claude.exe"
+    exe.write_bytes(b"")
+    org.claude_exe = str(exe)
+    monkeypatch.setattr(rt, "_vscode_claude", lambda home=None: "C:/other/claude.exe")
+    assert org._claude_cmd()[0] == str(exe)

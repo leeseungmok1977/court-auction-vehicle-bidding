@@ -15,6 +15,19 @@ python tools/agent_dashboard.py --host 0.0.0.0     # 같은 망에 열기 — �
 
 로그온 시 자동 실행: 예약 작업 `naechaget-agent-dashboard` → `tools/start_agent_dashboard.cmd`.
 
+> ⚠ **2026-09-27 실측: 위 예약 작업은 등록돼 있지 않다**(`Get-ScheduledTask naechaget*` 에 없음).
+> 그 사이 누군가 VS Code 터미널에서 `--port 8765` 만으로(로컬 전용) 다시 띄워, 같은 Wi-Fi 의
+> 폰에서 열리던 주소가 조용히 끊겼다. Claude 세션은 떠 있는 대시보드를 끄는 것이 권한에서
+> 막혀 있으므로(실행 중 작업 방해) **재기동은 오너가 한다** — 이 PC 의 PowerShell 에서:
+> ```powershell
+> Get-NetTCPConnection -LocalPort 8765 -State Listen | ForEach-Object { Stop-Process -Id $_.OwningProcess }
+> cmd /c tools\start_agent_dashboard.cmd      # --host 0.0.0.0, 열쇠는 data/dashboard_token.txt 재사용
+> ```
+> 재부팅 뒤에도 사내망 모드로 뜨게 하려면(관리자 PowerShell, 1회):
+> ```powershell
+> schtasks /create /tn naechaget-agent-dashboard /sc onlogon /rl limited /tr "\"%CD%\tools\start_agent_dashboard.cmd\""
+> ```
+
 - 기본값은 **이 PC 전용**이다. `--host` 로 밖에 열 때만 열쇠를 요구하고, 열쇠를 안 주면
   막지 않고 **대신 만들어 준다** — 인증 없이 여는 경로를 두지 않기 위해서다.
 - 열쇠: `data/dashboard_token.txt` (git 제외). 주소는 `http://<IP>:8765/?k=<열쇠>`.

@@ -1125,8 +1125,12 @@ def main(argv=None) -> int:
         print(f"  사내망에 열려 있다(바인딩 {a.host}). 다른 PC 는 이 PC 의 IP 로 접속한다:",
               file=sys.stderr)
         print(f"      http://<이 PC 의 IP>:{a.port}/?k={TOKEN}", file=sys.stderr)
-        print("  열쇠 없는 요청은 403 으로 막는다. 열쇠는 켤 때마다 새로 생긴다"
-              " — 고정하려면 --token 으로 직접 준다.", file=sys.stderr)
+        # ★ 2026-09-27 정정: 예전 문구는 "열쇠는 켤 때마다 새로 생긴다" 였는데 위 main() 은 이미
+        #   data/dashboard_token.txt 를 **재사용**한다. 문구만 믿고 재기동을 피하거나 --token 을
+        #   따로 챙기는 사람이 생긴다 — 동작과 같은 말을 한다.
+        print("  열쇠 없는 요청은 403 으로 막는다. 열쇠는 data/dashboard_token.txt 에서 재사용한다"
+              " — 바꾸려면 그 파일을 지우고 다시 띄운다(--token 으로 직접 줄 수도 있다).",
+              file=sys.stderr)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
