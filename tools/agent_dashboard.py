@@ -72,11 +72,16 @@ def _wrap_console() -> None:
       셈이고, 그러면 import 이전에 버퍼에 쌓인 출력이 통째로 사라진다. 2026-09-23 하루에
       이 함정에 **네 번** 걸렸다(weekly_report·monthly_report 에서 두 번, 여기서 두 번).
       라이브러리는 import 만으로 호출자의 환경을 바꾸지 않는다 — main() 에서만 부른다.
+    ★ line_buffering=True 가 빠지면 **한 글자도 안 보인다.** 새로 만든 TextIOWrapper 는 줄 단위로
+      내보내지 않아서 "첫 스캔 중…"도 접속 주소도 프로그램이 끝날 때까지 버퍼에 갇힌다.
+      2026-09-27 02:53 오너가 터미널에서 직접 띄웠을 때 빈 화면만 보였다 — 서버는 떠 있었는데
+      떴다는 말을 못 한 것이다. 예약 작업(창 숨김)으로만 띄우던 동안엔 아무도 몰랐다.
     """
     for _s in ("stdout", "stderr"):
         try:
             setattr(sys, _s, io.TextIOWrapper(getattr(sys, _s).buffer,
-                                              encoding="utf-8", errors="replace"))
+                                              encoding="utf-8", errors="replace",
+                                              line_buffering=True))
         except Exception:                                    # noqa: BLE001
             pass
 

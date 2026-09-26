@@ -725,7 +725,8 @@ def _wrap_console() -> None:
     """Windows 콘솔(cp949)에서 '—'·'★' 로 죽지 않게 — main 에서만 부른다(agent_dashboard 와 같은 이유)."""
     for s in ("stdout", "stderr"):
         with contextlib.suppress(Exception):
-            setattr(sys, s, io.TextIOWrapper(getattr(sys, s).buffer, encoding="utf-8", errors="replace"))
+            setattr(sys, s, io.TextIOWrapper(getattr(sys, s).buffer, encoding="utf-8", errors="replace",
+                                             line_buffering=True))   # 없으면 종료까지 아무것도 안 보인다
 
 
 def main(argv=None) -> int:
