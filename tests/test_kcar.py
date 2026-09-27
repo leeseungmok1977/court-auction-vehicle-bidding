@@ -168,7 +168,8 @@ class _FakeKS:
 
 
 def test_kcar_cross_live_releases_cap_and_caches():
-    cfg = {"min_sample_count": 5, "cross_source_tol": 0.10}
+    # KCAR-1: 설정이 꺼져 있으면 라이브 조회를 하지 않는다 — 켜진 경로를 재려면 명시적으로 켠다
+    cfg = {"min_sample_count": 5, "cross_source_tol": 0.10, "kcar_cross_enabled": True}
     # 고유 스펙 20건(주행·가격 상이) → dedup 후에도 20건, 저cv → 단일소스 상한 88에 도달
     listings = [{"platform": "encar", "form_year": 2021, "mileage_km": 28000 + i * 100,
                  "price_won": 30_000_000 + i * 50_000, "model": "쏘렌토",
@@ -185,13 +186,15 @@ def test_kcar_cross_live_releases_cap_and_caches():
     assert kf["cross_source_status"] == "agree"          # 케이카 30M ≈ 엔카 30M
     assert st.confidence > 88                             # 단일소스 상한 해제
     assert ks.calls == 1
+    assert kf.get("kcar_checked_at"), "라이브로 받은 값은 조회 시각을 함께 돌려줘야 나이 게이트가 본다"
     # 같은 (모델·연식·연료) 2번째 물건 → 캐시 히트(추가 조회 없음)
     service._kcar_cross_live(ks, kcache, kreq, v, None, listings, stats, 2021, cfg)
     assert ks.calls == 1
 
 
 def test_kcar_cross_live_respects_request_cap():
-    cfg = {"min_sample_count": 5, "cross_source_tol": 0.10}
+    # 켜 두지 않으면 '상한 때문에 0회'가 아니라 '꺼져서 0회'가 돼 이 테스트가 공허해진다(KCAR-1)
+    cfg = {"min_sample_count": 5, "cross_source_tol": 0.10, "kcar_cross_enabled": True}
     listings = _encar_listings(20)
     stats = summarize(listings, form_year=2021, mileage_km=30000, platform="encar", config=cfg)
     ks = _FakeKS([_kcar_row(3000, cd=f"k{i}") for i in range(12)])

@@ -67,9 +67,17 @@ def test_가격대_층이_더_낙관적이면_그쪽을_고르지_않는다():
     assert got["mae"] == 8.0, f"낙관적인 가격대 층(4.0)을 골랐다: {got}"
 
 
-def test_블렌드된_시세로_층을_고른다():
-    """화면에 쓰는 시세(effective_median = 엔카+케이카 블렌드)와 같은 기준으로 층을 잡는다."""
-    car = v(median_price=3_000_000, kcar_median=4_000_000, kcar_sample=9)
+def test_블렌드된_시세로_층을_고른다(monkeypatch):
+    """화면에 쓰는 시세(effective_median = 엔카+케이카 블렌드)와 같은 기준으로 층을 잡는다.
+
+    KCAR-1: 블렌드 게이트(설정·나이·표본)를 **통과하는** 조건을 명시한다 — 안 그러면 블렌드가
+    안 걸려 이 테스트가 '원본 시세로 층을 고른다'를 재는 공허한 테스트가 된다."""
+    from datetime import date
+    monkeypatch.setattr(service, "kcar_blend_policy",
+                        lambda config=None: {"enabled": True, "max_age_days": 7, "min_sample": 5})
+    car = v(median_price=3_000_000, kcar_median=4_000_000, kcar_sample=9,
+            kcar_checked_at=date.today().isoformat() + " 09:00:00")
+    assert service.effective_median(car) != car["median_price"], "전제: 블렌드가 실제로 걸린다"
     assert service.effective_median(car) < 5_000_000, "전제: 블렌드해도 500만 이하"
     assert service.accuracy_for(car, _bt(_MIXED))["mae"] == 8.0
 

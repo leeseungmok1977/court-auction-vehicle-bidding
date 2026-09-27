@@ -196,8 +196,25 @@ class KcarSession:
     def __init__(self):
         from playwright.sync_api import sync_playwright
         self._pw = sync_playwright().start()
-        self._browser = self._pw.chromium.launch(channel="chrome")
-        self._page = self._browser.new_page(viewport={"width": 1400, "height": 900})
+        self._browser = None
+        try:
+            self._browser = self._pw.chromium.launch(channel="chrome")
+            self._page = self._browser.new_page(viewport={"width": 1400, "height": 900})
+        except BaseException:
+            # KCAR-1(2026-09-27): launch 가 실패하면 드라이버(node)를 **반드시** 멈춘다.
+            #   전에는 여기서 예외가 그대로 빠져나가 `_pw.stop()` 이 불리지 않았고, 실패 1회마다
+            #   드라이버 프로세스가 1개씩 남았다(로컬 재현: 3회 실패 → node.exe 3개, 각 약 110MB).
+            #   원래 예외는 그대로 올린다 — 호출자가 사유를 기록한다(record_kcar_health).
+            if self._browser is not None:
+                try:
+                    self._browser.close()
+                except Exception:  # noqa: BLE001 — 정리 실패가 원래 예외를 가리지 않게
+                    pass
+            try:
+                self._pw.stop()
+            except Exception:  # noqa: BLE001
+                pass
+            raise
         self._last = 0.0
 
     def _throttle(self):

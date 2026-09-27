@@ -22,11 +22,23 @@ BT = {"discount_median": 0.74, "mae_pct": 9.2, "sample": 172,
       "min_premium_p25": 1.05, "min_premium_p75": 1.22}
 
 
+# KCAR-1(2026-09-27): 블렌드에 설정·나이·표본 게이트가 붙었다. 이 파일은 '블렌드가 걸렸을 때 모든 화면이
+# 같은 시세를 쓰는가'를 재므로, 게이트를 **통과하는** 조건(설정 켜짐·오늘 조회·표본 9건)을 명시한다.
+# 게이트 자체(꺼짐·나이·표본)는 tests/test_kcar1_retire.py 가 잰다.
+_KCAR_ON = {"enabled": True, "max_age_days": 7, "min_sample": 5}
+
+
+def _today_ts() -> str:
+    from datetime import date
+    return date.today().isoformat() + " 09:00:00"
+
+
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     from web import db, service
     monkeypatch.setattr(db, "DB_PATH", tmp_path / "p.db")
     monkeypatch.setattr(service, "backtest_stats", lambda *a, **k: BT)
+    monkeypatch.setattr(service, "kcar_blend_policy", lambda config=None: dict(_KCAR_ON))
     db.init_db()
     # 케이카 표본이 충분해 블렌드가 실제로 발생하는 물건(eff_median != median_price)
     db.upsert_vehicle({
@@ -36,6 +48,7 @@ def client(tmp_path, monkeypatch):
         "sale_date": "2999-01-01", "status": "완료", "judgment": "유찰 대기",
         "median_price": 9670000, "market_confidence": 72, "market_confidence_label": "높음",
         "sample_count": 12, "kcar_median": 13000000, "kcar_sample": 9,
+        "kcar_checked_at": _today_ts(),
     })
     import web.app as A
     return TestClient(A.app)
@@ -44,10 +57,12 @@ def client(tmp_path, monkeypatch):
 _PUBLIC = {"x-forwarded-for": "203.0.113.7"}
 
 
-def test_blend_actually_differs_from_raw():
+def test_blend_actually_differs_from_raw(monkeypatch):
     """픽스처가 실제로 블렌드를 발생시키는지 — 아니면 아래 테스트가 공허해진다."""
     from web import service
-    v = {"median_price": 9670000, "kcar_median": 13000000, "kcar_sample": 9}
+    monkeypatch.setattr(service, "kcar_blend_policy", lambda config=None: dict(_KCAR_ON))
+    v = {"median_price": 9670000, "kcar_median": 13000000, "kcar_sample": 9,
+         "kcar_checked_at": _today_ts()}
     assert service.effective_median(v) != v["median_price"]
 
 

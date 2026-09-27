@@ -58,6 +58,21 @@ _FALLBACK = {
 ZERO_SAMPLE_SQL = ("select count(*) n from vehicles "
                    "where coalesce(sample_count, 0) = 0 and median_price is null")
 
+# 케이카 '중지(의도)' — KCAR-1(2026-09-27). 끈 것을 '이상'으로 울리면 매일 거짓 경보가 되고,
+# 그러면 사람은 경보를 안 보게 된다. 그렇다고 조용히 초록만 칠하면 **왜 초록인지**가 사라진다.
+# 그래서 피해(가격에서 빠짐)와 사정(오너 결정)을 한 문장에 함께 적는다.
+# ⚠ 날짜는 오너가 배포를 승인한 날이어야 한다 — 승인일이 다르면 **여기 한 곳**만 고친다
+#   (web/service.py 의 'disabled' 기록 문구도 이 함수를 부른다).
+KCAR_STOP_DATE = "2026-09-27"
+
+
+def kcar_stop_note(max_age_days=None, min_sample=None) -> str:
+    """케이카 중지 문구. 게이트 값은 **설정에서 읽은 값**을 넘겨받는다(모르면 숫자를 적지 않는다)."""
+    gate = (f"나이 {max_age_days}일·표본 {min_sample}건 게이트"
+            if max_age_days is not None and min_sample is not None else "나이·표본 게이트")
+    return f"{KCAR_STOP_DATE} 오너 결정으로 중지 · 낡은 값은 가격에 섞지 않음({gate})"
+
+
 _DAILY_SUMMARY = re.compile(r"^입찰예정 \d+ · 분석 \d+")
 _ANALYZED_PART = re.compile(r"^분석 (\d+)$")
 _CONFIG_NAME = "config.yaml"
@@ -183,6 +198,9 @@ def evaluate(snapshot: dict, thresholds: Optional[dict] = None,
     snapshot 키(전부 선택 — 없으면 '확인 불가'로 떨어진다):
       collected_at / analyzed_at / result_checked_at / kcar_checked_at : 'YYYY-MM-DD HH:MM:SS'
       encar_state / encar_code / encar_ok_at : settings 값
+      kcar_state / kcar_state_at / kcar_msg : settings 값('disabled' = 설정으로 끈 상태)
+      kcar_enabled : config `kcar_cross_enabled`(True/False, 모르면 없음 — 없으면 켜진 것으로 본다)
+      kcar_blend_max_age_days / kcar_blend_min_sample : 중지 문구에 적을 게이트 값(없으면 숫자 생략)
       daily_enabled : '1' | '0'
       runs : [{started_at, status, message}] — 최근 며칠치(순서 무관)
       zero_sample : {"zero": int, "total": int}
@@ -267,7 +285,22 @@ def evaluate(snapshot: dict, thresholds: Optional[dict] = None,
     if k_bad:
         k_why = (f" · 마지막 시도 {k_state}"
                  f"({str(snapshot.get('kcar_msg') or '')[:80]}, {str(snapshot.get('kcar_state_at') or '')[:16]})")
-    if k_stale is None:
+    # KCAR-1: 설정으로 끈 상태는 '이상'이 아니라 '중지(의도)'다 — 공급 판정(이상/정상)에서 뺀다.
+    #   상태가 disabled(앱이 끈 것을 확인하고 적은 기록)이거나 설정이 꺼져 있으면 여기서 끝난다.
+    #   설정은 꺼졌는데 마지막 기록이 error/blocked 면 그 기록은 **설정 반영 전** 것이다 —
+    #   꺼진 뒤의 경로는 'disabled' 만 적는다(web/service.py recompute_all_market·kcar_crosscheck).
+    #   숨기지 않고 사실로 덧붙인다.
+    k_paused = k_state == "disabled" or snapshot.get("kcar_enabled") is False
+    if k_paused:
+        note = kcar_stop_note(snapshot.get("kcar_blend_max_age_days"),
+                              snapshot.get("kcar_blend_min_sample"))
+        last = str(snapshot.get("kcar_checked_at") or "")[:10]
+        tail = f" · 마지막 교차검증 {last}" if last else ""
+        if k_bad:
+            tail += f" · 설정 반영 전 기록{k_why}"
+        signals.append(_sig("kcar", "케이카 교차검증", "ok", "중지(의도)", note + tail,
+                            stale_days=k_stale, kcar_state=k_state or None, paused=True))
+    elif k_stale is None:
         signals.append(_sig("kcar", "케이카 교차검증", "warn", "기록 없음",
                             "kcar_checked_at 이 한 건도 없다 — 2소스 표기의 근거가 없다" + k_why,
                             stale_days=None, kcar_state=k_state or None))

@@ -9,6 +9,8 @@
 None을 돌려주고 템플릿이 **else 분기만** 탔기 때문이다. 그래서 이 파일은
 **분기별 픽스처를 명시적으로 만들어** 전 상태를 한 번씩 렌더한다.
 """
+from datetime import date
+
 import pytest
 from starlette.testclient import TestClient
 
@@ -56,8 +58,11 @@ CASES = {
     "accident_many": dict(min_sale_price=10_000_000, appraisal_value=12_000_000,
                           median_price=15_000_000, accident_grade="accident",
                           insurance_history={"own_damage": 8, "opp_damage": 5}),
+    # KCAR-1: 게이트(설정·나이·표본)를 통과해야 블렌드 분기가 실제로 렌더된다 — 조회 시각은 오늘,
+    #   설정은 아래 픽스처에서 켠다. 안 그러면 이 케이스는 '케이카 없음'과 같은 화면을 두 번 그린다.
     "kcar_blend":  dict(min_sale_price=9_000_000, appraisal_value=11_000_000,
-                        median_price=9_670_000, kcar_median=13_000_000, kcar_sample=9),
+                        median_price=9_670_000, kcar_median=13_000_000, kcar_sample=9,
+                        kcar_checked_at=date.today().isoformat() + " 09:00:00"),
 }
 
 
@@ -66,6 +71,8 @@ def client(tmp_path, monkeypatch):
     from web import db
     monkeypatch.setattr(db, "DB_PATH", tmp_path / "smoke.db")
     monkeypatch.setattr(service, "backtest_stats", lambda *a, **k: BT)
+    monkeypatch.setattr(service, "kcar_blend_policy",
+                        lambda config=None: {"enabled": True, "max_age_days": 7, "min_sample": 5})
     db.init_db()
     for i, (name, extra) in enumerate(CASES.items()):
         db.upsert_vehicle({**_BASE, "id": f"{name}_1", "folder_key": f"{name}_1",

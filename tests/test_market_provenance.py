@@ -76,14 +76,22 @@ def test_provenance_has_no_field_for_individual_listings():
     assert "ZZLEAKZZ" not in blob and "http" not in blob
 
 
-def test_cross_source_count_matches_what_the_blend_actually_used():
-    """화면이 '2차 소스 N건 반영'이라 적으면 그 N건이 실제로 반영돼 있어야 한다."""
-    used = dict(_BASE, kcar_median=12_500_000, kcar_sample=5)
+def test_cross_source_count_matches_what_the_blend_actually_used(monkeypatch):
+    """화면이 '2차 소스 N건 반영'이라 적으면 그 N건이 실제로 반영돼 있어야 한다.
+
+    KCAR-1(2026-09-27): 블렌드에 설정·나이·표본 게이트가 붙었다. 이 테스트는 '블렌드가 걸렸을 때
+    문구와 숫자가 같은 표본을 말하는가'를 재므로 게이트를 **통과하는** 조건(켜짐·오늘 조회)을 명시한다.
+    게이트 자체는 tests/test_kcar1_retire.py 가 잰다."""
+    from datetime import date
+    monkeypatch.setattr(service, "kcar_blend_policy",
+                        lambda config=None: {"enabled": True, "max_age_days": 7, "min_sample": 5})
+    _BASE_K = dict(_BASE, kcar_checked_at=date.today().isoformat() + " 09:00:00")
+    used = dict(_BASE_K, kcar_median=12_500_000, kcar_sample=5)
     assert service.market_provenance(used)["cross_n"] == 5
     assert service.effective_median(used) != used["median_price"], "블렌드가 실제로 걸려야"
     # 표본 부족(<2) · 극단 괴리(2배 밖) 는 반영하지 않으므로 0으로 적어야 한다
-    for bad in (dict(_BASE, kcar_median=12_500_000, kcar_sample=1),
-                dict(_BASE, kcar_median=40_000_000, kcar_sample=9)):
+    for bad in (dict(_BASE_K, kcar_median=12_500_000, kcar_sample=1),
+                dict(_BASE_K, kcar_median=40_000_000, kcar_sample=9)):
         assert service.market_provenance(bad)["cross_n"] == 0
         assert service.effective_median(bad) == bad["median_price"]
 

@@ -381,6 +381,17 @@ out["supply"] = {
         "select started_at, status, message from runs where started_at >= ? order by started_at",
         (__RUNS_SINCE__,))],
 }
+# KCAR-1(2026-09-27): 케이카를 설정으로 껐는지 — **운영 서버의 config.yaml** 을 읽는다(로컬 값이 아니다).
+#   끈 것을 '이상'으로 울리지 않기 위해서다. 못 읽으면 빈 값(=모름)이고, 판정은 예전처럼 켜진 것으로 본다.
+try:
+    import yaml
+    with open("config.yaml", encoding="utf-8") as _f:
+        _cfg = yaml.safe_load(_f) or {}
+    out["kcar_config"] = {"kcar_enabled": bool(_cfg.get("kcar_cross_enabled", False)),
+                          "kcar_blend_max_age_days": _cfg.get("kcar_blend_max_age_days"),
+                          "kcar_blend_min_sample": _cfg.get("kcar_blend_min_sample")}
+except Exception:
+    out["kcar_config"] = {}
 keys = ("daily_time", "daily_enabled", "last_run_date", "encar_health_state", "encar_health_code",
         "encar_health_at", "encar_health_ok_at", "last_upcoming_count", "supply_zero_history",
         "kcar_health_state", "kcar_health_at", "kcar_health_msg")
@@ -559,6 +570,8 @@ def supply_verdict(data: dict, now: Optional[datetime] = None) -> Optional[dict]
                  "daily_enabled": s.get("daily_enabled"),
                  "zero_history": _zero_history(s.get("supply_zero_history")),
                  "source": "운영 서버"})
+    # KCAR-1: 서버 설정으로 끈 케이카는 '중지(의도)'로 읽는다(없으면 예전 판정 그대로).
+    snap.update({k: v for k, v in (server.get("kcar_config") or {}).items() if v is not None})
     return ops_health.evaluate(snap, ops_health.load_thresholds(),
                                now=now or data.get("generated"))
 

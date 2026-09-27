@@ -1731,7 +1731,10 @@ def supply_snapshot(days: int = 7) -> dict:
     finally:
         conn.close()
     s = db.get_all_settings()
+    _kp = kcar_blend_policy()          # KCAR-1: 끈 것을 '이상'이 아니라 '중지(의도)'로 읽게 설정도 싣는다
     return {
+        "kcar_enabled": _kp["enabled"],
+        "kcar_blend_max_age_days": _kp["max_age_days"], "kcar_blend_min_sample": _kp["min_sample"],
         "collected_at": fresh["c"], "analyzed_at": fresh["a"],
         "result_checked_at": fresh["r"], "kcar_checked_at": fresh["k"],
         "encar_state": s.get("encar_health_state"), "encar_code": s.get("encar_health_code"),
@@ -1782,6 +1785,9 @@ def record_kcar_health(state: str, msg: str = "") -> None:
     하나도 없었다.** 재교정 경로는 세션 생성 실패를 `except: ks = None` 로 삼키고, 그 경로는
     `run_id=None` 이라 실행 메시지도 남기지 않는다. 엔카에는 `encar_health_*` 가 있는데
     케이카에는 대응물이 없어서 홈 배너도 일일 리포트도 케이카에 대해 **아무 말도 못 했다.**
+
+    state: ok · skipped(표본 부족 등 정상 결과) · error · blocked · **disabled**(설정으로 끔 — KCAR-1,
+    시도 자체를 하지 않았다는 기록. 감시는 이것을 '이상'이 아니라 '중지(의도)'로 읽는다).
     """
     db.set_setting("kcar_health_state", state)
     db.set_setting("kcar_health_at", _now())
@@ -3798,9 +3804,11 @@ def public_view(v: Optional[dict], is_admin: bool) -> Optional[dict]:
 def effective_median(v: dict) -> Optional[int]:
     """산정에 반영할 시세 = 엔카(기준) + 케이카(2차 소스) 표본가중 블렌드.
 
-    케이카 표본이 충분(≥2)하고 두 소스가 극단으로 벌어지지 않을 때만 블렌드한다.
-    가중치는 케이카 표본이 많을수록 커지되 상한 35%(엔카가 여전히 기준). 표본 부족·
-    극단 괴리(오매칭 의심)면 엔카만 사용 — 노이즈로 산정을 흔들지 않기 위함(신뢰 최우선).
+    `_blend_ok` 가 허락할 때만 블렌드한다 — 설정이 켜져 있고, 케이카 값이 신선하고(나이 게이트),
+    표본이 충분하고(표본 게이트, 교차검증 최소 표본과 같은 값), 두 소스가 극단으로 벌어지지 않을 때.
+    가중치는 케이카 표본이 많을수록 커지되 상한 35%(엔카가 여전히 기준). 표본 게이트가 5건이면
+    5/(5+6)=45% 라 **통과한 값은 늘 35% 상한**이 걸린다. 조건을 못 채우면 엔카만 사용 —
+    노이즈로 산정을 흔들지 않기 위함(신뢰 최우선).
     """
     enc = v.get("median_price")
     if not _blend_ok(v):
@@ -3815,11 +3823,72 @@ def _blend_ok(v: dict) -> bool:
 
     시세 근거를 화면에 적으려면 "표본 몇 건"이 **실제로 그 숫자를 만든 표본**이어야 한다.
     조건이 effective_median 과 갈리면 화면이 쓰지도 않은 표본을 근거로 세게 된다.
+    → effective_median · market_provenance().cross_n(공개 '2차 소스 n건 반영') · 관리자 '산정 반영 시세'
+      행(eff_median != median_price) 이 **전부 이 함수 하나**를 따른다. 조건을 다른 곳에 따로 적지 않는다.
+
+    KCAR-1(2026-09-27): 설정·나이·표본 게이트(`kcar_value_usable`)를 앞에 세웠다. 전에는 표본 2건·나이 무관으로
+    섞어서 공개 23건이 22일 된 표본 2~3건 값을 25~33% 비중으로 가격에 넣었다.
     """
     enc, kc, kn = v.get("median_price"), v.get("kcar_median"), (v.get("kcar_sample") or 0)
     if not enc or not kc or kn < 2:
         return False
+    if not kcar_value_usable(v):
+        return False
     return 0.5 <= kc / enc <= 2.0        # 2배 이상 벌어지면 오매칭 의심 → 기준 소스만
+
+
+# ── 케이카 값 사용 게이트 (KCAR-1, 2026-09-27) ────────────────────────────────
+#   값은 전부 config.yaml(kcar_cross_enabled · kcar_blend_max_age_days · kcar_blend_min_sample)에 있다.
+#   아래 기본값은 설정 키가 **빠졌을 때** 쓰는 그물이고, 설정 파일을 못 읽으면 '섞지 않음'으로 떨어진다
+#   (모르면 엔카 단독 — 느슨한 쪽으로 넘어지지 않는다).
+KCAR_BLEND_MAX_AGE_DAYS = 7
+KCAR_BLEND_MIN_SAMPLE = 5
+
+
+def kcar_blend_policy(config: Optional[dict] = None) -> dict:
+    """케이카 값을 가격·신뢰도에 써도 되는 조건 묶음 {enabled, max_age_days, min_sample}."""
+    try:
+        cfg = config if config is not None else load_config()
+        return {"enabled": bool(cfg.get("kcar_cross_enabled", False)),
+                "max_age_days": int(cfg.get("kcar_blend_max_age_days", KCAR_BLEND_MAX_AGE_DAYS)),
+                "min_sample": int(cfg.get("kcar_blend_min_sample", KCAR_BLEND_MIN_SAMPLE))}
+    except (OSError, ValueError, TypeError, AttributeError):
+        return {"enabled": False, "max_age_days": KCAR_BLEND_MAX_AGE_DAYS,
+                "min_sample": KCAR_BLEND_MIN_SAMPLE}
+
+
+def kcar_disabled_msg(config: Optional[dict] = None) -> str:
+    """'disabled' 기록·관리자 배너에 쓰는 문구 — 감시(ops_health ④)와 **같은 문장**을 쓴다."""
+    pol = kcar_blend_policy(config)
+    return ops_health.kcar_stop_note(pol["max_age_days"], pol["min_sample"])
+
+
+def kcar_age_days(v: dict, today: Optional[date] = None) -> Optional[int]:
+    """kcar_checked_at 이 오늘로부터 며칠 전인가(날짜 차). 기록이 없거나 못 읽으면 None."""
+    s = str((v or {}).get("kcar_checked_at") or "")[:10]
+    try:
+        d = date.fromisoformat(s)
+    except ValueError:
+        return None
+    return max(0, ((today or date.today()) - d).days)
+
+
+def kcar_value_usable(v: dict, policy: Optional[dict] = None, today: Optional[date] = None) -> bool:
+    """저장된 케이카 값(kcar_median·kcar_sample)을 **가격이나 신뢰도에** 써도 되는가.
+
+    세 조건을 모두 만족해야 한다 — 하나라도 어기면 엔카 단독이다.
+      ① 설정이 켜져 있다(`kcar_cross_enabled`). 수집을 멈췄으면 남은 값도 쓰지 않는다 —
+         꺼도 저장값으로 계속 섞이던 것이 2026-09-27 qa 가 잡은 결함이다.
+      ② `kcar_checked_at` 이 있고 `kcar_blend_max_age_days` 일보다 오래되지 않았다(정확히 그 일수는 통과).
+      ③ 표본이 `kcar_blend_min_sample` 이상이다(교차검증 최소 표본과 같은 값).
+    """
+    pol = policy or kcar_blend_policy()
+    if not pol.get("enabled"):
+        return False
+    age = kcar_age_days(v, today)
+    if age is None or age > int(pol["max_age_days"]):
+        return False
+    return int((v or {}).get("kcar_sample") or 0) >= int(pol["min_sample"])
 
 
 _OUTLIER_RE = re.compile(r"·?이상치(\d+)건제외")
@@ -5218,7 +5287,12 @@ def recompute_all_market(run_id: Optional[int] = None, finalize: bool = True,
     ks = None
     kcache: dict = {}
     kreq = {"n": 0, "cap": config.get("kcar_max_requests", 200)}
-    if kcar_on:
+    if not kcar_on:
+        # KCAR-1(2026-09-27): 꺼져 있으면 **브라우저를 아예 띄우지 않는다.** 전에는 설정과 무관하게
+        #   매일 06:32 에 한 번씩 launch 를 시도해 실패했고, 실패할 때마다 드라이버가 남았다.
+        #   '꺼짐'을 '실패'와 구분해 남긴다 — 감시(ops_health ④)가 이상이 아니라 '중지(의도)'로 읽는다.
+        record_kcar_health("disabled", kcar_disabled_msg(config))
+    else:
         try:
             ks = kcar.new_session()
             record_kcar_health("ok")
@@ -5294,9 +5368,13 @@ def recompute_all_market(run_id: Optional[int] = None, finalize: bool = True,
             fields.update(_guarded_market_fields(stats))
             if stats.median_price is not None:
                 # 산정 시세 = 엔카 + 케이카(2차) 블렌드
+                #   나이 게이트가 보도록 조회 시각도 넘긴다 — 라이브로 새로 받았으면 그 시각, 저장값을
+                #   재적용했으면 저장된 시각. 빠뜨리면 '기록 없음'으로 떨어져 신선한 값도 안 섞인다.
                 eff = effective_median({"median_price": stats.median_price,
                                         "kcar_median": fields.get("kcar_median"),
-                                        "kcar_sample": fields.get("kcar_sample")})
+                                        "kcar_sample": fields.get("kcar_sample"),
+                                        "kcar_checked_at": (fields.get("kcar_checked_at")
+                                                            or v.get("kcar_checked_at"))})
                 bi = BidInput(median_price=eff,
                               min_sale_price=v.get("min_sale_price") or 0,
                               sample_count=stats.sample_count, platform="encar",
@@ -5421,7 +5499,18 @@ def _kcar_cross_live(ks, kcache: dict, kreq: dict, v: dict, fuel, listings: list
 
     ks=None(케이카 off/미가동)이면 저장된 교차검증을 fresh 엔카 median에 재적용(보존).
     반환: (stats, kcar_fields, blocked). blocked=True면 상위에서 중단(C.4-5).
+
+    KCAR-1(2026-09-27):
+      · 설정이 꺼져 있으면 세션이 넘어와도 **조회하지 않는다**(저장값 경로로만 간다).
+      · 저장값 재적용에도 가격 블렌드와 **같은 게이트**(kcar_value_usable — 설정·나이·표본)를 건다.
+        낡은 'agree' 가 신뢰도 상한을 88→96 으로 여는 경로를 막는다(표본 5건 이상인 낡은 값).
+        게이트에 걸리면 kcar 필드를 돌려주지 않으므로 DB 의 저장값은 **그대로 보존**된다(지우지 않는다).
+      · 라이브로 새 값을 받으면 kcar_checked_at 도 함께 돌려준다 — 전에는 이 경로가 값만 바꾸고
+        시각을 안 써서, 나이 게이트가 새 값을 낡은 값으로 오판할 수 있었다.
     """
+    pol = kcar_blend_policy(config)
+    if not pol["enabled"]:
+        ks = None                        # 꺼져 있으면 라이브 조회 금지(C.4 — 외부요청 0)
     _msc = config.get("min_sample_count", 5)
     ytol = config.get("year_tol", 1)
     mtol = config.get("mileage_tol", 0.30)
@@ -5442,7 +5531,7 @@ def _kcar_cross_live(ks, kcache: dict, kreq: dict, v: dict, fuel, listings: list
 
     def _reapply_stored():
         kcm, kcs = v.get("kcar_median"), v.get("kcar_sample") or 0
-        if kcm and kcs >= _msc:
+        if kcm and kcs >= _msc and kcar_value_usable(v, pol):
             xs, xr, _ = cross_source_check(stats.median_price, kcm, tol=tol)
             st, kf = _resum(xs, xr, kcm, kcs)
             return st, kf, False
@@ -5481,6 +5570,7 @@ def _kcar_cross_live(ks, kcache: dict, kreq: dict, v: dict, fuel, listings: list
     else:
         xs, xr = "single", None
     st, kf = _resum(xs, xr, kstats.median_price, kstats.sample_count)
+    kf["kcar_checked_at"] = _now()       # 라이브로 새로 받은 값 — 나이 게이트의 기준 시각
     return st, kf, False
 
 
@@ -5494,6 +5584,12 @@ def kcar_crosscheck(vid: str, config: dict | None = None) -> dict:
     import os
     from src.parse.detail_parser import _fuel_from_text
     config = config or load_config()
+    # KCAR-1(2026-09-27): 설정 검사가 **맨 앞**이다. 전에는 엔카를 먼저 다시 조회한 뒤 케이카 세션을
+    #   열다 실패해서, 관리자 클릭마다 엔카 요청 1회(+5초)가 결과 없이 소모됐다.
+    if not kcar_blend_policy(config)["enabled"]:
+        _msg = kcar_disabled_msg(config)
+        record_kcar_health("disabled", _msg)
+        return {"ok": False, "disabled": True, "msg": f"케이카 교차검증 중지 — {_msg}"}
     v = db.get_vehicle(vid)
     if not v or v.get("year") is None:
         return {"ok": False, "msg": "물건/연식 정보가 없어 교차검증할 수 없습니다"}
@@ -5604,7 +5700,8 @@ def kcar_crosscheck(vid: str, config: dict | None = None) -> dict:
         # (상태·사진 감가 포함 — 요항 원문·photo_count 전달).
         eff = effective_median({"median_price": stats.median_price,
                                 "kcar_median": stats.kcar_median,
-                                "kcar_sample": stats.kcar_sample})
+                                "kcar_sample": stats.kcar_sample,
+                                "kcar_checked_at": fields["kcar_checked_at"]})   # 나이 게이트 기준
         bi = BidInput(median_price=eff, min_sale_price=v.get("min_sale_price") or 0,
                       sample_count=stats.sample_count, platform="encar",
                       accident_grade=v.get("accident_grade") or "none",
