@@ -55,6 +55,13 @@ CHIP = re.compile(r'<a href="([^"]*)" class="[^"]*" title="가격대 필터 해�
 LIST_TOTAL = re.compile(r"window\.NC_LIST_TOTAL=(\d+);")
 
 
+def _card_chip_row(html: str) -> str:
+    """UX-8(2026-09-27): 해제 칩은 카드 안 칩 행과, 카드가 접혔을 때 보이는 카드 밖 한 줄(#listFilterChips) 두 곳에 같은 매크로로
+    그려진다 — 칩 수는 **카드 안 칩 행**에서 센다(두 줄의 동일성은 tests/test_ux8_filter_fold.py). 앵커: 첫 nc-chiprow ~ 폼 끝."""
+    i = html.index('<div class="nc-chiprow')
+    return html[i:html.index("</form>", i)]
+
+
 def _options(html):
     m = SEL.search(html)
     assert m, "가격대 셀렉트가 없다"
@@ -115,7 +122,7 @@ def test_zero_result_page_keeps_selected_band_and_chip(client):
     assert "조건에 맞는 물건이 없습니다" in html and "필터 초기화" in html
     assert "운영 도구" not in html                        # 필터 탓을 데이터 없음으로 오도하지 않는다
     assert _selected(html) == ["3000-"]
-    chips = CHIP.findall(html)
+    chips = CHIP.findall(_card_chip_row(html))
     assert len(chips) == 1 and chips[0][1].strip() == "3,000만~ ✕", chips
     assert "maker=" in chips[0][0] and "price=" not in chips[0][0]
     # 결과 푸터('1–12 / 총 N건 (필터 적용)')는 이 분기에 없다. 필터 카드 머리의 '총 0건'(앵커 '>총 <b') 은 남는다 —
@@ -153,7 +160,7 @@ def test_pollution_predicate_is_not_vacuous(client):
     html = client.get("/vehicles?price=0%2D500").text
     assert _total(html) == COUNTS_ALL["0-500"] == 1
     assert _selected(html) == ["0-500"]
-    assert [c[1].strip() for c in CHIP.findall(html)] == ["~500만 ✕"]
+    assert [c[1].strip() for c in CHIP.findall(_card_chip_row(html))] == ["~500만 ✕"]
     assert "(필터 적용)" in html
     assert _api(client, "price=0%2D500") == 1
     # 같은 이름이 아닌 다른 키(price[])는 무시되고 price 는 그대로 걸린다

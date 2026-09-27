@@ -50,6 +50,14 @@ COUNTS = {"0-500": 2, "500-1000": 1, "1000-2000": 13, "2000-3000": 0, "3000-": 1
 CHIP_RE = re.compile(r'<a href="([^"]*)" class="([^"]*)" title="가격대 필터 해제">([^<]*)</a>')
 
 
+def _card_chip_row(html: str) -> str:
+    """UX-8(2026-09-27): 해제 칩은 카드 안 칩 행과, 카드가 접혔을 때 보이는 카드 밖 한 줄(#listFilterChips) 두 곳에 같은 매크로로
+    그려진다 — 칩 수는 **카드 안 칩 행**에서 센다(두 줄의 동일성은 tests/test_ux8_filter_fold.py). 앵커: 첫 nc-chiprow ~ 폼 끝."""
+    i = html.index('<div class="nc-chiprow')
+    return html[i:html.index("</form>", i)]
+
+
+
 @pytest.fixture
 def seeded(tmp_path, monkeypatch):
     monkeypatch.setattr(db, "DB_PATH", tmp_path / "feat1.db")
@@ -145,7 +153,7 @@ def test_selected_option_chip_and_filter_applied_marker(client):
     attrs = {k: a for k, a, _ in _options(_select_block(html))}
     assert "selected" in attrs["1000-2000"]
     assert all("selected" not in a for k, a in attrs.items() if k != "1000-2000")
-    chips = CHIP_RE.findall(html)
+    chips = CHIP_RE.findall(_card_chip_row(html))
     assert len(chips) == 1, f"해제 칩은 정확히 하나, 실제 {len(chips)}"
     href, cls, text = chips[0]
     # 칩 텍스트는 라벨 + ✕ 그대로 — 접두를 붙이면 320px 에서 ✕ 가 페이드 마스크에 든다(모듈 docstring ②, 실측).

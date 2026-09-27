@@ -143,7 +143,14 @@ def _counts(html, name):
 
 
 def _chips(html, axis=None):
-    return [c for c in CHIP.findall(html) if axis is None or c[1] == axis]
+    return [c for c in CHIP.findall(_card_chip_row(html)) if axis is None or c[1] == axis]
+
+
+def _card_chip_row(html: str) -> str:
+    """UX-8(2026-09-27): 해제 칩은 카드 안 칩 행과, 카드가 접혔을 때 보이는 카드 밖 한 줄(#listFilterChips) 두 곳에 같은 매크로로
+    그려진다 — 칩 수는 **카드 안 칩 행**에서 센다(두 줄의 동일성은 tests/test_ux8_filter_fold.py). 앵커: 첫 nc-chiprow ~ 폼 끝."""
+    i = html.index('<div class="nc-chiprow')
+    return html[i:html.index("</form>", i)]
 
 
 def _note(html):

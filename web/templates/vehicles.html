@@ -48,20 +48,80 @@
 
 <!-- 필터 바 -->
 {# 큰글씨(125%)에서는 이 카드가 화면 2/3를 먹어 첫 물건 카드의 **가격이 폴드 밖으로 밀렸다**
-   (3회차 패널 4개 맥락 — 35·58세: "큰글씨를 켜는 사람한테서 제일 중요한 가격을 뺏어간 셈").
-   큰글씨에서만 접는다. details 를 open 으로 두고 summary 를 숨겨 **일반 모드 렌더는 한 픽셀도
-   바뀌지 않는다**(리포트 nc-large 처방과 같은 방식). 아래 스크립트가 큰글씨일 때만 open 을 뗀다. #}
-<details id="listFilter" open class="bg-surface border border-line rounded-lg p-3">
-  <summary class="hidden cursor-pointer list-none text-sm font-medium text-txt select-none items-center gap-1 py-0.5 whitespace-nowrap">
+   (3회차 패널 4개 맥락 — 35·58세: "큰글씨를 켜는 사람한테서 제일 중요한 가격을 뺏어간 셈"). 그래서 큰글씨에서는 항상 접는다
+   (summary 는 base.html 의 `html.nc-large #listFilter > summary` 규칙이 보인다 — 리포트 nc-large 처방과 같은 방식).
+   UX-8(오너 승인 2026-09-27): FEAT-2 로 셀렉트가 여섯이 되어 폰 카드가 88px 커졌다(하단 329→417) — 조건을 건 **결과 화면**
+   (has_filter)에서는 일반 모드도 좁은 폭(< 640, sm 미만)에서 접는다(디자인 검수 reports/2026-09-27-feat2-design.md 고칠 것 2·Q1).
+   ⑴ 기본 상태는 서버가 정한다 — has_filter 면 open 없이 그린다(JS 로 나중에 접으면 첫 페인트에 펼친 모습이 번쩍이고 스크롤 복원
+      높이가 어긋난다). 조건 없음(첫 진입)은 전처럼 open 이고 summary 도 숨긴다 — 조건을 고르는 화면이라 셀렉트가 보여야 한다.
+   ⑵ 넓은 폭(≥ 640)은 카드가 두 줄이라 접어서 얻는 폴드가 작고 칩 ✕ 가 숨는 손실만 크다 — 첫 페인트 전에 다시 연다(아래 스크립트).
+      summary 는 `hidden max-sm:flex` 라 넓은 폭에서는 전처럼 숨는다 → 넓은 폭 렌더는 전과 같다(캡처 md5 — UX-8 보고서).
+      '첫 페인트 전'을 **자리로는 보장할 수 없었다**(qa B-2, 2026-09-27). 서버는 폭을 모르므로 닫힌 채 그리고, 결정 스크립트가 details 뒤에
+      있으면 파서가 그 스크립트 직전에 양보할 때 닫힌 카드(넓은 폭은 내용 없는 빈 띠 25px)가 그려진다 — r1(`</details>` 뒤)도,
+      `</summary>` 바로 뒤·details 첫 자식으로 앞당긴 시안도 CPU 4x 에서 비슷한 비율로 그려졌다(UX-8 r2 보고서). 그래서 스크립트를 details **앞**에 두고
+      MutationObserver 로 details 가 DOM 에 들어온 순간 정한다 — 관찰 콜백은 마이크로태스크라 그 파서 태스크가 끝나기 전(= 렌더링 전)에 돈다.
+      ⚠ PC 공개 뷰(1440)는 420px 폰 프레임(iframe) 안이라 좁은 폭 규칙을 탄다 — 폰과 같은 화면이다.
+   ⑶ 사용자가 펼친 선택은 **같은 필터 조합 안에서만** 기억한다(아래 스크립트) — 조합이 바뀌면 새 결과 화면이라 다시 접는다.
+   ⑷ 펼침·접힘은 셰브런 모양으로도 말한다(디자인 검수 UX-8 고칠 것 1) — 펼치면 180° 뒤집힌다(detail·dashboard 의 group-open:rotate-90 과
+      같은 규칙). 모션 줄이기 설정이면 전환 없이 바로 뒤집힌다(motion-safe). 펼친 머리에서는 부제(`— 현대 외 3`)를 숨긴다 — 바로 아래 셀렉트가
+      같은 값을 보이므로 펼친 머리는 닫기 손잡이(`검색 · 필터 ⌃`)면 된다. 접힌 머리·넓은 폭·큰글씨 기본(접힘) 렌더는 바뀌지 않는다. #}
+<div>{# UX-8 래퍼: 접힌 칩 줄(#listFilterChips)을 details 의 형제(peer)로 두면서 #appscroll 의 space-y-6(24px)이 그 줄에 붙지 않게 한다 #}
+{# ── 여닫기 결정 스크립트(UX-8) — 자리: 래퍼의 첫 자식, details **앞**(r2 — qa B-2). details 가 파싱돼 DOM 에 들어오는 순간
+   MutationObserver 콜백(마이크로태스크)이 open 을 정한다. 렌더링은 태스크가 끝나고 마이크로태스크를 다 비운 뒤에만 일어나므로, 파서가 어디서
+   양보하든 닫힌 카드가 그려질 틈이 없다. 이 시점엔 summary·폼이 아직 없어서 summary 클릭은 details 에 위임해 받는다.
+   (MutationObserver 가 없는 브라우저 — 이 앱은 URLSearchParams 부터 요구한다 — 는 DOMContentLoaded 에서 정한다.)
+   한쪽 방향만 처리하면(접기만) 큰글씨를 끈 뒤 돌아왔을 때 닫힌 채로 남는다 — 양쪽을 다 정한다.
+   같은 동기화가 base.html 의 ncToggleLarge() 에도 있어야 한다(페이지를 떠나지 않고 토글하는 경우 — 끄면 펼친다. UX-8 뒤에도 그대로
+   둔다: 결과 화면 좁은 폭에서는 summary 가 보이므로 다시 접을 손잡이가 있다).
+   UX-8 규칙(fold = 서버가 open 없이 그렸다 = has_filter): 큰글씨 → 접힘 · 조건 없음·넓은 폭 → 펼침 · 좁은 폭 결과 화면 → 이 조합에서
+   사용자가 펼쳤으면 펼침, 아니면 접힘. base.html 의 스크롤 복원(`function restore()`, body 끝)보다 먼저 돈다 — 복원 높이가 최종 상태 기준이 된다.
+   기억: sessionStorage `nc:listFilterOpen` = {조합 키: 1}. 조합 키 = 쿼리에서 page·빈 값·**기본 정렬(sort=recent)** 을 뺀 것(키 정렬).
+   기본 정렬을 빼는 이유(qa B-1): 서버가 만드는 링크(페이지·칩 ✕)와 폼은 라우트 기본값(web/app.py vehicles() 의 sort="recent")까지
+   sort=recent 로 싣는데, 홈의 진입 링크(차종 카드 ?segment=…&upcoming=30 · 버킷 ?bucket=… · ?picks=1 · ?usepick=1)는 sort 가 없다.
+   그래서 같은 조합의 2페이지·무변경 [적용]이 다른 키가 되어 다시 접혔다. 서버 쪽에서 기본 정렬을 빼는 안은 모든 링크 URL(스크롤 복원 키·
+   검색 저장 중복 판정)을 바꾸므로 택하지 않았다. 같은 조합의 다음/이전 페이지·뒤로가기·탭 복귀는 펼친 채, [적용]·칩 ✕ 로 조합이 바뀌면
+   키가 달라 다시 접힌다. [적용]의 폼 제출(빈 값 포함)과 링크(빈 값 없음)가 같은 조합이면 같은 키가 되도록 빈 값을 뺀다.
+   **사용자가 summary 를 눌렀을 때만** 쓴다(큰글씨 토글·폭 변화가 여는 것은 기억이 아니다). 30개 상한.
+   폭이 640 이상으로 바뀌면(폰 가로 회전) summary 가 숨으므로 연다 — 닫힌 채 손잡이 없는 카드를 남기지 않는다. #}
+<script>(function(){var d0=document.getElementById('listFilter'), H=document.documentElement, K='nc:listFilterOpen', done=false;
+  function decide(d){ var fold=!d.open;
+    d.open = !document.documentElement.classList.contains('nc-large') && (!fold || wide() || mem()[key()] === 1);
+    if(!fold) return;
+    var user=false;
+    d.addEventListener('click', function(e){ var s=e.target && e.target.closest ? e.target.closest('summary') : null; if(s && s.parentNode===d) user=true; });
+    d.addEventListener('toggle', function(){
+      if(!user) return; user=false;
+      if(H.classList.contains('nc-large') || wide()) return;
+      try{ var m=mem(), k=key(); if(d.open) m[k]=1; else delete m[k];
+        var ks=Object.keys(m); if(ks.length>30) delete m[ks[0]];
+        sessionStorage.setItem(K, JSON.stringify(m)); }catch(e){}
+    });
+    try{ var mq=matchMedia('(min-width:640px)'), on=function(e){ if(e.matches && !H.classList.contains('nc-large')) d.open=true; };
+      if(mq.addEventListener) mq.addEventListener('change', on); else if(mq.addListener) mq.addListener(on); }catch(e){}
+  }
+  function wide(){ try{ return matchMedia('(min-width:640px)').matches; }catch(e){ return true; } }
+  function key(){ var a=[]; new URLSearchParams(location.search).forEach(function(v,k){ if(v!=='' && k!=='page' && !(k==='sort' && v==='recent')) a.push(k+'='+v); }); return a.sort().join('&'); }
+  function mem(){ try{ return JSON.parse(sessionStorage.getItem(K)||'{}')||{}; }catch(e){ return {}; } }
+  function run(){ if(done) return true; var d=document.getElementById('listFilter'); if(!d) return false; done=true; decide(d); return true; }
+  if(d0){ run(); return; }
+  try{ var w=(document.currentScript && document.currentScript.parentNode) || H;
+    var mo=new MutationObserver(function(){ if(run()) mo.disconnect(); }); mo.observe(w, {childList:true, subtree:true}); }catch(e){}
+  document.addEventListener('DOMContentLoaded', run);
+})();</script>
+<details id="listFilter"{% if not has_filter %} open{% endif %} class="group peer bg-surface border border-line rounded-lg p-3">
+  <summary class="hidden{% if has_filter %} max-sm:flex{% endif %} cursor-pointer list-none text-sm font-medium text-txt select-none items-center gap-1 py-0.5 whitespace-nowrap relative before:absolute before:-inset-x-3 before:-top-4 before:-bottom-3 group-open:before:bottom-0">
+    {# 히트영역(UX-8): 일반 모드에서도 손잡이가 되므로 ::before(절대 위치 — 레이아웃·bounding box 불변, 큰글씨 포함 픽셀 무변경)로
+       카드 안쪽 여백까지 넓힌다. summary 28px(아이콘 글리프 24 + py-0.5) → 접힘 56px(위 16 = 여백 12 + 테두리 1 + 바깥 3 · 아래 12) ·
+       펼침 44px(아래로는 안 넓힌다 — 바로 밑 셀렉트의 탭을 뺏지 않게). 2026-09-27 실측(390·360·320 같음). #}
     {# '총 N건'을 여기 넣었더니 바로 아래 '판정 표시 설명' 줄의 건수와 **두 번 나왔다**(검수 실측).
        건수는 아래 줄이 이미 갖고 있으므로 여기엔 펼침 표시만 둔다(#listLegend 와 같은 기호). #}
-    <span class="material-symbols-outlined text-[18px] leading-none">filter_list</span>검색 · 필터
+    <span class="material-symbols-outlined text-[18px] leading-none" aria-hidden="true">filter_list</span>검색 · 필터
     {# U8(2026-09-26): 접힌 머리가 활성 필터를 말하지 않아 큰글씨 사용자는 "왜 159건인지" 알 길이 없었다(디자인 D-U8).
        부품 단위로 줄인다 — 첫 부품 + `외 N`(`검색 · 필터 — 현대 외 3`), 부품이 하나면 그것만. 한때 cond_summary 전문을 글자 단위 truncate 로
        잘랐더니 360 큰글씨에서 `현대 · 1,000~2,…` 처럼 숫자 가운데가 갈렸다(디자인 검수 2026-09-26 지적 3). 두 줄로 풀지 않는다(접는 이유가
        폴드 확보). 전문은 title 과 아래 요약 줄(#condSummary)이 맡는다. truncate 는 첫 부품이 아주 길 때(긴 검색어)의 안전망으로만 남긴다. #}
-    {% if cond_summary %}<span class="min-w-0 truncate text-mut font-normal" title="{{ cond_summary }}">— {{ _cs.parts[0] }}{% if _cs.parts|length > 1 %} 외 {{ _cs.parts|length - 1 }}{% endif %}</span>{% endif %}
-    <span class="material-symbols-outlined ml-auto text-[20px] leading-none text-mut">expand_more</span></summary>
+    {% if cond_summary %}<span class="min-w-0 truncate text-mut font-normal group-open:hidden" title="{{ cond_summary }}">— {{ _cs.parts[0] }}{% if _cs.parts|length > 1 %} 외 {{ _cs.parts|length - 1 }}{% endif %}</span>{% endif %}
+    <span class="material-symbols-outlined ml-auto text-[20px] leading-none text-mut group-open:rotate-180 motion-safe:transition-transform motion-safe:ease-[var(--ease-out)]" aria-hidden="true">expand_more</span></summary>
   {# 320×568에서 첫 물건 카드가 폴드 아래로 밀렸다. 필터를 접는 건 검색·정렬이
      이 화면의 존재 이유라 하지 않는다 — 대신 압축한다. 셀렉트 3개가 각자 한 줄을
      쓰면서 오른쪽에 200px씩 빈 공간을 남기고 있었다(가장 넓은 것도 149px).
@@ -173,6 +233,10 @@
          날짜 칩 우변 276→365, 가격대 칩 265→354, 검색어 칩 →318. UX-4 DoD("해제 ✕ 첫 화면 안") 회귀라 좁은 폭의 초기화는
          아래 조건 요약 줄 끝의 같은 링크가 맡는다(디자인 ④ 원문 "… · 2페이지 · [초기화]"). sm 이상은 지시서대로 여기. #}
     {% if has_filter %}<a href="/vehicles" class="hidden sm:inline-flex items-center text-xs border border-line text-mut rounded-full px-3 py-1 whitespace-nowrap shrink-0 hover:text-txt hover:bg-slate-50" title="모든 필터와 정렬을 처음 상태로">필터 초기화</a>{% endif %}
+    {# UX-8(2026-09-27): 해제 칩은 매크로 하나(filter_chips)가 그린다 — 여기(펼친 카드 안, with_quick=true: 비활성 퀵 칩 '입찰예정 30일만'·
+       '검사 경과'·'외관 손상' 포함)와 카드가 접혔을 때 카드 밖 한 줄(#listFilterChips, with_quick=false: 해제 ✕ 칩만). 두 벌을 손으로 적지 않는다.
+       순서·문구·클래스·href 는 매크로 전과 한 글자도 같다(활성 칩 ✕ 는 그 조건만 푼다 — UX-1). #}
+    {% macro filter_chips(with_quick) %}
     {# 실사용·유망 칩의 아이콘을 뺐다(2026-09-26 실측 높이 34 ≠ 이웃 26). `.material-symbols-outlined` 가 @layer 밖 평문 규칙이라
        `text-[13px]` 를 이겨 24px 로 그려진다(날짜·법원 칩과 같은 원인, 아래 날짜 칩 주석). 문구·색·href 는 그대로. #}
     {% if usepick %}<a href="/vehicles" class="text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full px-3 py-1 inline-flex items-center gap-1 whitespace-nowrap shrink-0" title="실사용 추천 해제">실사용 추천{% if usepick_val in ('now', 'cheap') %} · {{ use_tier_labels[usepick_val] }}{% endif %} ✕</a>{% endif %}
@@ -231,20 +295,21 @@
     {% endfor %}{% endif %}
     {% if upcoming %}
     <a href="/vehicles?{{ qs_no_upcoming }}" class="text-xs bg-primary/10 text-primary border border-primary/20 rounded-full px-3 py-1 inline-flex items-center gap-1 whitespace-nowrap shrink-0">입찰예정 {{ upcoming }}일 ✕</a>
-    {% else %}
+    {% elif with_quick %}
     <a href="/vehicles?{% if qs %}{{ qs }}&{% endif %}upcoming=30" class="text-xs border border-line text-mut rounded-full px-3 py-1 whitespace-nowrap shrink-0 hover:text-txt hover:bg-slate-50">입찰예정 30일만</a>
     {% endif %}
     {# 상태 퀵필터 — 검사경과 / 외관손상 #}
     {% if cond=='insp_expired' %}
     <a href="/vehicles?{{ qs_no_cond }}" class="text-xs bg-rose-50 text-rose-600 border border-rose-200 rounded-full px-3 py-1 whitespace-nowrap shrink-0">검사 경과 ✕</a>
-    {% else %}
+    {% elif with_quick %}
     <a href="/vehicles?{% if qs_no_cond %}{{ qs_no_cond }}&{% endif %}cond=insp_expired" class="text-xs border border-line text-mut rounded-full px-3 py-1 whitespace-nowrap shrink-0 hover:text-txt hover:bg-slate-50">검사 경과</a>
     {% endif %}
     {% if cond=='damaged' %}
     <a href="/vehicles?{{ qs_no_cond }}" class="text-xs bg-amber-50 text-amber-700 border border-amber-200 rounded-full px-3 py-1 whitespace-nowrap shrink-0">외관 손상 ✕</a>
-    {% else %}
+    {% elif with_quick %}
     <a href="/vehicles?{% if qs_no_cond %}{{ qs_no_cond }}&{% endif %}cond=damaged" class="text-xs border border-line text-mut rounded-full px-3 py-1 whitespace-nowrap shrink-0 hover:text-txt hover:bg-slate-50">외관 손상</a>
     {% endif %}
+    {% endmacro %}{{ filter_chips(true) }}
     </div>
     {# '총 N건'은 스크롤 컨테이너 안에 두면 ml-auto가 스크롤 끝으로 밀어 화면 밖으로
        나간다(실제로 그랬다). 좁은 폭에서는 아래 '판정 표시 설명' 줄의 빈 오른쪽으로
@@ -252,10 +317,19 @@
     <span class="hidden sm:inline text-sm text-mut ml-auto whitespace-nowrap">총 <b class="text-txt">{{ total }}</b>건</span>
   </form>
 </details>
-{# 한쪽 방향만 처리하면(접기만) 큰글씨를 끈 뒤 돌아왔을 때 닫힌 채로 남는다 — 양쪽을 다 정한다.
-   같은 동기화가 base.html 의 ncToggleLarge() 에도 있어야 한다(페이지를 떠나지 않고 토글하는 경우). #}
-<script>(function(){var d=document.getElementById('listFilter');
-  if(d) d.open = !document.documentElement.classList.contains('nc-large');})();</script>
+{# UX-8 ⑤ 안 (b) — 카드가 접히면 칩 행(카드 안)의 해제 ✕ 도 숨어 "조건 하나만 빼기"(UX-1)가 두 번 탭이 된다. 접혔을 때만 활성 해제 칩을
+   카드 바로 아래 한 줄로 보인다(검색 저장·비활성 퀵 칩 제외 — filter_chips(false)). 표시 조건은 CSS 만으로: 좁은 폭(sm:hidden)·
+   접힘(peer-open:hidden — details 가 peer)·일반 모드([.nc-large_&]:hidden — 큰글씨는 동작 무변경). 해제 칩이 하나도 없으면(제조사·판정만
+   건 경우 — 그 둘은 칩이 없다) 줄을 그리지 않는다. 가로 스크롤·오른쪽 페이드는 카드 안 칩 행과 같은 규칙. details **뒤**에 두는
+   이유: 파싱이 이 줄에 닿을 때 details 의 최종 open 이 이미 정해져 있어(위 결정 스크립트) 펼친 채 기억된 조합에서 줄이 한 번 번쩍이지 않는다. #}
+{% if has_filter %}{% set _fold_chips = filter_chips(false)|trim %}{% if _fold_chips %}
+<div id="listFilterChips" class="flex sm:hidden peer-open:hidden [.nc-large_&]:hidden mt-2 px-1 items-center gap-2 overflow-x-auto
+            [scrollbar-width:none] [&::-webkit-scrollbar]:hidden
+            [mask-image:linear-gradient(to_right,#000_calc(100%-16px),transparent)]">
+{{ _fold_chips }}
+</div>
+{% endif %}{% endif %}
+</div>
 
 <!-- 차종 프리셋 필터(모델명 기준 근사 분류) — 상용·패밀리 등 수요자별 빠른 탐색 -->
 <div class="nc-chiprow flex items-center gap-1.5 text-xs px-1 overflow-x-auto
@@ -292,9 +366,9 @@
   {%- if has_filter %}<span aria-hidden="true" class="sm:hidden"> · </span><a href="/vehicles" class="sm:hidden inline-flex items-center min-h-[40px] -my-2.5 px-1 -mx-1 text-primary hover:underline whitespace-nowrap" title="모든 필터와 정렬을 처음 상태로">필터 초기화</a>{% endif -%}
 </p>
 {% endif %}
-<details id="listLegend" class="px-1">
+<details id="listLegend" class="group px-1">
   <summary class="cursor-pointer list-none text-xs text-mut hover:text-txt select-none flex items-center gap-0.5 py-0.5">
-    <span class="material-symbols-outlined text-[14px] leading-none">expand_more</span>판정 표시 설명
+    <span class="material-symbols-outlined text-[14px] leading-none group-open:rotate-180 motion-safe:transition-transform motion-safe:ease-[var(--ease-out)]">expand_more</span>판정 표시 설명
     <span class="ml-auto sm:hidden text-sm whitespace-nowrap">총 <b class="text-txt">{{ total }}</b>건</span></summary>
 <div class="gloss-row gloss-up flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-mut mt-1">
   {{ ui.gloss('검토 가능', '지금 가격이 적정해 바로 입찰을 검토할 수 있는 물건이에요.', q=false, cls='font-bold text-emerald-700') }}

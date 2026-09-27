@@ -260,6 +260,7 @@ def test_apply_dirty_reverts_when_form_returns_to_loaded_values(server, browser)
     _seed(HYUNDAI_14 + KIA_1)
     ctx = browser.new_context(viewport={"width": 390, "height": 640}, device_scale_factor=1, locale="ko-KR", has_touch=True)
     pg = ctx.new_page(); pg.goto(server + "/vehicles?maker=현대", wait_until="networkidle")
+    pg.locator("#listFilter > summary").tap()  # UX-8: 결과 화면 폰 폭은 카드가 접혀 있다 — 사용자처럼 편 뒤 조작
     dirty = lambda: pg.eval_on_selector_all(DIRTY_BTNS, 'els => els.map(e => e.classList.contains("is-dirty"))')  # noqa: E731
     assert dirty() == [False, False], "로드 직후 깨끗"
     pg.select_option("#listFilter select[name=maker]", "기아")
@@ -332,6 +333,7 @@ def test_saved_search_label_runtime_reads_new_keys(server, browser, qs, expected
     ctx = browser.new_context(viewport={"width": 390, "height": 640}, device_scale_factor=1, locale="ko-KR", has_touch=True)
     pg = ctx.new_page(); pg.on("dialog", lambda d: d.accept())
     pg.goto(server + "/vehicles?" + qs, wait_until="networkidle")
+    pg.locator("#listFilter > summary").tap()  # UX-8: 결과 화면 폰 폭은 카드가 접혀 있다 — 사용자처럼 편 뒤 조작
     pg.click('button[onclick="ncSaveSearch()"]')
     lst = pg.evaluate("() => JSON.parse(localStorage.getItem('naechaget:searches') || '[]')")
     assert lst and lst[0]["label"] == expected, lst

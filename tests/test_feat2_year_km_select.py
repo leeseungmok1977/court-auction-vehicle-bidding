@@ -54,6 +54,14 @@ KM_COUNTS = {"50000": 2, "100000": 15, "150000": 16, "200000": 16}         # 누
 KM_UNKNOWN = 2                                                              # KN(NULL) + K0(0)
 YEAR_CHIP_RE = re.compile(r'<a href="([^"]*)" class="([^"]*)" title="연식 필터 해제">([^<]*)</a>')
 KM_CHIP_RE = re.compile(r'<a href="([^"]*)" class="([^"]*)" title="주행거리 필터 해제">([^<]*)</a>')
+
+
+def _card_chip_row(html: str) -> str:
+    """UX-8(2026-09-27): 해제 칩은 카드 안 칩 행과, 카드가 접혔을 때 보이는 카드 밖 한 줄(#listFilterChips) 두 곳에 같은 매크로로
+    그려진다 — 칩 수는 **카드 안 칩 행**에서 센다(두 줄의 동일성은 tests/test_ux8_filter_fold.py). 앵커: 첫 nc-chiprow ~ 폼 끝."""
+    i = html.index('<div class="nc-chiprow')
+    return html[i:html.index("</form>", i)]
+
 NOTE_RE = re.compile(r"\(주행거리 미상 (\d+)건 제외\)")
 
 
@@ -183,7 +191,7 @@ def test_selected_option_chip_and_filter_applied_marker(client, url, name, key, 
     attrs = {k: a for k, a, _ in _options(_select_block(html, name))}
     assert "selected" in attrs[key]
     assert all("selected" not in a for k, a in attrs.items() if k != key)
-    chips = chip_re.findall(html)
+    chips = chip_re.findall(_card_chip_row(html))
     assert len(chips) == 1, f"해제 칩은 정확히 하나, 실제 {len(chips)}"
     href, cls, text = chips[0]
     assert text.strip() == f"{labels[key]} ✕", text          # 라벨 + ✕ 그대로(접두 없음 — 320px 페이드 규칙)
