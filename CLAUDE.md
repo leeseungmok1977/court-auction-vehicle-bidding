@@ -191,4 +191,6 @@ powerautomate/ 흐름별 definition.json + 가져오기 package
 4. 지적을 반영한 뒤 **1번 측정을 다시 돌린다.** 고치다 새로 깨지는 경우가 실제로 있었다.
 
 ## 진행 상태
-현재 진행 현황은 [README.md](README.md)의 태스크 표를 참조한다.
+현재 진행 현황은 [docs/backlog.md](docs/backlog.md)(티켓별 상태·커밋·완료 조건 대조)를 참조한다.
+날짜별 변경은 [docs/changelog.md](docs/changelog.md), 원래 설계와 달라진 점은 통합 설계서 맨 앞 절에 있다.
+README 의 태스크 표는 2026-09-06 시점 기록이다(DOC-1, 2026-09-27).

@@ -86,6 +86,11 @@ python run_web.py                    # 웹서버 실행 (포트 변경: python r
 
 ## 진행 현황 (Part C 태스크)
 
+> ★ **지금 진행 현황은 [docs/backlog.md](docs/backlog.md)** 다 — 티켓마다 상태·커밋·완료 조건 대조가 있다.
+> 날짜별로 무엇이 바뀌었는지는 [docs/changelog.md](docs/changelog.md), 원래 설계와 달라진 점은
+> [통합 설계서](법원경매_차량_입찰가산정_통합설계서_v1.0.md) 맨 앞 '현재와 달라진 점' 절에 있다.
+> 아래 표는 **2026-09-06 시점**의 Part C 태스크 기록이다(틀린 두 줄만 2026-09-27 에 고쳤다).
+
 > 참고: 사람 수동 캡처(Part B) 대신 **Claude Code가 사이트 화면정의(WebSquare XML)+실제 응답을
 > 직접 분석해 엔드포인트를 실측**했다(추측 없음). 법원경매 L1/L3는 실제 데이터로 재현 완료.
 
@@ -97,7 +102,7 @@ python run_web.py                    # 웹서버 실행 (포트 변경: python r
 | TASK-03 | 수집 파이프라인 (상세·사진·요항) | ✅ 완료 | 물건 폴더 생성·파싱 테스트 통과 |
 | TASK-04 | 수집 URL 정의서 | ✅ 완료 | [docs/수집URL정의서.md](docs/수집URL정의서.md) |
 | TASK-05 | 시세 매칭·통계 + 엔드투엔드 산정 | ✅ 완료(엔카) | [docs/샘플리포트.md](docs/샘플리포트.md) |
-| K | 케이카 2차 소스 교차검증 | ✅ 구현완료 | `/bc/search/list/drct` 실측·연동. 분석/재교정 자동 병합 |
+| K | 케이카 2차 소스 교차검증 | ⏸ 중지(2026-09-27) | 구현했으나 수집·가격 반영을 멈췄다(KCAR-1, 오너 승인). `config.yaml` `kcar_cross_enabled: false` |
 | 신뢰도 | 시세 신뢰도 스코어링 + 감정가 가드 | ✅ 완료 | 표본·CV·매칭단계·이상치·감정가·트림 종합 |
 | 백테스트 | 낙찰가 실측검증 + 예상낙찰가 | ✅ 완료 | 대시보드 실측 패널·MAE·캘리브레이션 |
 | 디자인 | Stripe 라이트 디자인 + 인터랙션 폴리시 | ✅ 완료 | [DESIGN.md](DESIGN.md), 자가개선 **86/100 합격**([critique/round_3.md](docs/critique/round_3.md)) |
@@ -113,7 +118,7 @@ python run_web.py                    # 웹서버 실행 (포트 변경: python r
 | TASK-06 | Power Automate 패키지 | ⏸ 보류 | 파이썬 파이프라인으로 대체(설계 변경) |
 | TASK-08 | 마무리 문서화 | 🔄 진행 | 본 README·[docs/changelog.md](docs/changelog.md)·[docs/backlog.md](docs/backlog.md) 갱신 |
 
-> **테스트**: `python -m pytest -q` → **94개 통과**(시세·신뢰도·케이카 교차검증·산정·상세파싱·서비스 헬퍼·낙찰축적).
+> **테스트**: `NC_NO_SCHEDULER=1 NC_NO_BACKGROUND=1 python -m pytest -q` → **2,405개 통과 · 5개 예상 실패**(2026-09-27 전체 스위트, 약 17분). 예상 실패는 알려진 틈을 고정해 둔 것이다 — FEAT-1·2 작업 중 찾은 기존 틈 3건, OPS-6 라벨 기준 시각 2건.
 
 > ⚠️ **엔카 준법 주의**: `api.encar.com/robots.txt`가 자동 수집을 전면 금지(`Disallow: /`).
 > 엔카 자동 수집은 **사용자 명시적 지시(2026-08-17)** 하에 소량·저속으로만 수행. 방침 변경 시 비활성화 가능.
@@ -172,6 +177,8 @@ python -m src.bidcalc.calculator
 - ⚠️ **준법**: 공개 URL 배포는 엔카/케이카 시세를 상시 노출(공개 상용 보류 사안) → **비공개 접근(로그인·URL 비공개)** 으로 제한 권장. 결제·회원 기능은 비활성 유지.
 
 ## 최근 개선 이력 (2026-09) — 브랜딩·배포·디자인 대개편·예측 정확도
+
+> 이 절은 09-06 까지의 요약이다. 그 뒤 변경은 [docs/changelog.md](docs/changelog.md) 를 본다.
 
 **🚀 운영 배포 (라이브)**
 - **AWS EC2(서울, Ubuntu 24.04, t3.micro)** 상시배포 → **https://naechaget.co.kr** (Let's Encrypt HTTPS·HTTP→HTTPS·자동갱신). systemd(`naechaget`)+nginx 리버스프록시, DB·사진 업로드, **매일 자동 갱신 06:30**.
