@@ -764,9 +764,14 @@ d.addEventListener('toggle',function(){try{localStorage.setItem('ncUsepickBasis'
   <div class="bg-surface border-t border-line px-4 py-3 flex items-center justify-between gap-3 flex-wrap text-sm">
     <span class="text-xs text-mut">{{ range_start }}–{{ range_end }} / 총 <b class="text-txt">{{ total }}</b>건{% if judgment or maker or q or result or price or year_min or km_max %} (필터 적용){% endif %}</span>
     {% if total_pages > 1 %}
-    <nav class="flex items-center gap-1">
-      {% if page > 1 %}<a href="/vehicles?{{ qs }}&page={{ page-1 }}" class="px-2.5 py-1.5 rounded-md border border-line text-txt hover:bg-slate-50 transition-colors">‹ 이전</a>
-      {% else %}<span class="px-2.5 py-1.5 rounded-md border border-line text-mut">‹ 이전</span>{% endif %}
+    {# QA-2(UX-9 r2): 이 줄은 줄바꿈이 없어(nowrap) 항목 합이 카드 안쪽보다 넓으면 overflow-hidden 카드에 잘렸다 — '다음 ›' 가 안 보인다.
+       큰글씨 320·360 1페이지(329px, 백로그 QA-2)만이 아니라 **일반 모드 5페이지 이후**도 390px 에서 391px(1 … 3–7 … 110)로 넘쳤다
+       (2026-09-27 운영 DB 사본 실측 — '다음 ›' 378–424 vs 카드 우변 374). 그리고 넘치기 전에 '‹ 이전'·'다음 ›' 가 먼저 두 줄로 찌그러졌다
+       (54·67px 높이). → 항목 단위로 다음 줄로 넘긴다(flex-wrap, 줄 사이 8px) · 이전/다음 낱말은 한 줄로 묶는다(whitespace-nowrap).
+       넓은 폭 한 줄 렌더는 그대로다. 좁은 폭에서 몇 개를 줄일지(현재 ±2·처음/끝 이동)는 디자인 판단으로 남긴다. #}
+    <nav class="flex flex-wrap items-center gap-x-1 gap-y-2">
+      {% if page > 1 %}<a href="/vehicles?{{ qs }}&page={{ page-1 }}" class="px-2.5 py-1.5 rounded-md border border-line text-txt hover:bg-slate-50 transition-colors whitespace-nowrap">‹ 이전</a>
+      {% else %}<span class="px-2.5 py-1.5 rounded-md border border-line text-mut whitespace-nowrap">‹ 이전</span>{% endif %}
       {% set lo = [1, page-2]|max %}{% set hi = [total_pages, page+2]|min %}
       {% if lo > 1 %}<a href="/vehicles?{{ qs }}&page=1" class="px-2.5 py-1.5 rounded-md border border-line text-txt hover:bg-slate-50">1</a>{% if lo > 2 %}<span class="px-1 text-mut">…</span>{% endif %}{% endif %}
       {% for n in range(lo, hi + 1) %}
@@ -774,8 +779,8 @@ d.addEventListener('toggle',function(){try{localStorage.setItem('ncUsepickBasis'
         {% else %}<a href="/vehicles?{{ qs }}&page={{ n }}" class="px-2.5 py-1.5 rounded-md border border-line text-txt hover:bg-slate-50 transition-colors">{{ n }}</a>{% endif %}
       {% endfor %}
       {% if hi < total_pages %}{% if hi < total_pages - 1 %}<span class="px-1 text-mut">…</span>{% endif %}<a href="/vehicles?{{ qs }}&page={{ total_pages }}" class="px-2.5 py-1.5 rounded-md border border-line text-txt hover:bg-slate-50">{{ total_pages }}</a>{% endif %}
-      {% if page < total_pages %}<a href="/vehicles?{{ qs }}&page={{ page+1 }}" class="px-2.5 py-1.5 rounded-md border border-line text-txt hover:bg-slate-50 transition-colors">다음 ›</a>
-      {% else %}<span class="px-2.5 py-1.5 rounded-md border border-line text-mut">다음 ›</span>{% endif %}
+      {% if page < total_pages %}<a href="/vehicles?{{ qs }}&page={{ page+1 }}" class="px-2.5 py-1.5 rounded-md border border-line text-txt hover:bg-slate-50 transition-colors whitespace-nowrap">다음 ›</a>
+      {% else %}<span class="px-2.5 py-1.5 rounded-md border border-line text-mut whitespace-nowrap">다음 ›</span>{% endif %}
     </nav>
     {% endif %}
   </div>
@@ -844,27 +849,65 @@ function ncSaveSearch(){
 }
 (function(){
   /* [적용] 변경 표시(UX-5 U6·디자인 E3, 2026-09-26) — 필터 폼 값이 바뀌면 두 [적용](좁은 폭·넓은 폭 각 1개)에 is-dirty
-     (primary 채움, 글자 '적용' 그대로). 자동 제출은 하지 않는다. 로드·pageshow(bfcache 복귀)에 떼서 채워진 채 남지 않게.
+     (primary 채움, 글자 '적용' 그대로). 자동 제출은 하지 않는다. 로드·pageshow(bfcache 복귀)에 다시 계산해 틀린 채 남지 않게.
      ⚠ 셀렉터는 #listFilter 안의 폼 — `form[action="/vehicles"]` 는 헤더 검색 폼(데스크톱)이 먼저 잡힌다. */
   var f=document.querySelector('#listFilter form'); if(!f) return;
   var btns=f.querySelectorAll('button.btn-ghost:not([type])');   // 검색 저장은 type=button 이라 제외
   function mark(on){ btns.forEach(function(b){ b.classList.toggle('is-dirty', on); }); }
-  /* 되돌림(디자인 검수 2026-09-26 Q6): 로드 시 폼 직렬화를 잡아 두고 바뀔 때마다 비교 — 셀렉트를 바꿨다 원래 값으로 돌리면 다시 뗀다.
-     예전엔 change/input 이 mark(true) 만 해서 원래 값으로 돌려도 채워진 채 남았다. pageshow(bfcache 복귀)는 그대로 뗀다. */
+  /* 되돌림(디자인 검수 2026-09-26 Q6): 기준 직렬화를 잡아 두고 바뀔 때마다 비교 — 셀렉트를 바꿨다 원래 값으로 돌리면 다시 뗀다.
+     예전엔 change/input 이 mark(true) 만 해서 원래 값으로 돌려도 채워진 채 남았다.
+     N3(UX-9 r2, qa 반증 2026-09-27 — HEAD 도 같던 기존 결함): 제조사를 '기아'로 바꿔 [적용] → 뒤로 = 셀렉트 '기아' · 목록 '현대 422건' ·
+     변경 표시 꺼짐. 뒤로 온 폼 값은 서버 값이 아니다 — bfcache 는 떠나기 직전 폼 값을 얼리고, 새 로드는 Chrome 이 폼 상태를 되살린다
+     (둘 다 실측). 그런데 기준을 **로드 때의 폼 값**으로 잡고 pageshow 에서 무조건 뗐다.
+     ⑴ 기준 = 서버가 그린 값(이 목록에 실제로 걸린 조건). 폼을 복제해 reset() — reset 은 각 칸을 HTML 기본값(selected·value 속성)으로
+        돌린다. 원본 폼은 건드리지 않는다.
+     ⑵ [적용]으로 떠나면 pagehide 에서 폼을 서버 값으로 되돌린다. 제출 요청은 이미 만들어졌고, bfcache 가 얼리는 값과 Chrome 이 저장하는
+        폼 상태(pagehide 뒤에 저장 — Chrome 153 실측)가 둘 다 되돌린 값이 된다 → 뒤로 오면 셀렉트와 목록이 같은 조건을 말한다.
+     ⑶ [적용] 없이 바꾼 채 다른 곳(상세·페이지 링크)에 갔다 오면 바꾼 값은 남기고 변경 표시를 켠다(기준과 다르므로 — 예전엔 껐다). */
   function ser(){ try{ return new URLSearchParams(new FormData(f)).toString(); }catch(e){ return ''; } }
-  var base=ser();
+  var base=(function(){ try{ var c=f.cloneNode(true); c.reset(); return new URLSearchParams(new FormData(c)).toString(); }catch(e){ return ser(); } })();
   function sync(){ mark(ser()!==base); }
-  mark(false);
-  window.addEventListener('pageshow', function(){ mark(false); });
+  sync();
+  window.addEventListener('pageshow', sync);
+  var sent=false;
+  f.addEventListener('submit', function(){ sent=true; });
+  window.addEventListener('pagehide', function(){ if(!sent) return; sent=false; f.reset(); mark(false); });
   f.addEventListener('change', sync);
   f.addEventListener('input', sync);
 })();
 (function(){
-  var res=document.getElementById('listResults'), sk=document.getElementById('listSkeleton');
+  /* 스켈레톤(느린 망에서 '넘어가는 중') — 페이지 링크·필터 [적용]에서 결과를 가리고 회색 줄을 보인다.
+     UX-9(2026-09-27, qa reports/2026-09-27-ux8-live-check.md N1·지적 2·N2): 폰 Chrome 기본값인 뒤로가기 캐시(bfcache)는
+     떠나기 직전 DOM 을 얼렸다 되살린다 — 예전엔 숨긴 채 얼어 '2' → 뒤로 가 회색 줄 8개로 고착됐고, 숨김으로 #appscroll 높이가
+     줄어 base.html 'nc:scroll' 저장(click·pagehide·visibilitychange)이 줄어든 scrollTop 을 적었다(360: 4196→154).
+     → 숨기기 직전 scrollTop(y0)을 잡아 두고 pagehide 에서 목록·scrollTop 을 되돌린다. capture 로 거는 이유: base.html 의
+       pagehide 저장보다 먼저 돌아야 되돌린 값이 저장된다(visibilitychange 저장은 pagehide 뒤라 자동으로 맞다).
+       Chromium 은 목록을 다시 보이면 원래 위치를 스스로 되찾지만(실측) 다른 엔진은 확인하지 못해 y0 을 명시적으로 넣는다.
+       pageshow(persisted) 되돌림은 보험 — pageshow 에서만 되돌리면 복원 직후 스켈레톤이 더 오래 보이고 저장값도 줄어든 채라
+       base.html 복원이 그 값으로 끌어내린다(UX-9 실측, 390·360 × 15회: pageshow 만 = 15/15 스켈레톤 2~4프레임·최대 334ms, 스크롤
+       313/377 로 틀림 · 지금 방식 = 10/15 1프레임·최대 148ms, 스크롤 정확). 그 1프레임은 페이지가 못 지운다 — 떠나기 전 마지막으로
+       그린 화면을 브라우저가 복원 직후 한 번 보여 준다(qa R2. DOM 은 pagehide 에서 이미 목록이다).
+     ⚠ 새 탭으로 여는 클릭(Ctrl·Shift·가운데 버튼)은 이 문서를 떠나지 않아 pagehide 가 안 온다 — 스켈레톤을 걸지 않는다.
+     ⚠ 셀렉터는 #listFilter 안의 폼 — `form[action="/vehicles"]` 는 헤더 검색 폼(데스크톱)이 먼저 잡힌다(위 [적용] 스크립트와 같은 함정).
+     R1(UX-9 r2, qa 반증 — HEAD 도 같던 기존 결함): 커밋 전 **이동 중단**(브라우저 X·ESC)은 이 문서를 떠나지 않아 pagehide 가 없다 →
+       스켈레톤이 남았다(목록 숨김·scrollTop 313). Navigation API 가 중단을 알린다 — 이동마다 navigate 이벤트가 오고, 중단되면 그
+       signal 이 abort 된다(Chrome 153 실측: CDP Page.stopLoading → abort·navigateerror). 다른 이동이 이어받아 끊긴 경우(연타·커밋 전
+       뒤로)는 같은 태스크에서 새 navigate 가 오므로, 한 틱 미뤄 '마지막 이동이 여전히 이것'일 때만 되돌린다. 떠난 뒤 얼어 있던 타이머가
+       복원 때 돌아도 y0 이 비어 있어 아무것도 안 한다. Navigation API 가 없는 엔진은 전과 같다(중단하면 남는다). */
+  var res=document.getElementById('listResults'), sk=document.getElementById('listSkeleton'), sc=document.getElementById('appscroll');
   if(!res||!sk) return;
-  function show(){ res.classList.add('hidden'); sk.classList.remove('hidden'); }
-  var f=document.querySelector('form[action="/vehicles"]'); if(f) f.addEventListener('submit', show);
-  res.querySelectorAll('a[href*="page="]').forEach(function(a){ a.addEventListener('click', show); });
+  var y0=null;   // 숨기기 직전 scrollTop. null = 스켈레톤이 떠 있지 않다(두 번 눌러도 처음 값을 지킨다)
+  function show(){ if(y0===null) y0=sc?sc.scrollTop:0; res.classList.add('hidden'); sk.classList.remove('hidden'); }
+  function undo(){ if(y0===null) return; res.classList.remove('hidden'); sk.classList.add('hidden'); if(sc) sc.scrollTop=y0; y0=null; }
+  var f=document.querySelector('#listFilter form'); if(f) f.addEventListener('submit', show);
+  res.querySelectorAll('a[href*="page="]').forEach(function(a){ a.addEventListener('click', function(e){
+    if(e.defaultPrevented||e.button!==0||e.metaKey||e.ctrlKey||e.shiftKey||e.altKey) return;
+    show(); }); });
+  window.addEventListener('pagehide', undo, true);
+  window.addEventListener('pageshow', function(e){ if(e.persisted) undo(); });
+  var nv=window.navigation, last=null;
+  if(nv && nv.addEventListener) nv.addEventListener('navigate', function(e){ var me=last=e;
+    if(e.signal) e.signal.addEventListener('abort', function(){ setTimeout(function(){ if(last===me) undo(); }, 0); }); });
 })();
 </script>
 
