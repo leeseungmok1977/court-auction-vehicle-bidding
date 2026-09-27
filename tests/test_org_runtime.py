@@ -34,6 +34,9 @@ def org(tmp_path, monkeypatch):
         "| P-1 | 분류 표는 배분 대상 아님 | 유료 훅 | todo | x |\n", encoding="utf-8")
     o = rt.Org(tmp_path)
     monkeypatch.setattr(o, "rhythm_states", lambda: [])
+    # 예약 작업은 이 PC 의 작업 스케줄러를 읽는다 — 테스트가 호스트 상태에 기대지 않게 비운다(OPS-3).
+    # 빈 목록 + 사유 = '못 읽음'이라 지시서도 '미등록'도 만들지 않는다.
+    monkeypatch.setattr(o, "schedule_states", lambda: ([], "테스트: 예약 작업을 읽지 않는다"))
     return o
 
 
@@ -97,6 +100,68 @@ def test_handoff_creates_next_order_and_closes_parent(org):
     # 같은 보고서를 다시 읽어도(수정 없이) 인계가 두 번 생기지 않는다
     org.scan(now=NOW)
     assert len(by_reason(org, "handoff")) == 1
+
+
+# ── 워크플로 인계 중복 방지(OPS-3 ⑦, 2026-09-27) ───────────────────────────────
+# 워크플로 보고서의 handoff 가 이미 돌고 있는 단계에 지시서 11건을 또 만들었다(Steward 취소).
+
+def _bus(org, kind):
+    return [e for e in org.events() if e.get("kind") == kind]
+
+
+def test_workflow_report_does_not_spawn_handoff_orders(org):
+    report(org, "wf.md", {"from": "qa-engineer", "ticket": "OPS-3", "result": "done", "workflow": "run-7",
+                          "handoff": [{"to": "backend-engineer", "why": "반증 1건"}]})
+    org.scan(now=NOW)
+    assert by_reason(org, "handoff") == []
+    sk = _bus(org, "handoff.skipped")
+    assert len(sk) == 1 and sk[0]["to"] == "backend-engineer" and "run-7" in sk[0]["note"]
+    org.scan(now=NOW + timedelta(hours=1))                      # 다시 읽어도 기록은 한 번
+    assert len(_bus(org, "handoff.skipped")) == 1
+
+
+def test_workflow_blocked_report_skips_pm_but_needs_owner_still_reaches_inbox(org):
+    report(org, "wf-b.md", {"from": "insight", "result": "blocked", "workflow": "run-8", "handoff": []})
+    report(org, "wf-o.md", {"from": "compliance-officer", "result": "needs-owner", "workflow": "run-8",
+                            "handoff": []})
+    org.scan(now=NOW)
+    assert by_reason(org, "result") == [] and len(_bus(org, "result.skipped")) == 1
+    assert [o["meta"]["to"] for o in by_reason(org, "owner")] == [rt.STEWARD]   # 오너 결정은 삼키지 않는다
+
+
+def test_answer_to_steward_order_skips_duplicate_of_open_order_same_ticket_and_seat(org):
+    orders = org.orders()
+    parent = org.create_order(orders, to="qa-engineer", frm=rt.STEWARD, purpose="검증", reason="manual",
+                              ticket="OPS-3", now=NOW)
+    running = org.create_order(orders, to="backend-engineer", frm=rt.STEWARD, purpose="구현", reason="manual",
+                               ticket="OPS-3", now=NOW)
+    report(org, "qa.md", {"order": parent["meta"]["id"], "from": "qa-engineer", "ticket": "OPS-3",
+                          "result": "fail", "handoff": [{"to": "backend-engineer", "why": "반증"}]})
+    org.scan(now=NOW)
+    assert org.orders()[parent["meta"]["id"]]["meta"]["status"] == "done"      # 부모는 그대로 닫힌다
+    assert by_reason(org, "handoff") == []
+    sk = _bus(org, "handoff.skipped")
+    assert len(sk) == 1 and running["meta"]["id"] in sk[0]["note"]
+
+
+def test_answer_to_non_steward_order_still_hands_off(org):
+    """대조군 — 조건이 하나라도 빠지면 예전처럼 인계한다(막는 범위를 넓히지 않는다)."""
+    orders = org.orders()
+    parent = org.create_order(orders, to="qa-engineer", frm="frontend-engineer", purpose="검증",
+                              reason="manual", ticket="OPS-3", now=NOW)
+    org.create_order(orders, to="backend-engineer", frm=rt.STEWARD, purpose="구현", reason="manual",
+                     ticket="OPS-3", now=NOW)
+    report(org, "qa2.md", {"order": parent["meta"]["id"], "from": "qa-engineer", "ticket": "OPS-3",
+                           "result": "fail", "handoff": [{"to": "backend-engineer", "why": "반증"}]})
+    org.scan(now=NOW)
+    assert [o["meta"]["to"] for o in by_reason(org, "handoff")] == ["backend-engineer"]
+
+
+def test_contract_alert_table_parses():
+    routes = rt.Org(ROOT).alert_routes()
+    assert routes["시세 분석"]["ticket"] and routes["시세 분석"]["watch"]
+    assert routes["매일 시세·낙찰 갱신"]["watch"] is False             # '-' = 이 신호로는 지시서를 만들지 않는다
+    assert {r["source"] for r in routes.values()} == {"공급", "정기 작업", "예약 작업"}
 
 
 def test_route_outside_contract_goes_to_steward_not_agent(org):

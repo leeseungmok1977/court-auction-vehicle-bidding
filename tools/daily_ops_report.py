@@ -525,6 +525,7 @@ def collect(day: date, now: Optional[datetime] = None) -> dict:
     data["tunnel_log"] = read_tunnel_log(since, until)
     # 공급 판정은 여기서 한 번만 한다(리포트와 사내 대시보드가 같은 결론을 쓰도록).
     data["supply"] = supply_verdict(data, data["generated"])
+    data["routes"] = load_ticket_routes()          # 경보 → 티켓(org-contracts §3.1 · 백로그) — 로컬 파일만 읽는다
     return data
 
 
@@ -539,6 +540,52 @@ def _hm(s: Optional[str]) -> str:
 
 
 _SUPPLY_MARK = {"ok": "✅ 정상", "warn": "⚠️ 이상", "down": "🛑 멈춤", "unknown": "❔ 확인 불가"}
+
+
+# ── 경보 → 티켓 (OPS-3, 2026-09-27) ──────────────────────────────────
+# 케이카 경보가 09-24~26 사흘 이 리포트 맨 위에 떴는데 티켓은 0 이었다. 경보 줄에 **누가 맡았는지**
+# 칸이 없었기 때문이다. 표는 docs/org-contracts.md §3.1 한 곳에 있다 — 순환계(tools/org_runtime.py)가
+# 같은 표로 지시서를 만들고, 주간 보고도 같은 표를 읽는다. 여기에 티켓을 박지 않는다.
+def load_ticket_routes() -> Optional[dict]:
+    """{신호: {"ticket", "state"}} — state 는 '' · '열림' · '닫힘' · '백로그에 없음'. 못 읽으면 None."""
+    tools_dir = str(ROOT / "tools")
+    if tools_dir not in sys.path:
+        sys.path.insert(0, tools_dir)
+    try:
+        import org_runtime as rt  # noqa: PLC0415 — 리포트 생성 때만 필요하다
+        return rt.Org(ROOT).signal_tickets()
+    except Exception:  # noqa: BLE001 — 표를 못 읽어도 리포트는 쓴다(티켓 칸은 ❔)
+        return None
+
+
+def ticket_cell(name: str, routes: Optional[dict], alert: bool) -> str:
+    """경보 줄의 티켓 표기. 경보인데 맡은 티켓이 없으면 **눈에 띄게** 적는다 — 그 줄이 이번 사고의 원인이었다."""
+    if routes is None:
+        return "❔ 표를 읽지 못함"
+    r = routes.get(name) or {}
+    t, state = r.get("ticket") or "", r.get("state") or ""
+    if not t:
+        return "**❗ 티켓 없음**" if alert else "—"
+    if state == "열림":
+        return f"`{t}`"
+    if not alert:
+        return f"`{t}`({state})"
+    return f"`{t}`({state}) · **❗ 열린 티켓 없음**" if state == "닫힘" else f"`{t}`({state}) · **❗ 티켓 없음**"
+
+
+def alert_damage(sig: dict, data: dict) -> str:
+    """경보에 **피해**를 붙인다 — 이미 가진 값으로만(새 조회·외부 요청 없음).
+
+    지금 숫자로 말할 수 있는 것은 0표본뿐이다. 낙찰결과의 '결과 미확인 N건'은 서버에서 새로 세야 해서
+    AUD-07(결과 미확인 건수를 리포트에 표시)이 붙인다. 시세 분석 0건의 '못 산정된 새 물건 수'는
+    지금 기록으로는 대상 소진(오탐)과 구분되지 않아 적지 않는다(AUD-06). 모르는 수를 지어내지 않는다.
+    """
+    supply = ((data.get("server") or {}).get("supply") or {})
+    if sig.get("key") == "zero_sample":
+        z = (supply.get("zero_sample") or {}).get("zero")
+        if isinstance(z, int):
+            return f"{z:,}건 시세 없음"
+    return ""
 
 
 def _zero_history(raw) -> list:
@@ -576,12 +623,19 @@ def supply_verdict(data: dict, now: Optional[datetime] = None) -> Optional[dict]
                                now=now or data.get("generated"))
 
 
-def supply_block(verdict: Optional[dict], live: bool) -> list:
+def supply_block(verdict: Optional[dict], live: bool, routes="auto",
+                 damage: Optional[dict] = None) -> list:
     """리포트 **맨 위**에 들어가는 공급 상태 블록.
 
     왜 맨 위인가 — 2026-09-19~21 의 기록은 이 리포트 안에 **이미 있었다**(분석 0건이 표에 찍혔다).
     그런데 아무도 몰랐다. 묻혀 있는 기록과 먼저 보이는 판정은 다르다.
+
+    OPS-3: 경보 줄마다 티켓(`routes` — org-contracts §3.1)과 피해(`damage` — {신호 키: 문구})를 붙인다.
+    `routes="auto"` 면 저장소의 표를 읽고, None 이면 '표를 읽지 못함'으로 적는다.
     """
+    if isinstance(routes, str):
+        routes = load_ticket_routes()
+    damage = damage or {}
     if not live:
         return ["## 공급 상태", "",
                 "> ❔ **지난 기간** — 공급 판정은 지금 값이라 지난 날짜 리포트에는 적지 않는다.", ""]
@@ -594,13 +648,19 @@ def supply_block(verdict: Optional[dict], live: bool) -> list:
     L = ["## 공급 상태", "", head, ""]
     if verdict["alerts"]:
         L += ["**먼저 볼 것**", ""]
-        L += [f"- {_SUPPLY_MARK.get(a['state'], a['state'])} **{_cell(a['label'])}** "
-              f"{_cell(a['head'])} — {_cell(a['detail'])}" for a in verdict["alerts"]]
+        for a in verdict["alerts"]:
+            hurt = damage.get(a.get("key"))
+            L.append(f"- {_SUPPLY_MARK.get(a['state'], a['state'])} **{_cell(a['label'])}** "
+                     f"{_cell(a['head'])}" + (f" — 피해: **{_cell(hurt)}**" if hurt else "")
+                     + f" — {_cell(a['detail'])} · 티켓 {ticket_cell(a['label'], routes, True)}")
         L += [""]
-    L += ["| 신호 | 상태 | 값 | 근거 |", "|---|---|---|---|"]
+    L += ["| 신호 | 상태 | 값 | 근거 | 티켓 |", "|---|---|---|---|---|"]
     L += [f"| {_cell(s['label'])} | {_SUPPLY_MARK.get(s['state'], s['state'])} | "
-          f"{_cell(s['head'])} | {_cell(s['detail'])} |" for s in verdict["signals"]]
-    L += ["", "> 임계는 `config.yaml: ops_alert`, 판정은 `web/ops_health.py` 한 곳에 있습니다.", ""]
+          f"{_cell(s['head'])} | {_cell(s['detail'])} | "
+          f"{ticket_cell(s['label'], routes, s['state'] in ('warn', 'down'))} |" for s in verdict["signals"]]
+    L += ["", "> 임계는 `config.yaml: ops_alert`, 판정은 `web/ops_health.py` 한 곳에 있습니다. "
+          "티켓 칸은 `docs/org-contracts.md` §3.1 표와 백로그 상태에서 읽습니다 — 같은 신호가 "
+          "연속으로(편수는 같은 문서 §1) 이상·멈춤인데 열린 티켓이 없으면 순환계가 결재함에 지시서를 만듭니다.", ""]
     return L
 
 
@@ -750,6 +810,8 @@ def build_markdown(data: dict) -> str:
     # 공급 상태 — 표보다 **먼저** 읽히는 자리에 둔다. '지금' 판정이므로 지난 기간 리포트에는 적지 않는다.
     supply_live = since <= now <= until + timedelta(hours=2)
     verdict = data.get("supply") if "supply" in data else supply_verdict(data, now)
+    routes = data["routes"] if "routes" in data else load_ticket_routes()
+    damage = {s["key"]: alert_damage(s, data) for s in (verdict or {}).get("signals", [])}
     if supply_live and verdict:
         summary += f" · 공급 {_SUPPLY_MARK.get(verdict['state'], verdict['state'])}"
         if verdict["state"] != "ok":
@@ -764,7 +826,7 @@ def build_markdown(data: dict) -> str:
         f"- **생성** {now:%Y-%m-%d %H:%M} · 이 PC 작업 스케줄러",
         f"- **요약** {summary}",
         "",
-    ] + supply_block(verdict, supply_live) + [
+    ] + supply_block(verdict, supply_live, routes, damage) + [
         "## 정기 작업",
         "",
         "| 작업 | 실행 위치 | 예정 | 실제 실행 | 건수 | 결과 |",
@@ -773,6 +835,12 @@ def build_markdown(data: dict) -> str:
     for r in rows:
         L.append(f"| {_cell(r['job'])} | {_cell(r['where'])} | {_cell(r['plan'])} | {_cell(r['actual'])} | "
                  f"{_cell(r['count'])} | {r['status']} |")
+    # 실패·경고 줄의 티켓 — 표 열을 늘리지 않고 표 바로 밑에 적는다(이 표 형식을 읽는 도구·테스트가 있다).
+    # 09-26 패널 ❌ 는 이 표 한 칸에만 있었고 누가 맡았는지는 어디에도 없었다(AUDIT-1 A-05).
+    bad_jobs = [r for r in rows if r["status"] in (FAIL, WARN)]
+    if bad_jobs:
+        L += ["", "- 실패·경고 줄 티켓: " + " · ".join(
+            f"**{_cell(r['job'])}** {ticket_cell(r['job'], routes, True)}" for r in bad_jobs)]
     L += ["", "## 매일 시세·낙찰 갱신 · 단계별", ""]
     if step_rows:
         L += ["| 단계 | 건수 | 결과 |", "|---|---|---|"]
