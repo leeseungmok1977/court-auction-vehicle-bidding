@@ -35,7 +35,7 @@ User=${USER_NAME}
 WorkingDirectory=${APP_DIR}
 Environment=DATA_DIR=${DATA_DIR}
 Environment=PYTHONIOENCODING=utf-8
-ExecStart=${APP_DIR}/.venv/bin/uvicorn web.app:app --host 127.0.0.1 --port 8000
+ExecStart=${APP_DIR}/.venv/bin/uvicorn web.app:app --host 127.0.0.1 --port 8000 --no-access-log
 Restart=always
 RestartSec=3
 [Install]
@@ -43,6 +43,18 @@ WantedBy=multi-user.target
 UNIT
 sudo systemctl daemon-reload
 sudo systemctl enable --now naechaget
+
+# 접속 기록 보존 = 처리방침 '웹서버 접속 로그 14일 보관 후 자동 삭제'(web/templates/privacy.html).
+# 2026-09-27 실측(AUD-01): uvicorn 접속 줄이 방문자 IP 를 journald(보존 설정 없음)와 rsyslog
+# (/var/log/syslog, 주 단위 4개 = 최대 5주)에 이중으로 쌓고 있었다. 접속 기록은 nginx 한 곳(rotate 14)만
+# 남기고, 앱은 --no-access-log, journald 와 syslog 는 14일로 묶는다. 오류 로그는 그대로 남는다.
+sudo mkdir -p /etc/systemd/journald.conf.d
+printf '[Journal]\nMaxRetentionSec=14day\n' | sudo tee /etc/systemd/journald.conf.d/10-naechaget-retention.conf >/dev/null
+sudo systemctl restart systemd-journald
+if [ -f /etc/logrotate.d/rsyslog ]; then
+  # 매일 회전·13개 보관 = 현재 파일 포함 최대 14일
+  sudo sed -i 's/^\(\s*\)rotate [0-9]\+$/\1rotate 13/; s/^\(\s*\)weekly$/\1daily/' /etc/logrotate.d/rsyslog
+fi
 
 echo "== 4) nginx 리버스 프록시 =="
 sudo tee /etc/nginx/sites-available/naechaget >/dev/null <<NGINX
