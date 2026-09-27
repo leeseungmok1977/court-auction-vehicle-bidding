@@ -33,6 +33,7 @@ handoff:                      # 다음 담당. 없으면 handoff: []
 workflow: audit-1-run-3        # 이 보고를 부른 워크플로 실행 id. 워크플로 밖이면 줄을 지운다
 ```
 
+- 값이 비었거나 `없음`·`none`·`-`·`no` 면 **워크플로로 보지 않는다**(줄이 없는 것과 같다 — 인계는 정상 처리된다, OPS-4). 값 뒤에 주석을 달아도 같다(`workflow: -   # 워크플로 밖`). 워크플로 밖이면 줄을 지우는 것이 원칙이다.
 - 이 줄이 있으면 순환계는 `handoff:` 로 **새 지시서를 만들지 않는다** — 다음 단계는 워크플로가 부른다.
   `result: fail`·`blocked` 인데 `handoff:` 가 없어도 `pm-orchestrator` 반려 지시서를 만들지 않는다.
   대신 `data/org-bus.jsonl` 에 `handoff.skipped`·`result.skipped` 한 줄을 남긴다(무엇을 건너뛰었는지 추적된다).

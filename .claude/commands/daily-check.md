@@ -21,7 +21,7 @@ Steward로서 **일간 점검**을 수행한다. 오늘 이상 징후가 있는�
 2. **결재함.** `docs/standups/` 오늘 파일의 `## 결재함` 과 `## 경보 → 티켓` 절(또는 `python tools/org_runtime.py board`).
    `reason: alert`·`task` 지시서는 **당직이 처리하지 않는다**(org-contracts §3) — 내가 여기서 닫는다.
 3. **정기 작업 표.** 매일 갱신·SSL·패널·사진 점검·터널. `❌`·`⚠️` 줄은 표 밑 '실패·경고 줄 티켓'을 본다.
-   **0건 단계를 성공으로 읽지 않는다.** 예약 작업 고장(대시보드 정기 작업 표, 예: `naechaget-home-tunnel`
+   **0건 단계를 성공으로 읽지 않는다.** 예약 작업 고장(대시보드 예약 작업 표, 예: `naechaget-home-tunnel`
    다음 실행 없음)도 여기서 본다.
 4. 운영 헬스: `https://naechaget.co.kr/` 응답, `systemctl is-active naechaget`(리포트의 서비스 줄).
 

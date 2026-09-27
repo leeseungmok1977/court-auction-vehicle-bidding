@@ -25,7 +25,7 @@ Claude Code 세션이 떠 있을 때만 움직인다. 그 화면을 그대로 �
 | 부서 편성 | `docs/ORG.md` 부서표를 **파싱** | 하드코딩하면 조직을 바꿨을 때 화면이 옛말을 한다 |
 | 에이전트 정의 | `.claude/agents/*.md` frontmatter | 부서표에 없는 정의는 '미편성'으로 드러낸다 |
 | 호출 이력 | `~/.claude/projects/<slug>/*.jsonl` | ★ 내부 포맷이다 — 아래 경고 참조 |
-| 정기 작업 | `schtasks /query /fo CSV /v` | `Last Run Time` 이 1999-11-30 이면 '한 번도 안 돎' |
+| 예약 작업(작업 스케줄러) | PowerShell `Get-ScheduledTask`·`Get-ScheduledTaskInfo`·`Export-ScheduledTask` | 마지막 실행이 1999-11-30 이면 '한 번도 안 돎'. 고장 판정(`verdict` — 순환계 `org_runtime.schedule_verdict`)과 '조용히 안 돎' 판정(`silence` — `org_runtime.silence_verdict`)은 순환계 결과를 그대로 싣는다 |
 | 산출물 | `reports/` `docs/reviews/` `docs/*-reports/` | 파일 mtime |
 | 배포 | `git log` | 로컬 저장소 |
 | 제품 | `data/auction.db` (로컬 사본) | 운영이 아니라 이 PC 사본이라는 점을 화면에 밝힌다 |
@@ -328,7 +328,8 @@ def scan_sessions(rescan: bool = False) -> tuple[dict, str | None]:
     return st, None
 
 
-# ── 정기 작업 ───────────────────────────────────────────────────────────────
+# ── 예약 작업(작업 스케줄러) ─────────────────────────────────────────────────
+# 어휘(org-contracts §3.1): '예약 작업' = 작업 스케줄러의 작업, '정기 작업' = 일일 리포트 `## 정기 작업` 표의 작업.
 NEVER = "1999-11-30"          # Windows 가 '한 번도 실행 안 됨'을 이 날짜로 표기한다
 _PS_DATE = re.compile(r"/Date\((-?\d+)\)/")
 
@@ -336,12 +337,21 @@ _PS_DATE = re.compile(r"/Date\((-?\d+)\)/")
 #   PowerShell 에서는 `TaskName` 인데 파이썬 subprocess 에서는 `작업 이름` 이었다(호스트
 #   프로세스 로케일에 달렸다). 열 이름으로 찾으니 전 행이 걸러져 0건이 됐고, 예외가 아니라
 #   **조용히 빈 화면**이 나왔다. Get-ScheduledTask 는 속성 이름이 언어와 무관하게 고정이다.
+#   OPS-4(2026-09-27): 트리거(주기)와 등록 날짜도 읽는다 — '조용히 안 도는 작업'을 가르려면 작업마다
+#   주기가 필요한데, 작업 이름에 주기를 박지 않고 **트리거에서** 읽기 위해서다(org_runtime.silence_verdict).
+#   `Export-ScheduledTask` XML 은 요소 이름이 언어와 무관하다. 실패해도 목록은 그대로 내고 사유만 싣는다
+#   (`TriggerError`) — 트리거를 못 읽었다고 작업 목록 전체를 '못 읽음'으로 만들지 않는다. 읽기만 한다.
+#   실측(09-27, 작업 9개): 3.2초 → 4.7초.
 _PS_SCHED = (
     "Get-ScheduledTask -ErrorAction SilentlyContinue | "
     "Where-Object { $_.TaskName -match 'naechaget' } | "
-    "ForEach-Object { $i = $_ | Get-ScheduledTaskInfo; [pscustomobject]@{ "
-    "TaskName=$_.TaskName; State=[string]$_.State; LastRunTime=$i.LastRunTime; "
-    "LastTaskResult=$i.LastTaskResult; NextRunTime=$i.NextRunTime } } | "
+    "ForEach-Object { $t = $_; $i = $t | Get-ScheduledTaskInfo; $tx = $null; $te = $null; "
+    "try { $tx = ([xml](Export-ScheduledTask -TaskName $t.TaskName -TaskPath $t.TaskPath "
+    "-ErrorAction Stop)).Task.Triggers.OuterXml } catch { $te = [string]$_.Exception.Message }; "
+    "[pscustomobject]@{ "
+    "TaskName=$t.TaskName; State=[string]$t.State; LastRunTime=$i.LastRunTime; "
+    "LastTaskResult=$i.LastTaskResult; NextRunTime=$i.NextRunTime; "
+    "Registered=[string]$t.Date; Triggers=$tx; TriggerError=$te } } | "
     "ConvertTo-Json -Compress"
 )
 
@@ -357,6 +367,124 @@ def _ps_date(v) -> str:
         return datetime.fromtimestamp(int(m.group(1)) / 1000).isoformat(sep=" ", timespec="minutes")
     except Exception:                                        # noqa: BLE001
         return str(v)
+
+
+# ── 예약 작업 주기 — 트리거 XML 에서 읽는다(OPS-4, Steward 결정 2026-09-27) ─────────────
+_TASK_NS = "{http://schemas.microsoft.com/windows/2004/02/mit/task}"
+_DOW = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+_MONTHS = ("January", "February", "March", "April", "May", "June", "July", "August",
+           "September", "October", "November", "December")
+_ISO_DUR = re.compile(r"^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$")
+DAY_S = 86400
+MONTH_S = 31 * DAY_S          # 달 길이가 달라 가장 긴 달로 센다 — 주기를 길게 잡을수록 헛경보가 준다
+
+
+def _iso_duration(s) -> int | None:
+    """작업 스케줄러의 반복 간격(`PT1H`·`PT1M`·`P1D`·`P1DT2H`) → 초. 못 읽으면 None."""
+    m = _ISO_DUR.match(str(s or "").strip())
+    if not m or not any(m.groups()):
+        return None
+    d, h, mi, se = (int(x or 0) for x in m.groups())
+    return (d * DAY_S + h * 3600 + mi * 60 + se) or None
+
+
+def _local_naive(s) -> datetime | None:
+    """ISO 시각(오프셋 있거나 없거나) → 이 PC 현지 naive 시각. 못 읽으면 None."""
+    try:
+        dt = datetime.fromisoformat(str(s or "").strip())
+    except ValueError:
+        return None
+    return dt.astimezone().replace(tzinfo=None) if dt.tzinfo is not None else dt
+
+
+def local_minutes(s) -> str:
+    """ISO 시각(오프셋 있거나 없거나) → 이 PC 현지 시각 'YYYY-MM-DD HH:MM'. 못 읽으면 ''."""
+    dt = _local_naive(s)
+    return "" if dt is None else dt.isoformat(sep=" ", timespec="minutes")
+
+
+def _max_gap(idx: list[int], cycle: int) -> int:
+    """한 주기(cycle) 안에서 고른 자리들 사이의 가장 긴 간격(한 바퀴 돌아오는 간격 포함)."""
+    s = sorted(set(idx))
+    if not s:
+        return cycle
+    return max([b - a for a, b in zip(s, s[1:])] + [cycle - s[-1] + s[0]])
+
+
+def trigger_period(xml_text: str, now: datetime | None = None) -> dict:
+    """예약 작업 `<Triggers>` XML → {"period_s", "first_start", "error"}.
+
+    - `period_s`: **살아 있는** 트리거들 중 **가장 짧은** 반복 주기(초). 매일 = DaysInterval×1일, 매주 = 고른 요일 사이
+      가장 긴 간격(WeeksInterval 반영), 매월 = 고른 달 사이 가장 긴 간격 × 31일. 부팅·로그온·한 번 실행처럼
+      **주기가 없는** 작업은 None 이다(이상이 아니다).
+      - 반복(`Repetition/Interval`)은 **무기한일 때만** 주기다(`Duration` 이 없거나 0). 끝나는 `Duration` 이 바깥
+        트리거 주기보다 짧으면 반복은 그날 창 안에서만 돌므로 **바깥 트리거 주기**를 쓴다 — '토요일 13:00 부터 3시간
+        동안 매시'는 매주 작업이다(QA-OPS4-1). `Duration` 이 바깥 주기 이상이면 창이 이어지므로 반복 간격을 쓴다.
+        바깥 주기가 없는 한 번 트리거의 유한 반복은 `StartBoundary + Duration` 에 끝난다 — 끝났으면 죽은 트리거다.
+        바깥 주기가 있는데 `Duration` 글자를 못 읽으면 무기한으로 치지 않는다(바깥 주기 — 짧게 잡으면 헛경보 쪽으로
+        틀린다). 바깥 주기가 없으면 끝을 알 수 없으므로 반복 간격을 쓴다.
+    - 죽은 트리거는 세지 않는다: 꺼진 것(`Enabled` false), **끝난 것**(`EndBoundary` 가 `now` 이전 — QA-OPS4-2).
+      끝난 매일 트리거 + 살아 있는 매주 트리거인 작업은 매주 작업이다.
+    - `first_start`: 살아 있는 트리거의 가장 이른 `StartBoundary`(현지 시각) — 첫 실행은 이보다 빠를 수 없다.
+    - `error`: XML 을 못 읽었을 때만. 트리거가 아예 없는 작업은 오류가 아니라 주기 None 이다.
+    - `now`: 끝남을 가르는 기준(없으면 지금). 읽는 순간의 판정이다 — 목록을 다시 읽으면 다시 계산한다.
+    """
+    import xml.etree.ElementTree as ET                       # noqa: PLC0415
+
+    now = now or datetime.now()
+    out = {"period_s": None, "first_start": "", "error": ""}
+    if not str(xml_text or "").strip():
+        return out
+    try:
+        root = ET.fromstring(xml_text)
+    except ET.ParseError as e:
+        out["error"] = f"트리거 XML 을 해석하지 못했다({e})"
+        return out
+    ns = _TASK_NS
+    periods, starts = [], []
+    for trig in list(root):
+        if (trig.findtext(f"{ns}Enabled") or "").strip().lower() == "false":
+            continue                                         # 꺼진 트리거는 작업을 부르지 않는다
+        end = _local_naive(trig.findtext(f"{ns}EndBoundary") or "")
+        if end is not None and end <= now:
+            continue                                         # 끝난 트리거도 작업을 부르지 않는다(QA-OPS4-2)
+        sb_dt = _local_naive(trig.findtext(f"{ns}StartBoundary") or "")
+        base = None
+        if trig.tag == f"{ns}CalendarTrigger":
+            day, week = trig.find(f"{ns}ScheduleByDay"), trig.find(f"{ns}ScheduleByWeek")
+            month = trig.find(f"{ns}ScheduleByMonth")
+            if month is None:
+                month = trig.find(f"{ns}ScheduleByMonthDayOfWeek")
+            if day is not None:
+                base = int(day.findtext(f"{ns}DaysInterval") or 1) * DAY_S
+            elif week is not None:
+                dow = week.find(f"{ns}DaysOfWeek")
+                days = [] if dow is None else [_DOW.index(c.tag[len(ns):]) for c in dow
+                                                if c.tag[len(ns):] in _DOW]
+                base = _max_gap(days, 7 * int(week.findtext(f"{ns}WeeksInterval") or 1)) * DAY_S
+            elif month is not None:
+                mos = month.find(f"{ns}Months")
+                idx = list(range(12)) if mos is None else [_MONTHS.index(c.tag[len(ns):]) for c in mos
+                                                          if c.tag[len(ns):] in _MONTHS]
+                base = _max_gap(idx, 12) * MONTH_S
+        rep = _iso_duration(trig.findtext(f"{ns}Repetition/{ns}Interval"))
+        dur_txt = (trig.findtext(f"{ns}Repetition/{ns}Duration") or "").strip()
+        if rep and dur_txt:
+            dur = _iso_duration(dur_txt)                     # None = 0(무기한) 또는 못 읽음
+            unreadable = dur is None and not _ISO_DUR.match(dur_txt)
+            if base is not None:
+                if unreadable or (dur is not None and dur < base):
+                    rep = None                               # 창 안에서만 반복 — 바깥 트리거 주기(QA-OPS4-1)
+            elif dur is not None and (sb_dt is None or sb_dt + timedelta(seconds=dur) <= now):
+                continue                                     # 한 번 트리거의 유한 반복이 끝났다 — 죽은 트리거
+        if sb_dt is not None:
+            starts.append(sb_dt.isoformat(sep=" ", timespec="minutes"))
+        cand = [x for x in (base, rep) if x]
+        if cand:
+            periods.append(min(cand))
+    out["period_s"] = min(periods) if periods else None
+    out["first_start"] = min(starts) if starts else ""
+    return out
 
 
 def read_schedule() -> tuple[list[dict], str | None]:
@@ -394,6 +522,7 @@ def read_schedule() -> tuple[list[dict], str | None]:
         #   상시 가동이 정상인 작업(home-tunnel)을 빨갛게 칠하면 대시보드가 헛되이 경고하고,
         #   헛경고하는 화면은 곧 아무도 안 본다. 2026-09-23 내 첫 판에서 실제로 그랬다.
         running = state.lower() == "running"
+        tp = trigger_period(r.get("Triggers") or "")
         out.append({
             "name": str(r.get("TaskName", "")).lstrip("\\"),
             "status": state, "running": running,
@@ -402,10 +531,113 @@ def read_schedule() -> tuple[list[dict], str | None]:
             "enabled": state.lower() != "disabled",
             "never_ran": last.startswith(NEVER),
             "ok": res == "0" or running,
+            # OPS-4: 주기(초, 없으면 None)·첫 트리거 시작·등록 날짜(없으면 '') — org_runtime.silence_verdict 가 쓴다
+            "period_s": tp["period_s"], "first_start": tp["first_start"],
+            "registered": local_minutes(r.get("Registered") or ""),
+            "trigger_error": str(r.get("TriggerError") or "").strip() or tp["error"],
         })
     if not out:
         return [], "예약 작업이 0건이다 — 등록이 지워졌는지 확인할 것"
     return sorted(out, key=lambda t: t["name"]), None
+
+
+def attach_verdict(sched: list[dict]) -> tuple[list[str], str | None]:
+    """예약 작업 행마다 `verdict` 를 싣는다 — 순환계 `org_runtime.schedule_verdict` 의 결과 **그대로**(OPS-4 r3, QA-OPS4-4 ⓐ).
+
+    `verdict` = {"broken": bool, "label": str}. 결재함 '예약 작업 경보'의 고장 판정과 같은 함수·같은 글자다 —
+    '꺼짐(Disabled)'·'다음 실행 없음'(결과 0)도 여기서 고장으로 온다. r2 까지 표는 결과 0 인 이 둘을 초록 '정상'으로
+    칠했다(결재함은 경보). 순환계는 같은 함수를 **고장 먼저, 조용한 누락은 고장이 아닐 때만** 순서로 부른다
+    (`org_runtime.judge_task`) — 그래서 한 행에 `verdict.broken` 과 `silence.bad` 가 함께 참일 수 없다.
+    ★ 규칙(판정 순서·글자)을 이 파일에 다시 짜지 않는다.
+    ★ 못 붙이면 행의 `verdict` 는 None 이다(모름) — '정상'(broken False)으로 채우지 않는다. 행에 판정에 쓰는 칸
+      (`org_runtime.SCHEDULE_FIELDS`)이 하나라도 없으면 그 행도 None 이다: `enabled` 가 빠진 행을 판정하면 꺼진
+      작업이 '정상'으로 나온다. `read_schedule` 은 여섯 칸을 늘 채운다(순환계 `Org.schedule_states` 도 이 함수를 부른다).
+    반환: (행 경고 — 칸이 빠짐·판정 실패, 오류). 둘 다 화면 '못 읽은 것'으로 올린다.
+    """
+    for s in sched:
+        s["verdict"] = None
+    if not sched:
+        return [], None
+    try:
+        tools_dir = str(Path(__file__).resolve().parent)
+        if tools_dir not in sys.path:
+            sys.path.insert(0, tools_dir)
+        import org_runtime                                   # noqa: WPS433
+        judge, fields = org_runtime.schedule_verdict, tuple(org_runtime.SCHEDULE_FIELDS)
+    except Exception as e:                                   # noqa: BLE001
+        return [], f"예약 작업 고장 판정을 싣지 못했다: {type(e).__name__}: {e}"[:160]
+    warns: list[str] = []
+    for s in sched:
+        miss = [f for f in fields if f not in s]
+        if miss:
+            warns.append(f"예약 작업 `{s.get('name', '?')}` 행에 판정 칸({', '.join(miss)})이 없다 — 고장 판정을 싣지 않음")
+            continue
+        try:
+            broken, label = judge(s)
+        except Exception as e:                               # noqa: BLE001
+            warns.append(f"예약 작업 `{s.get('name', '?')}` 의 고장 판정이 실패했다({type(e).__name__}) — 싣지 않음")
+            continue
+        s["verdict"] = {"broken": bool(broken), "label": str(label)}
+    return warns, None
+
+
+def attach_silence(sched: list[dict], now: datetime | None = None) -> tuple[list[str], str | None]:
+    """예약 작업 행마다 `silence` 를 싣는다 — 순환계 `org_runtime.Org.silence_rows` 의 결과 **그대로**(OPS-4 r2).
+
+    `silence` = {bad, label, since, limit_h, cls, warn} (`org_runtime.silence_verdict` 반환 모양).
+    ★ 판정 규칙(주기 분류 · §1 한도 · 첫 실행 기준 · task_seen)을 이 파일에 다시 짜지 않는다. 규칙이 두 벌이면
+      결재함은 '예약 작업 경보'(주황)인데 표는 '정상'(초록)이라고 말한다 — design-critic 2026-09-27 #1 이 코드로 확인한 모순.
+    ★ 못 붙이면 행의 `silence` 는 None 이다(모름). '정상'(bad False)으로 채우지 않는다.
+    반환: (판정 경고 — 트리거를 못 읽음·§1 한도 없음, 오류). 둘 다 화면 '못 읽은 것'으로 올린다.
+    """
+    for s in sched:
+        s["silence"] = None
+    if not sched:
+        return [], None
+    try:
+        tools_dir = str(Path(__file__).resolve().parent)
+        if tools_dir not in sys.path:
+            sys.path.insert(0, tools_dir)
+        import org_runtime                                   # noqa: WPS433
+        verdicts = org_runtime.Org(ROOT).silence_rows(sched, now)
+    except Exception as e:                                   # noqa: BLE001
+        return [], f"조용히 안 도는 예약 작업을 판정하지 못했다: {type(e).__name__}: {e}"[:160]
+    warns: list[str] = []
+    for s in sched:
+        v = verdicts.get(s["name"])
+        s["silence"] = v
+        if v and v.get("warn") and v["warn"] not in warns:
+            warns.append(v["warn"])
+    return warns, None
+
+
+def schedule_counts(sched: list[dict]) -> dict:
+    """KPI '예약 작업' 타일의 수. 표(`d.schedule`)와 **같은 행**에서 센다 — 타일과 표가 다른 말을 못 하게.
+
+    - `sched_never`: 실행된 적도 예정도 없음 · `sched_bad`: 실패(결과 ≠ 0) — 둘 다 빨강 몫(전과 같다).
+    - `sched_silent`: 조용히 안 돎 + 첫 실행 없음(행의 `silence.bad`) — OPS-4 r2. 판정을 못 붙였으면 None(0 이 아니다).
+    - `sched_pending`: 첫 실행 대기(예정 있음) — **첫 실행 없음으로 판정된 작업은 빼고** 센다(대기가 아니라 경보다).
+    - `sched_stopped`: 꺼짐(Disabled)·다음 실행 없음 — 행의 `verdict.broken` 인데 never 도 bad 도 아닌 것(결과는 0 인데
+      다시 돌지 않는다). OPS-4 r3(QA-OPS4-4 ⓐ). 판정을 못 붙인 행이 있으면 None(0 이 아니다). 꺼졌는데 마지막 결과가
+      0 이 아닌 행은 전처럼 bad 에 센다(`verdict.label` 은 '꺼짐(Disabled)') — 두 번 세지 않는다.
+    - `sched_alarm`: never + bad + silent + stopped — 볼 것이 있는 작업 수(서로 겹치지 않는다: silent 는 결과 0·예정 있음·
+      고장 아님뿐, stopped 는 결과 0·고장뿐). 순환계 결재함에 '예약 작업 경보'가 설 수 있는 작업과 같은 집합이다.
+    """
+    judged = all(s.get("silence") is not None for s in sched)
+    judged_v = all(s.get("verdict") is not None for s in sched)
+    quiet = {s["name"] for s in sched if (s.get("silence") or {}).get("bad")}
+    never_set = {s["name"] for s in sched if s["never_ran"] and not s.get("next_run")}
+    bad_set = {s["name"] for s in sched if not s["ok"] and not s["never_ran"]}
+    stopped = {s["name"] for s in sched if (s.get("verdict") or {}).get("broken")} - never_set - bad_set - quiet
+    return {
+        "sched_total": len(sched),
+        "sched_never": len(never_set),
+        "sched_pending": sum(1 for s in sched if s["never_ran"] and s.get("next_run") and s["name"] not in quiet),
+        "sched_bad": len(bad_set),
+        "sched_silent": len(quiet) if judged else None,
+        "sched_stopped": len(stopped) if judged_v else None,
+        "sched_alarm": len(never_set) + len(bad_set) + len(quiet) + len(stopped),
+    }
 
 
 # ── 산출물·배포·제품 ────────────────────────────────────────────────────────
@@ -844,6 +1076,15 @@ def build_state(rescan: bool = False) -> dict:
     sched, e = read_schedule()
     if e:
         problems.append(e)
+    # OPS-4 r3: 고장 판정(verdict)도, r2: '조용히 안 돎' 판정(silence)도 순환계 결과를 그대로 싣는다(규칙은 org_runtime 한 곳)
+    vwarns, e = attach_verdict(sched)
+    if e:
+        problems.append(e)
+    problems.extend(vwarns)
+    warns, e = attach_silence(sched)
+    if e:
+        problems.append(e)
+    problems.extend(warns)
     git, e = read_git()
     if e:
         problems.append(e)
@@ -961,15 +1202,13 @@ def build_state(rescan: bool = False) -> dict:
             "calls_total": sum(per_agent.get(a["name"], 0) for a in roster),
             "calls_7d": calls_7d,
             "last_call": (stats["calls"][-1] if stats["calls"] else None),
-            "sched_total": len(sched),
             # ★ 2026-09-23 정정: '한 번도 실행 안 됨' 을 고장으로 세면 안 된다.
             #   주간(9/26)·월간(10/1) 은 **트리거가 아직 안 온 것**이지 실패가 아니다.
             #   내가 이 표시를 보고 "예약 작업 2개가 한 번도 안 돌았다"고 오너에게 경고했는데,
             #   실제로 dry-run 을 돌려 보니 스크립트는 멀쩡했다. 화면이 나를 오판하게 만든 것이다.
             #   다음 실행 시각이 잡혀 있으면 '대기', 없으면 그때야 '확인 필요'다.
-            "sched_never": sum(1 for s in sched if s["never_ran"] and not s.get("next_run")),
-            "sched_pending": sum(1 for s in sched if s["never_ran"] and s.get("next_run")),
-            "sched_bad": sum(1 for s in sched if not s["ok"] and not s["never_ran"]),
+            #   OPS-4 r2: 대기가 등록 후 한도를 넘으면 '첫 실행 없음'(sched_silent)으로 옮긴다 — schedule_counts.
+            **schedule_counts(sched),
             # ★ 훅이 없으면 None 이다. 0 이 아니다 — '아무도 안 돈다'와 '재지 않았다'는 다르다.
             "running_now": len(live.get("running", [])) if live.get("enabled") else None,
             # 편중 — 최다 1인이 몇 %를 가져갔나
@@ -1093,7 +1332,9 @@ def main(argv=None) -> int:
     s = build_state(a.rescan)
     k = s["kpi"]
     print(f"에이전트 {k['agents_used']}/{k['agents_total']}종 사용 · 호출 {k['calls_total']}회"
-          f" · 정기작업 {k['sched_total']}개(미실행 {k['sched_never']})", file=sys.stderr)
+          f" · 예약 작업 {k['sched_total']}개(미실행 {k['sched_never']} · 조용히 안 돎 "
+          f"{'판정 못함' if k['sched_silent'] is None else k['sched_silent']} · 꺼짐·다음 실행 없음 "
+          f"{'판정 못함' if k['sched_stopped'] is None else k['sched_stopped']})", file=sys.stderr)
     if s["problems"]:
         for p in s["problems"]:
             print(f"  ⚠ {p}", file=sys.stderr)

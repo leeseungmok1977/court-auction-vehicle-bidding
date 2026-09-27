@@ -49,10 +49,14 @@ def _wrap_console() -> None:
 
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT / "tools") not in sys.path:                     # 스크립트로 돌 때는 이미 있다(sys.path[0])
+    sys.path.insert(0, str(ROOT / "tools"))
+import ops_digest                                            # noqa: E402  운영·공급 절 — 월간과 같은 구현(OPS-4)
+
+PANEL_JOB = ops_digest.PANEL_JOB                             # 일일 리포트 `## 정기 작업` 표의 작업 이름
 OUT_DIR = ROOT / "docs" / "weekly-reports"
 REVIEW_DIR = ROOT / "docs" / "reviews"
 DAILY_DIR = ROOT / "docs" / "daily-reports"
-PANEL_JOB = "주간 전문가 패널"          # 일일 리포트 `## 정기 작업` 표의 작업 이름(daily_ops_report 와 같은 글자)
 SERVER = "ubuntu@43.202.126.180"
 KEY = Path(os.environ.get("USERPROFILE", str(Path.home()))) / "Downloads" / "naechaget.pem"
 
@@ -166,133 +170,22 @@ def collect_panel(since: date, until: date) -> dict:
 # W39 보고는 케이카 경보(3일)와 패널 정기 실행 실패를 한 번도 적지 않았고, 패널은 '리포트 2건'으로
 # 적어 실패를 가렸다(AUDIT-1 A-05·A-11). 그래서 그 주 **일일 리포트 파일**을 다시 읽어 센다 —
 # 서버를 다시 읽지 않는다(그 주의 판정은 그날 리포트가 이미 남겼다). 표는 org-contracts §3.1.
+# ★ 구현은 `tools/ops_digest.py` 하나다(OPS-4) — 월간 보고가 같은 함수를 쓴다. 여기는 주간 이름표만 단다.
 def collect_ops(since: date, until: date, today: Optional[date] = None) -> dict:
     """그 주 일일 리포트(이 저장소의 파일)와 경보 → 티켓 표. 외부 요청·서버 접속 없음."""
-    tools_dir = str(ROOT / "tools")
-    if tools_dir not in sys.path:
-        sys.path.insert(0, tools_dir)
-    try:
-        import org_runtime as rt                             # noqa: PLC0415
-        tickets = rt.Org(ROOT).signal_tickets()
-    except Exception as e:                                   # noqa: BLE001
-        return {"error": _scrub(f"경보 표를 읽지 못함({type(e).__name__})")}
-    today = today or date.today()
-    reports, missing = [], []
-    d = since
-    while d <= until:
-        f = DAILY_DIR / f"{d.isoformat()}.md"
-        if f.exists():
-            reports.append((d.isoformat(), rt.parse_daily_report(f.read_text(encoding="utf-8", errors="replace"),
-                                                                 day=d.isoformat())))
-        elif d <= today:
-            missing.append(d.isoformat())
-        d += timedelta(days=1)
-    return {"reports": reports, "missing": missing, "tickets": tickets}
+    return ops_digest.collect_ops(since, until, today, root=ROOT, daily_dir=DAILY_DIR, scrub=_scrub)
 
 
-def _days(ds: list[str]) -> str:
-    return "·".join(x[5:] for x in ds)
-
-
-def _ticket_md(name: str, tickets: dict) -> tuple[str, str]:
-    t = (tickets.get(name) or {})
-    if not t.get("ticket"):
-        return "—", "—"
-    status = re.sub(r"[*`|]", "", t.get("status") or "").strip()
-    if len(status) > 40:
-        status = status[:40].rstrip() + "…"
-    return f"`{t['ticket']}`", (t.get("state") or "") + (f" · {status}" if status else "")
-
-
-def ops_stats(ops: dict) -> dict:
-    """신호·작업별 일수. 주간 보고와 테스트가 같은 수를 쓴다."""
-    reps = ops.get("reports") or []
-    names: list[str] = []
-    for _, p in reps:
-        names += [n for n in p["supply"] if n not in names]
-    sup: dict[str, dict] = {n: {"alert": [], "unknown": [], "no_ticket": [], "unmarked": []} for n in names}
-    jobs: dict[str, dict] = {}
-    for day, p in reps:
-        for name in names:
-            s, r = sup[name], p["supply"].get(name)
-            if r is None:                                    # 공급 표가 없는 날(지난 기간·서버 못 읽음) = 모름
-                s["unknown"].append(day)
-            elif r["state"] == "alert":
-                s["alert"].append(day)
-                if r.get("ticket") is None:
-                    s["unmarked"].append(day)                # 티켓 칸이 생기기 전 리포트 — 몰랐던 것이지 있던 게 아니다
-                elif "티켓 없음" in r["ticket"]:
-                    s["no_ticket"].append(day)
-            elif r["state"] == "unknown":
-                s["unknown"].append(day)
-        for name, r in p["jobs"].items():
-            j = jobs.setdefault(name, {"due": [], "ok": [], "bad": [], "unknown": []})
-            if r["state"] == "na":
-                continue
-            j["due"].append(day)
-            {"ok": j["ok"], "alert": j["bad"]}.get(r["state"], j["unknown"]).append(day)
-    return {"supply": sup, "jobs": jobs}
+ops_stats = ops_digest.ops_stats
 
 
 def ops_section(ops: Optional[dict]) -> list[str]:
-    L = ["## 운영·공급", ""]
-    if not ops or ops.get("error"):
-        return L + [f"확인 불가 — {(ops or {}).get('error') or '일일 리포트를 읽지 않았다'}.", ""]
-    reps = ops.get("reports") or []
-    if not reps:
-        return L + ["확인 불가 — 이번 주 일일 리포트가 한 편도 없다. **이상이 없었다는 뜻이 아니다.**", ""]
-    st = ops_stats(ops)
-    tickets = ops.get("tickets") or {}
-    miss = ops.get("missing") or []
-    L += [f"> 이번 주 일일 리포트 **{len(reps)}편**(`docs/daily-reports/`)에서 셌다"
-          + (f" · 리포트 없는 날 {_days(miss)}" if miss else "")
-          + ". 서버를 다시 읽지 않았다. 티켓은 `docs/org-contracts.md` §3.1 과 백로그 상태(지금 기준)다.", ""]
-    # 형식이 어긋난 리포트는 아래 수를 **작게** 만든다(모름으로 읽힌다) — 조용히 두지 않는다(QA-OPS3-2)
-    drift = [(d, p.get("issues")) for d, p in reps if p.get("issues")]
-    if drift:
-        L += ["> ⚠ **형식이 달라 못 읽었을 수 있는 리포트** — 아래 일수가 실제보다 작을 수 있다: "
-              + " · ".join(f"{d[5:]}({_scrub('; '.join(i))[:160]})" for d, i in drift), ""]
-    L += ["**공급 신호**", "",
-          "| 신호 | 이상·멈춤 | 확인 불가 | 연결 티켓 | 티켓 상태(지금) | '티켓 없음'이던 날 |",
-          "|---|---|---|---|---|---|"]
-    for name, s in st["supply"].items():
-        t, ts = _ticket_md(name, tickets)
-        marked = len(s["alert"]) - len(s["unmarked"])     # 티켓 칸이 있던 리포트의 경보 일수
-        if not s["alert"]:
-            nt = "—"
-        elif not marked:
-            nt = f"모름 — 티켓 칸 생기기 전 리포트 {len(s['unmarked'])}일"
-        else:
-            nt = (f"**{len(s['no_ticket'])}일**" if s["no_ticket"] else "0일") + (
-                f" · 칸 생기기 전 {len(s['unmarked'])}일" if s["unmarked"] else "")
-        bad = f"**{len(s['alert'])}일** ({_days(s['alert'])})" if s["alert"] else "0일"
-        L.append(f"| {name} | {bad} | {len(s['unknown'])}일 | {t} | {ts} | {nt} |")
-    if not st["supply"]:
-        L.append("| (공급 표가 있는 리포트 없음) | — | — | — | — | — |")
-    L += ["", "**정기 작업** — 예정이 있던 날만 센다(주간 작업은 그 요일만)", "",
-          "| 작업 | 판정한 날 | 성공 | 실패·경고 | 확인 불가 | 연결 티켓 |",
-          "|---|---|---|---|---|---|"]
-    for name, j in st["jobs"].items():
-        t, ts = _ticket_md(name, tickets)
-        bad = f"**{len(j['bad'])}회** ({_days(j['bad'])})" if j["bad"] else "0회"
-        L.append(f"| {name} | {len(j['due'])}회 | {len(j['ok'])}회 | {bad} | {len(j['unknown'])}회 | "
-                 f"{t}{' ' + ts if t != '—' else ''} |")
-    L += ["", "> '티켓 없음'이던 날은 그날 리포트가 경보 줄에 **❗ 티켓 없음**을 적은 날이다. "
-          "경보가 연속으로 이어지면 순환계가 결재함에 지시서를 만든다(org-contracts §3).", ""]
-    return L
+    return ops_digest.ops_section(ops, period="이번 주", scrub=_scrub)
 
 
 def panel_line(ops: Optional[dict]) -> list[str]:
     """패널 **정기 실행** 결과 — 파일 수로 실패를 가리지 않는다(A-05)."""
-    if not ops or ops.get("error") or not ops.get("reports"):
-        return ["- 정기 실행(토 09:20): 확인 불가 — 일일 리포트를 읽지 못했다."]
-    j = ops_stats(ops)["jobs"].get(PANEL_JOB)
-    if not j or not j["due"]:
-        return ["- 정기 실행(토 09:20): 이번 주 일일 리포트에 판정된 회차가 없다."]
-    s = (f"- 정기 실행(토 09:20, 일일 리포트 기준): 예정 {len(j['due'])}회 · 성공 {len(j['ok'])}회 · "
-         + (f"**실패 {len(j['bad'])}회**({_days(j['bad'])})" if j["bad"] else "실패 0회")
-         + (f" · 확인 불가 {len(j['unknown'])}회" if j["unknown"] else ""))
-    return [s]
+    return ops_digest.panel_line(ops, period="이번 주")
 
 
 def build_markdown(since: date, until: date, server: dict, git: dict, panel: dict,

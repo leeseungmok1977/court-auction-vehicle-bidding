@@ -26,9 +26,10 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-for _p in (str(ROOT), str(ROOT / "tools")):
+for _p in (str(ROOT), str(ROOT / "tools"), str(Path(__file__).resolve().parent)):
     if _p not in sys.path:
         sys.path.insert(0, _p)
+import _schedstate_js as sj  # noqa: E402
 import org_runtime as rt  # noqa: E402
 
 _spec = importlib.util.spec_from_file_location("daily_ops_report_ops3_qa", ROOT / "tools" / "daily_ops_report.py")
@@ -36,6 +37,7 @@ R = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(R)
 
 NOW = datetime(2026, 9, 27, 13, 5, 0)
+DAY = 86400
 SUPPLY = ["물건 수집", "시세 분석", "엔카 시세", "케이카 교차검증", "낙찰결과", "시세 0표본", "실행 기록"]
 MARK = {"ok": "✅ 정상", "warn": "⚠️ 이상", "down": "🛑 멈춤", "unknown": "❔ 확인 불가"}
 JOBS = {"매일 시세·낙찰 갱신": "✅ 성공", "SSL 인증서 갱신 확인": "✅ 성공",
@@ -270,8 +272,10 @@ def test_late_report_between_alerts_is_skipped_but_an_ok_report_breaks(org):
 # ③ 예약 작업
 # ════════════════════════════════════════════════════════════════════════
 def _task(name, **kw):
+    # OPS-4: read_schedule 행은 트리거에서 읽은 주기(`period_s`)·첫 트리거 시작·등록 날짜를 싣는다. 기본은 매일 작업.
     t = {"name": name, "status": "Ready", "running": False, "last_run": "2026-09-27 12:00",
-         "last_result": "0", "next_run": "2026-09-28 12:00", "enabled": True, "never_ran": False, "ok": True}
+         "last_result": "0", "next_run": "2026-09-28 12:00", "enabled": True, "never_ran": False, "ok": True,
+         "period_s": DAY, "first_start": "", "registered": "", "trigger_error": ""}
     t.update(kw)
     return t
 
@@ -283,30 +287,40 @@ def _all_registered(*extra):
 
 
 # 2026-09-27 13:3x 이 PC 작업 스케줄러 실측(agent_dashboard.read_schedule, 읽기만). 보고서 §3 표와 같다.
+# 주기·첫 트리거 시작·등록 날짜는 OPS-4 가 같은 날 15:2x 에 트리거 XML 에서 읽은 값이다(읽기만).
 REAL_0927 = [
-    _task("NaechaGet-PhotoClassify", last_run="2026-09-27 08:17", next_run="2026-10-04 08:17"),
-    _task("naechaget-daily-report", last_run="2026-09-27 12:00", next_run="2026-09-28 12:00"),
+    _task("NaechaGet-PhotoClassify", last_run="2026-09-27 08:17", next_run="2026-10-04 08:17",
+          period_s=7 * DAY, first_start="2026-09-06 08:17"),
+    _task("naechaget-daily-report", last_run="2026-09-27 12:00", next_run="2026-09-28 12:00",
+          first_start="2026-09-16 12:00"),
     _task("naechaget-db-backup-pull", last_run="1999-11-30 00:00", last_result="267011",
-          next_run="2026-09-28 09:10", never_ran=True, ok=False),
-    _task("naechaget-home-tunnel", last_run="2026-09-16 05:24", last_result="3221225477", next_run="", ok=False),
+          next_run="2026-09-28 09:10", never_ran=True, ok=False, first_start="2026-09-27 09:10"),
+    _task("naechaget-home-tunnel", last_run="2026-09-16 05:24", last_result="3221225477", next_run="", ok=False,
+          period_s=None),                                                       # 부팅 트리거 — 주기 없음
     _task("naechaget-monthly-report", last_run="1999-11-30 00:00", last_result="267011",
-          next_run="2026-10-01 13:30", never_ran=True, ok=False),
-    _task("naechaget-ops-snapshot", last_run="2026-09-27 13:31", next_run="2026-09-27 13:32"),
-    _task("naechaget-org-heartbeat", last_run="2026-09-27 13:05", next_run="2026-09-27 14:05"),
-    _task("naechaget-org-standup", last_run="2026-09-27 08:45", next_run="2026-09-28 08:45"),
-    _task("naechaget-weekly-report", last_run="2026-09-26 13:00", next_run="2026-10-03 13:00"),
+          next_run="2026-10-01 13:30", never_ran=True, ok=False, period_s=31 * DAY,
+          first_start="2026-09-22 13:30", registered="2026-09-22 20:47"),
+    _task("naechaget-ops-snapshot", last_run="2026-09-27 13:31", next_run="2026-09-27 13:32",
+          period_s=60, first_start="2026-09-23 08:36"),
+    _task("naechaget-org-heartbeat", last_run="2026-09-27 13:05", next_run="2026-09-27 14:05",
+          period_s=3600, first_start="2026-09-27 00:05"),
+    _task("naechaget-org-standup", last_run="2026-09-27 08:45", next_run="2026-09-28 08:45",
+          first_start="2026-09-27 08:45"),
+    _task("naechaget-weekly-report", last_run="2026-09-26 13:00", next_run="2026-10-03 13:00",
+          period_s=7 * DAY, first_start="2026-09-22 13:00", registered="2026-09-22 20:47"),
 ]
 
 
-def _dashboard_class(s: dict) -> str:
-    """tools/agent_dashboard.html 의 `d.schedule.map` 행 클래스 규칙을 그대로 옮긴 것(defaccc)."""
-    return ("late" if s["next_run"] else "bad") if s["never_ran"] else ("" if s["ok"] else "bad")
-
-
 def test_real_0927_scheduler_snapshot_matches_dashboard_classes_and_only_tunnel_is_bad():
-    for t in REAL_0927:
+    """실측 9행의 표 행 클래스(**실제 HTML `schedState`** — 대시보드 경로 그대로 verdict·silence 를 붙인다)와 순환계
+    고장 판정이 같다. qa r3(OPS-4, 지시서 2026-09-27-76): 전에는 defaccc 행 클래스 규칙 사본 `_dashboard_class`(결과
+    `ok` 만 본다)로 셌다 — r3 표는 '꺼짐'·'다음 실행 없음'도 빨강 행이라 사본이 낡았다. 지우고 실제 JS 를 돌린다."""
+    rows = sj.judge(REAL_0927, NOW, rt.Org(ROOT).contracts()[0], NOW.isoformat())
+    with sj.page() as pg:
+        chips = sj.states(pg, rows)
+    for t, x in zip(rows, chips):
         bad, _ = rt.schedule_verdict(t)
-        assert bad == (_dashboard_class(t) == "bad"), t["name"]
+        assert bad == (x["row"] == "bad") == (x["pill"] == "bad"), (t["name"], x)
     assert [t["name"] for t in REAL_0927 if rt.schedule_verdict(t)[0]] == ["naechaget-home-tunnel"]
 
 
@@ -338,11 +352,8 @@ def test_task_labels_distinguish_missing_no_next_and_last_failure(org, monkeypat
     assert len(set(lab.values())) == 4
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "지시서 문언과 구현 해석의 차이 QA-OPS3-4(Steward 결정 필요): 지시서 ②의 셋째 조건 '24시간 넘게 성공이 "
-    "없으면'을 구현은 '고장 상태가 24시간 지속'으로 읽었다(구현 보고 §2-1). 그래서 **결과 0 으로 멈춘 작업**"
-    "(PC 가 꺼져 매일 작업이 이틀 안 돌았고 다음 실행은 잡혀 있음 — AUD-15 의 '건너뛰고 따라잡지 않는다')은 "
-    "영원히 '정상'이다. 해석을 받아들이면 이 테스트를 지운다"))
+# QA-OPS3-4 — Steward 결정(2026-09-27): 매일 작업은 마지막 성공이 36시간(주간 8일·월간 35일)을 넘으면 다음 실행이
+# 잡혀 있어도 task 지시서 대상이다. OPS-4 가 구현해 XPASS 를 확인한 뒤 strict xfail 표식을 지웠다(단언은 그대로).
 def test_daily_task_that_silently_missed_two_runs_is_seen(org, monkeypatch):
     stale = _task("naechaget-db-backup-pull", last_run="2026-09-25 09:10", next_run="2026-09-28 09:10")
     monkeypatch.setattr(org, "schedule_states", lambda: ([dict(t) for t in _all_registered(stale)], None))

@@ -289,15 +289,26 @@ def ticket_is_open(status: str) -> bool:
     return "대기" in s[:12]
 
 
+# `schedule_verdict` 가 읽는 행의 칸 — `agent_dashboard.read_schedule` 이 행마다 채운다(순환계 `Org.schedule_states` 도
+# 같은 함수를 부른다). 대시보드는 이 칸이 하나라도 빠진 행을 판정하지 않는다(`agent_dashboard.attach_verdict` — 모름):
+# `enabled` 가 빠진 행을 판정하면 꺼진 작업이 '정상'으로 나온다. 이 함수가 새 칸을 읽게 되면 여기에 더한다(테스트가 본다).
+SCHEDULE_FIELDS = ("never_ran", "next_run", "running", "enabled", "ok", "last_result")
+
+
 def schedule_verdict(t: dict) -> tuple[bool, str]:
-    """예약 작업 1건 → (고장인가, 사람이 읽는 상태). 사내 대시보드 정기 작업 표(`agent_dashboard.html` 의
-    `d.schedule.map` — defaccc 2026-09-27)와 **같은 규칙에 둘을 더했다.**
+    """예약 작업 1건 → (고장인가, 사람이 읽는 상태). 순환계 결재함('예약 작업 경보')과 사내 대시보드 예약 작업 표가
+    **같이** 쓰는 고장 판정이다 — 대시보드는 이 결과를 행의 `verdict`({broken, label})로 그대로 받는다
+    (`agent_dashboard.attach_verdict`, OPS-4 r3 · QA-OPS4-4 ⓐ). 규칙은 이 함수 한 곳이다 — 대시보드에 다시 짜지 않는다.
+    읽는 칸은 `SCHEDULE_FIELDS` 뿐이다. ('예약 작업'은 작업 스케줄러의 작업, '정기 작업'은 일일 리포트
+    `## 정기 작업` 표의 작업이다 — org-contracts §3.1 정의.)
 
-    대시보드와 같은 것: 한 번도 안 돌았어도 다음 실행이 잡혀 있으면 '아직 때가 안 됨'(고장 아님),
-    돌지도 않고 다음 실행도 없으면 고장('실행된 적 없음 · 예정도 없음' — 대시보드도 `bad`), 실행 중은
-    정상(267009), 결과 0 이 아니면 실패(터널 09-16 0xC0000005 는 이것이다 — 대시보드에서도 이미 `bad`).
+    대시보드의 옛 칩 규칙(defaccc — 결과 `ok` 만 봤다)에도 있던 것: 한 번도 안 돌았어도 다음 실행이 잡혀 있으면
+    '아직 때가 안 됨'(고장 아님), 돌지도 않고 다음 실행도 없으면 고장('실행된 적 없음 · 예정도 없음'), 실행 중은
+    정상(267009), 결과 0 이 아니면 실패(터널 09-16 0xC0000005 는 이것이다).
 
-    대시보드에 **없는** 규칙 둘(대시보드는 결과가 0 이면 정상으로 칠한다):
+    옛 칩 규칙에 없던 규칙 둘 — r2 까지 대시보드는 결과 0 인 이 둘을 초록 '정상'으로 칠해, 결재함에 '예약 작업 경보'가
+    선 작업이 표에서는 정상이었다(QA-OPS4-4). r3 부터 대시보드도 **같은 판정을 행에 싣고 그대로 칠한다**
+    (싣기 — `attach_verdict` · KPI `sched_stopped`, 칠하기 — frontend 지시서 2026-09-27-75):
     ⓐ 결과 0 인데 **다음 실행이 없으면** '다음 실행 없음' — 다시는 안 돈다.
     ⓑ **꺼진 작업**(Disabled)은 '꺼짐(Disabled)'. 일부러 끈 작업이면 org-contracts §3.1 받는 자리를 `-` 로 둔다
        — 아니면 24시간 뒤 결재함에 올라간다.
@@ -316,6 +327,204 @@ def schedule_verdict(t: dict) -> tuple[bool, str]:
     if not nxt:
         return True, "다음 실행 없음"
     return False, "정상"
+
+
+# OPS-4(Steward 결정 2026-09-27, QA-OPS3-4): 고장 표시 없이 **조용히 안 도는** 작업. 주기 분류의 경계(하루·7일·31일)는
+# '매일·매주·매월'이라는 말의 뜻이라 여기 두고, 한도 값은 org-contracts §1 에서 읽는다(코드에 박지 않는다).
+# (분류, 주기 상한(일), §1 설정 이름, 설정 단위(시간))
+SILENCE_CLASSES = (("매일", 1, "성공 없음 한도 · 매일(시간)", 1),
+                   ("매주", 7, "성공 없음 한도 · 매주(일)", 24),
+                   ("매월", 31, "성공 없음 한도 · 매월(일)", 24))
+_DAY_S = 86400
+# 조용한 누락 판정이 **없다**(규칙 밖 · 실행 중 · 꺼짐 · 고장 행). 고장 행은 `judge_task` 가 이 값을 싣는다 — 같은 작업이
+# 고장과 조용한 누락 두 경보가 되지 않고, 트리거 경고도 순환계와 대시보드가 같은 행에서만 낸다.
+SILENCE_NONE = {"bad": False, "label": "", "since": "", "limit_h": 0, "cls": "", "warn": ""}
+
+
+def _local_dt(s: str) -> datetime | None:
+    """'YYYY-MM-DD HH:MM' · ISO(오프셋 있거나 없거나) → 이 PC 현지 naive 시각. 못 읽으면 None."""
+    try:
+        dt = datetime.fromisoformat(str(s or "").strip())
+    except ValueError:
+        return None
+    return dt.astimezone().replace(tzinfo=None) if dt.tzinfo is not None else dt
+
+
+def _limit_text(limit_h: int) -> str:
+    return f"{limit_h // 24}일" if limit_h % 24 == 0 and limit_h >= 48 else f"{limit_h}시간"
+
+
+def silence_verdict(t: dict, now: datetime, settings: dict, seen: str = "") -> dict:
+    """`schedule_verdict` 가 고장이 아니라고 본 작업이 **조용히 안 도는가** → {bad, label, since, limit_h, cls, warn}.
+
+    Steward 결정(2026-09-27, QA-OPS3-4): 매일 작업은 마지막 성공이 36시간, 주간 8일, 월간 35일을 넘으면 —
+    **다음 실행이 잡혀 있어도** — 고장이다. PC 가 오래 꺼져 있었거나, 따라잡기(`StartWhenAvailable`)가 꺼져 있었거나,
+    작업이 고장 표시 없이 조용히 빠진 경우를 잡는다. 따라잡기는 2026-09-27 16:5x 에 Steward 가 월간·주간·사진 분류
+    세 작업에도 켰다(`StartWhenAvailable=True`·`DisallowStartIfOnBatteries=False` — AUD-15). 이제 이 PC 의 `naechaget*`
+    9개가 모두 켜져 있지만 따라잡기는 PC 가 켜져야 돈다 — 그래서 이 규칙은 그대로 둔다.
+
+    이 결과는 순환계(`Org.task_eval`)와 사내 대시보드 예약 작업 행(`Org.silence_rows` → `agent_dashboard.attach_silence`)이
+    **같이** 쓴다(OPS-4 r2). 판정 규칙은 이 함수 한 곳이다 — 대시보드에 다시 짜지 않는다. 둘 다 `judge_task` 를 거쳐
+    **고장이 아닐 때만** 이 함수를 부른다(OPS-4 r3 — 순서도 같다).
+    `cls`(매일·매주·매월)·`limit_h` 는 규칙 안에 드는 작업이면 정상이어도 싣는다(규칙 밖이면 '' · 0).
+
+    - 주기는 작업 **트리거**에서 읽는다(`agent_dashboard.trigger_period` → 행의 `period_s`). 가장 짧은 주기가 하루
+      이하면 매일(매시·매분 반복 포함), 7일 이하면 매주, 31일 이하면 매월. 주기가 없는 작업(부팅·로그온 트리거)과
+      31일을 넘는 작업은 이 규칙 밖이다. 행에 `period_s` 가 없으면(트리거를 안 읽은 목록) 판정하지 않는다.
+    - 한도는 org-contracts §1 `성공 없음 한도 · 매일(시간)`·`· 매주(일)`·`· 매월(일)`. 없으면 판정하지 않고 경고한다.
+    - 돈 적이 있으면: 여기까지 온 작업은 마지막 결과가 0 이라 **마지막 실행 = 마지막 성공**이다.
+    - 한 번도 안 돈 작업(267011)은 **등록 후** 한도가 지나기 전에는 보지 않는다. 등록 시각은 작업의 등록 날짜,
+      없으면 순환계가 처음 본 시각(`seen` — 상태 파일 `task_seen`). 첫 트리거 시작이 그보다 늦으면 그때부터.
+    - 실행 중·꺼짐은 여기서 보지 않는다(실행 중은 정상, 꺼짐은 `schedule_verdict` 가 이미 고장으로 본다).
+    """
+    no = dict(SILENCE_NONE)
+    name = t.get("name", "?")
+    if "period_s" not in t or t.get("running") or t.get("enabled") is False:
+        return no
+    if t.get("trigger_error"):
+        return dict(no, warn=f"예약 작업 `{name}` 의 트리거를 읽지 못했다 — 조용히 안 도는지 판정하지 못함"
+                             f"({str(t['trigger_error'])[:120]})")
+    period = t.get("period_s") or 0
+    cls = next(((c, key, unit) for c, max_d, key, unit in SILENCE_CLASSES if 0 < period <= max_d * _DAY_S), None)
+    if not cls:
+        return no                                          # 주기 없음(부팅·로그온) 또는 31일 초과 — 규칙 밖
+    c, key, unit = cls
+    v = settings.get(key)
+    if not str(v).isdigit():
+        return dict(no, cls=c, warn=f"org-contracts §1 에 `{key}` 가 없다 — `{name}`({c} 작업)이 조용히 안 도는지 판정하지 못함")
+    limit_h = int(v) * unit
+    ok = dict(no, cls=c, limit_h=limit_h)                  # 규칙 안 — 분류·한도는 정상이어도 싣는다(대시보드가 보인다)
+    if t.get("never_ran"):
+        if not t.get("next_run"):
+            return ok                                      # '실행된 적 없음 · 예정도 없음' — schedule_verdict 몫
+        reg = _local_dt(t.get("registered") or "") or _local_dt(seen)
+        start = _local_dt(t.get("first_start") or "")
+        anchor = max([x for x in (reg, start) if x], default=None)
+        if anchor is None or now - anchor < timedelta(hours=limit_h):
+            return ok
+        return dict(ok, bad=True, since=anchor.isoformat(),
+                    label=(f"첫 실행 없음 · 등록 {anchor:%m-%d %H:%M} 뒤 {c} 작업 한도 "
+                           f"{_limit_text(limit_h)} 넘김"))
+    if not t.get("ok") or not t.get("next_run"):
+        return ok                                          # 실패·다음 실행 없음 — schedule_verdict 몫
+    last = _local_dt(t.get("last_run") or "")
+    if last is None or now - last < timedelta(hours=limit_h):
+        return ok
+    return dict(ok, bad=True, since=last.isoformat(),
+                label=f"조용히 안 돎 · 마지막 성공 {last:%m-%d %H:%M} · {c} 작업 한도 {_limit_text(limit_h)} 넘김")
+
+
+def judge_task(t: dict, now: datetime, settings: dict, seen: str = "") -> tuple[dict, dict]:
+    """예약 작업 1건 → (verdict, silence). 순환계(`Org.task_eval`)와 대시보드 행(`Org.silence_rows`)이 **같은 순서**로 판정한다.
+
+    고장(`schedule_verdict`)을 먼저 보고, **고장이 아닐 때만** 조용한 누락(`silence_verdict`)을 본다. 고장 행의 silence 는
+    `SILENCE_NONE`(bad False · warn '') — r2 까지 `silence_rows` 는 고장 행에도 조용한 누락 판정을 돌려, 순환계
+    스탠드업은 내지 않는 트리거 경고를 대시보드만 냈다(OPS-4 r3 에서 맞춤).
+    verdict = {"broken": bool, "label": str} — 대시보드 행의 `verdict` 와 같은 모양이다.
+    """
+    broken, label = schedule_verdict(t)
+    silence = dict(SILENCE_NONE) if broken else silence_verdict(t, now, settings, seen)
+    return {"broken": bool(broken), "label": label}, silence
+
+
+# 결재함 목록(`Org.board` 의 `open`·`inbox`) 한 줄의 한도 — 대시보드 결재함 표 '무엇을' 칸과 스탠드업 결재함 절이 이 줄을 쓴다.
+PURPOSE_CLIP = 140
+# 자르지 않는 시각 — 'YYYY-MM-DD HH:MM(:SS)'·'MM-DD HH:MM' 안의 공백은 자를 경계가 아니다.
+_TS_SPAN = re.compile(r"\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(?::\d{2})?|\d{2}-\d{2} \d{2}:\d{2}")
+
+
+def clip_line(s: str, limit: int = PURPOSE_CLIP) -> str:
+    """한 줄을 `limit` 글자 안으로 — 넘으면 **단위 경계**에서 자르고 '…' 을 붙인다(design-critic r2 #1, OPS-4 r3).
+
+    전에는 `[:140]` 이 글자 수로만 잘라 결재함에 시각이 `17:5` 로 끊겨 섰다. 이제 숫자·시각 중간에서 자르지 않는다.
+    ① ` · ` 경계 — 목적 줄의 단위 구분(예약 작업 경보 · 경보 줄). 남는 앞부분이 한도의 절반 이상일 때만 쓴다
+       (` · ` 가 앞쪽에 하나뿐인 긴 문장을 그 자리에서 자르면 읽을 것이 거의 안 남는다). 결과 '단위 · 단위 · …'.
+    ② 아니면 공백 경계 — ` · ` 없는 문장(인계 사유 등). 시각 안의 공백은 경계로 치지 않는다. 결과 '… 낱말 …'.
+    ③ 공백도 없으면(한 덩어리) 글자 경계 — 숫자와 숫자 사이는 피한다. 결과 '…덩어리…'.
+    잘린 앞부분에 짝이 안 맞는 `**`·백틱이 남으면 닫는다 — 스탠드업 결재함 절(마크다운)이 뒤 줄까지 번지지 않게.
+    결과는 늘 `limit` 글자 이하이고, 한도 안의 줄은 손대지 않는다.
+    """
+    s = s or ""
+    if len(s) <= limit:
+        return s
+
+    def close(k: str) -> str:
+        k = k.rstrip()
+        if k.count("**") % 2:
+            k += "**"
+        if k.replace("**", "").count("`") % 2:
+            k += "`"
+        return k
+
+    i = s.rfind(" · ", 0, limit)
+    while i >= limit // 2:                                   # ① 단위 경계
+        out = close(s[:i]) + " · …"
+        if len(out) <= limit:
+            return out
+        i = s.rfind(" · ", 0, i)
+    spans = [m.span() for m in _TS_SPAN.finditer(s)]
+    for j in range(min(limit, len(s) - 1), 0, -1):           # ② 공백 경계(시각 안은 제외)
+        if s[j].isspace() and not any(a < j < b for a, b in spans):
+            out = close(s[:j]) + " …"
+            if len(out) <= limit:
+                return out
+    for j in range(limit - 1, 0, -1):                        # ③ 글자 경계(숫자 사이는 피한다)
+        if s[j - 1].isdigit() and s[j].isdigit():
+            continue
+        out = close(s[:j]) + "…"
+        if len(out) <= limit:
+            return out
+    return s[:limit - 1] + "…"
+
+
+def task_purpose(t: dict, now: datetime) -> str:
+    """결재함 '예약 작업 경보' 지시서의 목적 첫 줄(`Org.task_eval` 한 줄 → 글). design-critic r2 #1 · OPS-4 r3.
+
+    **라벨을 그대로 앞에 둔다** — `silence_verdict`·`schedule_verdict` 의 글자이고, 대시보드 예약 작업 표의 칩 + 사유와
+    같은 글자다(대시보드가 같은 함수 결과를 행의 `silence`·`verdict` 로 싣는다). 그 뒤에는 **라벨에 없는 것만** 붙인다.
+    괄호로 묶지 않는다 — 전에는 '(마지막 실행 … · 다음 실행 …)' 이 라벨의 마지막 성공을 되풀이했다.
+    - 조용히 안 돎 · 첫 실행 없음: '예약 작업 `이름` — {라벨} · 다음 실행 {다음}'. 마지막 성공·등록 시각·한도는 라벨에 있다.
+    - 고장(실패 · 꺼짐 · 다음 실행 없음 · 실행된 적 없음 · 미등록): '… — {라벨} · {기준} {시각} 뒤 {N}시간'.
+      기준은 마지막 실행, 한 번도 안 돌았으면 등록, 등록 날짜도 없으면 순환계가 이 고장을 처음 본 때다 — 수에는 늘
+      무엇으로부터인지를 붙인다('N시간째'처럼 주어 없는 수를 쓰지 않는다). 다음 실행은 잡혀 있고 라벨이 말하지
+      않을 때만 붙인다(라벨의 '다음 실행 없음'을 되풀이하지 않는다).
+    - 한 번도 안 돈 작업의 마지막 실행 칸(스케줄러의 '안 돎' 표시 1999-11-30)은 **어떤 모양에도 쓰지 않는다.**
+    """
+    head = f"예약 작업 `{t['name']}` — {t['label']}"
+    nxt = str(t.get("next_run") or "").strip()
+    if t.get("quiet"):
+        return f"{head} · 다음 실행 {nxt or '없음'}"
+    last = None if t.get("never_ran") else _local_dt(t.get("last_run") or "")
+    if last is not None and last.year < 2000:
+        last = None                                          # 스케줄러의 '안 돎' 표시 — 실행이 아니다
+    reg = _local_dt(t.get("registered") or "")
+    if last is not None:
+        base, at = "마지막 실행", last
+    elif reg is not None:
+        base, at = "등록", reg
+    else:
+        base, at = "순환계가 처음 본", _local_dt(t.get("since") or "") or now
+    hours = max(0, int((now - at).total_seconds() // 3600))
+    tail = f" · 다음 실행 {nxt}" if nxt and "다음 실행" not in str(t["label"]) else ""
+    return f"{head} · {base} {at:%Y-%m-%d %H:%M} 뒤 {hours}시간{tail}"
+
+
+# 머리말 `workflow:` 를 '없다'는 뜻으로 적은 값(OPS-4 ②, 2026-09-27). 규약은 '워크플로 밖이면 줄을 지운다'인데,
+# `workflow: 없음` 처럼 값을 적은 보고서가 워크플로로 취급돼 정당한 인계가 조용히 건너뛰어졌다(ops3-qa §2 ④ 관찰).
+# PyYAML 은 `no`·`false`·`-`·`~`·`null` 을 이미 거짓·없음으로 읽는다 — 여기서는 문자열로 남는 것을 막는다.
+NO_WORKFLOW = ("", "없음", "none", "-", "—", "no", "null", "n/a", "false")
+# 따옴표 없는 `workflow: -` 는 YAML 문법 오류다. 규약 §2 예시가 값 뒤에 주석을 달므로(`workflow: x   # …`)
+# `workflow: -   # 워크플로 밖` 도 같은 뜻으로 받는다(QA-OPS4-3, 2026-09-27 r2). `- x` 처럼 값이 더 붙으면 받지 않는다.
+_BARE_DASH_WORKFLOW = re.compile(r"^workflow:[ \t]*-[ \t]*(#.*)?$", re.M)
+
+
+def workflow_of(meta: dict) -> str:
+    """보고서 머리말 → 워크플로 실행 id. 비었거나 '없음'·'none'·'-'·'no' 등이면 '' (워크플로 밖 = 인계 정상 처리)."""
+    v = meta.get("workflow")
+    if v is None or v is False or isinstance(v, (list, dict)):
+        return ""
+    s = str(v).strip()
+    return "" if s.lower() in NO_WORKFLOW else s
 
 
 def _now() -> datetime:
@@ -362,7 +571,16 @@ def split_front(text: str) -> tuple[dict | None, str]:
             try:
                 meta = yaml.safe_load(head) or {}
             except Exception:                              # noqa: BLE001
-                return {"__broken__": True}, body
+                # OPS-4 ②: `workflow: -` 는 YAML 문법 오류다(`-` 는 목록 항목) — 머리말 **전체**가 깨져 인계가 통째로
+                # 사라졌다. 규약은 '-' 를 '워크플로 없음'으로 읽기로 했으므로 **그 한 줄만** 비운 뒤 한 번 더 읽는다.
+                # 다른 줄의 오류는 그대로 '깨짐'이다.
+                fixed = _BARE_DASH_WORKFLOW.sub("workflow: ''", head)
+                try:
+                    meta = (yaml.safe_load(fixed) or {}) if fixed != head else None
+                except Exception:                          # noqa: BLE001
+                    meta = None
+                if meta is None:
+                    return {"__broken__": True}, body
             return (meta if isinstance(meta, dict) else {"__broken__": True}), body
     return None, text
 
@@ -651,7 +869,7 @@ class Org:
         finally:
             ad.ROOT, ad.UTIL_MD = saved
 
-    # ── 예약 작업 — 대시보드 정기 작업 표와 **같은 함수**(agent_dashboard.read_schedule) ──
+    # ── 예약 작업 — 대시보드 예약 작업 표와 **같은 함수**(agent_dashboard.read_schedule) ──
     def schedule_states(self) -> tuple[list[dict], str | None]:
         """(작업 목록, 못 읽은 사유). 빈 목록 + 사유는 '작업이 없다'가 아니라 **'못 읽었다'** 이다."""
         tools_dir = str(Path(__file__).resolve().parent)
@@ -662,6 +880,21 @@ class Org:
         except Exception as e:                             # noqa: BLE001
             return [], f"예약 작업을 읽지 못했다(agent_dashboard import 실패: {type(e).__name__})"
         return ad.read_schedule()
+
+    def silence_rows(self, sched: list[dict], now: datetime | None = None,
+                     settings: dict | None = None) -> dict[str, dict]:
+        """예약 작업 목록 → {작업 이름: `silence_verdict` 결과}. **읽기만** 한다(상태 파일·버스를 쓰지 않는다).
+
+        사내 대시보드(`agent_dashboard.attach_silence`)가 이 결과를 예약 작업 행에 **그대로** 싣는다 — 판정 규칙을
+        화면 쪽에 다시 짜면 결재함('예약 작업 경보')과 표('정상')가 다른 말을 한다(design-critic 2026-09-27 #1, OPS-4 r2).
+        처음 본 시각은 상태 파일 `task_seen`, 아직 없으면 **지금** — `task_eval` 이 다음 스캔에서 그렇게 적는다(같은 기준).
+        판정 순서도 `task_eval` 과 같다(`judge_task` — 고장 행은 `SILENCE_NONE`, OPS-4 r3).
+        """
+        now = now or _now()
+        settings = self.contracts()[0] if settings is None else settings
+        seen = self._state().get("task_seen") or {}
+        return {t["name"]: judge_task(t, now, settings, seen.get(t["name"]) or now.isoformat())[1]
+                for t in sched if t.get("name")}
 
     # ── 경보 입력(OPS-3) ────────────────────────────────────────────────────
     def daily_reports(self, now: datetime, days: int = ALERT_LOOKBACK_DAYS) -> list[tuple]:
@@ -765,6 +998,11 @@ class Org:
         고장 시작 = min(처음 본 시각, 실패한 마지막 실행 시각). 마지막 실행이 실패였다면 그 뒤로 성공이
         없었다는 뜻이라 그 시각부터 센다(09-16 에 죽은 터널은 첫 스캔에서 바로 '11일째'다). 매시 실패하는
         작업은 마지막 실행이 늘 최근이므로 **처음 본 시각**이 기준이 된다 — 그래서 상태 파일에 남긴다.
+
+        OPS-4: 고장이 아니어도 **조용히 안 도는** 작업(`silence_verdict` — 매일 36시간·매주 8일·매월 35일 넘게 성공
+        없음, 한 번도 안 돈 작업은 등록 후 그만큼)을 고장으로 본다. 고장 시작은 마지막 성공(또는 등록) 시각이고,
+        그 판정이 이미 한도를 품고 있으므로 `예약 작업 실패 지속(시간)` 을 한 번 더 기다리지 않는다.
+        처음 본 시각은 `task_seen` 에 남긴다(등록 날짜가 비어 있는 작업의 '등록 후'를 재는 기준).
         """
         sched, err = self.schedule_states()
         if err:
@@ -774,7 +1012,12 @@ class Org:
         routes = self.alert_routes() if routes is None else routes
         tickets = self.backlog_tickets() if tickets is None else tickets
         bad_since = st.setdefault("task_bad", {})
+        seen = st.setdefault("task_seen", {})
         present = {t["name"] for t in sched}
+        for n in present:
+            seen.setdefault(n, now.isoformat())
+        for n in [n for n in seen if n not in present]:
+            seen.pop(n, None)                              # 지워진 작업 — 다시 등록되면 그때부터 센다
         rows = [dict(t) for t in sched]
         # 표(§3.1 예약 작업)에 있는데 목록에 없으면 '미등록' — 목록을 **읽었을 때만**(defaccc 규칙)
         rows += [{"name": n, "missing": True} for n, r in routes.items()
@@ -782,7 +1025,17 @@ class Org:
         out = []
         for t in rows:
             name = t["name"]
-            bad, label = (True, "미등록") if t.get("missing") else schedule_verdict(t)
+            need, quiet = hours, ""
+            if t.get("missing"):
+                bad, label = True, "미등록"
+            else:
+                # 고장 먼저, 고장이 아닐 때만 조용한 누락 — 대시보드 행(`silence_rows`·`verdict`)과 같은 함수·같은 순서
+                v, sv = judge_task(t, now, settings, seen.get(name, ""))
+                bad, label = v["broken"], v["label"]
+                if sv["warn"]:
+                    self.warnings.append(sv["warn"])
+                if sv["bad"]:
+                    bad, label, quiet, need = True, sv["label"], sv["since"], sv["limit_h"]
             if not bad:
                 bad_since.pop(name, None)
                 continue
@@ -791,6 +1044,8 @@ class Org:
             if label.startswith("실패") or label == "다음 실행 없음":
                 with contextlib.suppress(ValueError):
                     cand = min(cand, datetime.fromisoformat(last).isoformat())
+            if quiet:
+                cand = min(cand, quiet)                    # 마지막 성공(또는 등록) 시각부터 센다
             since = min(bad_since.get(name) or cand, cand)
             bad_since[name] = since
             age_h = int((now - datetime.fromisoformat(since)).total_seconds() // 3600)
@@ -803,7 +1058,7 @@ class Org:
             key = f"task:{name}:{since[:16]}"
             if r and not r.get("watch", True):
                 action = "not-watched"
-            elif age_h < hours:
+            elif age_h < need:
                 action = "below"
             elif topen:
                 action = "ticket-open"
@@ -814,8 +1069,11 @@ class Org:
                 action = "open-order"
             else:
                 action = "order"
-            out.append({"name": name, "label": label, "since": since, "hours": age_h, "need_hours": hours,
+            out.append({"name": name, "label": label, "since": since, "hours": age_h, "need_hours": need,
                         "last_run": last, "next_run": str(t.get("next_run") or ""),
+                        # 결재함 목적 줄(`task_purpose`)이 쓴다 — 조용한 누락인가 · 한 번도 안 돌았나 · 등록 시각
+                        "quiet": bool(quiet), "never_ran": bool(t.get("never_ran")),
+                        "registered": str(t.get("registered") or ""),
                         "ticket": ticket, "ticket_state": tstate, "seat": seat, "key": key,
                         "action": action, "note": r.get("note", "")})
         for n in [n for n in bad_since if n not in {t["name"] for t in rows}]:
@@ -874,7 +1132,7 @@ class Org:
             ticket = ticket or (parent["meta"]["id"] if parent else "")
             # OPS-3 ⑦: 워크플로가 쓴 보고서의 다음 단계는 **워크플로가 부른다.** 여기서 또 만들면
             # 이미 돌고 있는 단계가 두 장이 된다(2026-09-27 중복 지시서 11건 — Steward 가 취소).
-            workflow = str(meta.get("workflow") or "").strip()
+            workflow = workflow_of(meta)               # '없음'·'none'·'-'·'no' 는 워크플로가 아니다(OPS-4 ②)
             skipped = st.setdefault("skipped", [])
 
             def skip(key: str, kind: str, to: str, why: str) -> None:
@@ -1036,7 +1294,7 @@ class Org:
             a["order"] = made[-1]
             st.setdefault("alert_runs", {}).setdefault(a["name"], {})["order"] = made[-1]   # 구간 = 지시서 한 장
 
-        # ⑦ 예약 작업 고장 → 결재함 (OPS-3) — 대시보드 정기 작업 표와 같은 목록·같은 규칙
+        # ⑦ 예약 작업 경보(고장 · 조용히 안 돎) → 결재함 (OPS-3·OPS-4) — 대시보드 예약 작업 표와 같은 목록·같은 규칙
         tasks = self.task_eval(now, settings, seats, orders, st, routes=routes, tickets=tickets)
         for t in tasks:
             if t["action"] != "order":
@@ -1046,8 +1304,7 @@ class Org:
             make(to=t["seat"], frm="org-runtime", reason="task", key=t["key"],
                  ticket=t["ticket"] if t["ticket_state"] == "닫힘" else "",
                  inputs=["docs/org-contracts.md", "docs/backlog.md"], due_days=0,
-                 purpose=(f"예약 작업 `{t['name']}` — {t['label']} · **{t['hours']}시간째**"
-                          f"(마지막 실행 {t['last_run'] or '없음'} · 다음 실행 {t['next_run'] or '없음'})\n\n{tnote}"),
+                 purpose=f"{task_purpose(t, now)}\n\n{tnote}",        # 라벨 그대로 + 라벨에 없는 것만(OPS-4 r3)
                  scope=("포함: 작업 스케줄러·로그로 원인 확인, 티켓화, 재등록·재시작이 필요하면 오너에게 올린다"
                         "(관리자 권한). 제외: 당직이 작업을 고치는 것 — schtasks 는 당직 금지 목록에 있다."),
                  done_when="오늘 안에 티켓 ID 가 생기거나 작업이 정상으로 돌아왔음을 스케줄러 값으로 적는다.")
@@ -1081,7 +1338,7 @@ class Org:
                 purpose = x["body"].split("## 목적", 1)[-1].strip().splitlines()
                 open_list.append({"id": m["id"], "to": to, "from": m.get("from"), "status": stt,
                                   "ticket": m.get("ticket"), "reason": m.get("reason"), "round": m.get("round"),
-                                  "age": age, "purpose": (purpose[0] if purpose else "")[:140],
+                                  "age": age, "purpose": clip_line(purpose[0] if purpose else ""),   # 경계에서(OPS-4 r3)
                                   "auto": bool(seats.get(to, {}).get("auto"))})
         open_list.sort(key=lambda o: (o["to"] != STEWARD, -(o["age"] or 0)))
         week = now - timedelta(days=7)
@@ -1151,7 +1408,7 @@ class Org:
         watch = alert_lines(res.get("alerts") or [], res.get("tasks") or [])
         if watch:
             L += ["## 경보 → 티켓", "",
-                  "> 일일 리포트의 이상·멈춤과 예약 작업 고장이 **누구에게 가 있는지**. "
+                  "> 일일 리포트의 이상·멈춤과 예약 작업 경보(고장·조용히 안 돎)가 **누구에게 가 있는지**. "
                   "표는 `docs/org-contracts.md` §3.1 이다.", ""] + watch + [""]
         L += ["## 자리별 대기열", "", "| 담당 | 자동 | 열림 | 진행 | 막힘 | 가장 오래된 |", "|---|---|---|---|---|---|"]
         for to in sorted(b["queue"], key=lambda k: (k == STEWARD, k)):

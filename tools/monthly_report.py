@@ -26,19 +26,29 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
-# ⚠ Windows 콘솔 기본 인코딩은 cp949라 '—'·'⚠' 같은 글자에서 UnicodeEncodeError 로 죽는다.
-#   파일 쓰기는 encoding="utf-8" 이라 안전하지만 --dry-run 의 print 가 터진다(2026-09-22 실측).
-for _stream in ("stdout", "stderr"):
-    try:
-        setattr(sys, _stream, io.TextIOWrapper(
-            getattr(sys, _stream).buffer, encoding="utf-8", errors="replace"))
-    except Exception:                                        # noqa: BLE001  (리다이렉트된 경우 등)
-        pass
+def _wrap_console() -> None:
+    """⚠ Windows 콘솔 기본 인코딩은 cp949라 '—'·'⚠' 같은 글자에서 UnicodeEncodeError 로 죽는다.
+    파일 쓰기는 encoding="utf-8" 이라 안전하지만 --dry-run 의 print 가 터진다(2026-09-22 실측).
+
+    ★ **진입점에서만** 부른다(2026-09-27 OPS-4 — weekly_report 가 OPS-3 에서 같은 처방을 받았다). 모듈 맨 위에
+      있으면 테스트가 이 모듈을 import 하는 순간 pytest 의 출력 포획을 갈아치운다.
+    """
+    for _stream in ("stdout", "stderr"):
+        try:
+            setattr(sys, _stream, io.TextIOWrapper(
+                getattr(sys, _stream).buffer, encoding="utf-8", errors="replace"))
+        except Exception:                                    # noqa: BLE001  (리다이렉트된 경우 등)
+            pass
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT / "tools") not in sys.path:                     # 스크립트로 돌 때는 이미 있다(sys.path[0])
+    sys.path.insert(0, str(ROOT / "tools"))
+import ops_digest                                            # noqa: E402  운영·공급 절 — 주간과 같은 구현(OPS-4)
+
 OUT_DIR = ROOT / "docs" / "monthly-reports"
 WEEKLY_DIR = ROOT / "docs" / "weekly-reports"
 REVIEW_DIR = ROOT / "docs" / "reviews"
+DAILY_DIR = ROOT / "docs" / "daily-reports"
 SERVER = "ubuntu@43.202.126.180"
 KEY = Path(os.environ.get("USERPROFILE", str(Path.home()))) / "Downloads" / "naechaget.pem"
 
@@ -143,8 +153,15 @@ def collect_panel(since: date, until: date) -> list[str]:
     return got
 
 
+# ── 운영·공급(OPS-4, 2026-09-27) — 주간 보고와 **같은 함수**(tools/ops_digest.py) ─────────────
+# 그 달 일일 리포트 파일을 다시 읽어 신호별 이상 일수·티켓·'티켓 없음' 일수·정기 작업 실패 횟수를 센다.
+# 서버를 다시 읽지 않는다. 한 달이면 날짜 줄이 길어져 사흘 넘게 이어진 날은 '09-01~09-14' 로 접는다.
+def collect_ops(since: date, until: date, today: Optional[date] = None) -> dict:
+    return ops_digest.collect_ops(since, until, today, root=ROOT, daily_dir=DAILY_DIR, scrub=_scrub)
+
+
 def build_markdown(ym: str, since: date, until: date,
-                   server: dict, git: dict, panels: list[str]) -> str:
+                   server: dict, git: dict, panels: list[str], ops: Optional[dict] = None) -> str:
     product = (server or {}).get("product") or {}
     billing = (server or {}).get("billing") or {}
     unknown: list[str] = []
@@ -159,6 +176,9 @@ def build_markdown(ym: str, since: date, until: date,
          f"기간 **{since} ~ {until}** · 생성 {datetime.now():%Y-%m-%d %H:%M}", "",
          "> 오너가 **다음 달 우선순위를 정하는 데** 쓰는 문서다. "
          "고객가치 지표가 먼저, 수익이 나중이다.", ""]
+
+    # ── 운영·공급 — 맨 앞에 둔다. 공급이 멈춘 달의 제품 수치는 낡은 수치다(주간 보고와 같은 절) ───
+    L += ops_digest.ops_section(ops, period="이 달", scrub=_scrub, compact=True)
 
     # ── 고객 유입 ─────────────────────────────────────────
     L += ["## 고객 유입", "",
@@ -185,7 +205,11 @@ def build_markdown(ym: str, since: date, until: date,
 
     # ── 품질 ─────────────────────────────────────────────
     L += ["## 품질", ""]
-    L += [f"전문가 패널 리포트 **{len(panels)}건**" + (": " + ", ".join(f"`{p}`" for p in panels) if panels else " (없음)"),
+    # ★ 파일 수를 먼저 적지 않는다 — W39 는 정기 실행이 실패한 주를 '패널 리포트 2건'으로 적었다(A-05).
+    L += ops_digest.panel_line(ops, period="이 달", compact=True)
+    L += [f"- `docs/reviews/` 에 이 달 날짜 파일 **{len(panels)}건**"
+          + (": " + ", ".join(f"`{p}`" for p in panels) + " — 파일 수는 정기 실행 성공 횟수가 아니다(복구본일 수 있다)"
+             if panels else " (없음)"),
           "", "> 점수 자체보다 **합의 지적**(둘 이상이 같은 문제를 짚은 것)과 회차 간 증감을 본다.", ""]
 
     # ── 개발 ─────────────────────────────────────────────
@@ -245,7 +269,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     server = collect_server()
     git = collect_git(since, until)
     panels = collect_panel(since, until)
-    md = build_markdown(ym, since, until, server, git, panels)
+    ops = collect_ops(since, until)
+    md = build_markdown(ym, since, until, server, git, panels, ops)
 
     if a.dry_run:
         print(md)
@@ -258,4 +283,5 @@ def main(argv: Optional[list[str]] = None) -> int:
 
 
 if __name__ == "__main__":
+    _wrap_console()
     raise SystemExit(main())
