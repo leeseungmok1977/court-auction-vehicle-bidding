@@ -866,8 +866,14 @@ def _file_date(f: Path) -> tuple[object, str]:
       '방금 돈 것'으로 보인다. 2026-09-23 실측: 주간 보고서의 오타 한 글자를 고쳤더니
       리듬이 곧바로 '0일 전 · 정상'으로 바뀌었다. mtime 을 믿지 말라고 주석까지 달아 놓고
       정작 `2026-W39.md`·`2026-09.md` 는 빠져나가게 뒀다 — 감시 대상이 바로 그 둘이다.
-    ★ 주차·월 표기는 **그 구간의 첫날**로 잡는다. 실제보다 늙게 잡는 쪽이 안전하다 —
-      늦은 것을 정상으로 보는 오류가, 정상을 늦었다고 보는 오류보다 비싸다.
+    ★ 주차·월 표기는 **그 파일이 만들어질 예정일**로 잡는다(OPS-7, 2026-09-29) — 주간은 그 주 토요일
+      (`naechaget-weekly-report` 토 13:00), 월간은 **다음 달 1일**(`monthly_report.py` 는 1일에 지난달 파일을 쓴다).
+      실제 수정 시각이 그보다 이르면 그쪽을 쓴다(일찍 수동으로 만든 경우).
+      전에는 구간의 **첫날**로 잡았다. 그러면 토요일에 나온 주간 보고가 다음 주 월요일부터 토요일까지 매주
+      '늦음'이었다 — 09-29 결재함에 거짓 경보가 섰고, 닫자마자 스캔이 다시 세웠다. 월간은 10-01 첫 보고 직후부터
+      한 달 내내 늦음이 될 참이었다. 거짓 경보가 반복되면 진짜 경보도 안 보게 된다.
+      '늦은 것을 정상으로 보지 않는다'는 원칙은 그대로다 — 예정일보다 **젊게** 잡지 않고, 늦게 만든 파일은
+      예정일로 잡는다(수정 시각이 예정일보다 늦어도 예정일을 쓴다).
     """
     n = f.name
     m = _D_DAY.search(n)
@@ -876,16 +882,26 @@ def _file_date(f: Path) -> tuple[object, str]:
             return datetime(int(m[1]), int(m[2]), int(m[3])).date(), "파일명(일)"
         except ValueError:
             pass
+    def _no_later_than_mtime(due):
+        try:
+            mt = datetime.fromtimestamp(f.stat().st_mtime).date()
+        except OSError:
+            return due
+        return min(due, mt)
+
     m = _D_WEEK.search(n)
     if m:
         try:
-            return datetime.fromisocalendar(int(m[1]), int(m[2]), 1).date(), "파일명(주차)"
+            due = datetime.fromisocalendar(int(m[1]), int(m[2]), 6).date()      # 그 주 토요일
+            return _no_later_than_mtime(due), "파일명(주차·토 생성)"
         except ValueError:
             pass
     m = _D_MONTH.search(n)
     if m:
         try:
-            return datetime(int(m[1]), int(m[2]), 1).date(), "파일명(월)"
+            y, mo = int(m[1]), int(m[2])
+            due = datetime(y + mo // 12, mo % 12 + 1, 1).date()                  # 다음 달 1일
+            return _no_later_than_mtime(due), "파일명(월·다음 달 1일 생성)"
         except ValueError:
             pass
     try:
