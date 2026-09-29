@@ -104,6 +104,23 @@ def _is_flood(inp: BidInput, config: dict) -> bool:
     return any(kw in text for kw in keywords)
 
 
+def judge(upper_bid: float, min_sale_price: float, sample_count: int, flood: bool,
+          config: dict) -> str:
+    """자동 판정 규칙 **한 곳**(우선순위: 침수 > 표본부족 > 유찰대기 > 가능) — 반환은 Judgment 값(문자열).
+
+    `calculate()` 와 최저가만 바뀐 물건의 재판정(`web.service.rejudge_floor`)이 함께 쓴다.
+    상한가는 위 산식대로 **최저매각가와 무관하게** 정해지므로, 최저가만 바뀐 물건은 저장된 상한가로
+    이 함수만 다시 부르면 `calculate()` 와 같은 답이 나온다(REC-1: 목록 갱신이 최저가를 바꿔도
+    판정은 옛 최저가로 남던 문제). 규칙을 두 곳에 적으면 언젠가 갈린다 — 그래서 여기 하나만 둔다."""
+    if flood:
+        return Judgment.HOLD_FLOOD.value
+    if sample_count < config["min_sample_count"]:
+        return Judgment.LOW_CONFIDENCE.value
+    if upper_bid < min_sale_price:
+        return Judgment.WAIT_FAIL.value
+    return Judgment.OK.value
+
+
 def calculate(inp: BidInput, config: dict) -> BidResult:
     """A.6 산식으로 입찰 상한가와 권장 범위, 자동 판정을 산출한다."""
     weight = config["platform_weight"].get(inp.platform, 1.0)
@@ -152,15 +169,8 @@ def calculate(inp: BidInput, config: dict) -> BidResult:
         - no_photo_cost
     )
 
-    # 자동 판정 (우선순위: 침수 > 표본부족 > 유찰대기 > 가능)
-    if flood:
-        judgment = Judgment.HOLD_FLOOD
-    elif inp.sample_count < config["min_sample_count"]:
-        judgment = Judgment.LOW_CONFIDENCE
-    elif upper_bid < inp.min_sale_price:
-        judgment = Judgment.WAIT_FAIL
-    else:
-        judgment = Judgment.OK
+    # 자동 판정 (우선순위: 침수 > 표본부족 > 유찰대기 > 가능) — 규칙은 judge() 한 곳
+    judgment = judge(upper_bid, inp.min_sale_price, inp.sample_count, flood, config)
 
     breakdown = {
         "기준시세": round(base_price),
@@ -187,7 +197,7 @@ def calculate(inp: BidInput, config: dict) -> BidResult:
         upper_bid=round(upper_bid),
         lower_bound=round(inp.min_sale_price),
         upper_bound=round(upper_bid),
-        judgment=judgment.value,
+        judgment=judgment,
         breakdown=breakdown,
     )
 

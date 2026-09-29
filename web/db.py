@@ -242,7 +242,10 @@ def init_db() -> None:
                     # 값은 엔카 Form 표기 그대로: '카고(화물)트럭' | '윙바디/탑'
                     "truck_form",
                     "market_ref_date", "market_ref_id",     # 동급참조 시세의 출처(정직 표기·추적)
-                    "newcar_model", "newcar_release", "newcar_checked_at"):   # 당시 출시가(보배드림) 표기
+                    "newcar_model", "newcar_release", "newcar_checked_at",   # 당시 출시가(보배드림) 표기
+                    # 최저가 지연 재조회(REC-1)가 이 물건의 법원 상세를 마지막으로 받은 시각 — 재조회 백오프용.
+                    # 법원이 아직 이번 회차를 공고하지 않았으면 매일 같은 물건에 헛요청하지 않게 한다.
+                    "floor_checked_at"):
             if col not in cols:
                 conn.execute(f"ALTER TABLE vehicles ADD COLUMN {col} TEXT")
         for col in ("newcar_min", "newcar_max", "newcar_n", "newcar_basis_year"):
@@ -347,6 +350,8 @@ _LISTING_KEEP = {
     "auction_result", "winning_price", "dxdy_history", "result_checked_at", "result_source",
     # 보관장소는 상세·감정서·지도에서 나온 파생값이다. 목록 갱신이 건드리면 안 된다.
     "storage_addr", "storage_src", "storage_conf", "map_photos", "map_ocr_at",
+    # 최저가 지연 재조회 시각(REC-1) — 목록 레코드엔 없는 열이지만 규칙을 명시해 둔다.
+    "floor_checked_at",
 }
 
 

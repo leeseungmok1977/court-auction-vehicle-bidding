@@ -63,13 +63,18 @@
       </thead>
       <tbody class="divide-y divide-line text-sm bg-surface">
         {% for v in rows %}
-        {% set overfloor = v.min_sale_price and v.upper_bid and v.min_sale_price > v.upper_bid %}
+        {#- REC-1 3회차(app-design 2회차 고칠 것 1 · qa N4) — 표·카드 공통:
+           최저가가 이번 회차 값으로 확인되지 않은 물건(v.floor_check)은 목록과 **같은 칩**(v.bidst — app.py _bidst_view)을 쓰고,
+           낡은 최저가 > 상한가 로즈를 켜지 않으며(목록 `_cover … not floor_check` 와 같은 조건), '미산출' 아래에 이유를 한 줄 단다.
+           레거시 '유찰 대기'+로즈는 상세가 거둬들인 '이번 기일 건너뛰기'를 되살렸다(카니발 10-01: 추정 784만 < 상한선 970만).
+           가드가 아닌 줄은 예전과 같은 바이트다(칩 체계 전체 통일은 별도 판단 — KCAR-3 ②). #}
+        {% set overfloor = v.min_sale_price and v.upper_bid and v.min_sale_price > v.upper_bid and not v.floor_check %}
         <tr class="even:bg-slate-50 hover:bg-slate-50 transition-colors">
           <td class="py-2.5 px-4">
             <a href="/vehicle/{{ v.id }}" class="text-primary font-medium hover:underline" style="word-break:keep-all">{{ v.model|mdl }}</a>
             <div class="text-xs text-mut">{{ v.case_no }}{% if v.year %} · {{ v.year }}년{% endif %}</div>
           </td>
-          <td class="py-2.5 px-4 text-center">{% if v.judgment %}<span class="inline-flex px-2 py-0.5 rounded text-xs font-medium {{ v.judgment|bcls }}" style="word-break:keep-all">{{ v.judgment|jshort }}</span>{% endif %}</td>
+          <td class="py-2.5 px-4 text-center">{% if v.floor_check and v.bidst %}<span class="inline-flex px-2 py-0.5 rounded text-xs font-medium {% if v.bidst.state == 'nomarket' %}bg-sky-50 text-sky-700 border border-sky-200{% else %}{{ v.bidst.tone|tcls }}{% endif %}" style="word-break:keep-all">{{ v.bidst.label }}</span>{% elif v.judgment %}<span class="inline-flex px-2 py-0.5 rounded text-xs font-medium {{ v.judgment|bcls }}" style="word-break:keep-all">{{ v.judgment|jshort }}</span>{% endif %}</td>
           <td class="py-2.5 px-4 font-mono text-mut whitespace-nowrap">{{ v.sale_date or '—' }} {{ dday_badge(v.dday) }}</td>
           <td class="py-2.5 px-4 font-mono text-right whitespace-nowrap {{ 'text-rose-600' if overfloor else 'text-mut' }}"
               {% if overfloor %}title="최저매각가가 산정 상한가보다 높음"{% endif %}>{{ v.min_sale_price|won }}</td>
@@ -77,7 +82,7 @@
           {# 맨 '—' 는 "로딩 실패·버그"로 읽힌다 — 목록(vehicles.html:460-466)에 이미 같은 처방이 있다.
              숫자를 지어내지 않는다는 원칙은 그대로 두고 **빈칸에 이름만 붙인다**(리포트 육각형의 '미산출'과 같은 말).
              값이 없을 때는 위계도 한 단계 낮춘다 — 없는 값이 있는 값보다 진하면 안 된다. #}
-          <td class="py-2.5 px-4 font-mono text-right whitespace-nowrap bg-primary/5 {{ 'font-semibold text-txt' if v.expected_win else 'font-normal text-mut' }}">{{ v.expected_win|won if v.expected_win else '미산출' }}</td>
+          <td class="py-2.5 px-4 font-mono text-right whitespace-nowrap bg-primary/5 {{ 'font-semibold text-txt' if v.expected_win else 'font-normal text-mut' }}">{{ v.expected_win|won if v.expected_win else '미산출' }}{% if v.floor_check and not v.expected_win %}<span class="block font-sans text-[11px] text-mut">최저가 확인 필요</span>{% endif %}</td>
           <td class="py-2.5 px-4 font-mono text-right text-mut whitespace-nowrap">{{ v.median_price|won if v.median_price is not none else '—' }}</td>
           <td class="py-2.5 px-4 font-mono text-right whitespace-nowrap {{ 'text-emerald-700' if v.margin_room and v.margin_room>0 else 'text-rose-600' if v.margin_room is not none and v.margin_room<0 else 'text-mut' }}">{% if v.margin_room is not none %}{{ '+' if v.margin_room>=0 else '' }}{{ v.margin_room|won }}{% else %}—{% endif %}</td>
           <td class="py-2.5 px-4 font-mono text-right text-txt" data-note-bid data-vid="{{ v.id }}">—</td>
@@ -90,7 +95,7 @@
   <!-- 모바일 카드 -->
   <div class="lg:hidden divide-y divide-line">
     {% for v in rows %}
-    {% set overfloor = v.min_sale_price and v.upper_bid and v.min_sale_price > v.upper_bid %}
+    {% set overfloor = v.min_sale_price and v.upper_bid and v.min_sale_price > v.upper_bid and not v.floor_check %}
     <a href="/vehicle/{{ v.id }}" class="block px-4 py-3 hover:bg-slate-50 transition-colors nc-pricegrid-host">
       {# 320px 에서 제목이 `토레스 EVX 20…` 으로 잘렸다(qa 실측). 12자 nowrap 판정 칩이 자리를 먹는데
          제목에 `truncate` 가 걸려 min-content 가 0 이라, 칩이 줄을 바꾸는 대신 **제목만 계속 줄었다.**
@@ -98,13 +103,13 @@
          제목이 폭을 되찾게 한다. 390px 이상에서는 둘이 한 줄에 들어가 렌더가 바뀌지 않는다. #}
       <div class="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
         <span class="font-semibold text-primary truncate grow min-w-[9rem]" style="word-break:keep-all">{{ v.model|mdl }} <span class="text-xs text-mut font-normal">{{ v.year or '' }}</span></span>
-        <div class="flex items-center gap-1.5 shrink-0">{{ dday_badge(v.dday) }}{% if v.judgment %}<span class="inline-flex px-2 py-0.5 rounded text-xs font-medium whitespace-nowrap {{ v.judgment|bcls }}">{{ v.judgment|jshort }}</span>{% endif %}</div>
+        <div class="flex items-center gap-1.5 shrink-0">{{ dday_badge(v.dday) }}{% if v.floor_check and v.bidst %}<span class="inline-flex px-2 py-0.5 rounded text-xs font-medium whitespace-nowrap {% if v.bidst.state == 'nomarket' %}bg-sky-50 text-sky-700 border border-sky-200{% else %}{{ v.bidst.tone|tcls }}{% endif %}">{{ v.bidst.label }}</span>{% elif v.judgment %}<span class="inline-flex px-2 py-0.5 rounded text-xs font-medium whitespace-nowrap {{ v.judgment|bcls }}">{{ v.judgment|jshort }}</span>{% endif %}</div>
       </div>
       <div class="text-xs text-mut mt-0.5">{{ v.case_no }}{% if v.sale_date %} · {{ v.sale_date }}{% endif %}</div>
       {# 홈 유망 물건과 같은 처방 — 글자 크기 확대에서 가운데 숫자가 접히지 않게(가운데 auto 폭 + rem/vw 중 작은 글자) #}
       <div class="nc-pricegrid grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] gap-2 mt-2 tabular-nums">
         <div class="text-left"><div class="text-[10px] text-mut">최저매각가</div><div class="nc-price font-mono whitespace-nowrap {{ 'text-rose-600' if overfloor else 'text-mut' }}" style="font-size:min(.875rem,3.3vw)">{{ v.min_sale_price|won }}</div></div>
-        <div class="nc-price-hero text-center rounded-md bg-primary/5 px-1 py-0.5"><div class="text-[10px] text-primary">예상낙찰가</div><div class="nc-price font-mono whitespace-nowrap {{ 'font-bold text-txt' if v.expected_win else 'font-semibold text-mut' }}" style="font-size:min(.875rem,3.3vw)">{{ v.expected_win|won if v.expected_win else '미산출' }}</div></div>
+        <div class="nc-price-hero text-center rounded-md bg-primary/5 px-1 py-0.5"><div class="text-[10px] text-primary">예상낙찰가</div><div class="nc-price font-mono whitespace-nowrap {{ 'font-bold text-txt' if v.expected_win else 'font-semibold text-mut' }}" style="font-size:min(.875rem,3.3vw)">{{ v.expected_win|won if v.expected_win else '미산출' }}{% if v.floor_check and not v.expected_win %}<span class="block font-sans font-normal text-[10px] text-mut leading-tight">최저가 확인 필요</span>{% endif %}</div></div>
         <div class="text-right"><div class="text-[10px] text-mut">여유</div><div class="nc-price font-mono whitespace-nowrap {{ 'text-emerald-700' if v.margin_room and v.margin_room>0 else 'text-mut' }}" style="font-size:min(.875rem,3.3vw)">{% if v.margin_room is not none %}{{ '+' if v.margin_room>=0 else '' }}{{ v.margin_room|won }}{% else %}—{% endif %}</div></div>
       </div>
       <div data-note-row data-vid="{{ v.id }}" hidden class="flex items-center gap-3 text-xs text-mut mt-2 border-t border-line pt-2">

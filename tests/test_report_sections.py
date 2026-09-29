@@ -112,6 +112,10 @@ def stale(tmp_path, monkeypatch):
     db.init_db()
     db.upsert_vehicle({**_BASE, "id": "stale_1", "folder_key": "stale_1",
                        "case_no": "2026타경90003", "judgment": "유찰 대기", **_STALE})
+    # REC-1 2회차: 같은 금액이지만 **유찰 0회**(신건) — 최저가 = 감정가가 이번 회차 값으로 확인된 물건.
+    # '써낼 수 없는 금액' 경고는 이 물건에서만 옳다(stale_1 의 최저가는 직전 회차 값으로 보인다).
+    db.upsert_vehicle({**_BASE, "id": "conf_1", "folder_key": "conf_1",
+                       "case_no": "2026타경90004", "judgment": "유찰 대기", **{**_STALE, "fail_count": 0}})
     import web.app as A
     return TestClient(A.app)
 
@@ -147,8 +151,9 @@ def test_no_zero_won_labels_anywhere(stale):
 def test_section_titles_name_the_number_they_used(stale):
     """06·08 제목이 실제로 계산에 쓴 값을 말해야 한다."""
     html = stale.get("/vehicle/stale_1/report", headers=_PUB).text
-    assert "현 최저매각가 66,000,000원 기준" in html, "06 제목이 기준값과 다르다"
-    assert "낙찰가 66,000,000원(현 최저매각가) 고정" in html, "08 제목이 기준값과 다르다"
+    # REC-1 2회차: stale_1 의 최저가는 이번 회차 값으로 확인되지 않았다 — '현' 이 아니라 '표시된' 최저매각가라고 부른다.
+    assert "표시된 최저매각가 66,000,000원 기준" in html, "06 제목이 기준값과 다르다"
+    assert "낙찰가 66,000,000원(표시된 최저매각가) 고정" in html, "08 제목이 기준값과 다르다"
 
 
 def test_logic_section_explains_instead_of_printing_a_broken_equation(stale):
@@ -156,7 +161,9 @@ def test_logic_section_explains_instead_of_printing_a_broken_equation(stale):
     html = stale.get("/vehicle/stale_1/report", headers=_PUB).text
     body = html[html.index("<h2>산출 로직</h2>"):]
     assert "예상낙찰가를 산출하지 않았습니다" in body
-    assert "저감된 가격을" in body and "아직 공고하지 않은" in body
+    # REC-1 2회차(Steward 결정): '법원이 아직 공고하지 않은 것'은 사실과 다르다 — 법원은 공고했고 우리가 받지 못했다.
+    assert "이번 회차 값으로 확인되지 않았습니다" in body and "최저가가 확인되기 전까지는 비워 둡니다" in body
+    assert "아직 공고하지 않은" not in body
     assert "실측 낙찰률(유찰횟수 반영)" not in body, "쓰지 않은 폴백 산식이 인쇄된다"
 
 
@@ -181,15 +188,34 @@ def test_scenario_bid_is_not_tagged_as_a_verified_fact(stale):
 
 def test_unbiddable_ceiling_is_flagged(stale):
     """상한선(5,710만)이 최저매각가(6,600만)보다 낮으면 그 큰 숫자는 써낼 수 없다.
-    화면에서 가장 큰 숫자가 못 쓰는 금액인데 아무 표시가 없었다(디자인 검수 지적 2)."""
+    화면에서 가장 큰 숫자가 못 쓰는 금액인데 아무 표시가 없었다(디자인 검수 지적 2).
+
+    ⚠ REC-1 2회차: 이 경고는 최저매각가가 **이번 회차 값으로 확인된** 물건에서만 옳다. 예전엔 stale_1(유찰 1회인데
+    최저가 = 감정가 → 직전 회차 값)로 검사했는데, 그 물건의 이번 회차 최저가는 저감 후 값이라 상한선 안일 수 있다 —
+    qa F1(가드 물건 59대 중 26대가 리포트에서만 '어떤 금액을 써도 손해')이 바로 이 경로였다. 확인된 최저가 물건(conf_1)으로 옮긴다."""
     from web import db
-    v = db.get_vehicle("stale_1")
+    v = db.get_vehicle("conf_1")
+    assert not service.floor_unconfirmed(v), "픽스처 전제: 최저가가 확인된 물건이어야 한다"
     mb = service.bid_state(v, BT)["max_bid"]
     assert mb and mb < v["min_sale_price"], f"픽스처 전제가 깨졌다: max_bid={mb}"
-    head = stale.get("/vehicle/stale_1/report", headers=_PUB).text
+    head = stale.get("/vehicle/conf_1/report", headers=_PUB).text
     head = head[head.index('id="sec01"'):head.index('id="sec02"')]
     assert "써낼 수 없는 금액" in head
     assert "어떤 금액을 써도 손해" in head
+
+
+def test_unconfirmed_floor_is_not_compared_with_the_ceiling(stale):
+    """REC-1 2회차 — 최저가가 이번 회차 값으로 확인되지 않은 물건(stale_1)은 그 값과 상한선을 비교하지 않는다.
+    대신 상한선을 **조건문**으로 준다(상세와 같은 말)."""
+    from web import db
+    v = db.get_vehicle("stale_1")
+    assert service.floor_unconfirmed(v)
+    mb = service.bid_state(v, BT)["max_bid"]
+    head = stale.get("/vehicle/stale_1/report", headers=_PUB).text
+    head = head[head.index('id="sec01"'):head.index('id="sec02"')]
+    assert "써낼 수 없는 금액" not in head
+    assert "어떤 금액을 써도 손해" not in head
+    assert f"이번 기일 공고 최저가가 {mb:,}원을 넘으면" in head
 
 
 def test_empty_sections_are_not_double_framed(stale, client):

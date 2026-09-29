@@ -95,7 +95,10 @@ def test_dashboard_section_explains_itself_on_mobile_and_links_to_the_full_list(
     assert 'href="/vehicles?picks=1"' in sec, "전체 보기는 같은 순위의 전체 목록으로"
     # 부제는 카드에 실제로 보이는 낱말로(검수: "절감률 × 신뢰도 순"은 독스트링 문장) — 홈·목록이 같은 문장(PICK_SUBTITLE)
     assert "".join(service.PICK_SUBTITLE) == "지금 입찰 추천·실사용 추천 가운데 시세보다 많이 싸고 시세 신뢰도가 높은 차부터"
-    assert "시세보다 많이 싸고 시세 신뢰도가 높은" in sec and "오늘의 추천 5대 제외" in sec
+    assert "시세보다 많이 싸고 시세 신뢰도가 높은" in sec
+    # REC-1 2회차: '5대'는 고정 문자열이었다(캐러셀 3·4장인 날 거짓). 장수는 실제 캐러셀에서 세고,
+    # 이 픽스처처럼 캐러셀이 비면 뺄 것이 없으니 꼬리 문구를 그리지 않는다(tests/test_rec1_floor_view.py).
+    assert "5대 제외" not in sec and "대 제외" not in sec
     assert "절감률 × 시세 신뢰도" not in sec, "수식 표기는 카드에 없다"
     assert "hidden sm:inline\">— 신뢰도" not in html, "정렬 기준 부제가 모바일에서 숨겨져 있었다"
     for lbl in ("지금 사면 이득", "되팔아도 남음"):

@@ -249,6 +249,142 @@ def _bidding_over(v: dict, today: str) -> bool:
             and service.sale_time_passed(v))
 
 
+# ── REC-1 2회차 — 최저가 확인 필요(지연 가드) 표시 계층 ─────────────────────────
+# service.bid_state 는 floor_unconfirmed 물건에 '다음 기일 최저가 공고 대기'를 낸다. 그런데 사실은 반대다 —
+# 법원은 이번 기일 최저가를 **이미 공고했고**, 우리가 그 값을 받지 못했다(backend 조사 rec1-backend-funnel §3.1).
+# Steward 결정(지시서 2026-09-29-28): 지연 가드·stale_floor 공통 칩 문구는 '이번 회차 최저가 확인 필요'.
+# service.py 는 같은 시기 backend 가 고치고 있어 손대지 않고, **화면으로 나가는 세 곳**(목록·상세·리포트)에서
+# 이 한 함수로만 바꾼다. 원천 라벨이 바뀌면(백엔드가 옮기면) 아래 치환은 저절로 빈 동작이 된다.
+# ⚠ 판정(state·tone)은 바꾸지 않는다 — 글자만. 드리프트는 tests/test_rec1_floor_view.py 가 렌더 HTML 로 잡는다.
+FLOOR_WAIT_LABEL_SRC = "다음 기일 최저가 공고 대기"
+FLOOR_CHECK_LABEL = "이번 회차 최저가 확인 필요"
+
+
+def _floor_unconf(v: dict) -> bool:
+    """표시된 최저매각가가 이번 회차 값으로 **확인되지 않았는가**(service.floor_unconfirmed, 매각 종료 제외).
+
+    참이면 화면은 그 값을 **판단의 출발선으로 쓰지 않는다** — 상한선과 비교('초과'·'써낼 수 없는 금액'·
+    '어떤 금액을 써도 손해'), 재판매까지 남은 유찰 횟수('약 N회 추가 유찰 예상'), 그 값×저감률을 '다음 기일
+    예상 최저가'로 부르는 것. 기일이 오늘 지났어도 마찬가지다: 낡은 값은 기일이 지나도 낡은 값이다."""
+    if v.get("auction_result") in ("낙찰", "종결") or v.get("judgment") == "종결":
+        return False
+    return bool(service.floor_unconfirmed(v))
+
+
+def _floor_pending(v: dict, today: str) -> bool:
+    """_floor_unconf 이고 그 기일이 **아직 입찰 가능한가**(오늘 포함, 입찰 시각 전).
+
+    '입찰 전 이번 기일 최저가를 확인하세요'·'이번 기일 예상 최저가'·'이번 기일 공고 최저가가 N원을 넘으면
+    입찰하지 마세요'는 이때만 말한다 — 기일이 지났거나 오늘 입찰이 끝난 물건에게는 할 수 없는 일이다."""
+    sd = str(v.get("sale_date") or "")[:10]
+    if len(sd) != 10 or sd < today or _bidding_over(v, today):
+        return False
+    return _floor_unconf(v)
+
+
+def _bidst_view(v: dict, st: Optional[dict], today: str) -> Optional[dict]:
+    """bid_state 결과 → 화면용. 라벨 한 곳 치환 + `floor_check`(낡은 최저가와 비교하는 문장을 끄는 스위치).
+
+    `floor_check` 가 참이면 화면은 **표시된 최저매각가와 상한선을 비교하지 않는다**('초과'·'써낼 수 없는
+    금액'·'어떤 금액을 써도 손해'). 그 최저가가 이번 기일 값이 아니기 때문이다 — 1회차 교차검수 지적 2,
+    qa F1(리포트 26대가 상세와 반대 판정)."""
+    if not st:
+        return st
+    out = dict(st)
+    if out.get("label") == FLOOR_WAIT_LABEL_SRC:
+        out["label"] = FLOOR_CHECK_LABEL
+    out["floor_check"] = _floor_unconf(v)
+    return out
+
+
+# REC-1 3회차(REC-7 ⑹) — 최저가 말고도 예상낙찰가·판정을 막는 사유. 설명 행 ④ '확인 전까지 예상낙찰가·추천 전략은
+# 내지 않습니다'는 **사유가 최저가 지연뿐일 때만** 참이다. 다른 사유가 있으면 최저가를 확인해도 풀리지 않는다고 말한다.
+# 순서·조건은 service.bid_state 의 **기일과 무관한 분기**를 그대로 따른다(침수·전손 → 시동 불가 → 동급 시세 없음 →
+# 시세 신뢰도 낮음). bid_state 라벨로 가르지 않는 이유: 기일 분기('기일 경과'·'지난 기일')가 앞에서 가로채면 라벨에서
+# 사유가 사라진다. 드리프트는 tests/test_rec1_r3_view.py 가 입찰 전 가드 물건에서 bid_state 라벨과 대조해 잡는다.
+# ⚠ 문장은 사실만 쓴다. 시세 신뢰도 낮음(시세 있음)·시동 불가 물건은 최저가가 확인되면 예상낙찰가가 **나온다**(판정만
+#   보류) — 거기에 '예상낙찰가는 내지 않습니다'를 쓰면 거짓이 된다(09-29 백업·12:00, 가드 게이트만 끄고 재계산:
+#   가드 240대 중 27대 — 시세 신뢰도 낮음 23 · 시동 불가 4. 시세 없음·동급 시세 없음은 확인해도 예상낙찰가가 없다).
+FLOOR_HOLD_MSG = {
+    "flood": "침수·전손 의심이라 입찰 보류입니다",
+    "stop": "시동·운행 불가라 판정은 보류됩니다",
+    "nomarket": "동급 시세가 없어 예상낙찰가는 내지 않습니다",
+    "nomed": "시세가 산정되지 않아 예상낙찰가는 내지 않습니다",
+    "lowconf": "시세 신뢰도가 낮아 판정은 보류됩니다",
+}
+
+
+def _floor_hold(v: dict) -> Optional[str]:
+    """최저가 지연 말고 예상낙찰가·판정을 막는 사유(FLOOR_HOLD_MSG 의 키) — 없으면 None(최저가만 확인하면 된다)."""
+    if v.get("accident_grade") == "flood" or v.get("judgment") == "입찰 보류":
+        return "flood"
+    if v.get("runnable") == "no":
+        return "stop"
+    if service.no_market_reason(v):
+        return "nomarket"
+    if not (service.effective_median(v) or v.get("median_price")):
+        return "nomed"
+    if v.get("market_confidence_label") == "낮음":
+        return "lowconf"
+    return None
+
+
+def _ceiling_basis(v: dict, config: Optional[dict] = None) -> dict:
+    """입찰 상한선 문단의 근거(사고 감가·정비 충당) — personal_use_max_bid 가 쓰는 **같은 입력**을 그대로 보여 준다.
+
+    리포트는 이 재료를 personal_use_detail(절감액 내역)에서 꺼냈는데, 그 함수는 예상낙찰가가 없으면 None 이다.
+    가드 물건은 예상낙찰가가 없으니 문단에서 '사고 감가 N%'가 통째로 빠지고 '…정비 충당 포함,' 쉼표만 매달렸다
+    (REC-1 2회차 design-critic #3 — 520d 상한선이 16.9M→13.8M 로 바뀐 이유가 바로 그 30%인데 말하지 않았다)."""
+    rate, assumed = service.use_accident_rate(v, config)
+    return {"accident_rate": rate, "accident_assumed": assumed,
+            "accident_hits": service.accident_hit_count(v),
+            "reserve": service.use_repair_reserve(v, config)}
+
+
+def _floor_guard(v: dict, next_min: Optional[dict], today: str) -> Optional[dict]:
+    """상세·리포트의 '가격 확인 필요' 설명 재료(없으면 None = 최저가가 확인됐거나 매각 종료). 새 숫자를 만들지 않는다.
+
+    `pending` 이 참(기일이 남았고 입찰 전)일 때만 '이번 기일' 문장·추정값·상한선 조건문을 쓴다(_floor_pending).
+
+    ① 의심 근거 — 유찰 횟수 대비 최저가÷감정가가 말하는 저감 횟수(service.implied_reductions),
+       그것을 모르면 기일내역의 유찰 수.
+    ② 이번 기일 예상 최저가 — 기존 next_min_sale 값을 **한 단계 지연일 때만** 쓴다. 두 단계 이상 늦은
+       물건에서 next_min_sale(=표시값×저감률 한 번)은 이번 기일 값보다 여전히 높다 — 그때는 추정하지 않는다.
+    이 dict 가 있으면 상세의 '다음 기일 예상 최저가' 행은 '이번 기일 예상 최저가(공고 확인 전)'로 바뀌거나
+    (est 있음) 사라진다(est 없음) — 한 화면에서 '다음 기일'이 두 기일을 가리키지 않게(design-critic 지적 3).
+    ③ `hold`·`hold_msg` — 최저가를 확인해도 풀리지 않는 사유(_floor_hold). 있으면 ④를 사유별 문장으로 바꾼다.
+    ④ `hist_has_sale` — 우리가 수집한 기일내역에 이번 매각기일 행이 있는가. 없으면 상세 기일내역 표에
+       '수집 시점 기록 — 이번 기일 최저가는 이 표에 없음'을 단다(app-design 2회차 고칠 것 3ⓑ)."""
+    if not _floor_unconf(v):
+        return None
+    pending = _floor_pending(v, today)
+    try:
+        fc = int(v.get("fail_count") or 0)
+    except (TypeError, ValueError):
+        fc = 0
+    ap, mn = v.get("appraisal_value"), v.get("min_sale_price")
+    k = service.implied_reductions(ap, mn)
+    pct = int(round(100 * mn / ap)) if (ap and mn) else None
+    behind = (fc - k) if (k is not None and k < fc) else None
+    hist = v.get("dxdy_history")
+    if isinstance(hist, str):
+        import json
+        try:
+            hist = json.loads(hist)
+        except (TypeError, ValueError):
+            hist = []
+    hist_fails = sum(1 for x in (hist or []) if isinstance(x, dict) and x.get("result") == "유찰")
+    sale_date = str(v.get("sale_date") or "")[:10]
+    hold = _floor_hold(v)
+    return {"pending": pending, "fc": fc, "k": k, "pct": pct, "behind": behind, "hist_fails": hist_fails,
+            "est": next_min if (pending and behind == 1 and next_min) else None,
+            "sale_date": sale_date,
+            "hold": hold, "hold_msg": FLOOR_HOLD_MSG.get(hold) if hold else None,
+            # service.floor_lag 와 같은 판정(이번 매각기일 행 = 날짜 같고 최저가 있음)
+            "hist_has_sale": any(isinstance(x, dict) and str(x.get("ymd") or "")[:10] == sale_date
+                                 and x.get("lws_price") for x in (hist or []))}
+
+
 def _dday_sort_key(v: dict):
     """즐겨찾기 '매각기일 가까운 순' 정렬 키 — **끝난 것은 뒤로.**
 
@@ -764,7 +900,8 @@ def vehicles(request: Request, judgment: str = "", maker: str = "", q: str = "",
         # 목록 카드 칩도 상세·리포트와 **같은 판정**을 말해야 한다. 예전엔 레거시
         # judgment 문자열이라, 상세에서 "이번 회차 입찰 부적합"인 차가 목록에서는
         # 앰버 "유찰 대기"로 보였다(4회차 디자인·경매 P0).
-        r["bidst"] = service.bid_state(r, _bt)
+        # REC-1 2회차: 칩 문구·낡은 최저가 비교 스위치는 상세·리포트와 같은 한 함수(_bidst_view)로.
+        r["bidst"] = _bidst_view(r, service.bid_state(r, _bt), _tdy)
         sd = r.get("sale_date")           # D-day(남은 일수) — 법차식 카운트다운 배지
         try:
             r["dday"] = (_date.fromisoformat(sd) - _tdy_d).days if sd else None
@@ -955,9 +1092,13 @@ def vehicle_detail(request: Request, vid: str, cc: str = "", an: str = ""):
     if afile.exists():
         appraisal = afile.read_text(encoding="utf-8")
     # 상한가 < 최저매각가(유찰 대기)일 때: 목표가 도달까지 예상 유찰 횟수
+    # ⚠ REC-1 2회차: 표시된 최저가가 이번 기일 값으로 확인되지 않았으면(_floor_unconf) 이 계산을 하지 않는다 —
+    #   낡은 출발선으로 센 '약 N회 추가 유찰 예상'은 한 회차 밀린 거짓 숫자다(520d: 이번 기일 추정 686만이
+    #   이미 재판매 손익분기 752.6만 아래인데 "1~2회 더 기다려라"라고 말했다. 1회차 교차검수 지적 1).
     wait = None
     ub, floor = v.get("upper_bid"), v.get("min_sale_price")
-    if ub is not None and ub > 0 and floor and ub < floor:   # ub>0: math.log 도메인 오류 방지
+    if (ub is not None and ub > 0 and floor and ub < floor   # ub>0: math.log 도메인 오류 방지
+            and not _floor_unconf(v)):
         import math
 
         def _rounds(drop):
@@ -1013,9 +1154,10 @@ def vehicle_detail(request: Request, vid: str, cc: str = "", an: str = ""):
     _adm = is_admin(request)
     eff_med = service.effective_median(v)                 # 소매 시세(유지) — 원본으로 계산
     # 판정 단일 소스 — 상세와 리포트가 같은 결론을 말하게 한다(3회차 패널 4인 합의 지적).
-    _bidst = service.bid_state(v, bt, _cfg)
+    _bidst = _bidst_view(v, service.bid_state(v, bt, _cfg), _date.today().isoformat())
     verdict = service.plain_verdict(v, expected, _bidst)
     can_an = service.can_analyze(v)
+    _next_min = service.next_min_sale(v)
     return templates.TemplateResponse("detail.html", {
         "request": request, "v": service.public_view(v, _adm), "photos": photos, "appraisal": appraisal,
         "map_idx": map_idx, "map_n": map_n,
@@ -1033,9 +1175,17 @@ def vehicle_detail(request: Request, vid: str, cc: str = "", an: str = ""):
         # 낙찰 시 간이 총비용(낙찰가+취득세+이전·탁송) — 초보용 '그래서 총 얼마' 답변. 전체는 리포트 06.
         "allin": service.allin_estimate(expected["price"] if expected else None, _cfg, v),
         # 다음 기일 예상 최저가 — '이번 회차를 건너뛸까'를 판단할 유일한 숫자
-        "next_min": service.next_min_sale(v),
+        "next_min": _next_min,
         # 표시된 최저매각가가 직전(유찰된) 기일 값으로 보이면 그렇게 밝힌다
         "stale_floor": service.stale_floor(v),
+        # REC-1: 다회차 지연 신호(빈 목록 = 지연 아님).
+        "floor_lag": service.floor_lag(v),
+        # REC-1 2회차: '가격 확인 필요' 설명 재료(1회·다회차 지연 공통, 매각 종료 제외). 있으면 detail.html 이
+        # 최저매각가 아래 앰버 행을 그리고, pending(기일 남음·입찰 전)이면 '이번 기일 예상 최저가(공고 확인 전)'·
+        # 입찰 상한선 조건문 행을 더한다. 낡은 최저가로 만든 문장('추가 유찰 예상'·'다음 기일 예상 최저가')은 뺀다.
+        "floor_guard": _floor_guard(v, _next_min, _date.today().isoformat()),
+        # REC-1 3회차: 가드 상세 상한선 행의 '근거:' 줄 재료(사고 감가 — 예상낙찰가가 없어 use 가 비는 자리)
+        "ceiling_basis": _ceiling_basis(v, _cfg) if (_floor_unconf(v) and _bidst and _bidst.get("max_bid")) else None,
         # 판정 단일 소스 — 상세·리포트가 서로 다른 말을 하지 않도록 같은 값을 쓴다
         "bidst": _bidst,
         "use": service.personal_use_detail(v, bt, _cfg),
@@ -1093,8 +1243,10 @@ def vehicle_report(request: Request, vid: str):
     from src.parse.appraisal import condition_adjustment
     cond = condition_adjustment(appraisal, config) if appraisal else None
     asum = cond.get("parsed") if cond else None
-    _bidst = service.bid_state(v, bt, config)             # 판정 단일 소스(상세·리포트 공용)
+    _tdy_r = datetime.now().date().isoformat()
+    _bidst = _bidst_view(v, service.bid_state(v, bt, config), _tdy_r)   # 판정 단일 소스(상세·리포트 공용)
     verdict = service.plain_verdict(v, expected, _bidst)  # 판정은 하지 않고 문장만 만든다
+    _next_min = service.next_min_sale(v)
     dist = service.price_distribution(
         v, expected["price"] if expected else None,
         # 음영 **폭**과 그 옆 **라벨**이 같은 값을 써야 한다. 라벨만 유형별로 바꾸면
@@ -1117,11 +1269,17 @@ def vehicle_report(request: Request, vid: str):
         # 실사용 손익분기 상한선 — "얼마까지 써도 되는가". 경매 전문가가 1·2회차 연속
         # 지적한 항목으로, 예상낙찰가(예측)보다 실제로 더 중요한 값이다.
         "max_bid": _bidst.get("max_bid"),
-        "next_min": service.next_min_sale(v),
+        "next_min": _next_min,
         # 표시된 최저매각가가 직전(유찰된) 기일 값으로 보이면 그렇게 밝힌다
         "stale_floor": service.stale_floor(v),
+        "floor_lag": service.floor_lag(v),   # REC-1 다회차 지연 신호 — 상세와 같은 값
+        # REC-1 2회차: 상세와 **같은 함수** — 리포트가 낡은 최저가로 '어떤 금액을 써도 손해'를 말하지 않게(qa F1)
+        "floor_guard": _floor_guard(v, _next_min, _tdy_r),
         "bidst": _bidst,          # 판정 단일 소스 — 상세와 같은 값
         "use": service.personal_use_detail(v, bt, config),
+        # REC-1 3회차: 가드 물건은 use 가 None(예상낙찰가 없음)이라 상한선 문단의 사고 감가가 빠지고 쉼표만 남았다 —
+        # 같은 입력(use_accident_rate·정비 충당)을 따로 준다. 가드가 아닌 물건은 넘기지 않는다(렌더 바이트 불변).
+        "ceiling_basis": _ceiling_basis(v, config) if _floor_unconf(v) else None,
         "comp_min_n": service.COMP_MIN_N, "comp_ratio_med": comp_ratio_med,
         # 01 종합 프로필(6축, 미산출=None; 매물건수는 관리자만, 잔존가치는 출시가 공개 규칙과 동일 게이트)
         "hexa": service.hexagon_scores(v, include_private=_adm,
@@ -1383,6 +1541,12 @@ def watchlist(request: Request, sort: str = "sale_date", ids: Optional[str] = No
         # 판정 칩도 목록·상세와 **같은 함수**를 본다. DB 원본이 그대로 나오면 끝난 경매에
         # 앰버 '유찰 대기'가 붙어, 같은 줄의 기일 표기와 서로 다른 말을 한다. 문구는 한 곳에서만.
         v["judgment"] = _display_judgment(v, _tdy)
+        # REC-1 3회차(app-design 2회차 고칠 것 1 · qa N4): 최저가가 이번 회차 값으로 확인되지 않은 물건은
+        # 목록과 **같은 칩**(_bidst_view — '이번 회차 최저가 확인 필요')을 쓰고, 낡은 최저가 > 상한가 로즈를 끈다.
+        # 즐겨찾기한 사용자는 법정에 갈 가능성이 가장 높은 사용자다 — 레거시 '유찰 대기'+로즈는 상세가 거둬들인
+        # '이번 기일 건너뛰기'를 되살렸다. 가드가 아닌 물건은 bidst 를 만들지 않는다(칩 체계·렌더 바이트 불변).
+        v["floor_check"] = _floor_unconf(v)
+        v["bidst"] = _bidst_view(v, service.bid_state(v, bt), _tdy) if v["floor_check"] else None
     keys = {
         "sale_date": lambda v: (v.get("sale_date") or "9999"),
         "dday": _dday_sort_key,

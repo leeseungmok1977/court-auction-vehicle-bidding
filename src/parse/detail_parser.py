@@ -178,6 +178,13 @@ def _storage_from_text(*texts) -> str:
 # 콜론(:) 유무·단위(건/회) 모두 허용 — 법원/감정인마다 표기가 다르다.
 # 예: '내차 피해 : 6건'(정형) / '내차 피해 6회(19,150,135원)'(매각물건명세 서술형).
 # 값은 카운트(>0)로만 사고 판정하므로 '0회/0건'은 안전하게 무사고 처리된다.
+# ★ '피해' 없이 쓰는 서술형도 읽는다(REC-1, 2026-09-29): "중고차 사고 이력정보보고서는 내차 8회 및
+#   상대차 2회의 사고 기록이 있습니다." 예전 패턴은 `내차\s*피해` 를 요구해 이 꼴을 통째로 놓쳤다 —
+#   서버 appraisal.txt 1,543개 중 4건, 그중 BMW 520d(2026타경30118_1)는 '내차 8회'인데 건수를 못 읽어
+#   건수별 감가표(7회 이상 30%) 대신 단일 15%를 받고 '지금 입찰 추천'에 들어가 있었다.
+#   숫자가 '내차'(·'피해')·콜론 바로 뒤에 와야 한다 — "내차 수리비 … 3회" 같은 다른 문장은 잡지 않는다.
+#   ⚠ "1회 258,930원의 내차피해"(숫자가 앞에 오는 꼴)는 아직 못 읽는다 — 이 경우는 건수 미상이라
+#   단일 15%(표로는 10%)로 보수적인 쪽에 머문다.
 _HIST_PATTERNS = {
     "total_loss": r"전손\s*보험사고\s*:?\s*(\d+)\s*[건회]",   # 전손
     "theft": r"도난\s*보험사고\s*:?\s*(\d+)\s*[건회]",         # 도난
@@ -185,18 +192,38 @@ _HIST_PATTERNS = {
     "special_use": r"특수용도이력\s*:?\s*(\d+)\s*[건회]",
     "owner_changes": r"소유자\s*변경\s*:?\s*(\d+)\s*[건회]",
     "plate_changes": r"차량번호\s*변경\s*:?\s*(\d+)\s*[건회]",
+    "own_damage": r"내차\s*(?:피해\s*)?:?\s*(\d+)\s*[건회]",
+    "opp_damage": r"상대차\s*(?:피해\s*)?:?\s*(\d+)\s*[건회]",
+}
+
+# 직전 파서(REC-1 수정 전, 커밋 8073a3d)의 보험이력 패턴 — **파싱에 쓰지 않는다.**
+# `python -m web.maint regrade-accidents` 가 "파서 수정으로 결과가 달라진 행"만 고르는 기준선이다
+# (qa 2026-09-29 F4: 범위 없는 재등급은 요항 파일이 없는 행을 매각물건명세만으로 다시 매겨, 요항에만 있던
+#  사고·침수 근거를 지우고 무사고로 내렸다 — 로컬 사본에서 HEAD 파서로도 23행이 바뀌었다).
+# 다음에 _HIST_PATTERNS 를 고치면 이 자리를 **그 직전 패턴**으로 바꾸고 _BASELINE_REF 도 함께 바꾼다.
+HIST_PATTERNS_BASELINE = {
+    "total_loss": r"전손\s*보험사고\s*:?\s*(\d+)\s*[건회]",
+    "theft": r"도난\s*보험사고\s*:?\s*(\d+)\s*[건회]",
+    "flood": r"침수\s*보험사고\s*:?\s*(\d+)\s*[건회]",
+    "special_use": r"특수용도이력\s*:?\s*(\d+)\s*[건회]",
+    "owner_changes": r"소유자\s*변경\s*:?\s*(\d+)\s*[건회]",
+    "plate_changes": r"차량번호\s*변경\s*:?\s*(\d+)\s*[건회]",
     "own_damage": r"내차\s*피해\s*:?\s*(\d+)\s*[건회]",
     "opp_damage": r"상대차\s*피해\s*:?\s*(\d+)\s*[건회]",
 }
+HIST_PATTERNS_BASELINE_REF = "8073a3d"
 
 # 관리상태 등 자유 서술에서만 찾는 손상 표현(리포트 정형구에는 없음)
 _DAMAGE_TEXT_KW = ["훼손", "판금", "교환", "부식", "파손", "손상"]
 
 
-def parse_insurance_history(text: str) -> dict:
-    """요항 텍스트의 보험사고이력 카운트를 구조화."""
+def parse_insurance_history(text: str, patterns: Optional[dict] = None) -> dict:
+    """요항 텍스트의 보험사고이력 카운트를 구조화.
+
+    patterns 는 재등급 범위를 정할 때 기준선(`HIST_PATTERNS_BASELINE`)과 대조하려고만 넘긴다.
+    생략하면 현재 패턴이다."""
     out: dict[str, int] = {}
-    for key, pat in _HIST_PATTERNS.items():
+    for key, pat in (patterns if patterns is not None else _HIST_PATTERNS).items():
         m = re.search(pat, text)
         if m:
             out[key] = int(m.group(1))

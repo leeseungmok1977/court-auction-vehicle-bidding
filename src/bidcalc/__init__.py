@@ -6,6 +6,7 @@ from .calculator import (
     Judgment,
     AccidentGrade,
     calculate,
+    judge,
     load_config,
 )
 
@@ -15,5 +16,6 @@ __all__ = [
     "Judgment",
     "AccidentGrade",
     "calculate",
+    "judge",
     "load_config",
 ]

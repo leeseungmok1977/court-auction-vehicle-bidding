@@ -25,7 +25,7 @@ from src.collect import kcar
 from src.parse.list_parser import parse_list_response
 from src.parse.detail_parser import parse_detail
 from src.parse.market_match import summarize, _confidence_label, cross_source_check
-from src.bidcalc.calculator import BidInput, calculate
+from src.bidcalc.calculator import BidInput, calculate, judge
 from src.pipeline import resolve_mapping
 
 from . import db
@@ -1056,6 +1056,292 @@ def _reconcile_min_from_dxdy(within_days: int = 30) -> None:
             db.update_fields(v["id"], **f)
 
 
+# ── 최저가가 바뀐 물건 재판정(REC-1) — 외부 요청 0 ─────────────────────────
+# `db.upsert_listing` 은 목록 갱신 때 judgment·upper_bid·breakdown 을 보존한다(_LISTING_KEEP). 그래서
+# 목록 갱신·기일내역 재정합·상세 재조회로 최저가가 바뀌어도 판정은 **옛 최저가**로 남았다.
+# 상한가는 최저가와 무관하게 정해지므로(calculator 산식) 저장된 상한가로 `judge()` 만 다시 부르면
+# `calculate()` 와 같은 판정이 나온다 — 시세·감정요항을 다시 읽지 않는다(외부 요청 0, 파일 I/O 0).
+# 예상낙찰가·입찰 상한선(실사용 손익분기)은 화면에서 저장된 최저가로 매번 계산되므로 따로 저장하지 않는다.
+_FLOOR_JUDGMENTS = ("입찰 검토 가능", "유찰 대기")   # 최저가에 따라 갈리는 판정은 이 둘뿐(침수·표본부족이 앞선다)
+_BD_FLOOR_KEY = "현재최저매각가"                     # 판정 때 쓴 최저가가 breakdown 에 남는 자리(calculator)
+
+
+def rejudge_floor(v: dict, config: Optional[dict] = None) -> dict:
+    """저장된 최저가로 판정·권장 범위 하한·근거표 최저가를 맞춘다 — **바꿀 값만** dict 로(없으면 {}).
+
+    대상: 낙찰·종결이 아니고, 시세로 상한가가 산정돼 있고(upper_bid), 판정이 최저가에 따라 갈리는 것.
+    판정 규칙은 `judge()`(calculate 와 한 곳) + `_final_judgment`(신뢰도 하향). analyzed_at 은 건드리지
+    않는다 — 시세 나이로 읽히는 값이다."""
+    if (v.get("auction_result") in ("낙찰", "종결") or v.get("status") in ("종결", "상세없음")
+            or v.get("upper_bid") is None or v.get("judgment") not in _FLOOR_JUDGMENTS):
+        return {}
+    try:
+        mn = int(v.get("min_sale_price") or 0)
+    except (TypeError, ValueError):
+        return {}
+    if mn <= 0:
+        return {}
+    bd = v.get("breakdown")
+    if isinstance(bd, str):
+        try:
+            bd = json.loads(bd)
+        except (TypeError, ValueError):
+            bd = None
+    if isinstance(bd, dict) and bd.get(_BD_FLOOR_KEY) == mn and v.get("lower_bound") == mn:
+        return {}                                    # 이미 이 최저가로 판정했다(멱등)
+    cfg = config or load_config()
+    j = _final_judgment(
+        judge(v["upper_bid"], mn, int(v.get("sample_count") or 0),
+              v.get("accident_grade") == "flood", cfg),
+        v.get("market_confidence_label"))
+    out = {}
+    if j != v.get("judgment"):
+        out["judgment"] = j
+    if v.get("lower_bound") != mn:
+        out["lower_bound"] = mn
+    if isinstance(bd, dict) and _BD_FLOOR_KEY in bd and bd.get(_BD_FLOOR_KEY) != mn:
+        out["breakdown"] = {**bd, _BD_FLOOR_KEY: mn}
+    return out
+
+
+def rejudge_floor_changes(within_days: int = 30, config: Optional[dict] = None) -> dict:
+    """입찰예정 창에서 최저가가 판정 때와 달라진 물건을 저장된 시세로 다시 판정한다(외부 요청 0·멱등).
+
+    반환: {"checked", "updated", "judgment_changed", "to_review", "to_wait"}"""
+    cfg = config or load_config()
+    out = {"checked": 0, "updated": 0, "judgment_changed": 0, "to_review": 0, "to_wait": 0}
+    for v in db.list_vehicles(upcoming_days=within_days):
+        out["checked"] += 1
+        f = rejudge_floor(v, cfg)
+        if not f:
+            continue
+        db.update_fields(v["id"], **f)
+        out["updated"] += 1
+        if "judgment" in f:
+            out["judgment_changed"] += 1
+            if f["judgment"] == "입찰 검토 가능":
+                out["to_review"] += 1
+            elif f["judgment"] == "유찰 대기":
+                out["to_wait"] += 1
+    if out["updated"]:
+        invalidate_backtest_cache()
+    return out
+
+
+# ── 최저가 지연 물건의 법원 상세 재조회(REC-1) ──────────────────────────────
+# 지연(`floor_lag`)을 푸는 유일한 권위값은 법원 상세의 기일내역(이번 회차 tsLwsDspslPrc)이다. 법원 저감률로
+# 내린 추정 최저가를 쓰지 않는 이유: 저감률이 갈리는 법원이 있고(광주 0.8 이 65%), 법정 최저가를 추정치로
+# 인쇄하면 그 금액으로 쓴 입찰이 무효가 될 수 있다(경매 전문가 2026-09-29).
+# ⚠ 기본 꺼짐(config `min_refresh_enabled: false`) — 오너 승인 전에는 외부 요청 0(C.4-6).
+#   꺼져 있어도 대상 수는 세어 실행 기록에 남긴다. `python -m web.maint floor-refresh-plan` 이 계획만 보여 준다.
+MIN_REFRESH_HARD_CAP = 150            # config 가 무엇을 적든 하루 이 수를 넘지 않는다(C.4-1). 올리려면 코드 변경.
+MIN_REFRESH_JITTER_SEC = (0.0, 5.0)   # fetch_detail 의 고정 대기(REQUEST_DELAY_SEC=5) 위에 더한다 → 요청 간 5~10초(C.4-2)
+MIN_REFRESH_RESP_EST_SEC = 1.5        # 상세 응답 1건 소요 **추정**(사진 base64 포함, 실측 아님) — 예상 소요 계산용
+MIN_REFRESH_SESSION_REQUESTS = 2      # warmup(): 메인·index GET 2회
+
+
+def _min_refresh_settings(config: Optional[dict] = None) -> dict:
+    """설정 읽기 — 켜짐은 **정확히 True** 일 때만(문자열 'true'·누락·깨진 값은 꺼짐). 상한은 코드 하드캡 이하."""
+    cfg = config or load_config()
+    try:
+        cap = int(cfg.get("min_refresh_daily_cap", 60))
+    except (TypeError, ValueError):
+        cap = 0
+    try:
+        backoff = int(cfg.get("min_refresh_backoff_days", 3))
+    except (TypeError, ValueError):
+        backoff = 3
+    return {"enabled": cfg.get("min_refresh_enabled") is True,
+            "cap": max(0, min(cap, MIN_REFRESH_HARD_CAP)),
+            "backoff_days": max(1, backoff)}
+
+
+def min_refresh_targets(within_days: int = 30, config: Optional[dict] = None, today=None) -> list:
+    """재조회 대상(우선순위 순): 가격 지연 증거(`floor_lagging`)가 있고 시세가 있는 물건(추천이 바뀔 수 있는 것)
+    → 시세 없는 지연 물건 → `dxdy_old` 만인 물건. 같은 층 안에서는 기일 가까운 순.
+
+    빼는 것: 상세를 받을 키가 없는 물건, 분석 단계가 상세를 받는 물건(미분석·미매핑 — 시세도 없다), 상세없음,
+    최근 `min_refresh_backoff_days` 안에 이미 재조회한 물건(법원이 아직 공고 전이면 매일 헛요청).
+    ⚠ 동급참조 물건은 **빼지 않는다** — 분석 단계가 재분석하긴 하지만 엔카가 막히면 단계째 건너뛰고,
+      엔카가 0건이면 받은 상세(기일내역 포함)까지 버린다(daily_update '실측 실패 시 동급참조 유지')."""
+    s = _min_refresh_settings(config)
+    td = today if today is not None else date.today()
+    cutoff = (td - timedelta(days=s["backoff_days"])).isoformat()
+    ranked = []
+    for v in db.list_vehicles(upcoming_days=within_days):
+        sig = floor_lag(v, td)
+        if not sig:
+            continue
+        if v.get("status") in ("미분석", "미매핑", "상세없음"):
+            continue
+        if not (_sa_no_from_docid(v.get("doc_id") or "") and v.get("court_code")):
+            continue
+        if str(v.get("floor_checked_at") or "")[:10] > cutoff:
+            continue
+        guard = bool(_FLOOR_LAG_GUARD.intersection(sig))
+        tier = (0 if v.get("median_price") else 1) if guard else 2
+        ranked.append(((tier, v.get("sale_date") or "9999", v["id"]), v))
+    ranked.sort(key=lambda t: t[0])
+    return [v for _, v in ranked]
+
+
+def min_refresh_plan(within_days: int = 30, config: Optional[dict] = None, today=None,
+                     targets: Optional[list] = None) -> dict:
+    """재조회 계획(외부 요청 0): 대상 수·물건당 요청 수·하루 상한·예상 요청 수·예상 소요."""
+    from src.collect.courtauction_list import REQUEST_DELAY_SEC
+    s = _min_refresh_settings(config)
+    if targets is None:
+        targets = min_refresh_targets(within_days, config, today)
+    guard = sum(1 for v in targets if floor_lagging(v, today))
+    with_market = sum(1 for v in targets if v.get("median_price") and floor_lagging(v, today))
+    todo = min(len(targets), s["cap"])
+    session = MIN_REFRESH_SESSION_REQUESTS if todo else 0
+    per = REQUEST_DELAY_SEC + sum(MIN_REFRESH_JITTER_SEC) / 2 + MIN_REFRESH_RESP_EST_SEC
+    return {"enabled": s["enabled"], "cap": s["cap"], "hard_cap": MIN_REFRESH_HARD_CAP,
+            "backoff_days": s["backoff_days"],
+            "targets": len(targets), "targets_guard": guard, "targets_guard_with_market": with_market,
+            "targets_dxdy_old_only": len(targets) - guard,
+            "per_item_requests": 1, "session_requests": session,
+            "planned_requests": todo + session, "planned_items": todo,
+            "delay_sec": [REQUEST_DELAY_SEC + MIN_REFRESH_JITTER_SEC[0],
+                          REQUEST_DELAY_SEC + MIN_REFRESH_JITTER_SEC[1]],
+            "est_seconds": int(round(todo * per + (2 if session else 0))),
+            "days_to_clear": (-(-len(targets) // s["cap"]) if s["cap"] else None)}
+
+
+def _floor_refresh_fields(v: dict, detail) -> tuple:
+    """상세 응답 → (갱신할 값, 결과 표지). 기일내역·최저가만 바꾼다(사진·요항·시세·결과 열은 건드리지 않는다)."""
+    f = {"floor_checked_at": _now()}
+    dcc, vcc = str(getattr(detail, "court_code", "") or "").strip(), str(v.get("court_code") or "").strip()
+    if dcc and vcc and dcc != vcc:
+        return f, "mismatch"                     # 다른 법원 물건 응답 — 섞지 않는다(사건번호 충돌 계열)
+    hist = list(getattr(detail, "dxdy_history", None) or [])
+    if not hist:
+        return f, "empty"                        # 종결·취하·조회불가 — 기존 기일내역을 빈 값으로 덮지 않는다
+    f["dxdy_history"] = hist
+    cur = _current_min_sale(hist, v.get("min_sale_price"))
+    if cur and cur != v.get("min_sale_price"):
+        f["min_sale_price"] = cur
+        if v.get("upper_bid") is not None:
+            f["lower_bound"] = cur
+    if floor_lag({**v, **f}):
+        return f, "not_posted"                   # 법원 상세에도 이번 회차가 아직 없다 — 가드는 그대로
+    return f, ("changed" if "min_sale_price" in f else "same")
+
+
+_floor_log = logging.getLogger("naechaget.floor_refresh")
+
+
+def refresh_lagged_floors(within_days: int = 30, run_id: Optional[int] = None, dry_run: bool = False,
+                          config: Optional[dict] = None) -> dict:
+    """지연 물건의 법원 상세를 다시 받아 기일내역·최저가를 법원 값으로 바꾼다(REC-1).
+
+    - 꺼져 있거나(`min_refresh_enabled` 가 True 가 아님) dry_run 이면 **요청 0** — 계획만 돌려준다.
+    - 켜져 있으면 하루 상한(`min_refresh_daily_cap`, 코드 하드캡 150) 안에서 우선순위대로.
+      요청마다 fetch_detail 의 5초 + 0~5초 무작위 대기(5~10초, C.4-2). 재시도는 하지 않는다(다음 날 다시 대상).
+    - 403/429/CAPTCHA(차단) 는 즉시 중단하고 **예외를 올린다**(C.4-5 — 이후 법원 단계도 멈춘다).
+      비정상 응답 3회 연속도 같다. 중단 전까지 반영한 값은 남는다.
+    - 최저가가 바뀐 물건은 같은 자리에서 `rejudge_floor` 로 재판정한다(외부 요청 0).
+    결과는 settings `last_min_refresh` 에도 남긴다(dry_run 은 남기지 않는다 — 읽기만).
+    그 기록이 실패해도(DB 잠김 등) 차단·비정상 3연속 예외를 **가리지 않는다** — 기록 실패는 로그로만 남긴다(REC-1 3회차 N2)."""
+    import random
+    cfg = config or load_config()
+    targets = min_refresh_targets(within_days, cfg)
+    plan = min_refresh_plan(within_days, cfg, targets=targets)
+    res = {**plan, "dry_run": bool(dry_run), "requests": 0, "fetched": 0, "changed": 0, "same": 0,
+           "not_posted": 0, "empty": 0, "mismatch": 0, "rejudged": 0, "stopped": ""}
+    if dry_run:
+        return res
+    if not plan["enabled"] or not plan["planned_items"]:
+        db.set_setting("last_min_refresh", json.dumps({"at": _now(), **res}, ensure_ascii=False))
+        return res
+    todo = targets[:plan["planned_items"]]
+    budget = plan["planned_requests"]                  # 이중 안전: 세션 2 + 물건 수를 넘는 요청은 없다
+    stop_err = None
+    raised = False                                     # try 에서 예외가 올라가는 중인가(아래 finally 가 가리지 않게)
+    save_err = None
+    try:
+        cs = new_session()
+        warmup(cs)
+        res["requests"] += MIN_REFRESH_SESSION_REQUESTS
+        consecutive_fail = 0
+        for i, v in enumerate(todo):
+            if res["requests"] >= budget:
+                break
+            if run_id:
+                db.update_run(run_id, message=f"최저가 재조회 {i + 1}/{len(todo)} · {v.get('case_no')}")
+            time.sleep(random.uniform(*MIN_REFRESH_JITTER_SEC))
+            res["requests"] += 1                      # 나갔는지 모르는 요청도 센다(보수적)
+            try:
+                resp = fetch_detail(cs, _sa_no_from_docid(v["doc_id"]), v.get("court_code"),
+                                    v.get("item_no") or "1")
+                detail = parse_detail(resp.json(), cfg)
+                consecutive_fail = 0
+            except Exception as e:  # noqa: BLE001
+                if _is_block(e):
+                    res["stopped"] = f"차단 감지 — 중단: {str(e)[:60]}"
+                    stop_err = RuntimeError(f"최저가 재조회 차단 감지 — 중단 (반영 {res['changed']}건)")
+                    break
+                consecutive_fail += 1
+                if consecutive_fail >= 3:              # 비정상 3연속 → 중단(C.4-5)
+                    res["stopped"] = "비정상 응답 3회 연속 — 중단"
+                    stop_err = RuntimeError("최저가 재조회 비정상 응답 3회 연속 — 중단")
+                    break
+                continue
+            res["fetched"] += 1
+            f, kind = _floor_refresh_fields(v, detail)
+            res[kind] += 1
+            f.update(rejudge_floor({**v, **f}, cfg))
+            if "judgment" in f:
+                res["rejudged"] += 1
+            db.update_fields(v["id"], **f)
+    except Exception as e:  # noqa: BLE001 — 기록만 하고 그대로 올린다(격리 여부는 호출자 daily_update 가 정한다)
+        raised = True
+        if not res["stopped"]:
+            res["stopped"] = (f"{'차단 감지' if _is_block(e) else '오류'} — 중단: "
+                              f"{type(e).__name__}: {str(e)[:60]}")
+        raise
+    except BaseException:                              # KeyboardInterrupt 등 — 기록은 두고 표시만 한다
+        raised = True
+        raise
+    finally:
+        # ⚠ REC-1 3회차(qa N2): finally 에서 난 예외는 **올라가던 예외를 대신한다**(파이썬 규칙).
+        #   차단(403)으로 멈춘 바로 그때 DB 가 잠겨 이 기록이 실패하면, 차단 예외(stop_err 또는 위 except 의
+        #   재발생)가 OperationalError 로 바뀌었다. daily_update 는 그것을 비차단 오류로 보고 **격리해 다음
+        #   단계(낙찰결과·최종 검토 — 법원 요청)로 갔다.** C.4-5 의 즉시 중단이 설정 저장 한 줄에 풀린 것이다.
+        #   2회차 격리가 새로 만든 가장자리다(1회차 트리에는 격리가 없어 이 경우도 멈췄다).
+        #   그래서 여기서는 기록 실패를 **잡아 두기만** 한다. 올라갈 예외(차단·3연속·그 밖)가 있으면 그것이 그대로
+        #   올라가고, 기록 실패는 로그로만 남긴다. 올라갈 예외가 없을 때만 기록 실패를 올린다(예전과 같은 동작 —
+        #   호출자가 비차단 오류로 격리한다).
+        try:
+            db.set_setting("last_min_refresh", json.dumps({"at": _now(), **res}, ensure_ascii=False))
+        except Exception as se:  # noqa: BLE001
+            save_err = se
+            if raised or stop_err:
+                _floor_log.warning("last_min_refresh 기록 실패(%s: %s) — 올라가던 예외를 그대로 올린다(stopped=%r)",
+                                   type(se).__name__, str(se)[:80], res.get("stopped"))
+        if res["fetched"]:
+            invalidate_backtest_cache()
+    if stop_err:
+        raise stop_err                                 # 차단·비정상 3연속이 기록 실패보다 먼저다(C.4-5)
+    if save_err is not None:
+        raise save_err
+    return res
+
+
+def floor_refresh_label(res: dict) -> str:
+    """실행 기록 한 조각(구분자 ' · ' 를 넣지 않는다). 할 말이 없으면 ''."""
+    if not res:
+        return ""
+    if res.get("error_type"):                        # daily_update 가 격리한 비차단 오류(연결 끊김 등)
+        return f"⚠최저가 재조회 오류 {res['error_type']}"
+    if res.get("enabled") and not res.get("dry_run"):
+        if not res.get("targets"):
+            return ""
+        return f"최저가 재조회 {res.get('fetched', 0)}/{res['targets']}(갱신 {res.get('changed', 0)})"
+    return f"최저가 지연 {res['targets']}대(재조회 꺼짐)" if res.get("targets") else ""
+
+
 def _interp(x: float, pts: list) -> float:
     """구간 선형보간(pts는 x 오름차순). 범위 밖은 양끝값으로 고정."""
     if x <= pts[0][0]:
@@ -1757,11 +2043,26 @@ def _supply_history(settings: Optional[dict] = None) -> list:
         return []
 
 
-def record_supply_history(today: Optional[str] = None) -> list:
+def supply_picks(within_days: int = 30) -> dict:
+    """그날의 추천 칸 수 — 홈 카드와 **같은 함수**(lifecycle_partition)로 센다. 외부 요청 0.
+
+    review(지금 입찰 추천) · usepick(실사용 추천) · usepick_now(그중 '지금 사면 이득') · upcoming30(입찰예정) ·
+    floor_lag(입찰예정 중 최저가 지연 = floor_lagging) · at(센 시각 HH:MM — 오전 10시 전후로 값이 다르다).
+    REC-1: 추천이 줄고 있는지 다음에 바로 답하려고 매일 갱신 끝에 이 값을 남긴다."""
+    part = lifecycle_partition()
+    lag = sum(1 for v in db.list_vehicles(upcoming_days=within_days, hide_incomplete=True)
+              if floor_lagging(v))
+    return {"review": part["review"], "usepick": part["usepick"], "usepick_now": part["usepick_now"],
+            "upcoming30": part["upcoming30"], "floor_lag": lag, "at": datetime.now().strftime("%H:%M")}
+
+
+def record_supply_history(today: Optional[str] = None, picks: Optional[dict] = None) -> list:
     """오늘의 0표본을 추이에 기록한다(하루 1행, 같은 날은 덮어쓴다).
 
     0표본 경보는 **어제와 비교**해야 의미가 생기는데, DB 에는 현재 값만 있고 과거가 없었다.
     매일 갱신 끝에서 한 줄 남긴다 — 다음 날의 비교 기준이 된다.
+    picks(`supply_picks`)를 주면 같은 행에 추천 칸 수를 더한다(REC-1). 읽는 쪽(ops_health·일일 리포트)은
+    date·zero·total 만 쓰므로 키가 늘어도 영향이 없다.
     """
     today = today or date.today().isoformat()
     conn = db.connect()
@@ -1772,7 +2073,11 @@ def record_supply_history(today: Optional[str] = None) -> list:
         conn.close()
     keep = int(load_config().get("ops_alert", {}).get("history_days", 14))
     rows = [r for r in _supply_history() if str(r.get("date"))[:10] != today]
-    rows.append({"date": today, "zero": zero, "total": total})
+    row = {"date": today, "zero": zero, "total": total}
+    if picks:
+        row.update({k: picks[k] for k in ("review", "usepick", "usepick_now", "upcoming30", "floor_lag", "at")
+                    if k in picks})
+    rows.append(row)
     rows = sorted(rows, key=lambda r: str(r.get("date")))[-max(2, keep):]
     db.set_setting(SUPPLY_HISTORY_KEY, json.dumps(rows, ensure_ascii=False))
     return rows
@@ -1813,6 +2118,28 @@ def daily_update(within_days: int = 30, analyze: bool = True,
     config = load_config()
     stored = collect_upcoming(within_days=within_days, run_id=run_id, finalize=False)
     _reconcile_min_from_dxdy(within_days)   # 목록이 덮은 dxdy 보정 최저매각가 복원
+    # ①-1 최저가 지연 물건의 법원 상세 재조회(REC-1). 기본 꺼짐(config min_refresh_enabled) — 꺼져 있으면
+    #      대상 수만 세고 요청은 0 이다(C.4-6). 켜면 하루 상한·5~10초 지연. 차단·비정상 3연속이면 예외가
+    #      올라가 갱신 전체가 멈춘다(C.4-5 — 뒤 단계들도 법원에 요청한다).
+    #      REC-1 r2(qa F3): 그 밖의 예외(연결 끊김·DB 잠김 등)는 0표본 재조회·⑤ 최종 검토처럼 **격리**한다 —
+    #      연결 오류 한 번에 낙찰결과·최종 검토·오늘의 추천까지 통째로 멈추던 것. 실행 메시지에 남기고 계속한다.
+    try:
+        floor = refresh_lagged_floors(within_days=within_days, run_id=run_id, config=config)
+    except Exception as e:  # noqa: BLE001
+        if isinstance(e, RuntimeError) or _is_block(e):
+            raise                                   # 차단·비정상 3연속 → 상위로 전파(C.4-5). 완화하지 않는다.
+        floor = {"error": f"{type(e).__name__}: {str(e)[:80]}", "error_type": type(e).__name__}
+        if run_id:
+            db.update_run(run_id, message=f"⚠ 최저가 재조회 오류({type(e).__name__}) — 다음 단계 계속")
+    # ①-2 최저가가 바뀐 물건 재판정(외부 요청 0) — 목록 갱신·재정합·재조회 어느 쪽이든.
+    #      upsert_listing 이 판정을 보존해(_LISTING_KEEP) 옛 최저가의 판정이 남던 것을 여기서 맞춘다.
+    #      외부 요청이 없는 단계라 C.4-5 로 멈출 이유가 없다 — 실패는 기록만 하고 계속한다(실패 전까지 맞춘 행은
+    #      남고 나머지는 전날 판정 그대로다. 다음 실행이 다시 맞춘다 — 멱등).
+    try:
+        rejudge = rejudge_floor_changes(within_days=within_days, config=config)
+    except Exception as e:  # noqa: BLE001
+        rejudge = {"checked": 0, "updated": 0, "judgment_changed": 0, "to_review": 0, "to_wait": 0,
+                   "error": f"{type(e).__name__}: {str(e)[:80]}", "error_type": type(e).__name__}
     analyzed = 0
     cs = es = None                                  # 세션(⑤ 최종 검토 재확인에서도 재사용)
     # ②-0 엔카 차단 조기 감지 — 차단 상태면 시세 분석을 통째로 건너뛴다.
@@ -1920,6 +2247,10 @@ def daily_update(within_days: int = 30, analyze: bool = True,
         _hv = "" if health["state"] == "ok" else f" · ⚠엔카 {health['state']}(HTTP {health['code']})"
         _ru = f" · 동급참조 {reuse['applied']}" if reuse.get("applied") else ""
         _ru += f" · 0표본 재조회 {requery['updated']}" if requery.get("updated") else ""
+        _fl = floor_refresh_label(floor)                     # 최저가 지연 N대(재조회 꺼짐) / 재조회 n/N(갱신 k)
+        _ru += f" · {_fl}" if _fl else ""
+        _ru += f" · 최저가 재판정 {rejudge['judgment_changed']}" if rejudge.get("judgment_changed") else ""
+        _ru += f" · ⚠최저가 재판정 오류 {rejudge['error_type']}" if rejudge.get("error_type") else ""
         _ph = (f" · 사진정렬 {photos['sorted']}건" if photos.get("sorted")
                else (" · ⚠사진정렬 건너뜀" if photos.get("error") else ""))
         _base = f"입찰예정 {stored} · 분석 {analyzed}{_ru}{_ph} · 낙찰결과 {results}건{_rv}{_hv}"
@@ -1941,12 +2272,20 @@ def daily_update(within_days: int = 30, analyze: bool = True,
         db.update_run(run_id, status="done", finished_at=_now(), message=f"{_base}{_nc}")
     # ⑦ 공급 추이 한 줄 기록(외부요청 0) — 0표본 경보는 **어제와 비교**해야 뜻이 생기는데
     #    DB 에는 현재 값만 있고 과거가 없었다. 실패해도 갱신 자체는 성공이다.
+    #    REC-1: 그날의 추천 칸 수(지금 입찰 추천·실사용 추천)와 최저가 지연 수도 같은 줄에 남긴다 —
+    #    '줄고 있나'에 세 조사가 서로 다른 시계로 답했다(qa 2026-09-29). 기록 시각(at)도 함께.
     try:
-        record_supply_history()
+        _picks = None
+        try:
+            _picks = supply_picks(within_days)
+        except Exception:  # noqa: BLE001 — 추천 집계 실패가 0표본 기록을 막지 않게
+            _picks = None
+        record_supply_history(picks=_picks)
     except Exception:  # noqa: BLE001
         pass
     return {"stored": stored, "analyzed": analyzed, "results": results, "review": review,
-            "encar_health": health, "reuse": reuse, "requery": requery, "newcar": newcar, "photos": photos}
+            "encar_health": health, "reuse": reuse, "requery": requery, "newcar": newcar, "photos": photos,
+            "floor": floor, "rejudge": rejudge}
 
 
 def newcar_stop_label(res: dict) -> str:
@@ -3079,59 +3418,165 @@ def backfill_multilot_mileage() -> dict:
     return out
 
 
-def backfill_accident_grades(force: bool = False) -> int:
+def _accident_regrade_fields(v: dict, atxt: str, graded: tuple, config: dict) -> dict:
+    """다시 매긴 사고 등급(`grade_accident` 결과)을 저장할 값으로 — 저장 시세가 있으면 상한가·판정·근거를
+    로컬 재산정한다(무네트워크). `backfill_accident_grades` 와 `regrade_accidents` 가 함께 쓴다(산식은 한 곳)."""
+    grade, acc_hits, _fld, hist = graded
+    fields = {"accident_grade": grade, "accident_hits": acc_hits, "insurance_history": hist}
+    # 사고감가 정합성: 저장 시세가 있으면 로컬 재산정(외부요청 없음 — 상한가·판정·근거 동기화)
+    if v.get("median_price") is not None:
+        bi = BidInput(median_price=v.get("median_price") or 0,
+                      min_sale_price=v.get("min_sale_price") or 0,
+                      sample_count=v.get("sample_count") or 0,
+                      platform=v.get("market_platform") or "encar",
+                      accident_grade=grade, repair_cost=v.get("repair_cost") or 500000,
+                      appraisal_text=atxt, photo_count=v.get("photo_count"))
+        # ⚠ **갱신될 값**으로 감가율을 정한다. 예전엔 옛 행 `v` 를 그대로 넘겨,
+        #   등급을 flood → none 으로 내려도 use_accident_rate 가 v 의 옛 'flood' 를 보고
+        #   감가율 1.0(시세 전액)을 돌려줬다 — 등급만 바뀌고 값은 안 바뀌는 상태였다
+        #   (2026-09-21 실측: C220d 등급 none 인데 breakdown 사고감가율 1.0 ·
+        #    상한가 -561만. '사고표기: 침수의심' 이 옛 v 를 봤다는 흔적이었다).
+        bid = calculate(apply_accident_rate(bi, {**v, **fields}, config),
+                        tax_config_for(v, config))
+        fields.update(upper_bid=bid.upper_bid, lower_bound=bid.lower_bound,
+                      judgment=_final_judgment(bid.judgment, v.get("market_confidence_label")),
+                      breakdown=bid.breakdown)
+    return fields
+
+
+def _read_appraisal(v: dict) -> str:
+    """DATA_DIR/<folder_key>/appraisal.txt 본문(없거나 못 읽으면 '')."""
+    from src.paths import DATA_DIR
+    af = DATA_DIR / (v.get("folder_key") or v.get("id")) / "appraisal.txt"
+    if not af.exists():
+        return ""
+    try:
+        return af.read_text(encoding="utf-8")
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def backfill_accident_grades(force: bool = False, preview: Optional[list] = None) -> int:
     """저장된 감정요항(appraisal.txt) + 매각물건명세(spec_remark)로 사고판정을 재도출(무네트워크).
 
     기존엔 매각물건명세에만 있던 사고이력('내차 피해 6회…')을 놓쳐 '무사고'로 오판한 물건이 있었다.
     사고이력이 1건이라도 있으면 무사고로 두지 않는다(신뢰 최우선). 등급이 바뀌면 사고감가가
-    반영되도록 저장 시세로 상한가·판정·근거를 로컬 재산정한다(엔카 재조회 없음)."""
+    반영되도록 저장 시세로 상한가·판정·근거를 로컬 재산정한다(엔카 재조회 없음).
+
+    ⚠ **범위가 없다** — 요항 파일이 없는 행도 매각물건명세만으로 다시 매긴다. 요항에만 있던 사고·침수 근거가
+      사라져 무사고로 내려갈 수 있다(qa 2026-09-29 F4: 로컬 사본에서 파서 수정과 무관한 23행이 바뀌었다).
+      파서 수정을 저장값에 반영할 때는 이 함수가 아니라 `regrade_accidents`(= `python -m web.maint
+      regrade-accidents`)를 쓴다 — 파서 결과가 달라진 행만, 요항 파일이 있는 행만 다룬다.
+
+    preview 에 빈 list 를 넘기면 **쓰지 않고** 바뀔 행을 담아 돌려준다."""
     from src.parse.detail_parser import grade_accident
-    from src.paths import DATA_DIR
     config = load_config()
     updated = 0
     for v in db.list_vehicles():
-        fk = v.get("folder_key") or v.get("id")
-        atxt = ""
-        af = DATA_DIR / fk / "appraisal.txt"
-        if af.exists():
-            try:
-                atxt = af.read_text(encoding="utf-8")
-            except Exception:  # noqa: BLE001
-                atxt = ""
+        atxt = _read_appraisal(v)
         spec = v.get("spec_remark") or ""
         if not atxt and not spec:
             continue
-        grade, acc_hits, _fld, hist = grade_accident(atxt, spec, config)
+        graded = grade_accident(atxt, spec, config)
+        grade, hist = graded[0], graded[3]
         # force=True 는 **등급이 그대로인 물건도** 다시 산정한다. 2026-09-21 에 아래 버그로
         # 감가율이 옛 등급(flood=1.0) 기준으로 박힌 행들이 생겼는데, 등급은 이미 내려가 있어
         # 이 skip 에 걸려 영영 못 고치는 상태였다(상한가가 음수로 잠김).
         if not force and grade == (v.get("accident_grade") or "none") \
                 and hist == (v.get("insurance_history") or {}):
             continue                                  # 변화 없음 → 건너뜀
-        fields = {"accident_grade": grade, "accident_hits": acc_hits, "insurance_history": hist}
-        # 사고감가 정합성: 저장 시세가 있으면 로컬 재산정(외부요청 없음 — 상한가·판정·근거 동기화)
-        if v.get("median_price") is not None:
-            bi = BidInput(median_price=v.get("median_price") or 0,
-                          min_sale_price=v.get("min_sale_price") or 0,
-                          sample_count=v.get("sample_count") or 0,
-                          platform=v.get("market_platform") or "encar",
-                          accident_grade=grade, repair_cost=v.get("repair_cost") or 500000,
-                          appraisal_text=atxt, photo_count=v.get("photo_count"))
-            # ⚠ **갱신될 값**으로 감가율을 정한다. 예전엔 옛 행 `v` 를 그대로 넘겨,
-            #   등급을 flood → none 으로 내려도 use_accident_rate 가 v 의 옛 'flood' 를 보고
-            #   감가율 1.0(시세 전액)을 돌려줬다 — 등급만 바뀌고 값은 안 바뀌는 상태였다
-            #   (2026-09-21 실측: C220d 등급 none 인데 breakdown 사고감가율 1.0 ·
-            #    상한가 -561만. '사고표기: 침수의심' 이 옛 v 를 봤다는 흔적이었다).
-            bid = calculate(apply_accident_rate(bi, {**v, **fields}, config),
-                            tax_config_for(v, config))
-            fields.update(upper_bid=bid.upper_bid, lower_bound=bid.lower_bound,
-                          judgment=_final_judgment(bid.judgment, v.get("market_confidence_label")),
-                          breakdown=bid.breakdown)
+        fields = _accident_regrade_fields(v, atxt, graded, config)
+        if preview is not None:
+            _bd0 = v.get("breakdown") if isinstance(v.get("breakdown"), dict) else {}
+            _bd1 = fields.get("breakdown") or {}
+            preview.append({"id": v["id"], "sale_date": v.get("sale_date"),
+                            "grade": [v.get("accident_grade"), grade],
+                            "insurance_history": [v.get("insurance_history"), hist],
+                            "rate": [_bd0.get("사고감가율"), _bd1.get("사고감가율")],
+                            "upper_bid": [v.get("upper_bid"), fields.get("upper_bid", v.get("upper_bid"))],
+                            "judgment": [v.get("judgment"), fields.get("judgment", v.get("judgment"))]})
+            updated += 1
+            continue
         db.update_fields(v["id"], **fields)
         updated += 1
-    if updated:
+    if updated and preview is None:
         invalidate_backtest_cache()
     return updated
+
+
+def regrade_accidents(ids: Optional[list] = None, apply: bool = False,
+                      config: Optional[dict] = None) -> dict:
+    """사고이력 **파서 수정**을 저장된 행에 반영한다 — 범위를 좁힌 재등급(REC-1 r2 · qa F4). 외부 요청 0.
+
+    대상은 셋을 모두 만족하는 행뿐이다.
+      ① 요항 파일(DATA_DIR/<folder_key>/appraisal.txt)이 있다 — 없으면 건너뛴다(매각물건명세만으로 다시 매기지
+         않는다: 요항에만 있던 사고·침수 근거가 사라져 무사고로 내려간다).
+      ② 같은 텍스트(요항 + 명세)를 기준선 패턴(`HIST_PATTERNS_BASELINE`, 직전 파서)과 현재 패턴으로 읽은
+         보험이력이 **다르다** — 파서와 무관한 저장값 표류는 건드리지 않는다.
+      ③ 다시 매긴 등급·보험이력이 저장값과 다르다(이미 반영한 행은 건너뛴다 — 멱등).
+    `ids` 를 주면 그 행들 안에서만 고른다(①②③은 그대로 적용한다).
+
+    apply=False(기본)면 **쓰지 않고** 행별 전후만 돌려준다. apply=True 면 같은 행을 쓴다.
+    매각이 끝난 행(낙찰·종결)은 판정을 되돌리지 않는다 — 등급·상한가·근거만 바꾸고 '종결'은 둔다.
+
+    반환: {"apply", "baseline", "checked", "targets", "applied", "skipped": {...}, "not_found", "rows"}
+      rows[i]: id · case_no · model · sale_date · parse(기준선→현재 보험이력) · grade · insurance_history ·
+               rate(사고감가율) · upper_bid(재판매 산정 상한가) · max_bid(입찰 상한선=실사용 손익분기) · judgment
+               — 값은 모두 [전, 후]."""
+    from src.parse.detail_parser import (HIST_PATTERNS_BASELINE, HIST_PATTERNS_BASELINE_REF,
+                                         grade_accident, parse_insurance_history)
+    cfg = config or load_config()
+    rows_db = db.list_vehicles()
+    not_found: list = []
+    if ids:
+        want = [str(x).strip() for x in ids if str(x).strip()]
+        by_id = {v["id"]: v for v in rows_db}
+        not_found = [i for i in want if i not in by_id]
+        rows_db = [by_id[i] for i in dict.fromkeys(want) if i in by_id]
+    out = {"apply": bool(apply), "baseline": HIST_PATTERNS_BASELINE_REF, "checked": 0, "targets": 0,
+           "applied": 0, "skipped": {"no_appraisal": 0, "same_parse": 0, "already": 0},
+           "not_found": not_found, "rows": []}
+    for v in rows_db:
+        out["checked"] += 1
+        atxt = _read_appraisal(v)
+        if not atxt.strip():
+            out["skipped"]["no_appraisal"] += 1
+            continue
+        spec = v.get("spec_remark") or ""
+        both = f"{atxt}\n{spec}"                        # grade_accident 가 읽는 것과 같은 텍스트
+        h_old = parse_insurance_history(both, HIST_PATTERNS_BASELINE)
+        h_new = parse_insurance_history(both)
+        if h_old == h_new:
+            out["skipped"]["same_parse"] += 1
+            continue
+        graded = grade_accident(atxt, spec, cfg)
+        if (graded[0] == (v.get("accident_grade") or "none")
+                and graded[3] == (v.get("insurance_history") or {})):
+            out["skipped"]["already"] += 1
+            continue
+        fields = _accident_regrade_fields(v, atxt, graded, cfg)
+        if v.get("auction_result") in ("낙찰", "종결") or v.get("judgment") == "종결":
+            fields.pop("judgment", None)                 # 끝난 매각을 '유찰 대기' 등으로 되살리지 않는다
+        after = {**v, **fields}
+        _bd0 = v.get("breakdown") if isinstance(v.get("breakdown"), dict) else {}
+        _bd1 = after.get("breakdown") if isinstance(after.get("breakdown"), dict) else {}
+        out["rows"].append({
+            "id": v["id"], "case_no": v.get("case_no"), "model": v.get("model"),
+            "sale_date": v.get("sale_date"),
+            "parse": [h_old, h_new],
+            "grade": [v.get("accident_grade"), after.get("accident_grade")],
+            "insurance_history": [v.get("insurance_history"), after.get("insurance_history")],
+            "rate": [_bd0.get("사고감가율"), _bd1.get("사고감가율")],
+            "upper_bid": [v.get("upper_bid"), after.get("upper_bid")],
+            "max_bid": [personal_use_max_bid(v, None, cfg), personal_use_max_bid(after, None, cfg)],
+            "judgment": [v.get("judgment"), after.get("judgment")]})
+        if apply:
+            db.update_fields(v["id"], **fields)
+            out["applied"] += 1
+    out["targets"] = len(out["rows"])
+    if out["applied"]:
+        invalidate_backtest_cache()
+    return out
 
 
 def can_analyze(v: dict) -> bool:
@@ -4026,14 +4471,123 @@ def stale_floor(v: dict) -> bool:
     return bool(ap and mn and ap == mn and (v.get("fail_count") or 0) >= 1)
 
 
+# ── 최저매각가 지연(REC-1 · 2026-09-29) ─────────────────────────────────────
+# 법원 목록의 최저매각가(minmaePrice)는 **직전(유찰된) 회차** 값이다(`_current_min_sale` 독스트링).
+# 분석 때 받은 상세 기일내역(dxdy)에 이번 회차가 있으면 `_reconcile_min_from_dxdy` 가 바로잡지만,
+# 분석 **뒤에** 유찰돼 새 회차로 넘어간 물건은 기일내역이 옛 회차에서 멈춰 한 단계(×0.7·×0.8) 높은
+# 값으로 판정된다. 2026-09-29 백업: 입찰예정 417대 중 239대(57%). 같은 백업의 기일 남은 행(숨김 포함)
+# 가운데 기일내역이 아예 없는 유찰 행 264개 중 249개가 '유찰 k회인데 가격은 k−1회 저감'이다 — 목록 값을
+# 그대로 둔 행이라 지연은 우리 재정합이 아니라 **목록 자체**에서 온다(기일내역에 이번 회차가 있는 유찰 행
+# 36개는 28개가 k/k 로 맞고 나머지는 비표준 비율).
+# `stale_floor` 는 '유찰≥1인데 최저가=감정가'(1회 지연)만 잡아 2회차 이상 지연을 통과시켰고, 그 물건들은
+# 예상낙찰가(최저가×유찰 프리미엄)가 1/0.7≈1.43배(0.8 법원 1.25배) 부풀어 '이번 회차 입찰 부적합'을 받았다.
+FLOOR_LAG_SIGNALS = {
+    "dxdy_old": "기일내역의 마지막 회차가 이번 매각기일보다 앞선다",
+    "dxdy_fails_behind": "기일내역의 유찰 수가 목록 유찰횟수보다 적다",
+    "price_behind": "최저가÷감정가가 말하는 저감 횟수가 유찰횟수보다 적다",
+}
+# 예상낙찰가를 막는(=stale_floor 와 같이 다루는) 신호 — **유찰이 가격에 반영되지 않았다는 증거**가 있는 것만.
+# `dxdy_old` 하나만으로는 막지 않는다: 기일 변경(연기)은 저감 없이 날짜만 옮긴다. 그런 물건은
+# 가격이 맞을 수 있으니 숨기지 않고, 재조회 대상에만 (뒤 순위로) 넣는다.
+_FLOOR_LAG_GUARD = frozenset({"dxdy_fails_behind", "price_behind"})
+_STD_REDUCTIONS = (0.8, 0.7)      # 법원 저감 배율(court_reduction_rates 실측: 0.7 이 대부분, 0.8 은 일부 법원)
+_REDUCTION_TOL = 0.006           # 최저가÷감정가와 0.8ᵏ·0.7ᵏ 의 허용 차(법원의 원 단위 절사 흡수)
+
+
+def implied_reductions(appraisal_value, min_sale_price) -> Optional[int]:
+    """최저가÷감정가가 말하는 저감 횟수 k(0.8ᵏ 또는 0.7ᵏ 중 가장 작은 k). 표준 비율이 아니면 None.
+
+    None 은 '모른다'다 — 비표준 비율(재감정·특별매각조건 등)을 저감 0회로 읽지 않는다."""
+    try:
+        ap, mn = int(appraisal_value or 0), int(min_sale_price or 0)
+    except (TypeError, ValueError):
+        return None
+    if ap <= 0 or mn <= 0 or mn > ap:
+        return None
+    r = mn / ap
+    for k in range(0, 9):
+        for b in _STD_REDUCTIONS:
+            if abs(b ** k - r) < _REDUCTION_TOL:
+                return k
+    return None
+
+
+def _dxdy_rows(v: dict) -> list:
+    h = v.get("dxdy_history")
+    if isinstance(h, str):
+        try:
+            h = json.loads(h)
+        except (TypeError, ValueError):
+            return []
+    return [x for x in (h or []) if isinstance(x, dict)]
+
+
+def floor_lag(v: dict, today=None) -> list:
+    """이 물건의 최저매각가가 **이번 회차 값이 아닐** 신호들(없으면 빈 목록). 외부 요청 0.
+
+    대상: 매각기일이 남았고(오늘 포함) 낙찰·종결이 아닌 물건. 그 밖은 늘 빈 목록이다.
+    기일내역에 **이번 매각기일 행**(법원 상세의 이번 회차 최저가 = 권위값)이 있으면 지연이 아니다 —
+    그 행이 저감 없는 회차를 말해도(재매각·기일 변경) 법원 값이 우선이다.
+
+    신호(`FLOOR_LAG_SIGNALS`):
+      dxdy_old           기일내역의 마지막 회차 날짜 < 목록 매각기일
+      dxdy_fails_behind  기일내역의 유찰 수 < 목록 유찰횟수
+      price_behind       최저가÷감정가가 말하는 저감 횟수(`implied_reductions`) < 유찰횟수
+    가격을 막을지는 `floor_lagging`, 재조회 대상은 `min_refresh_targets` 가 이 목록으로 정한다."""
+    if (v.get("auction_result") in ("낙찰", "종결") or v.get("judgment") == "종결"
+            or v.get("status") == "종결"):
+        return []
+    sd = str(v.get("sale_date") or "")[:10]
+    if len(sd) != 10:
+        return []
+    td = today if today is not None else date.today()
+    td = td.isoformat() if hasattr(td, "isoformat") else str(td)[:10]
+    if sd < td:
+        return []
+    hist = _dxdy_rows(v)
+    if any(str(x.get("ymd") or "")[:10] == sd and x.get("lws_price") for x in hist):
+        return []
+    try:
+        fc = int(v.get("fail_count") or 0)
+    except (TypeError, ValueError):
+        fc = 0
+    sig = []
+    if hist:
+        last = max(str(x.get("ymd") or "")[:10] for x in hist)
+        if last and last < sd:
+            sig.append("dxdy_old")
+        if sum(1 for x in hist if x.get("result") == "유찰") < fc:
+            sig.append("dxdy_fails_behind")
+    k = implied_reductions(v.get("appraisal_value"), v.get("min_sale_price"))
+    if k is not None and k < fc:
+        sig.append("price_behind")
+    return sig
+
+
+def floor_lagging(v: dict, today=None) -> bool:
+    """최저가가 유찰을 반영하지 못했다는 **증거**가 있는가 — 있으면 `stale_floor` 와 같이 다룬다.
+
+    예상낙찰가를 내지 않고(`expected_for`) 판정은 '다음 기일 최저가 공고 대기'(wait)로 둔다(`bid_state`).
+    부푼 예상낙찰가와 틀린 '이번 회차 입찰 부적합'을 내지 않기 위해서다. 법원 상세를 다시 받아
+    기일내역에 이번 회차가 들어오면(`refresh_lagged_floors`) 저절로 풀린다."""
+    return bool(_FLOOR_LAG_GUARD.intersection(floor_lag(v, today)))
+
+
+def floor_unconfirmed(v: dict) -> bool:
+    """예상낙찰가의 출발선으로 쓸 수 없는 최저가 — `stale_floor`(1회 지연) 또는 `floor_lagging`(다회차 지연)."""
+    return stale_floor(v) or floor_lagging(v)
+
+
 def expected_for(v: dict, bt: dict) -> Optional[int]:
     """물건 dict + 백테스트 통계 → 예상낙찰가(중심 추정치).
 
     핵심: **최저매각가 × 유찰버킷 프리미엄**(낙찰가/최저가). 유찰로 내려간 최저가가
     시장 할인을 이미 반영해 낙찰가/시세보다 훨씬 안정적 → 실측 오차 최소(~10%).
     최저매각가가 없으면 시세×할인율(유사낙찰→모델→유찰→전역)로 폴백."""
-    if stale_floor(v):
-        return None      # 낡은 출발선으로 만든 예측은 지어낸 값이다 — 미산출로 둔다
+    if floor_unconfirmed(v):
+        # 낡은 출발선으로 만든 예측은 지어낸 값이다 — 미산출로 둔다.
+        # REC-1: 1회 지연(최저가=감정가)만 보던 것을 다회차 지연(floor_lagging)까지 넓혔다.
+        return None
     mn = v.get("min_sale_price")
     prem = min_premium_for(bt, v.get("fail_count"))
     med = effective_median(v)
@@ -4261,7 +4815,8 @@ def bid_state(v: dict, bt: Optional[dict] = None, config: Optional[dict] = None)
     if not med or v.get("market_confidence_label") == "낮음":
         return out("lowconf", "시세 신뢰도 낮음 — 판정 보류", "wait")
     if not exp:
-        if stale_floor(v):
+        # 다회차 지연(REC-1)도 **같은 상태·같은 문구**로 둔다 — 새 문구를 만들지 않는다(지시서 2026-09-29-20).
+        if floor_unconfirmed(v):
             return out("wait", "다음 기일 최저가 공고 대기", "wait")
         # 시세·신뢰도는 멀쩡하고 저감가 문제도 아닌데 예측이 없는 경우 — 실측 0건이지만
         # 남겨 둔다. 여기서 '신뢰도'를 탓하면 또 틀린 이유를 말하게 된다.
@@ -4852,6 +5407,44 @@ def _pick_dict(v: dict, bt: dict) -> dict:
     return d
 
 
+def _daily_pick_gate(v: dict, kind: str, bt: dict, tier: Optional[dict] = None) -> Optional[tuple]:
+    """오늘의 추천 한 장의 **자격 — 한 곳.** 그 칸(kind)에 맞으면 (예상낙찰가, 시세), 아니면 None.
+
+    계산 경로(`compute_daily_picks` 의 `_add`)와 캐시 경로(`get_daily_picks` — 아침에 저장한 목록을 하루 동안
+    다시 쓰는 길)가 **같은 함수**를 부른다. 게이트를 한쪽에만 걸면 저장분이 하루를 버티며 샌다 — 두 번 샜다
+    (`get_daily_picks` 주석 참조). 자격을 고치면 두 경로가 함께 바뀐다.
+
+    - 사진·시세·최저매각가가 있고, `_promising`(시세 신뢰도 '높음' + 오매칭 아님)이어야 한다.
+    - bid_state 가 stop 이면 안 된다(아래 주석 — 2026-09-22).
+    - **예상낙찰가가 있어야 한다.** 최저가가 이번 회차 값으로 확인되지 않은 물건(`floor_unconfirmed`)은
+      `expected_for` 가 None 이라 여기서 빠진다 — 카드가 'AI 예상낙찰가 —'인 채 추천으로 서지 않는다.
+    - 칸: 재판매(resale)는 judgment '입찰 검토 가능'이 **후보 조건**일 뿐이다. 카드에 올릴지는 위 게이트가 정한다
+      (저장 문자열만으로 카드 판정을 정하지 않는다 — 그 문자열은 옛 최저가로 매긴 값일 수 있다).
+      실사용(now·cheap)은 `personal_use_tier` 가 지금 그 갈래라고 말해야 한다(`tier` 를 넘기면 다시 계산하지 않는다).
+    """
+    if not (v.get("photo_count") and v.get("median_price") and v.get("min_sale_price")):
+        return None
+    if not _promising(v):
+        return None
+    # ⚠ judgment 만 보면 안 된다. '입찰 검토 가능'인데 bid_state 가 stop 인 물건이
+    #   실제로 홈 첫 화면 캐러셀에 올라 있었다(2026-09-22 실측: 시동 불가 카니발 —
+    #   tone=stop 이라 할인 배지조차 안 붙는데 '되팔아도 남음'으로 진열됐다).
+    #   같은 날 '지금 입찰 추천' 칸에서 고친 것과 같은 계열이다. 판정은 bid_state 를 따른다.
+    if (bid_state(v, bt) or {}).get("tone") == "stop":
+        return None
+    exp, med = expected_for(v, bt), effective_median(v)
+    if not exp or not med:
+        return None
+    if kind == "resale":
+        if v.get("judgment") != "입찰 검토 가능":
+            return None
+    else:
+        t = tier if tier is not None else personal_use_tier(v, bt)
+        if not t or t.get("tier") != kind:
+            return None
+    return exp, med
+
+
 def compute_daily_picks(n: int = 5) -> list:
     """오늘의 추천 물건 선정(매일 아침 갱신용). 반환: [{"id", "kind"}...]
 
@@ -4868,22 +5461,13 @@ def compute_daily_picks(n: int = 5) -> list:
     today = datetime.date.today().isoformat()
     cand, seen = [], set()
 
-    def _add(v, kind):
+    def _add(v, kind, tier=None):
         if v["id"] in seen:
             return                        # 한 물건이 두 축에 걸리면 먼저 잡힌 축으로 둔다
-        if not (v.get("photo_count") and v.get("median_price") and v.get("min_sale_price")):
+        g = _daily_pick_gate(v, kind, bt, tier=tier)   # 자격은 캐시 경로(get_daily_picks)와 같은 함수
+        if not g:
             return
-        if not _promising(v):
-            return
-        # ⚠ judgment 만 보면 안 된다. '입찰 검토 가능'인데 bid_state 가 stop 인 물건이
-        #   실제로 홈 첫 화면 캐러셀에 올라 있었다(2026-09-22 실측: 시동 불가 카니발 —
-        #   tone=stop 이라 할인 배지조차 안 붙는데 '되팔아도 남음'으로 진열됐다).
-        #   같은 날 '지금 입찰 추천' 칸에서 고친 것과 같은 계열이다. 판정은 bid_state 를 따른다.
-        if (bid_state(v, bt) or {}).get("tone") == "stop":
-            return
-        exp, med = expected_for(v, bt), effective_median(v)
-        if not exp or not med:
-            return
+        exp, med = g
         seen.add(v["id"])
         cand.append((med - exp, v, kind))  # 시세 대비 차익(할인액) 큰 순
 
@@ -4899,7 +5483,7 @@ def compute_daily_picks(n: int = 5) -> list:
             continue
         t = personal_use_tier(v, bt)
         if t:
-            _add(v, t["tier"])
+            _add(v, t["tier"], tier=t)
     cand.sort(key=lambda x: -x[0])
     picks, makers = [], set()
     for _, v, kind in cand:               # 제조사 다양성 우선
@@ -4930,7 +5514,8 @@ def refresh_daily_picks(n: int = 5) -> list:
 
 def get_daily_picks(n: int = 5) -> list:
     """오늘의 추천 물건(표시용 dict). 하루 고정(날짜 캐시), 없으면 계산·저장.
-    저장된 id를 매 로드 시 현재 상태로 재구성하되, 여전히 유효(검토가능·미래기일)한 것만."""
+    저장된 id를 매 로드 시 현재 상태로 재구성하되, 여전히 유효한 것만 — 미래 기일·입찰 시각 전이고
+    계산 경로와 **같은 자격**(`_daily_pick_gate`: 예상낙찰가·bid_state·그 칸)을 지금도 통과하는 것."""
     import datetime, json
     today = datetime.date.today().isoformat()
     ids = None
@@ -4961,18 +5546,17 @@ def get_daily_picks(n: int = 5) -> list:
             continue
         # ⚠ **여전히 그 축의 추천인가**를 다시 확인한다 — 아침에 고른 뒤 값이 바뀌었을 수 있다.
         #   판정은 bid_state/personal_use_tier 한 곳에서만 한다(축을 새로 만들지 않는다).
-        # ⚠⚠ 게이트를 compute 쪽에만 걸었더니 **캐시 경로로 시동 불가 차가 계속 떴다**
-        #    (2026-09-22 실측: 새로 계산하면 빠지는데 오늘 저장분에는 tone=stop 카니발이 3번에
-        #    그대로 남아 있었다). 저장분은 하루를 버티므로 여기서도 같은 게이트를 건다.
-        if (bid_state(v, bt) or {}).get("tone") == "stop":
+        # ⚠⚠ 캐시 경로 누수 — **두 번째다.** 게이트를 계산 쪽에만 걸면 저장분이 하루를 버티며 샌다.
+        #    ① 2026-09-22: 새로 계산하면 빠지는 tone=stop(시동 불가) 카니발이 오늘 저장분 3번에 그대로 남았다.
+        #       그때는 여기에 stop 게이트 **한 줄만** 더 걸었다.
+        #    ② 2026-09-29(REC-1 3회차, qa N1): 재판매 축이 저장 문자열 judgment=='입찰 검토 가능'만 다시 봤다.
+        #       최저가가 이번 회차 값으로 확인되지 않은(floor_unconfirmed → 예상낙찰가 없음) 520d·E300 이
+        #       홈 첫 화면에 '✓ 되팔아도 남음' · AI 예상낙찰가 '—' 로 떴다 — 계산 쪽 `_add` 는 이미 거르던 물건이고,
+        #       같은 물건의 상세는 '이번 회차 최저가 확인 필요', 홈 '지금 입찰 추천' 수에서도 빠져 있었다.
+        #    그래서 한 줄을 더 얹지 않고 계산 쪽과 **같은 함수**(`_daily_pick_gate`)를 부른다.
+        #    저장된 판정 문자열로 카드 판정을 정하지 않는다 — 그 문자열은 옛 최저가로 매긴 값일 수 있다.
+        if not _daily_pick_gate(v, kind, bt):
             continue
-        if kind == "resale":
-            if v.get("judgment") != "입찰 검토 가능":
-                continue
-        else:
-            t = personal_use_tier(v, bt)
-            if not t or t["tier"] != kind:
-                continue
         d = _pick_dict(v, bt)
         d["pick_kind"] = kind
         out.append(d)

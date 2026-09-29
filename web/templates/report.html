@@ -56,8 +56,10 @@
    exp를 그대로 제목에 찍으면 "예상낙찰가 0원 기준" 밑에 4,839만원 표가 붙는다. #}
 {% set abid = (report.allin_bid if report else 0) or 0 %}
 {% set abasis = report.allin_basis if report else none %}
+{#- REC-1 2회차: 최저가가 이번 기일 값으로 확인되지 않은 물건(floor_guard)은 '현' 최저매각가라고 부르지 않는다.
+   '-' 공백 제어는 가드가 아닌 물건의 렌더 바이트를 예전과 같게 두려는 것이다(tests/test_rec1_floor_view.py). #}
 {% set abasis_ko = {'expected': '예상낙찰가', 'upper': '재판매 상한가',
-                    'floor': '현 최저매각가'}.get(abasis, '기준가 미산출') %}
+                    'floor': '표시된 최저매각가' if floor_guard else '현 최저매각가'}.get(abasis, '기준가 미산출') %}
 <style>
 :root{
   --paper:#F6F7F9;--card:#fff;--ink:#16233A;--ink-soft:#4B5A73;--ink-faint:#5F6B7E;
@@ -909,20 +911,27 @@ document.addEventListener('click', function(e){
           {% set _danger = _tone == 'stop' or (max_bid and exp and exp > max_bid) %}
           {% if max_bid and _danger %}
           <div class="v-label gloss-row">입찰 상한선 <span style="font-weight:400">— 여기까지만 유효 · 직접 탈 목적 {{ ui.gloss('손익분기', '이 금액을 넘겨 낙찰받으면, 같은 차를 소매로 사는 것보다 손해가 되는 경계선이에요. 취득세·이전·탁송·정비 충당까지 더해 계산합니다.') }}</span></div>
-          <div class="v-band num" style="color:var(--red)">{{ (max_bid/10000)|round|int }}<small>만원</small>{% if floor and floor > max_bid %} <span class="chip risk" style="vertical-align:middle">써낼 수 없는 금액</span>{% endif %}</div>
-          {% if floor and floor > max_bid %}
+          {#- REC-1 2회차: `floor_ok` = 표시된 최저가가 이번 기일 값으로 확인됐다. 아니면(floor_guard) 그 값과 상한을
+             비교한 '써낼 수 없는 금액'·'어떤 금액을 써도 손해'를 내지 않는다 — 상세는 같은 물건을 '이번 회차 최저가
+             확인 필요'로 말한다(qa F1: 가드 물건 59대 중 26대가 리포트에서만 반대 판정). #}
+          {%- set floor_ok = not floor_guard %}
+          <div class="v-band num" style="color:var(--red)">{{ (max_bid/10000)|round|int }}<small>만원</small>{% if floor_ok and floor and floor > max_bid %} <span class="chip risk" style="vertical-align:middle">써낼 수 없는 금액</span>{% endif %}</div>
+          {% if floor_ok and floor and floor > max_bid %}
           <div class="v-sub" style="color:var(--red);font-weight:600">현 최저매각가 {{ floor|won }}원이 이 손익분기를 이미 넘습니다 — <b>이번 기일은 어떤 금액을 써도 손해</b>입니다.</div>
           {% endif %}
           <div class="v-sub">이 값을 넘겨 낙찰받으면 <b>소매로 사는 편이 쌉니다</b>. 취득세·이전·탁송·상태별 정비 충당 포함,
-            {% if use %}사고 감가 <b>{{ (use.accident_rate*100)|round|int }}%</b>
-            {%- if use.accident_assumed %}(이력 미확인 — 사고차로 가정)
-            {%- elif use.accident_hits is not none %}(확인된 사고 {{ use.accident_hits }}건 기준 · 업계 통용 범위 기반 <b>가정</b>이며 실측값이 아닙니다)
-            {%- endif %} · 정비 충당 <b>{{ use.reserve|won }}원</b>{% endif %}
+            {#- REC-1 3회차: 가드 물건은 use(절감액 내역)가 None 이라 이 문장이 통째로 빠지고 '포함,' 쉼표만 매달렸다 —
+               같은 입력을 ceiling_basis(app.py _ceiling_basis, 가드일 때만)로 받는다. use 가 있으면 예전과 같은 바이트. #}
+            {% set _ub = use or ceiling_basis %}{% if _ub %}사고 감가 <b>{{ (_ub.accident_rate*100)|round|int }}%</b>
+            {%- if _ub.accident_assumed %}(이력 미확인 — 사고차로 가정)
+            {%- elif _ub.accident_hits is not none %}(확인된 사고 {{ _ub.accident_hits }}건 기준 · 업계 통용 범위 기반 <b>가정</b>이며 실측값이 아닙니다)
+            {%- endif %} · 정비 충당 <b>{{ _ub.reserve|won }}원</b>{% endif %}
             <span style="display:block">단, <b>유치권(수리비·보관료)·인수부담은 이 값에 반영돼 있지 않습니다</b> — <a href="#sec09">09 리스크</a>에서 확인하세요.</span></div>
           <div class="v-label gloss-row" style="margin-top:14px">예상낙찰가 <span style="font-weight:400">{% if exp %}— 참고({{ ui.gloss('분위수 밴드', '과거 낙찰 결과가 얼마나 흩어졌는지(사분위 폭)를 중심값에 적용한 범위예요. 이 안에 떨어질 가능성이 높다는 뜻이지 보장은 아닙니다.') }}{% if expected.acc %} · {{ ui.acc_why() }}({{ expected.acc.label }}, {{ expected.acc.n }}건) <span style="white-space:nowrap">실측 오차 ±{{ expected.acc.mae }}%</span>{% endif %}){% endif %}</span></div>
           <div class="v-sub" style="font-size:15px"><b class="num">{% if report.lo and report.hi %}{{ (report.lo/10000)|round|int }} ~ {{ (report.hi/10000)|round|int }} 만원{% elif exp %}{{ (exp/10000)|round|int }} 만원{% else %}<b>미산출</b>{% endif %}</b>
             {% if exp %}· 중심값 {{ exp|won }}원 {% endif %}· 재판매 상한가 {% if upper %}{{ upper|won }}원{% else %}미산출{% endif %}
-            {% if not exp %}<span style="display:block;font-weight:400">— 이 물건은 <b>예상낙찰가를 산출하지 않았습니다</b>(표본·조건 불충족). 아래 06·08은 현 최저매각가 기준입니다.</span>{% endif %}
+            {% if not exp and floor_guard %}<span style="display:block;font-weight:400">— 이 물건은 <b>이번 회차 최저가가 확인되지 않아</b> 예상낙찰가를 산출하지 않았습니다. 아래 06·08은 {{ abasis_ko }} {{ abid|won }}원을 가정한 계산입니다.</span>
+            {% elif not exp %}<span style="display:block;font-weight:400">— 이 물건은 <b>예상낙찰가를 산출하지 않았습니다</b>(표본·조건 불충족). 아래 06·08은 현 최저매각가 기준입니다.</span>{% endif %}
             {% if report.hi and exp and report.hi <= exp %}<span style="display:block;font-weight:400;color:var(--ink-faint)">예상가 밴드는 소매 시세의 110%(소프트캡)에서 멈추도록 제한돼 있어 윗부분이 여기서 끊깁니다. 중심값이 맨 위에 있다고 해서 그 금액까지 써도 된다는 뜻은 아닙니다.</span>{% endif %}
             {% if exp and exp > max_bid %}<b style="color:var(--red)">— 예상 경쟁가가 상한선을 {{ (exp - max_bid)|won }}원 넘습니다.</b>{% endif %}</div>
           {% else %}
@@ -931,27 +940,43 @@ document.addEventListener('click', function(e){
           <div class="v-band num">{% if report.lo and report.hi %}{{ (report.lo/10000)|round|int }} <small>~</small> {{ (report.hi/10000)|round|int }}<small>만원</small>{% elif exp %}{{ (exp/10000)|round|int }}<small>만원</small>{% else %}<span style="font-family:var(--sans);font-size:21px;color:var(--ink-soft)">미산출</span>{% endif %}</div>
           <div class="v-sub">{% if exp %}중심값 <b class="num">{{ exp|won }}원</b> · {% endif %}재판매 상한가 {% if upper %}<b class="num">{{ upper|won }}원</b>{% else %}<b>미산출</b>{% endif %}
             {% if report.hi and exp and report.hi <= exp %}<span style="display:block;color:var(--ink-faint)">예상가 밴드는 소매 시세의 110%(소프트캡)에서 멈추도록 제한돼 있어 윗부분이 여기서 끊깁니다. 중심값이 맨 위에 있다고 해서 그 금액까지 써도 된다는 뜻은 아닙니다.</span>{% endif %}
-            {% if not exp %}<span style="display:block">— 이 물건은 <b>예상낙찰가를 산출하지 않았습니다</b>(표본·조건 불충족). 아래 <b>06·08은 현 최저매각가 기준</b>입니다.</span>{% endif %}</div>
+            {% if not exp and floor_guard %}<span style="display:block">— 이 물건은 <b>이번 회차 최저가가 확인되지 않아</b> 예상낙찰가를 산출하지 않았습니다. 아래 06·08은 <b>{{ abasis_ko }} {{ abid|won }}원을 가정</b>한 계산입니다.</span>
+            {% elif not exp %}<span style="display:block">— 이 물건은 <b>예상낙찰가를 산출하지 않았습니다</b>(표본·조건 불충족). 아래 <b>06·08은 현 최저매각가 기준</b>입니다.</span>{% endif %}</div>
           {% if max_bid %}
           {# 상한선이 최저매각가보다 낮으면 이 큰 숫자는 **법적으로 써낼 수 없는 금액**이다.
-             06에서 고친 오류와 같은 종류가 히어로에 남아 있었다(디자인 검수 지적 2). #}
-          {% set _unbiddable = floor and floor > max_bid %}
+             06에서 고친 오류와 같은 종류가 히어로에 남아 있었다(디자인 검수 지적 2).
+             ⚠ REC-1 2회차: 단, 그 최저가가 이번 기일 값으로 확인됐을 때만이다(floor_guard 가 없을 때). #}
+          {% set _unbiddable = floor and floor > max_bid and not floor_guard %}
           <div class="v-label gloss-row" style="margin-top:14px">입찰 상한선 <span style="font-weight:400">— 직접 탈 목적 {{ ui.gloss('손익분기', '이 금액을 넘겨 낙찰받으면, 같은 차를 소매로 사는 것보다 손해가 되는 경계선이에요. 취득세·이전·탁송·정비 충당까지 더해 계산합니다.') }}</span></div>
           <div class="v-band num" style="color:{{ 'var(--ink-soft)' if _unbiddable else 'var(--ink)' }}">{{ (max_bid/10000)|round|int }}<small>만원</small>{% if _unbiddable %} <span class="chip risk" style="vertical-align:middle">써낼 수 없는 금액</span>{% endif %}</div>
           {% if _unbiddable %}
           <div class="v-sub" style="color:var(--red);font-weight:600">현 최저매각가 {{ floor|won }}원이 이 손익분기를 이미 넘습니다 — <b>이번 기일은 어떤 금액을 써도 손해</b>입니다.</div>
+          {% elif floor_guard and floor_guard.pending %}
+          <div class="v-sub" style="font-weight:600">이번 기일 공고 최저가가 {{ max_bid|won }}원을 넘으면 <b>입찰하지 마세요</b>(소매가 유리). 시세에서 나온 값이라 최저가 확인과 무관합니다.</div>
           {% endif %}
           <div class="v-sub">이 값을 넘겨 낙찰받으면 <b>소매로 사는 편이 쌉니다</b>. 취득세·이전·탁송·상태별 정비 충당 포함,
-            {% if use %}사고 감가 <b>{{ (use.accident_rate*100)|round|int }}%</b>
-            {%- if use.accident_assumed %}(이력 미확인 — 사고차로 가정)
-            {%- elif use.accident_hits is not none %}(확인된 사고 {{ use.accident_hits }}건 기준 · 업계 통용 범위 기반 <b>가정</b>이며 실측값이 아닙니다)
-            {%- endif %} · 정비 충당 <b>{{ use.reserve|won }}원</b>{% endif %}
+            {#- REC-1 3회차: 가드 물건은 use(절감액 내역)가 None 이라 이 문장이 통째로 빠지고 '포함,' 쉼표만 매달렸다 —
+               같은 입력을 ceiling_basis(app.py _ceiling_basis, 가드일 때만)로 받는다. use 가 있으면 예전과 같은 바이트. #}
+            {% set _ub = use or ceiling_basis %}{% if _ub %}사고 감가 <b>{{ (_ub.accident_rate*100)|round|int }}%</b>
+            {%- if _ub.accident_assumed %}(이력 미확인 — 사고차로 가정)
+            {%- elif _ub.accident_hits is not none %}(확인된 사고 {{ _ub.accident_hits }}건 기준 · 업계 통용 범위 기반 <b>가정</b>이며 실측값이 아닙니다)
+            {%- endif %} · 정비 충당 <b>{{ _ub.reserve|won }}원</b>{% endif %}
             <span style="display:block">단, <b>유치권(수리비·보관료)·인수부담은 이 값에 반영돼 있지 않습니다</b> — <a href="#sec09">09 리스크</a>에서 확인하세요.</span></div>
           {% endif %}
           {% endif %}
         </div>
         <ul class="vpts">
+          {%- if floor_guard %}
+          {# REC-1 2회차 — 상세 '가격 확인 필요' 행과 같은 사실·같은 할 일. '추가 유찰 대기 권장'은 낡은 최저가로 낸 권고라 쓰지 않는다. #}
+          {% set fg = floor_guard %}
+          {# REC-1 3회차 — 상세와 **같은 분기**: 저감률 출처(est.basis — 이 법원 / 전국 기준), '수집된' 기일내역(‘법원’은 법원 사이트에만),
+             최저가 말고도 막는 사유(fg.hold)가 있으면 '확인 전까지 내지 않습니다' 대신 확인해도 풀리지 않는다고 말한다(REC-7 ⑹). #}
+          <li>표시된 최저매각가 <b class="num">{{ floor|won }}원</b> — <b>이번 회차 최저가 확인 필요</b>. {% if fg.behind %}유찰 {{ fg.fc }}회인데 감정가의 {{ fg.pct }}%(저감 {{ fg.k }}회분)라 {{ '직전 회차 값' if fg.behind == 1 else '이전 회차 값' }}으로 보입니다.{% else %}유찰 {{ fg.fc }}회인데 수집된 기일내역에는 유찰이 {{ fg.hist_fails }}회까지만 있어 이번 회차 값이 아닐 수 있습니다.{% endif %}
+            {% if fg.est %}이번 기일(<span style="white-space:nowrap">{{ fg.sale_date }}</span>) 최저가는 {{ '이 법원 저감률로' if fg.est.basis == 'court' else '전국 기준 저감률(이 법원 표본 부족)로' }} 약 <b class="num">{{ fg.est.price|won }}원</b>(추정)입니다.{% elif fg.pending and fg.behind %}여러 회차가 빠져 있어 이번 기일 최저가는 추정하지 않습니다.{% endif %}
+            <span style="display:block">{% if fg.hold %}최저가를 확인해도 {{ fg.hold_msg }}. {% endif %}{% if fg.hold == 'stop' and fg.pending %}판정 보류가 풀린 뒤에 법원경매정보 사건 상세의 <b>기일내역</b>에서 최저가를 확인하세요.{% elif fg.pending %}입찰 전 법원경매정보 사건 상세의 <b>기일내역</b>에서 이번 기일 최저가를 확인하세요.{% else %}다음 기일이 잡히면 법원경매정보 사건 상세의 <b>기일내역</b>에서 그 기일 최저가를 확인하세요.{% endif %}{% if not fg.hold %} 확인 전까지 예상낙찰가는 내지 않습니다.{% endif %}</span></li>
+          {%- else %}
           <li>현 최저매각가 <b class="num">{{ floor|won }}원</b> — {% if _st == 'blocked' %}<b style="color:var(--red)">이미 입찰 상한선을 넘습니다. 이번 회차는 입찰 부적합</b>{% elif _st == 'over_market' %}{% if exceeds_market %}<b style="color:var(--red)">예상낙찰가가 소매 시세를 넘어 입찰을 권하지 않습니다</b>{% else %}<b style="color:var(--red)">예상 경쟁가가 입찰 상한선을 넘어 이번 회차는 권하지 않습니다</b>{% endif %}{% elif _st == 'wait' %}{% if exp %}예상낙찰가 초과 — 추가 유찰 대기 권장{% else %}저감가가 공고되지 않아 예상낙찰가를 내지 않았습니다 — 추가 유찰 대기 권장{% endif %}{% elif opp %}예상낙찰가 이하 — 지금 입찰 검토 가능{% else %}시세 신뢰도가 낮아 판정을 보류합니다{% endif %}</li>
+          {%- endif %}
           {# 2026-09-12 수정: 여기 있던 report.discount는 **이 물건이 아니라 모집단 중앙값**이었다.
      "예상낙찰가는 약 73%"로 표시되는데 실제 이 물건은 105%인 사례가 3/3 재현됐다.
      이 물건 값(exp/med)을 쓰고, 모집단 통계는 별도 라벨로 분리한다. #}
@@ -970,8 +995,11 @@ document.addEventListener('click', function(e){
              경고 상태에서는 이 기준가가 우리가 방금 "쓰지 말라"고 한 금액이기 때문이다(디자인 검수 지적 3). #}
           <li>{{ abasis_ko }} <b class="num">{{ abid|won }}원</b>에 낙찰된다고 가정하면 <b>준비할 현금은 총 <span class="num">{{ report.allin_ref.total|won }}원</span></b>입니다 — 취득세·이전등록·탁송·정비 충당을 더한 실제 지출(<a href="#sec06">06</a>). 차량 경매는 <b>경락잔금대출이 사실상 없어 전액 현금</b>으로 준비해야 합니다(<a href="#sec12">12 낙찰 전후 절차</a>).</li>
           {% endif %}
-          {% if next_min %}<li class="gloss-row">이번 기일에 {{ ui.gloss('유찰', '입찰한 사람이 없어 팔리지 않은 것이에요. 유찰될 때마다 법원이 최저매각가를 낮춰(보통 20~30%) 다음 기일에 다시 내놓습니다.') }}되면 <b>다음 기일 예상 최저가는 <span class="num">{{ next_min.price|won }}원</span></b>({{ ((1-next_min.ratio)*100)|round|int }}% {{ ui.gloss('저감', '유찰 뒤 법원이 최저매각가를 낮추는 것이에요. 저감률은 법원·사건마다 다를 수 있습니다.') }}{% if next_min.basis == 'court' %} · 이 법원 실측 {{ next_min.court_n }}회{% if next_min.share and next_min.share < 0.85 %} 중 {{ (next_min.share*100)|round|int }}%{% endif %}{% else %} · 전국 기준(이 법원 표본 부족){% endif %})</li>{% endif %}
-          <li><b>시세 신뢰도 {{ conf }}/100</b> — 이 결론이 딛고 선 <b>소매 시세</b>를 얼마나 믿을 수 있는지의 점수입니다(차량 상태·사고 이력의 확실성은 별개 · 02 참조). 미확정 요소는 현장확인(상태·정비비)뿐이며 결과에 따라 밴드가 조정될 수 있음(09)</li>
+          {#- REC-1 2회차: 가드 물건의 next_min 은 사실상 **이번** 기일 값이라 '다음 기일'로 부르면 한 문서에서 두 기일을 가리킨다. #}
+          {% if next_min and not floor_guard %}<li class="gloss-row">이번 기일에 {{ ui.gloss('유찰', '입찰한 사람이 없어 팔리지 않은 것이에요. 유찰될 때마다 법원이 최저매각가를 낮춰(보통 20~30%) 다음 기일에 다시 내놓습니다.') }}되면 <b>다음 기일 예상 최저가는 <span class="num">{{ next_min.price|won }}원</span></b>({{ ((1-next_min.ratio)*100)|round|int }}% {{ ui.gloss('저감', '유찰 뒤 법원이 최저매각가를 낮추는 것이에요. 저감률은 법원·사건마다 다를 수 있습니다.') }}{% if next_min.basis == 'court' %} · 이 법원 실측 {{ next_min.court_n }}회{% if next_min.share and next_min.share < 0.85 %} 중 {{ (next_min.share*100)|round|int }}%{% endif %}{% else %} · 전국 기준(이 법원 표본 부족){% endif %})</li>{% endif %}
+          {#- REC-1 3회차(design-critic 2회차 #2ⓑ): 가드 물건에서 '미확정 요소는 현장확인뿐'은 같은 상자 첫 요점('이번 회차 최저가 확인 필요')과
+             모순이고, 예상낙찰가가 없으면 '밴드'도 없다(없는 것을 가리키는 참조). 예상가가 있는 물건의 문장은 바이트 그대로다. #}
+          <li><b>시세 신뢰도 {{ conf }}/100</b> — 이 결론이 딛고 선 <b>소매 시세</b>를 얼마나 믿을 수 있는지의 점수입니다(차량 상태·사고 이력의 확실성은 별개 · 02 참조). {% if floor_guard %}미확정 요소는 <b>이번 회차 최저가</b>와 현장확인(상태·정비비)입니다(09){% elif exp %}미확정 요소는 현장확인(상태·정비비)뿐이며 결과에 따라 밴드가 조정될 수 있음(09){% else %}미확정 요소는 현장확인(상태·정비비)입니다(09){% endif %}</li>
         </ul>
       </div>
       {# 종합 프로필 6축 육각형 — 단일 시리즈(범례 없음), 값은 우측 표·툴팁, 자료 없는 축은 미산출로 둔다 #}
@@ -1141,7 +1169,9 @@ document.addEventListener('click', function(e){
         <div class="kv"><dt>주행거리</dt><dd class="num">{{ v.mileage_km|won }} km {% if v.mileage_km %}<span class="tag confirmed">확정</span>{% endif %}</dd></div>
         <div class="kv"><dt>배기량 / 연료</dt><dd class="num">{{ v.displacement_cc or '—' }}cc{% if asum and asum.fuel %} · {{ asum.fuel }}{% endif %}</dd></div>
         <div class="kv gloss-row"><dt>{{ ui.gloss('감정가', '법원이 감정평가사를 통해 매긴 차량 가치예요. 최저매각가와 낙찰가율의 기준이 됩니다.') }}</dt><dd class="num">{{ v.appraisal_value|won }}원 {% if v.appraisal_value %}<span class="tag confirmed">확정</span>{% endif %}</dd></div>
-        <div class="kv gloss-row"><dt>{{ ui.gloss('최저매각가', '이번 기일에 이 금액 이상 써내야 입찰돼요. 유찰될 때마다 보통 20~30%씩 내려갑니다.') }}</dt><dd class="num">{{ v.min_sale_price|won }}원{% if v.appraisal_value and v.min_sale_price %} ({{ (100*v.min_sale_price/v.appraisal_value)|round|int }}%){% endif %}</dd></div>
+        {#- REC-1 3회차(design-critic 2회차 #2ⓒ · app-design 고칠 것 2): 상세와 같은 가드 분기 — 확인되지 않은 최저가에 '이번 기일에 이 금액
+           이상 써내야'를 붙이면 같은 리포트 01 의 '이번 회차 최저가 확인 필요'와 반대 말이다(화면 탭·aria-label 로 읽힌다). #}
+        <div class="kv gloss-row"><dt>{% if floor_guard %}{{ ui.gloss('표시된 최저매각가', '법원 목록에 표시된 금액이에요. 이번 기일 값으로 확인되지 않아 이번 기일 최저가와 다를 수 있습니다 — 01 핵심 결론의 첫 요점을 보세요.') }}{% else %}{{ ui.gloss('최저매각가', '이번 기일에 이 금액 이상 써내야 입찰돼요. 유찰될 때마다 보통 20~30%씩 내려갑니다.') }}{% endif %}</dt><dd class="num">{{ v.min_sale_price|won }}원{% if v.appraisal_value and v.min_sale_price %} ({{ (100*v.min_sale_price/v.appraisal_value)|round|int }}%){% endif %}</dd></div>
         <div class="kv"><dt>유찰횟수</dt><dd class="num">{{ v.fail_count if v.fail_count is not none else '—' }}회</dd></div>
         <div class="kv"><dt>사고판정</dt><dd>{{ v|accv }}{% if v.accident_hits %} <span class="chip warn">{{ v.accident_hits|join(', ') }}</span>{% endif %}</dd></div>
         {% if v.sale_place %}<div class="kv"><dt>매각장소</dt><dd style="font-size:12px">{% if v.court %}{{ v.court }} {% endif %}{{ v.sale_place }}{% if v.sale_time %} · {{ v.sale_time }} 입찰{% endif %}</dd></div>{% endif %}
@@ -1167,7 +1197,9 @@ document.addEventListener('click', function(e){
     <div class="card">
       {% if v.spec_remark %}<div class="v-label">매각물건명세 요약</div><pre class="body" style="margin-bottom:16px">{{ v.spec_remark }}</pre>{% endif %}
       {% if v.insurance_history %}<div class="v-label">보험 이력</div>
-      <p class="note" style="margin-top:4px;color:var(--ink-soft)">전손 {{ v.insurance_history.get('total_loss','?') }} · 침수 {{ v.insurance_history.get('flood','?') }} · 내차피해 {{ v.insurance_history.get('own_damage','?') }} · 소유자변경 {{ v.insurance_history.get('owner_changes','?') }} <span class="tag verified">검증</span></p>{% endif %}
+      {#- REC-1 3회차(app-design 2회차 고칠 것 2 · design-critic #2ⓓ): 상세 보험이력과 **같은 루프** — 빈 값은 '?'가 아니라 '기재 없음',
+         횟수엔 '회'. '?' 옆의 초록 '검증' 태그는 '침수 ?'(=의심)를 확인된 사실처럼 보이게 했다. 법정에 들고 가는 문서다. #}
+      <p class="note" style="margin-top:4px;color:var(--ink-soft)">{% for _k, _lab in [('total_loss', '전손'), ('flood', '침수'), ('own_damage', '내차피해'), ('owner_changes', '소유자변경')] %}{% set _n = v.insurance_history.get(_k) %}{{ _lab }} {% if _n is not none %}<span class="num">{{ _n }}</span>회{% else %}기재 없음{% endif %}{{ ' · ' if not loop.last }}{% endfor %} <span class="tag verified">검증</span></p>{% endif %}
       {% if asum %}
       <div class="v-label" style="margin-top:16px">감정 요항 <span class="tag confirmed">확정</span></div>
       <div class="abadges">
@@ -1314,7 +1346,7 @@ document.addEventListener('click', function(e){
         <tbody>
         {% for s in report.sim %}
           <tr class="{{ 'row-hl' if s.is_exp else '' }}">
-            <td class="r num k">{{ s.bid|won }}{% if s.is_exp %} <span class="tag verified">예상</span>{% elif s.is_upper %} <span class="tag estimated">재판매 상한</span>{% elif floor and s.bid == floor %} <span class="tag basis">현 최저가</span>{% elif exp and s.bid > exp %} <span class="tag basis">경쟁 시 +{{ ((s.bid / exp - 1) * 100)|round|int }}%</span>{% elif exp and upper and upper < s.bid < exp %} <span class="tag basis">예상·상한 중간</span>{% endif %}</td>
+            <td class="r num k">{{ s.bid|won }}{% if s.is_exp %} <span class="tag verified">예상</span>{% elif s.is_upper %} <span class="tag estimated">재판매 상한</span>{% elif floor and s.bid == floor %}{# REC-1 3회차 qa N5: 확인되지 않은 최저가를 '현'이라 부르지 않는다(01 요점·06·08 과 같은 말) #} <span class="tag basis">{{ '표시된 최저가' if floor_guard else '현 최저가' }}</span>{% elif exp and s.bid > exp %} <span class="tag basis">경쟁 시 +{{ ((s.bid / exp - 1) * 100)|round|int }}%</span>{% elif exp and upper and upper < s.bid < exp %} <span class="tag basis">예상·상한 중간</span>{% endif %}</td>
             <td class="r num d">{{ s.tax|won }}</td>
             <td class="r num d">{{ (s.fixed+s.repair+s.reserve)|won }}</td>
             <td class="r num d">{{ s.total|won }}</td>
@@ -1402,7 +1434,11 @@ document.addEventListener('click', function(e){
          "69,990,000 × 82% ＝ 0" 이라는 닫히지 않는 검산이 인쇄된다.
          산식 대신 왜 안 냈는지를 적는다 — 안 낸 것과 0원은 다른 말이다. #}
       <div class="sec-empty inset">이 물건은 <b>예상낙찰가를 산출하지 않았습니다.</b>
-        {% if v.fail_count and v.appraisal_value and v.min_sale_price and v.appraisal_value == v.min_sale_price %}
+        {% if floor_guard %}
+        {# REC-1 2회차 — 1회·다회차 지연 공통. '공고하지 않은 것'이 아니라 우리가 이번 회차 값을 받지 못한 것이다(backend 조사). #}
+        표시된 최저매각가가 이번 회차 값으로 확인되지 않았습니다(유찰 {{ floor_guard.fc }}회{% if floor_guard.pct is not none %} · 감정가의 {{ floor_guard.pct }}%{% endif %}).
+        낡은 출발선에 산식을 걸면 값이 부풀려지므로, 최저가가 확인되기 전까지는 비워 둡니다.
+        {% elif v.fail_count and v.appraisal_value and v.min_sale_price and v.appraisal_value == v.min_sale_price %}
         유찰 {{ v.fail_count }}회인데 최저매각가가 감정가와 같아, 법원이 저감된 가격을
         아직 공고하지 않은 것으로 보입니다. 낡은 출발선에 산식을 걸면 값이 부풀려지므로
         저감가 공고 전까지는 비워 둡니다.

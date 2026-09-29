@@ -399,9 +399,11 @@ try{if(localStorage.getItem('ncListLegend')==='1')d.open=true;}catch(e){}
 d.addEventListener('toggle',function(){try{localStorage.setItem('ncListLegend',d.open?'1':'0');}catch(e){}});})();</script>
 
 {% if picks %}
-{# 홈 '유망 물건 → 전체 보기'. 홈의 8대는 이 목록의 상위(오늘의 추천 제외) — 같은 함수(service.promising_rows). #}
+{# 홈 '유망 물건 → 전체 보기'. 홈 카드는 이 목록의 상위(오늘의 추천 제외) — 같은 함수(service.promising_rows).
+   ⚠ 장수를 문장에 박지 않는다(REC-1 1회차 교차검수 지적 3ⓒ): 홈은 최대 8대·추천은 그날 뽑힌 만큼이라
+   '8대'·'5대'가 실제(유망 1대·캐러셀 3장)와 어긋났다. 이 화면에는 그 수가 없으므로 숫자를 뺀다. #}
 <div class="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2" style="word-break:keep-all">
-  <b>유망 물건</b> — {{ pick_subtitle[0] }}<b>{{ pick_subtitle[1] }}</b>{{ pick_subtitle[2] }} 보여줍니다. 홈의 8대는 이 목록의 상위(오늘의 추천 5대 제외)입니다.
+  <b>유망 물건</b> — {{ pick_subtitle[0] }}<b>{{ pick_subtitle[1] }}</b>{{ pick_subtitle[2] }} 보여줍니다. 홈의 유망 물건은 이 목록의 상위(오늘의 추천에 오른 차 제외)입니다.
 </div>
 {% endif %}
 {% if bucket == 'nomarket' %}
@@ -717,7 +719,9 @@ d.addEventListener('toggle',function(){try{localStorage.setItem('ncUsepickBasis'
         {% if not closed and v.bidst and (v.bidst.max_bid or v.bidst.exp_pinned) %}
         {# 스캔은 목록에서 일어난다 — 상세는 상한선을 대표로 올려놓고 목록만 '큰 보라 숫자 = 그 숫자'를
            가르치면 고친 오독을 목록이 다시 심는다(디자인 검수). 보조줄이되 무게를 예상낙찰가와 동률로. #}
-        {% set _cover = v.bidst.floor and v.bidst.max_bid and v.bidst.floor > v.bidst.max_bid %}
+        {#- REC-1 2회차: 표시된 최저가가 이번 기일 값으로 확인되지 않은 물건(floor_check)은 그 값과 상한을 비교하지 않는다 —
+           낡은 최저가 기준 로즈는 상세가 거둬들인 '이번 회차 입찰 부적합'을 목록이 다시 말하는 셈이다(app.py _bidst_view). #}
+        {% set _cover = v.bidst.floor and v.bidst.max_bid and v.bidst.floor > v.bidst.max_bid and not v.bidst.floor_check %}
         {% set _cbad = _cover or v.bidst.state in ('blocked','over_market') %}
         <div class="mt-1 flex flex-wrap items-baseline justify-between gap-x-2 text-xs" style="word-break:keep-all">
           {% if v.bidst.exp_pinned %}<span class="text-mut text-[11px]">최저가 기준 — 더 내려가지 않음</span>{% else %}<span></span>{% endif %}
