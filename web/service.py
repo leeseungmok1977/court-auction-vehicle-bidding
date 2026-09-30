@@ -5147,16 +5147,31 @@ def accuracy_for(v: dict, bt: Optional[dict] = None) -> Optional[dict]:
             "group": worst["group"], "label": _acc_label(worst)}
 
 
-def alert_items(days: int = 3) -> list:
-    """임박 매각기일(오늘~D+days) 알림 대상 — 검토가능 물건. dday·예상낙찰가 포함(PS-05).
+def _alert_rows(days: int, bt: Optional[dict] = None) -> tuple:
+    """임박 매각기일 알림(홈 `alert_items`)과 헤더 벨 배지(`alert_count`)의 대상 — **한 곳.** 반환 ([(행, dday)], bt).
 
-    (즐겨찾기는 기기 로컬 저장이라 서버가 알 수 없음 → 목록의 ★ 마커는 클라이언트가 도색.)"""
+    대상 = 홈 '지금 입찰 추천'(review) 칸에 **지금** 드는 물건 가운데 매각기일이 오늘~D+days 이고 입찰 시각 전인 것.
+    칸 판정은 `lifecycle_bucket_of` 를 그대로 부른다(→ `_bucket_and_tier`: 저장 judgment + `_review_biddable` +
+    bid_state state ∈ resale·usepick). 알림이 따로 판단하지 않는다 — 칸의 조건이 바뀌면 알림과 벨이 함께 바뀐다.
+    두 함수가 이 한 함수를 쓰므로 벨 숫자 = 홈 알림 카드 수가 구조로 선다(예전엔 두 벌이라 한쪽만 고치면 갈렸다).
+
+    ⚠ 예전엔 저장 문자열 judgment=='입찰 검토 가능' **만으로** 골랐다. 같은 계열 누수의 **세 번째 길**이다
+      (REC-1 4회차, qa N7). ① 2026-09-22 캐러셀: 시동 불가 카니발(tone stop)이 '되팔아도 남음'
+      ② 2026-09-29 캐러셀 캐시 경로(qa N1): 최저가가 이번 회차 값으로 확인되지 않은 520d·E300
+      ③ 여기: 같은 E300(floor_unconfirmed → 예상낙찰가 없음, 판정 '다음 기일 최저가 공고 대기')이 기일 D-3 부터
+         홈 '3일 이내 · 검토가능 물건'에 '예상낙찰가 —' 로, 모든 화면의 벨 배지에 1 로 뜬다(09-29 백업, 반사실 10-09).
+         같은 차의 상세는 '이번 회차 최저가 확인 필요'였고 '지금 입찰 추천' 수에서도 빠져 있었다.
+         매일 갱신의 재판정(rejudge_floor_changes)도 이 저장값을 바꾸지 못한다 — 저절로 풀리지 않는다.
+      저장된 판정 문자열은 옛 최저가로 매긴 값일 수 있다. 그 문자열로 '검토가능'이라 말하지 않는다.
+    - 후보 질의의 judgment 는 review 칸의 **필요조건**이라 SQL 에서 먼저 좁히는 데만 쓴다(판정은 칸이 한다).
+      모수는 칸을 센 목록과 같게 `hide_incomplete=True` — 알림 ⊆ `/vehicles?bucket=review` 가 구조로 선다
+      (그 목록이 숨기는 '(중복)' 같은 사건번호 행이 알림으로만 나오지 않게).
+    - bt 는 후보가 있을 때만 구한다. 벨은 모든 화면이 부르는 자리라 후보가 0 이면 백테스트를 건드리지 않는다.
+    """
     import datetime
     today = datetime.date.today()
-    bt = backtest_stats()
-    seen, out = set(), []
-    rows = db.list_vehicles(judgment="입찰 검토 가능", upcoming_days=days)
-    for v in rows:
+    out, seen = [], set()
+    for v in db.list_vehicles(judgment="입찰 검토 가능", upcoming_days=days, hide_incomplete=True):
         if v["id"] in seen:
             continue
         seen.add(v["id"])
@@ -5170,6 +5185,7 @@ def alert_items(days: int = 3) -> list:
         # 끝난 경매가 같은 날 오후까지 '3일 이내 · 검토가능' 카드로, 그것도 빨강 D-DAY 칩
         # (dashboard.html: dday<=1 → bg-rose-100)과 헤더 벨 배지까지 달고 남는다. 알림은
         # '지금 할 수 있는 일'을 말하는 자리다 — 끝난 것은 뺀다(2026-09-23 목록·상세와 같은 건).
+        # (bid_state 도 '기일 경과'로 review 칸에서 뺀다 — 여기서 먼저 걸러 판정 계산을 아낀다.)
         # ⚠ 여기서 **dday=None 을 실어 보내면 안 된다.** 알림 카드는 dday 를 그대로 비교·출력하는
         #   자리라 None 이면 화면이 깨진다. 이 목록의 dday 는 항상 0 이상의 정수여야 한다.
         # ⚠ 낙찰·종결은 judgment='입찰 검토 가능' 질의에서 이미 빠진다(db.list_vehicles).
@@ -5177,8 +5193,24 @@ def alert_items(days: int = 3) -> list:
         #   알림을 뺏는 쪽이 이 화면에서는 더 비싼 실수다).
         if dd == 0 and sale_time_passed(v):
             continue
-        out.append({**v, "dday": dd, "expected_win": expected_for(v, bt),
-                    "photo_url": _pick_photo_url(v)})   # 대시보드 알림 카드 좌측 대표 썸네일
+        if bt is None:
+            bt = backtest_stats()
+        if lifecycle_bucket_of(v, bt) != "review":
+            continue                  # 가드(예상낙찰가 없음)·stop·시세 초과·보류 — '지금 입찰 추천'이 아닌 물건
+        out.append((v, dd))
+    return out, bt
+
+
+def alert_items(days: int = 3) -> list:
+    """임박 매각기일(오늘~D+days) 알림 대상 — '지금 입찰 추천' 칸의 물건. dday·예상낙찰가 포함(PS-05).
+
+    고르는 규칙은 `_alert_rows` 한 곳(헤더 벨 `alert_count` 와 같은 함수). review 칸은 bid_state 가
+    예상낙찰가를 낸 물건만 담으므로 여기서 나가는 `expected_win` 은 비지 않는다.
+    (즐겨찾기는 기기 로컬 저장이라 서버가 알 수 없음 → 목록의 ★ 마커는 클라이언트가 도색.)"""
+    rows, bt = _alert_rows(days)
+    out = [{**v, "dday": dd, "expected_win": expected_for(v, bt),
+            "photo_url": _pick_photo_url(v)}          # 대시보드 알림 카드 좌측 대표 썸네일
+           for v, dd in rows]
     out.sort(key=lambda x: (x["dday"], -(x.get("expected_win") or 0)))
     return out
 
@@ -5587,24 +5619,13 @@ def multi_lot_ids(refresh: bool = False) -> set:
 
 
 def alert_count(days: int = 3) -> int:
-    """헤더 벨 배지용 경량 카운트(백테스트 미호출) — 검토가능 임박 물건."""
-    import datetime
-    today = datetime.date.today()
-    seen = set()
-    for v in db.list_vehicles(judgment="입찰 검토 가능", upcoming_days=days):
-        try:
-            dd = (datetime.date.fromisoformat(v.get("sale_date")) - today).days
-        except (TypeError, ValueError):
-            continue
-        if dd < 0:
-            continue
-        # 벨 배지와 홈 알림 카드는 **같은 수**여야 한다. 홈만 len(alert_items()) 를 쓰고 다른
-        # 화면은 이 함수를 쓰므로(app.py 의 alert_badge 주석), alert_items 가 시각 경과를
-        # 빼는데 여기만 날짜로 세면 홈은 3건인데 벨에는 빨간 4가 뜬다 — 눌러도 없는 물건이다.
-        if dd == 0 and sale_time_passed(v):
-            continue
-        seen.add(v["id"])
-    return len(seen)
+    """헤더 벨 배지용 카운트 — 홈 알림 카드(`alert_items`)와 **같은 함수**(`_alert_rows`)로 센다.
+
+    벨 배지와 홈 알림 카드는 **같은 수**여야 한다. 홈만 len(alert_items()) 를 쓰고 다른 화면은 이 함수를
+    쓰므로(app.py 의 alert_badge 주석) 두 벌로 두면 한쪽만 고쳐져 갈린다 — 홈은 3건인데 벨에는 빨간 4가
+    뜨고, 눌러도 없는 물건이 된다(2026-09-23 입찰 시각 건). 그래서 셈은 대상 목록의 길이일 뿐이다.
+    예상낙찰가·사진은 만들지 않는다. 백테스트는 후보가 있을 때만 부른다(캐시 TTL 안이면 COUNT 1회)."""
+    return len(_alert_rows(days)[0])
 
 
 def price_distribution(v: dict, exp: Optional[int], mae: Optional[float],

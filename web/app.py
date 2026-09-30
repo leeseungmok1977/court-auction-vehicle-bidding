@@ -599,6 +599,9 @@ def dashboard(request: Request):
     candidates = service.promising_rows(_bt, exclude_ids={p["id"] for p in daily_picks}, limit=8,
                                         rows=_rows)
     _alerts = service.alert_items(3)          # 헤더 벨 배지도 이 결과를 쓴다(중복 조회 제거)
+    # REC-1 4회차 — 알림 카드의 템플릿 방어선 재료(관심 화면 `floor_check` 와 같은 함수). '검토가능' 게이트는 service 가 건다
+    # (qa N7 — alert_items·alert_count, backend 몫). 새어 들어온 가드 물건이면 카드가 맨 '—' 대신 '미산출 · 최저가 확인 필요'를 쓴다.
+    _alerts = [{**_a, "floor_check": _floor_unconf(_a)} for _a in _alerts]
     _adm = is_admin(request)
     _pv = lambda rows: rows if _adm else [service.public_view(r, False) for r in rows]  # noqa: E731
     return templates.TemplateResponse("dashboard.html", {
@@ -611,12 +614,10 @@ def dashboard(request: Request):
         "won": db.won_count(), "backtest": _bt, "review_summary": review_summary,
         "lifecycle": lifecycle,                       # 겹치지 않는 상태 분해(합=총대수) — 위에서 한 번만 계산
         "use_tier_labels": service.USE_TIER_LABELS,   # 실사용 두 갈래 문구 — 목록·상세와 같은 곳에서
-        # ⚠ 헤더 벨 배지는 base.html 이 alert_count() 로 **같은 질의를 한 번 더** 돌린다
-        # (list_vehicles(judgment='입찰 검토 가능', upcoming_days=3) — 홈 요청당 6회 중 1회).
-        # 두 함수의 질의·중복제거·날짜필터가 동일함을 코드와 운영 데이터로 확인했으므로
-        # (2026-09-18 실측: alert_count(3)=2, len(alert_items(3))=2, sale_date 파싱실패 0행)
-        # 홈에서는 이미 만든 결과의 개수를 넘겨 중복 조회를 없앤다. 다른 화면은 기존 경로 그대로다.
-        # 유일한 잠재 차이: sale_date 가 깨진 행이 생기면 alert_count 는 1 더 세고 alert_items 는 뺀다.
+        # 헤더 벨 배지는 다른 화면에서 base.html 이 alert_count() 로 센다. 홈은 이미 만든 알림의 개수를
+        # 넘겨 같은 질의를 다시 돌리지 않는다. 두 함수는 service._alert_rows 한 함수로 고르므로
+        # ('지금 입찰 추천' 칸 ∩ 기일 창 ∩ 입찰 시각 전 — REC-1 4회차) 벨 = 홈 카드 수가 구조로 선다.
+        # (전에는 저장 문자열 judgment 로 골라, 최저가가 확인 안 된 물건이 '검토가능'으로 들어올 수 있었다.)
         "alerts": _pv(_alerts),
         "alert_badge": len(_alerts),
         "top_makers": [dict(name=m, n=n, **brands.brand_asset(m)) for m, n in db.top_makers(8)],

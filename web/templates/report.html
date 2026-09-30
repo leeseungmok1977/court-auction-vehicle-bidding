@@ -51,6 +51,8 @@
 {% set floor = v.min_sale_price or 0 %}
 {% set exp = (report.exp if report else 0) or 0 %}
 {% set upper = v.upper_bid or 0 %}
+{%- set upper_na = v.upper_bid is not none and v.upper_bid <= 0 %}{#- REC-1 4회차: 재판매 상한가 0원 이하 = 상세 '산정 불가 — 상한가 0원 이하'.
+   `upper` 는 음수도 참이라 참/거짓 검사만으로는 음수가 기준선으로 새어 나간다(1470 '마진 확보선 -342,000원 이하가 기준'). #}
 {% set conf = v.market_confidence or 0 %}
 {# 06·08이 실제로 계산에 쓴 기준 낙찰가. 예상낙찰가가 산출되지 않는 물건이 24%라
    exp를 그대로 제목에 찍으면 "예상낙찰가 0원 기준" 밑에 4,839만원 표가 붙는다. #}
@@ -929,7 +931,7 @@ document.addEventListener('click', function(e){
             <span style="display:block">단, <b>유치권(수리비·보관료)·인수부담은 이 값에 반영돼 있지 않습니다</b> — <a href="#sec09">09 리스크</a>에서 확인하세요.</span></div>
           <div class="v-label gloss-row" style="margin-top:14px">예상낙찰가 <span style="font-weight:400">{% if exp %}— 참고({{ ui.gloss('분위수 밴드', '과거 낙찰 결과가 얼마나 흩어졌는지(사분위 폭)를 중심값에 적용한 범위예요. 이 안에 떨어질 가능성이 높다는 뜻이지 보장은 아닙니다.') }}{% if expected.acc %} · {{ ui.acc_why() }}({{ expected.acc.label }}, {{ expected.acc.n }}건) <span style="white-space:nowrap">실측 오차 ±{{ expected.acc.mae }}%</span>{% endif %}){% endif %}</span></div>
           <div class="v-sub" style="font-size:15px"><b class="num">{% if report.lo and report.hi %}{{ (report.lo/10000)|round|int }} ~ {{ (report.hi/10000)|round|int }} 만원{% elif exp %}{{ (exp/10000)|round|int }} 만원{% else %}<b>미산출</b>{% endif %}</b>
-            {% if exp %}· 중심값 {{ exp|won }}원 {% endif %}· 재판매 상한가 {% if upper %}{{ upper|won }}원{% else %}미산출{% endif %}
+            {% if exp %}· 중심값 {{ exp|won }}원 {% endif %}· 재판매 상한가 {% if upper_na %}산정 불가(0원 이하){% elif upper %}{{ upper|won }}원{% else %}미산출{% endif %}
             {% if not exp and floor_guard %}<span style="display:block;font-weight:400">— 이 물건은 <b>이번 회차 최저가가 확인되지 않아</b> 예상낙찰가를 산출하지 않았습니다. 아래 06·08은 {{ abasis_ko }} {{ abid|won }}원을 가정한 계산입니다.</span>
             {% elif not exp %}<span style="display:block;font-weight:400">— 이 물건은 <b>예상낙찰가를 산출하지 않았습니다</b>(표본·조건 불충족). 아래 06·08은 현 최저매각가 기준입니다.</span>{% endif %}
             {% if report.hi and exp and report.hi <= exp %}<span style="display:block;font-weight:400;color:var(--ink-faint)">예상가 밴드는 소매 시세의 110%(소프트캡)에서 멈추도록 제한돼 있어 윗부분이 여기서 끊깁니다. 중심값이 맨 위에 있다고 해서 그 금액까지 써도 된다는 뜻은 아닙니다.</span>{% endif %}
@@ -938,7 +940,7 @@ document.addEventListener('click', function(e){
           {# 미산출이면 정확도 꼬리표를 붙이지 않는다 — 없는 값에 적중률을 달면 값이 있는 것처럼 읽힌다 #}
           <div class="v-label gloss-row">예상낙찰가 <span style="font-weight:400">{% if exp %}— {{ ui.gloss('분위수 밴드', '과거 낙찰 결과가 얼마나 흩어졌는지(사분위 폭)를 중심값에 적용한 범위예요. 이 안에 떨어질 가능성이 높다는 뜻이지 보장은 아닙니다.') }}{% if expected.acc %} · {{ ui.acc_why() }}({{ expected.acc.label }}, {{ expected.acc.n }}건) <span style="white-space:nowrap">실측 오차 ±{{ expected.acc.mae }}%</span>{% endif %}{% endif %}</span></div>
           <div class="v-band num">{% if report.lo and report.hi %}{{ (report.lo/10000)|round|int }} <small>~</small> {{ (report.hi/10000)|round|int }}<small>만원</small>{% elif exp %}{{ (exp/10000)|round|int }}<small>만원</small>{% else %}<span style="font-family:var(--sans);font-size:21px;color:var(--ink-soft)">미산출</span>{% endif %}</div>
-          <div class="v-sub">{% if exp %}중심값 <b class="num">{{ exp|won }}원</b> · {% endif %}재판매 상한가 {% if upper %}<b class="num">{{ upper|won }}원</b>{% else %}<b>미산출</b>{% endif %}
+          <div class="v-sub">{% if exp %}중심값 <b class="num">{{ exp|won }}원</b> · {% endif %}재판매 상한가 {% if upper_na %}<b>산정 불가</b>(0원 이하){% elif upper %}<b class="num">{{ upper|won }}원</b>{% else %}<b>미산출</b>{% endif %}
             {% if report.hi and exp and report.hi <= exp %}<span style="display:block;color:var(--ink-faint)">예상가 밴드는 소매 시세의 110%(소프트캡)에서 멈추도록 제한돼 있어 윗부분이 여기서 끊깁니다. 중심값이 맨 위에 있다고 해서 그 금액까지 써도 된다는 뜻은 아닙니다.</span>{% endif %}
             {% if not exp and floor_guard %}<span style="display:block">— 이 물건은 <b>이번 회차 최저가가 확인되지 않아</b> 예상낙찰가를 산출하지 않았습니다. 아래 06·08은 <b>{{ abasis_ko }} {{ abid|won }}원을 가정</b>한 계산입니다.</span>
             {% elif not exp %}<span style="display:block">— 이 물건은 <b>예상낙찰가를 산출하지 않았습니다</b>(표본·조건 불충족). 아래 <b>06·08은 현 최저매각가 기준</b>입니다.</span>{% endif %}</div>
@@ -982,8 +984,11 @@ document.addEventListener('click', function(e){
      이 물건 값(exp/med)을 쓰고, 모집단 통계는 별도 라벨로 분리한다. #}
           <li>소매 시세중앙값 <b class="num">{{ med|won }}원</b> 대비 이 물건의 예상낙찰가는 <b{% if exceeds_market %} style="color:var(--amber)"{% endif %}>{{ ('약 ' ~ ((exp/med*100)|round|int) ~ '%') if (med and exp) else '미산출' }}</b>{% if exceeds_market %} <b style="color:var(--amber)">(시세 초과)</b>{% endif %}{% if report.discount %}{% set _db = report.discount_basis %}
             <span style="display:block;font-weight:400">· {{ _db.label }}은 {{ (report.discount*100)|round|int }}%{% if _db.n %}(표본 {{ _db.n }}건){% endif %}입니다{% if _db.kind != 'model' %} — <b>이 차종의 실낙찰 기록이 아니라 전국 통계</b>입니다(05 참조){% endif %}{% if expected and expected.basis and expected.basis.kind == 'min_premium' %}. 이 물건의 예상낙찰가는 이 비율이 아니라 최저매각가 기준으로 냈습니다(10){% endif %}.</span>{% endif %}</li>
-          {# 상한가가 미산출이면 "0원 이하로 써라"는 불가능한 지시가 된다 — 육각형 미산출 규칙과 동일하게 문장 자체를 생략(3회차 품질 지적 5). #}
-          {% if not upper %}{# 미산출 — 재판매 기준선 문장 없음 #}
+          {# 상한가가 미산출이면 "0원 이하로 써라"는 불가능한 지시가 된다 — 육각형 미산출 규칙과 동일하게 문장 자체를 생략(3회차 품질 지적 5).
+             REC-1 4회차: **음수**도 같은 불가능한 지시였다 — 조건이 `not upper` 뿐이라 음수가 통과해 '마진 확보선 -342,000원 이하가
+             기준'(1470 가드)·'마진 확보선(-13,321,000원)을 초과'(34408 비가드)가 인쇄됐다. 상세와 같은 '산정 불가 — 상한가 0원 이하'로 쓴다. #}
+          {% if upper_na %}<li>재판매 목적이면 <b>산정 불가 — 상한가 0원 이하</b>: 수리비·감가 등 비용과 목표마진({{ report.target_margin|won }}원)을 빼면 남는 금액이 없어, 되팔이로 목표마진을 남길 낙찰가가 없습니다(<a href="#sec10">10</a>)</li>
+          {% elif not upper %}{# 미산출 — 재판매 기준선 문장 없음 #}
           {% elif thin_margin %}<li style="color:var(--amber)"><b style="color:var(--amber)">재판매 부적합 신호</b> — 예상낙찰가가 마진 확보선(<b class="num">{{ upper|won }}원</b>)을 초과해 <b>되팔이 차익은 어렵습니다</b>{% if bidst and bidst.state in ('resale','usepick') %} — 직접 타실 목적이면 검토할 만합니다{% endif %}</li>
           {% else %}<li>재판매 목적이면 마진 확보선 <b class="num">{{ upper|won }}원</b> 이하가 기준 (목표마진 {{ report.target_margin|won }}원)</li>{% endif %}
           {# 결론의 큰 숫자(상한선)는 '써도 되는 한계'지 '준비할 돈'이 아니다. 3회차 패널 5개 맥락이
@@ -1047,7 +1052,7 @@ document.addEventListener('click', function(e){
           <div class="sp-labels" id="spLabels">
             <div class="sp-pin" style="left:{{ (floor/gmax*100)|round(1) }}%"><span class="sp-sp"></span><span class="pl"><span class="lf">최저매각가</span><span class="la">최저</span></span><span class="pv num">{{ (floor/10000)|round|int }}</span><i class="sp-conn"></i></div>
             <div class="sp-pin acc" style="left:{{ (exp/gmax*100)|round(1) }}%"><span class="sp-sp"></span><span class="pl"><span class="lf">예상낙찰가</span><span class="la">예상</span></span><span class="pv num">{{ (exp/10000)|round|int }}</span><i class="sp-conn"></i></div>
-            {% if upper %}<div class="sp-pin" style="left:{{ (upper/gmax*100)|round(1) }}%"><span class="sp-sp"></span><span class="pl"><span class="lf">재판매 상한가</span><span class="la">재판매</span></span><span class="pv num">{{ (upper/10000)|round|int }}</span><i class="sp-conn"></i></div>{% endif %}
+            {# REC-1 4회차: 0원 이하 상한가는 핀을 그리지 않는다 — 음수 left(34408 -38.2%)로 차트 밖에 '재판매 상한가'가 찍혔다. #}{% if upper > 0 %}<div class="sp-pin" style="left:{{ (upper/gmax*100)|round(1) }}%"><span class="sp-sp"></span><span class="pl"><span class="lf">재판매 상한가</span><span class="la">재판매</span></span><span class="pv num">{{ (upper/10000)|round|int }}</span><i class="sp-conn"></i></div>{% endif %}
             <div class="sp-pin" style="left:{{ (med/gmax*100)|round(1) }}%"><span class="sp-sp"></span><span class="pl"><span class="lf">시세중앙값</span><span class="la">시세</span></span><span class="pv num">{{ (med/10000)|round|int }}</span><i class="sp-conn"></i></div>
             {# 이 그래프는 결정 도구인데 정작 '얼마까지 써도 되는가'(입찰 상한선)가 없었다.
                핀을 넣으면 "최저매각가가 상한선보다 오른쪽 → 그래서 부적합"이 그림으로 자명해진다.
@@ -1319,7 +1324,7 @@ document.addEventListener('click', function(e){
       <div class="tscroll"><table class="rowcard cost">
         <thead><tr><th>비용 항목</th><th>산정 근거</th><th class="r">금액</th><th class="c">성격</th></tr></thead>
         <tbody>
-          <tr><td class="k">낙찰가</td><td class="sub">{% if abasis == 'expected' %}예상낙찰가(중심 추정){% else %}<b>{{ abasis_ko }}</b>를 낙찰가 자리에 넣은 <b>하한 시나리오</b>입니다 — 예상낙찰가가 산출되지 않아 이 금액으로 계산했습니다{% endif %}</td><td class="r num v">{{ a.bid|won }}원</td><td class="c tagcell"><span class="tag {{ 'estimated' if abasis == 'expected' else 'basis' }}">{{ '추정' if abasis == 'expected' else '계산 기준' }}</span></td></tr>
+          <tr><td class="k">낙찰가</td><td class="sub">{% if abasis == 'expected' %}예상낙찰가(중심 추정){% elif floor_guard %}<b>{{ abasis_ko }}</b>를 낙찰가 자리에 넣은 <b>가정</b>입니다 — 이번 회차 최저가가 확인되지 않아 예상낙찰가 없이 이 금액으로 계산했습니다{% else %}<b>{{ abasis_ko }}</b>를 낙찰가 자리에 넣은 <b>하한 시나리오</b>입니다 — 예상낙찰가가 산출되지 않아 이 금액으로 계산했습니다{% endif %}</td><td class="r num v">{{ a.bid|won }}원</td><td class="c tagcell"><span class="tag {{ 'estimated' if abasis == 'expected' else 'basis' }}">{{ '추정' if abasis == 'expected' else '계산 기준' }}</span></td></tr>
           <tr><td class="k">취득세</td><td class="sub">{{ report.tax_label or '비영업용 승용 7%' }} · <b>낙찰가</b> 기준{% if report.tax_note %} · <span style="color:var(--amber);font-weight:600">{{ report.tax_note }}</span>{% endif %}</td><td class="r num v">{{ a.tax|won }}원</td><td class="c tagcell"><span class="tag {{ 'estimated' if report.tax_note else 'confirmed' }}">{{ '용도 가정' if report.tax_note else '세율확정' }}</span></td></tr>
           <tr><td class="k">이전등록·탁송</td><td class="sub">이전 {{ (report.transfer/10000)|round|int }}만 + 탁송 {{ (report.delivery/10000)|round|int }}만(고정)</td><td class="r num v">{{ a.fixed|won }}원</td><td class="c tagcell"><span class="tag estimated">추정</span></td></tr>
           <tr><td class="k">정비비</td><td class="sub">기본 정비 충당(현장확인 시 조정)</td><td class="r num v">{{ a.repair|won }}원</td><td class="c tagcell"><span class="tag estimated">추정</span></td></tr>
@@ -1335,11 +1340,16 @@ document.addEventListener('click', function(e){
   <section class="section" data-resale>
     <div class="sec-head" id="sec07"><span class="sec-no">07</span><h2>낙찰가별 수익 시뮬레이션</h2><span class="sec-note">재판매가 {{ report.resale|won }}원(시세중앙값) 기준</span></div>
     <div class="card">
-      {# 예상낙찰가가 없으면 후보가 최저매각가 하나뿐이다. 그 한 줄의 '부적정' 칩은
-         판정이 아니라 **최저가에 단독 낙찰됐을 때**의 최악 시나리오다(디자인 검수). #}
+      {# 예상낙찰가가 없으면 후보는 최저매각가 한 줄이다 — 재판매 상한가가 그보다 높으면 두 줄(service.report_data 의 sim).
+         REC-1 4회차(2회째 지적 — 2회차 노트 7 · 3회차 고칠 것 1): 이 가정을 '최악의 경우'라 불렀는데 **반대였다.**
+         확인된 최저가에 낙찰되면 낙찰가는 더 낮을 수 없으니 그 줄의 마진이 가장 크다(06 은 같은 가정을 '하한 시나리오'로 부른다).
+         가드 물건(floor_guard)은 그 최저가부터 이번 회차 값으로 확인되지 않았다 — 최선·최악으로 부르지 않고 가정과 사실만 쓴다.
+         행 수·이름은 아래 표와 같아야 한다(E300 50522_1: 표시된 최저가·재판매 상한 두 줄인데 '재판매 상한가 … 한 가지 경우'라 했다). #}
       {% if not exp %}
-      <div class="sec-empty inset" style="margin-bottom:14px">예상낙찰가가 없어 <b>{{ abasis_ko }}에 낙찰됐다고 가정</b>한 한 가지 경우만 실었습니다.
-        실제로는 경쟁에 따라 이보다 높게 낙찰되는 것이 보통이므로, 아래 판정은 <b>최악의 경우</b>로 읽으십시오.</div>
+      {%- set _two = (report.sim|length) == 2 %}
+      <div class="sec-empty inset" style="margin-bottom:14px">{% if floor_guard %}예상낙찰가가 없어 <b>표시된 최저매각가{{ '와 재판매 상한가' if _two else '' }}에 낙찰된다고 가정</b>한 {{ '두' if _two else '한' }} 가지 경우만 실었습니다 — <b>실제 이번 회차 최저가는 확인 전</b>입니다(01).
+        낙찰가가 높아질수록 마진은 줄어듭니다.{% elif floor %}예상낙찰가가 없어 <b>현 최저매각가{{ '와 재판매 상한가' if _two else '' }}에 낙찰됐다고 가정</b>한 {{ '두' if _two else '한' }} 가지 경우만 실었습니다.
+        낙찰가는 최저매각가보다 낮을 수 없으므로 {{ '최저매각가 줄의' if _two else '아래' }} 마진이 <b>가장 좋은 경우</b>입니다 — 경쟁으로 더 높게 낙찰되면 줄어듭니다.{% else %}예상낙찰가가 없어 <b>{{ abasis_ko }}에 낙찰됐다고 가정</b>한 경우만 실었습니다.{% endif %}</div>
       {% endif %}
       <div class="tscroll"><table class="rowcard sim">
         <thead><tr><th class="r k">낙찰가</th><th class="r d">취득세</th><th class="r d">부대+충당*</th><th class="r d">총 취득원가</th><th class="r v">예상 마진<span class="m-only"> · 판정</span></th><th class="c d">판정</th></tr></thead>
@@ -1357,7 +1367,9 @@ document.addEventListener('click', function(e){
         {% endfor %}
         </tbody>
       </table></div>
-      <p class="note gloss-row">* 부대비(이전·탁송) + 정비비 + 리스크 충당금. 예상 마진 = 재판매가 − 총 취득원가. {{ ui.gloss('목표마진', '되팔 때 남기려는 최소 이익이에요. 재판매 상한가는 이 이익이 남는 선까지의 낙찰가입니다.') }} {{ report.target_margin|won }}원 이상이면 '우량/적정'. 재판매가는 시세중앙값(보수적)이며 실제 매도가에 따라 달라집니다.</p>
+      <p class="note gloss-row">* 부대비(이전·탁송) + 정비비 + 리스크 충당금. 예상 마진 = 재판매가 − 총 취득원가. {{ ui.gloss('목표마진', '되팔 때 남기려는 최소 이익이에요. 재판매 상한가는 이 이익이 남는 선까지의 낙찰가입니다.') }} {{ report.target_margin|won }}원 이상이면 '우량/적정'. 재판매가는 시세중앙값(보수적)이며 실제 매도가에 따라 달라집니다.{# REC-1 4회차 교차검수(2회째 지적 — 3회차 고칠 것 1 ⓑ): 이 표의 마진은 사고 감가·리스크 프리미엄을 빼지 않는다.
+   520d 는 9,800,000 줄이 '+8,809,000 우량'인데 10 의 재판매 상한가는 사고 감가 30% 반영 7,525,950 이다.
+   산식을 맞추는 일은 REC-5 ⑴ 이다 — 그때까지 기준선을 가리키는 한 줄을 둔다(새 숫자 없음). #} <b>이 마진에는 사고 감가와 리스크 프리미엄이 빠져 있습니다</b> — 되팔기 판단은 10의 <b>재판매 상한가</b>를 기준으로 하세요.</p>
     </div>
   </section>
 
@@ -1476,7 +1488,7 @@ document.addEventListener('click', function(e){
       <div class="logic"><span class="ln">2′</span><div class="ld">− 상태 정비 추가<small>{{ bd.get('상태사유', [])|join(' · ') }}</small></div><span class="lv num">−{{ bd['상태정비추가']|won }}</span></div>
       {% endif %}
       <div class="logic"><span class="ln">3</span><div class="ld">− 취득세 − 고정부대비 − 목표마진<small>취득세 {{ bd['취득세']|man }}(기준시세의 {{ ((report.tax_rate or 0)*100)|round|int }}%) + 고정부대비 {{ bd['고정부대비']|man }}(이전 {{ report.transfer|man }} + 탁송 {{ report.delivery|man }}) + 목표마진 {{ bd['마진']|man }}(기준시세의 {{ ((report.margin_rate or 0)*100)|round|int }}%)</small></div><span class="lv num">−{{ (bd['취득세']+bd['고정부대비']+bd['마진'])|won }}</span></div>
-      <div class="logic"><span class="ln">＝</span><div class="ld"><b>재판매 상한가</b><small>이 값 이하로 낙찰 시 목표마진 확보</small></div><span class="lv num">{{ upper|won }}</span></div>
+      <div class="logic"><span class="ln">＝</span><div class="ld"><b>재판매 상한가</b><small>{% if upper_na %}0원 이하 — 산정 불가: 되팔이로 목표마진을 남길 낙찰가가 없습니다{% else %}이 값 이하로 낙찰 시 목표마진 확보{% endif %}</small></div><span class="lv num">{{ upper|won }}</span></div>
       {# 두 줄의 합이 같아 보이면 복사 오류로 읽힌다(2회차 패널 4인이 여기서 결론 금액을 못 믿었다).
          실제로는 요율이 우연히 겹친 것이므로, 겹칠 때만 그 사실을 한 줄로 밝힌다. #}
       {% if (bd['예상수리비']+bd['사고감가']+bd['리스크프리미엄']) == (bd['취득세']+bd['고정부대비']+bd['마진']) %}

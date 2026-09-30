@@ -183,7 +183,11 @@ def test_scenario_bid_is_not_tagged_as_a_verified_fact(stale):
     row = html[html.index(">낙찰가</td>"):]
     row = row[:row.index("</tr>")]
     assert "tag confirmed" not in row, "가정치에 '검증됨' 색이 붙었다"
-    assert "하한 시나리오" in row
+    # REC-1 4회차 교차검수: stale_1 은 최저가가 이번 회차 값으로 확인되지 않은 물건(floor_guard)이다.
+    # 표시된 최저가가 하한이라는 보장이 없어 '하한 시나리오'가 아니라 '가정'이라고 쓴다(이번 회차 최저가는 더 낮을 수 있다).
+    assert service.floor_unconfirmed(__import__("web.db", fromlist=["db"]).get_vehicle("stale_1")), "픽스처 전제: 가드 물건"
+    assert "<b>가정</b>" in row and "이번 회차 최저가가 확인되지 않아" in row
+    assert "하한 시나리오" not in row
 
 
 def test_unbiddable_ceiling_is_flagged(stale):

@@ -325,7 +325,10 @@
         <div class="text-xs text-mut mt-0.5 truncate"><span class="font-mono">{{ v.sale_date }}</span> · {{ (v.court or '')|replace('지방법원','지법') }}</div>
         <div class="flex flex-wrap items-end justify-between gap-x-2 mt-1.5">
           <span class="text-[11px] text-mut shrink-0">예상낙찰가</span>
-          <span class="font-mono font-bold text-sm text-txt">{{ v.expected_win|won if v.expected_win else '—' }}</span>
+          {# REC-1 4회차 — 캐러셀(3회차)·목록 카드와 같은 불변식: 예상낙찰가가 없으면 맨 '—'(mono 굵게 = 카드에서 가장 강한 글자,
+             '불러오기 실패'로 읽힌다) 대신 '미산출'(회색 · 한 단계 작게 · sans — mono 스택엔 한글이 없다). 가드 물건이면 그 아래
+             '최저가 확인 필요'(관심 화면과 같은 말 · app.py dashboard 가 floor_check 를 단다). '검토가능' 게이트는 service 가 건다
+             (qa N7 alert_items·alert_count) — 이것은 새어 들어왔을 때의 한 겹이다. 예상가가 있는 카드는 예전과 같은 바이트. #}{% if v.expected_win %}<span class="font-mono font-bold text-sm text-txt">{{ v.expected_win|won }}</span>{% else %}<span class="font-semibold text-xs text-mut">미산출</span>{% if v.floor_check %}<span class="basis-full text-right text-[11px] text-mut leading-tight">최저가 확인 필요</span>{% endif %}{% endif %}
         </div>
       </div>
     </a>
