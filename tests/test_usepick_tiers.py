@@ -18,6 +18,9 @@ from web import service
 from tests.test_personal_use import BT, v
 
 TODAY = datetime.date(2026, 9, 13)
+# 경매일을 박아 두면 그날이 지나는 순간 '기일 경과'로 판정이 바뀌어 테스트가 깨진다(2026-10-01 자정에 실제로 깨졌다).
+# 이 파일이 재는 것은 '앞으로 열릴 경매'의 갈래이므로 오늘 기준 2주 뒤로 둔다.
+_SOON = (datetime.date.today() + datetime.timedelta(days=14)).isoformat()
 _PUBLIC = {"x-forwarded-for": "203.0.113.7"}
 
 
@@ -28,7 +31,7 @@ def test_labels_are_plain_korean_and_single_sourced():
 
 
 def test_now_tier_is_exactly_the_old_recommendation():
-    car = v(sale_date="2026-09-30")
+    car = v(sale_date=_SOON)
     t = service.personal_use_tier(car, BT, today=TODAY)
     assert t and t["tier"] == "now" and t["label"] == "지금 사면 이득" and t["saving"] > 0
     assert service.is_personal_use_pick(car, BT, today=TODAY) is True
@@ -37,7 +40,7 @@ def test_now_tier_is_exactly_the_old_recommendation():
 def test_cheap_tier_when_expected_gain_is_within_error_but_floor_gain_is_not():
     """최저 2,800만: 예상 3,164만은 손익분기 안이지만 이득 83만 < 오차 316만 → now 아님(bid_state '실사용이면 이득').
     최저가 근처면 이득 472만 > 오차 → '싸게 낙찰되면 이득'."""
-    car = v(min_sale_price=28_000_000, sale_date="2026-09-30")
+    car = v(min_sale_price=28_000_000, sale_date=_SOON)
     assert service.is_personal_use_pick(car, BT, today=TODAY) is False
     t = service.personal_use_tier(car, BT, today=TODAY)
     assert t and t["tier"] == "cheap" and t["label"] == "싸게 낙찰되면 이득"
@@ -47,7 +50,7 @@ def test_cheap_tier_when_expected_gain_is_within_error_but_floor_gain_is_not():
 
 def test_cheap_tier_covers_the_caution_state_too():
     """최저 2,900만: 예상 3,277만이 손익분기(≈3,230만)를 넘어 bid_state 는 caution — 그래도 최저가 근처면 이득이 유의."""
-    car = v(min_sale_price=29_000_000, sale_date="2026-09-30")
+    car = v(min_sale_price=29_000_000, sale_date=_SOON)
     st = service.bid_state(car, BT)
     assert st["state"] == "over_market" and st["tone"] == "caution", "전제: 예상 경쟁가가 상한선 초과"
     t = service.personal_use_tier(car, BT, today=TODAY)
@@ -56,7 +59,7 @@ def test_cheap_tier_covers_the_caution_state_too():
 
 def test_no_tier_when_even_the_floor_gain_is_within_error():
     """최저 3,000만: 최저가로 낙찰돼도 이득 258만 < 오차 339만 → 이득이라 부르지 않는다(5회차 게이트)."""
-    car = v(min_sale_price=30_000_000, sale_date="2026-09-30")
+    car = v(min_sale_price=30_000_000, sale_date=_SOON)
     assert service.bid_state(car, BT)["tone"] == "caution"
     assert service.personal_use_tier(car, BT, today=TODAY) is None
 
@@ -72,7 +75,7 @@ def test_no_tier_when_even_the_floor_gain_is_within_error():
     ({"appraisal_value": 8_500_000, "min_sale_price": 8_000_000}, "시세/감정가 괴리(오매칭 의심)"),
 ])
 def test_no_tier_cases(kw, why):
-    car = v(sale_date="2026-09-30")
+    car = v(sale_date=_SOON)
     car.update(kw)
     assert service.personal_use_tier(car, BT, today=TODAY) is None, why
 

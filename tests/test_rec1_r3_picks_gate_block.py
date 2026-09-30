@@ -122,7 +122,8 @@ def _ge300(mk):
 def _rok(mk):
     """대조군 — 최저가가 확인된(가드 아님) 재판매 후보. 예상낙찰가가 있다."""
     return mk("ROK", maker="기아", model="K5", appraisal_value=30_000_000, min_sale_price=10_000_000,
-              fail_count=1, judgment="입찰 검토 가능", median_price=30_000_000)
+              fail_count=1, judgment="입찰 검토 가능", median_price=30_000_000,
+              upper_bid=19_000_000)   # REC-7 ⑺: 재판매 칸은 bid_state 가 되팔이여야 선다 — 되팔이 손익분기를 채운 진짜 후보
 
 
 def _store(items):

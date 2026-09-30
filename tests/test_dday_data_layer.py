@@ -60,13 +60,14 @@ _CARS = [
     dict(_BASE, id="WL_PAST7", case_no="2026타경8006", sale_time="10:00",
          sale_date=(TODAY - timedelta(days=7)).isoformat(), judgment="유찰 대기"),
     dict(_BASE, id="WL_NODATE", case_no="2026타경8007", judgment="유찰 대기"),
-    # 대시보드 알림·캐러셀용 — 알림은 judgment='입찰 검토 가능'만 본다.
-    dict(_BASE, id="AL_ENDED", case_no="2026타경8011", sale_date=_T, sale_time="00:00",
+    # 대시보드 알림·캐러셀용. upper_bid(되팔이 손익분기)를 채운 **진짜 되팔이 후보**다 — REC-7 ⑺ 뒤로 캐러셀 재판매 칸은
+    # bid_state 가 resale 이어야 선다(저장 문자열 judgment 만으로는 못 선다). 이 절이 재는 것은 시각 판정이다.
+    dict(_BASE, id="AL_ENDED", upper_bid=36_000_000, case_no="2026타경8011", sale_date=_T, sale_time="00:00",
          judgment="입찰 검토 가능"),
-    dict(_BASE, id="AL_LIVE", case_no="2026타경8012", sale_date=_T, sale_time="23:59",
+    dict(_BASE, id="AL_LIVE", upper_bid=36_000_000, case_no="2026타경8012", sale_date=_T, sale_time="23:59",
          judgment="입찰 검토 가능"),
-    dict(_BASE, id="AL_UNK", case_no="2026타경8013", sale_date=_T, judgment="입찰 검토 가능"),
-    dict(_BASE, id="AL_D2", case_no="2026타경8014", sale_time="10:00",
+    dict(_BASE, id="AL_UNK", upper_bid=36_000_000, case_no="2026타경8013", sale_date=_T, judgment="입찰 검토 가능"),
+    dict(_BASE, id="AL_D2", upper_bid=36_000_000, case_no="2026타경8014", sale_time="10:00",
          sale_date=(TODAY + timedelta(days=2)).isoformat(), judgment="입찰 검토 가능"),
 ]
 

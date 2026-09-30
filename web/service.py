@@ -5462,13 +5462,21 @@ def _daily_pick_gate(v: dict, kind: str, bt: dict, tier: Optional[dict] = None) 
     #   실제로 홈 첫 화면 캐러셀에 올라 있었다(2026-09-22 실측: 시동 불가 카니발 —
     #   tone=stop 이라 할인 배지조차 안 붙는데 '되팔아도 남음'으로 진열됐다).
     #   같은 날 '지금 입찰 추천' 칸에서 고친 것과 같은 계열이다. 판정은 bid_state 를 따른다.
-    if (bid_state(v, bt) or {}).get("tone") == "stop":
+    bs = bid_state(v, bt) or {}
+    if bs.get("tone") == "stop":
         return None
     exp, med = expected_for(v, bt), effective_median(v)
     if not exp or not med:
         return None
     if kind == "resale":
         if v.get("judgment") != "입찰 검토 가능":
+            return None
+        # ⚠ REC-7 ⑺(2026-10-01 라이브): judgment '입찰 검토 가능'은 **최저가**로 매긴 값이다. 예상 경쟁가로는 되팔이
+        #   손익분기를 넘는 물건(bid_state usepick '지금 사면 이득')이 캐러셀에서 '되팔아도 남음'을 달았다 —
+        #   REC-1 재조회 첫날 520d(예상 840만 > 되팔이 손익분기 753만)·벨라가 그랬고, 상세는 같은 차를
+        #   '되팔이 차익은 어렵습니다'라고 말했다. 재판매 칸은 판정이 되팔이(resale)일 때만 — 아니면 아래 실사용
+        #   칸(now·cheap)으로 다시 심사받는다(compute_daily_picks 의 두 번째 순회).
+        if bs.get("state") != "resale":
             return None
     else:
         t = tier if tier is not None else personal_use_tier(v, bt)

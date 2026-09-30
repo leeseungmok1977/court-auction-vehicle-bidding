@@ -131,7 +131,7 @@ def test_실사용_추천만_있어도_캐러셀이_빈손이_아니다(env):
 
 def test_카드마다_어느_축인지_실린다(env):
     """되팔아 남는 물건과 내가 타면 싼 물건은 **다른 질문**의 답이다. 한 이름으로 부르지 않는다."""
-    env("R1", min_sale_price=10_000_000, median_price=30_000_000,
+    env("R1", min_sale_price=10_000_000, median_price=30_000_000, upper_bid=19_000_000,  # REC-7 ⑺: 되팔이 판정이 서는 손익분기
         appraisal_value=30_000_000, judgment="입찰 검토 가능", maker="기아")
     env("U1", min_sale_price=16_000_000, median_price=40_000_000,
         appraisal_value=30_000_000, judgment="유찰 대기", maker="현대")
@@ -177,7 +177,7 @@ def test_오차보다_작은_이득은_캐러셀에_못_올라온다(env):
 
 def test_아침에_고른_뒤_축이_바뀌면_화면에서_빠진다(env):
     """판정은 한 곳에서만 한다 — 저장된 id를 그대로 믿고 띄우면 화면이 옛말을 한다."""
-    env("R1", min_sale_price=10_000_000, median_price=30_000_000,
+    env("R1", min_sale_price=10_000_000, median_price=30_000_000, upper_bid=19_000_000,  # REC-7 ⑺: 되팔이 판정이 서는 손익분기
         appraisal_value=30_000_000, judgment="입찰 검토 가능")
     db.set_setting("daily_picks_ids", json.dumps([{"id": "R1", "kind": "resale"}]))
     import datetime
@@ -248,7 +248,7 @@ def test_예상가가_상한을_넘으면_카드가_그_사실을_말한다(env)
 
 def test_옛_저장형식도_읽는다(env):
     """형식을 바꾸기 전 저장분은 id 문자열 리스트다 — 배포 직후 하루치가 깨지면 안 된다."""
-    env("R1", min_sale_price=10_000_000, median_price=30_000_000,
+    env("R1", min_sale_price=10_000_000, median_price=30_000_000, upper_bid=19_000_000,  # REC-7 ⑺: 되팔이 판정이 서는 손익분기
         appraisal_value=30_000_000, judgment="입찰 검토 가능")
     import datetime
     db.set_setting("daily_picks_ids", json.dumps(["R1"]))       # 옛 형식
