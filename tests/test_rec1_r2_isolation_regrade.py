@@ -263,7 +263,9 @@ def test_재판정_단계_오류는_기록하고_계속한다(monkeypatch):
 
 
 def test_꺼져_있으면_격리_경로를_타지_않는다(monkeypatch):
-    """기본(꺼짐)은 요청 0 — 오류 조각도 없다."""
+    """꺼짐이면 요청 0 — 오류 조각도 없다. 저장소 config 는 09-30 오너 승인으로 켜졌으므로 메모리에서 끄고 본다."""
+    real = service.load_config
+    monkeypatch.setattr(service, "load_config", lambda *a, **k: {**real(*a, **k), "min_refresh_enabled": False})
     for i in range(2):
         db.upsert_vehicle(V(i))
     seen: list = []

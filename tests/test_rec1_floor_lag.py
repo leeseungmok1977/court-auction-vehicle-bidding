@@ -283,9 +283,12 @@ def test_breakdown_에_최저가_칸이_없는_옛_행도_판정은_맞춘다():
 # ═════════════════════════════════════════════════════════════════════
 # 2. 상세 재조회 — 기본 꺼짐 · 드라이런 · 상한 · 지연 · 차단 중단
 # ═════════════════════════════════════════════════════════════════════
-def test_설정_기본값은_꺼짐이고_상한이_있다():
+def test_설정_재조회는_오너_승인으로_켜졌고_상한이_있다():
+    """오너 승인 2026-09-30(C.4-6 첫 실행): 저장소 config 에서 켰다. 켜짐은 정확히 bool True 여야 하고,
+    하루 상한은 코드 하드캡 안이어야 한다(첫 3일 150 → 10-03 부터 60, Steward 지시서).
+    꺼진 경로의 '요청 0' 검사는 아래 테스트들이 config 를 메모리에서 꺼서 따로 지킨다."""
     cfg = service.load_config()
-    assert cfg["min_refresh_enabled"] is False, "오너 승인(C.4-6) 전에는 외부 요청이 없어야 한다"
+    assert cfg["min_refresh_enabled"] is True, "켜짐은 정확히 true(bool) — 문자열·1 은 꺼짐으로 읽힌다"
     assert 0 < cfg["min_refresh_daily_cap"] <= service.MIN_REFRESH_HARD_CAP
     assert cfg["min_refresh_backoff_days"] >= 1
 
@@ -319,9 +322,12 @@ def _seed_lagging(n=3):
     return ids
 
 
-def test_꺼져_있으면_요청_0_대상_수만_센다():
+def test_꺼져_있으면_요청_0_대상_수만_센다(monkeypatch):
+    real = service.load_config
+    monkeypatch.setattr(service, "load_config",      # 저장소 config 는 09-30 에 켜졌다 — 꺼진 경로는 메모리에서 끄고 본다
+                        lambda *a, **k: {**real(*a, **k), "min_refresh_enabled": False})
     _seed_lagging(3)
-    res = service.refresh_lagged_floors()           # 저장소 config = 꺼짐. 법원 함수는 부르면 실패(픽스처)
+    res = service.refresh_lagged_floors()           # 꺼짐. 법원 함수는 부르면 실패(픽스처)
     assert res["enabled"] is False and res["requests"] == 0 and res["fetched"] == 0
     assert res["targets"] == 3 and res["targets_guard"] == 3
     assert service.floor_refresh_label(res) == "최저가 지연 3대(재조회 꺼짐)"
@@ -526,6 +532,9 @@ def _stub_daily(monkeypatch):
 
 
 def test_매일_갱신은_꺼진_재조회를_세고_재판정하고_추천_수를_남긴다(monkeypatch):
+    real = service.load_config
+    monkeypatch.setattr(service, "load_config",      # 저장소 config 는 09-30 에 켜졌다 — 꺼진 경로는 메모리에서 끄고 본다
+                        lambda *a, **k: {**real(*a, **k), "min_refresh_enabled": False})
     _stub_daily(monkeypatch)
     _seed_lagging(2)
     _put(id="R1", min_sale_price=6_860_000, fail_count=2, judgment="유찰 대기", upper_bid=8_000_000,
