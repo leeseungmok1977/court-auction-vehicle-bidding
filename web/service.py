@@ -821,7 +821,37 @@ def _bucket_and_tier(v: dict, bt: Optional[dict] = None) -> tuple:
 
 
 def in_lifecycle_bucket(v: dict, bucket: str, bt: Optional[dict] = None) -> bool:
+    # 저장 문자열 '입찰 검토 가능'은 review 칸의 **필요조건**이다(_bucket_and_tier — 그 줄 말고는 review 를 내지 않는다).
+    # 먼저 보고 판정 계산(bid_state·personal_use_tier)을 아낀다 — 답은 같다. `?bucket=review` 목록이 전 행을 판정하던
+    # 비용(09-29 사본 중앙값 333~384ms)을 줄이고, REC-8 ⑴ 판정 필터(in_judgment_filter)도 이 함수를 그대로 쓴다.
+    if bucket == "review" and v.get("judgment") != "입찰 검토 가능":
+        return False
     return lifecycle_bucket_of(v, bt) == bucket
+
+
+# REC-8 ⑴ — 목록 판정 필터(`/vehicles?judgment=`) 값 가운데 **저장 문자열이 아니라 칸으로 읽는 것.**
+# 2026-09-29 12:00(09-29 백업 사본): `?judgment=입찰 검토 가능` 이 '총 4건'을 말했는데 그중 2대가 홈 '지금 입찰 추천'
+# 칸 밖이었다(E300 — 이번 회차 최저가 미확인, 체로키 — 기일 경과). 같은 시각 `?bucket=review` 는 2건이다.
+# 진입점 6곳(홈 '✅ 검토 가능' 칩·캐러셀 '더보기'·랜딩 2·목록 2)과 사용자가 저장·공유한 옛 링크가 모두 이 값을 쓴다 —
+# 링크를 바꾸는 것(템플릿)과 별개로, 옛 링크도 '지금 입찰 추천' 칸과 **같은 결과·같은 총수·같은 페이지**를 보여야 한다.
+# 저장 문자열로 판정을 말하는 길의 다섯 번째 자리다(캐러셀 → 알림·벨 → 이 목록, backend r4 §4). 다른 값('유찰 대기' 등)은
+# 이번에 바꾸지 않는다 — 그 값들은 드롭다운의 뜻(저장 판정)을 정한 뒤에 옮긴다(REC-8 선택지, Steward 결정).
+JUDGMENT_FILTER_BUCKETS = {"입찰 검토 가능": "review"}
+
+
+def judgment_filter_bucket(judgment: Optional[str]) -> Optional[str]:
+    """판정 필터 값이 칸으로 읽히면 그 칸 키(LIFECYCLE_BUCKETS), 아니면 None(저장 문자열 그대로 SQL 로 거른다)."""
+    return JUDGMENT_FILTER_BUCKETS.get(judgment or "")
+
+
+def in_judgment_filter(v: dict, judgment: str, bt: Optional[dict] = None) -> bool:
+    """`/vehicles?judgment=` 소속 — 칸으로 읽는 값이면 `?bucket=` 과 **같은 함수**(in_lifecycle_bucket)가 정한다.
+
+    tests/test_rec8_judgment_filter.py 가 `?bucket=review` 와 id·순서·총수·페이지·축별 건수를 대조한다."""
+    b = judgment_filter_bucket(judgment)
+    if b is None:
+        return v.get("judgment") == judgment
+    return in_lifecycle_bucket(v, b, bt)
 
 
 def lifecycle_partition(rows: Optional[list] = None) -> dict:
@@ -1408,8 +1438,14 @@ def mileage_mismatch(v: dict, asum: Optional[dict] = None) -> Optional[dict]:
     return {"listed": int(b), "appraisal": int(a), "diff": diff}
 
 
+# REC-9 2회차 — 침수·전손 판정(estimate_withheld) 물건에서 내지 않는 육각형 축: **정상 차량 시세·시장**에 기댄 넷.
+# 남는 축은 사고·상태·주행 적정성 둘뿐이라 리포트의 기존 게이트(`hexa.n_avail >= 3`)가 육각형을 접는다(템플릿 변경 없음).
+HEXA_MARKET_AXES = ("price", "conf", "value", "liq")
+HEXA_WITHHELD_NOTE = "침수·전손 의심 — 정상 차량 시세를 이 차에 쓸 수 없어 산출하지 않습니다"
+
+
 def hexagon_scores(v: dict, today=None, include_private: bool = False, newcar_ok=None,
-                   asum: Optional[dict] = None) -> dict:
+                   asum: Optional[dict] = None, st: Optional[dict] = None) -> dict:
     """리포트 '종합 프로필' 육각형 — 6축 0~100 점수 + SVG 좌표.
 
     신뢰성 원칙: **자료가 없는 축은 0으로 꾸미지 않고 None(미산출)** 으로 두고 표·툴팁에 '자료 없음'을 표시한다.
@@ -1425,6 +1461,8 @@ def hexagon_scores(v: dict, today=None, include_private: bool = False, newcar_ok
 
     newcar_ok: 출시가 파생값을 실어도 되는지(관리자 또는 config.newcar_public). None이면 자동 판정.
     False면 잔존가치 축은 값·숫자 없이 미산출('당시 출시가' 토큰도 쓰지 않는다 — test_exposure 플래그-off 검사).
+    st: bid_state 결과(선택). 침수·전손 판정 물건(`estimate_withheld(v, st)` 참)이면 1·2·5·6축(HEXA_MARKET_AXES)을
+        미산출(score None)로 두고 근거를 HEXA_WITHHELD_NOTE 로 적는다. None이면 침수 물건에서만 bid_state 를 계산한다.
     """
     import math
     from datetime import date as _date
@@ -1526,6 +1564,17 @@ def hexagon_scores(v: dict, today=None, include_private: bool = False, newcar_ok
         if include_private:
             a["count"] = int(n)
     axes.append(a)
+
+    # REC-9 2회차 — 침수·전손 판정 물건은 **정상 차량 시세·시장에 기댄 축**을 내지 않는다(기존 미산출 원칙과 같은 결).
+    # 2026-10-01 교차검수(34408): 빨간 판정이 "잔존 가치를 산정할 수 없어 … 제공하지 않습니다"라고 말한 같은 01 에
+    # '가격 메리트 100(할인 69%)'·'잔존가치 38'·'유동성 84'·'시세 신뢰도 53' — "6/6축 산출"이 그려졌다. 판정의 이유가
+    # 바로 그 시세를 이 차에 쓸 수 없다는 것이다. 판정 기준은 그대로다(표시를 조이는 쪽). 조건은 판정 문장과 같은 한 곳
+    # (estimate_withheld)이라 끝난 침수차(매각 종료)·비침수 부적합 물건의 육각형은 바이트 그대로다.
+    if estimate_withheld(v, st):
+        for a in axes:
+            if a["key"] in HEXA_MARKET_AXES:
+                a.pop("count", None)       # 관리자 매물 건수도 싣지 않는다 — 점수를 내지 않는 축에 근거 수치를 남기지 않는다
+                a["score"], a["note"] = None, HEXA_WITHHELD_NOTE
 
     # SVG 좌표(중심 130, 반지름 95). 라벨은 바깥쪽, 앵커는 축 위치별.
     anchors = ["middle", "start", "start", "middle", "end", "end"]
@@ -4741,10 +4790,39 @@ BID_STATES = ("closed", "nomarket", "lowconf", "wait", "blocked", "over_market",
               "usepick", "resale")
 
 
+def flood_hold(v: dict) -> bool:
+    """침수·전손 의심 — 잔존 가치를 산정할 수 없는 물건(bid_state 의 침수·전손 분기 조건, 한 곳).
+
+    등급(accident_grade 'flood')과 저장 판정 '입찰 보류'(calculator.judge: 등급 flood **또는** 감정서 침수·전손 키워드)
+    둘 다 본다. 둘이 갈리는 물건(키워드로만 보류)도 bid_state 는 같은 '침수·전손 의심 — 입찰 보류'로 막는다."""
+    return v.get("accident_grade") == "flood" or v.get("judgment") == "입찰 보류"
+
+
+def estimate_withheld(v: dict, st: Optional[dict] = None) -> bool:
+    """REC-9 — 화면이 이 물건에 **예상낙찰가·입찰 상한선을 그리지 않아야 하는가.**
+
+    참이면 판정 문장(plain_verdict)이 "잔존 가치를 산정할 수 없어 예상낙찰가·입찰 상한선을 제공하지 않습니다"라고
+    말한다 — 조건은 그 문장과 **같은 한 곳**(이 함수)이다: bid_state 가 침수·전손 분기(blocked)를 탄 물건.
+    bid_state 결과의 `no_estimate` 키, plain_verdict 결과의 `no_estimate` 키, 관심 화면 행의 `no_estimate` 가 모두 이 값이다.
+
+    2026-09-30 교차검수(34408, 비가드): 빨간 판정 상자가 '제공하지 않습니다'라고 말한 바로 아래 가장 큰 글자로
+    예상가 밴드 1,230~1,460만원·중심값 13,100,000원이 그려졌다. 판정 기준은 바꾸지 않는다 — bid_state 는 이미 이 물건을
+    '침수·전손 의심 — 입찰 보류'(stop)로 막고 있고, 이 값은 화면이 그 말과 어긋나는 숫자를 그리지 않게 하는 스위치다.
+    매각 종료(closed)가 먼저라 끝난 침수차는 거짓이다(참고용 기록은 그대로 보인다).
+
+    침수 술어를 **먼저** 본다 — 값은 예전 순서(`state == 'blocked' and flood_hold`)와 같고, 비침수 물건에서
+    bid_state 를 계산하지 않을 뿐이다. 리포트 육각형(hexagon_scores)이 모든 물건에서 st 없이 이 함수를 부르기 때문이다(REC-9 2회차)."""
+    if not flood_hold(v):
+        return False
+    st = st if st is not None else bid_state(v)
+    return bool(st) and st.get("state") == "blocked"
+
+
 def bid_state(v: dict, bt: Optional[dict] = None, config: Optional[dict] = None) -> dict:
     """이 물건에 대한 **하나의** 판정. 화면은 판단하지 않고 이 결과만 그린다.
 
-    반환: {"state", "label", "tone", "exp", "med", "floor", "upper", "max_bid"}
+    반환: {"state", "label", "tone", "exp", "med", "floor", "upper", "max_bid", "no_estimate", …}
+      no_estimate  참이면 화면은 예상낙찰가·입찰 상한선을 그리지 않는다(REC-9, `estimate_withheld` 와 같은 값)
       closed      이미 매각 종료
       lowconf     시세 신뢰도 낮음 — 판정 보류
       wait        최저가가 예상낙찰가보다 높음 — 추가 유찰 대기
@@ -4768,7 +4846,9 @@ def bid_state(v: dict, bt: Optional[dict] = None, config: Optional[dict] = None)
             "exp_pinned": expected_floor_pinned(v, bt),
             # 예상 경쟁가가 상한선을 얼마나 넘는가 — caution 문장에 폭을 실어 준다(디자인 검수).
             # 목록 칩은 짧은 label 을 그대로 쓰고, 리포트 스펙트럼·§01 만 이 값을 쓴다.
-            "over_by": (exp - mb) if (exp and mb and exp > mb) else None}
+            "over_by": (exp - mb) if (exp and mb and exp > mb) else None,
+            # REC-9: 화면이 예상낙찰가·입찰 상한선을 그리지 않을 물건 — 아래 침수·전손 분기에서만 참(estimate_withheld)
+            "no_estimate": False}
 
     def out(state, label, tone):
         return {**base, "state": state, "label": label, "tone": tone}
@@ -4777,8 +4857,8 @@ def bid_state(v: dict, bt: Optional[dict] = None, config: Optional[dict] = None)
         return out("closed", "매각 종료", "wait")
     # 침수·전손은 잔존가치 자체를 산정할 수 없다. 분기가 없어서 "아직 비싸니 추가 유찰을
     # 기다리세요"(= 싸지면 사라)가 나올 수 있었다(4회차 중고차 지적).
-    if v.get("accident_grade") == "flood" or v.get("judgment") == "입찰 보류":
-        return out("blocked", "침수·전손 의심 — 입찰 보류", "stop")
+    if flood_hold(v):
+        return {**out("blocked", "침수·전손 의심 — 입찰 보류", "stop"), "no_estimate": True}
     if v.get("runnable") == "no":
         return out("lowconf", "시동·운행 불가 — 판정 보류", "stop")
     # 매각기일이 지났는데 결과가 안 붙은 물건은 **입찰할 수 없다**. 판정에 기일 조건이
@@ -4899,8 +4979,12 @@ def plain_verdict(v: dict, expected: Optional[dict],
         return {"tone": "wait",
                 "text": f"지금 최저가 {won(floor)}은 예상낙찰가 {won(exp)}보다 높습니다. "
                         f"아직 비싸니 추가 유찰을 기다리는 게 좋습니다."}
-    if st["state"] == "blocked" and v.get("accident_grade") == "flood":
-        return {"tone": "stop",
+    # REC-9: 이 문장의 조건은 estimate_withheld 한 곳이다 — 화면이 예상가·상한선을 가리는 신호(no_estimate)와 같은 값.
+    #   예전 조건(등급 flood 만)은 bid_state 의 침수·전손 분기(등급 flood **또는** 저장 판정 '입찰 보류')보다 좁아,
+    #   감정서 키워드로만 보류된 물건은 칩이 '침수·전손 의심 — 입찰 보류'인데 문장은 '최저매각가가 손익분기를 넘어'라는
+    #   다른 이유를 댔다(09-29 백업 사본에는 그런 물건 0대 — 조건을 판정과 맞춘 것이지 기준을 바꾼 것이 아니다).
+    if estimate_withheld(v, st):
+        return {"tone": "stop", "no_estimate": True,
                 "text": "침수·전손이 의심되는 물건입니다. 잔존 가치를 산정할 수 없어 "
                         "예상낙찰가·입찰 상한선을 제공하지 않습니다. 입찰하지 마세요."}
     if st["state"] == "blocked":
@@ -5307,10 +5391,24 @@ PICK_ICONS = {"resale": "check_circle", "now": "directions_car",
               "cheap": "directions_car"}   # 두 추천 카드와 같은 아이콘 — 연결은 색이 아니라 아이콘이 맡는다
 
 
+def resale_pick_ok(v: dict, st: Optional[dict]) -> bool:
+    """홈 '✓ 되팔아도 남음'(PICK_LABELS['resale']) 칸에 설 수 있는가 — **캐러셀(_daily_pick_gate)·유망 물건(promising_rows)이
+    같이 부르는 한 곳.** 저장 판정 '입찰 검토 가능'은 후보 조건일 뿐이고, 배지는 판정(bid_state)이 되팔이(resale)일 때만 단다.
+
+    '입찰 검토 가능'은 **최저가**로 매긴 값이다. 예상 경쟁가로는 되팔이 손익분기를 넘는 물건(bid_state usepick
+    '지금 사면 이득')이 그 문자열만으로 '되팔아도 남음'을 달았다 — 2026-10-01 07:30 라이브: 520d(30118_1)·봉고(3142_1)는
+    판정이 '지금 사면 이득'인데 유망 물건 표·카드에 '✓ 되팔아도 남음'(E300 50522_1 도). 캐러셀은 eefc578(REC-7 ⑺)에서
+    먼저 막았고, 같은 조건을 두 곳에 따로 적지 않으려고 여기로 모았다(tests/test_rec8_promising_resale.py).
+    이 조건에 떨어진 물건은 두 곳 모두 실사용 갈래(personal_use_tier)로 다시 심사받는다 — 그 함수는 저장 판정이
+    '입찰 검토 가능'인 물건을 '그쪽 칸이 가져간다'며 None 으로 돌려주므로, 지금 규칙에서는 두 곳 모두에서 **빠진다**
+    (배지를 바꿔 다는 것이 아니다). 판정 기준은 그대로다."""
+    return v.get("judgment") == "입찰 검토 가능" and (st or {}).get("state") == "resale"
+
+
 def promising_rows(bt: Optional[dict] = None, exclude_ids=(), limit: Optional[int] = None,
                    within_days: Optional[int] = None, rows: Optional[list] = None) -> list:
-    """유망 물건 = 시세 신뢰도 '높음' + 오매칭 아님 + (재판매 검토가능 | 실사용 '지금 사면 이득'),
-    **시세 대비 절감률 × 시세 신뢰도** 순. 홈은 오늘의 추천 캐러셀에 있는 차를 빼고 상위 8, 목록(?picks=1)은 전부 —
+    """유망 물건 = 시세 신뢰도 '높음' + 오매칭 아님 + (재판매: 저장 판정 검토가능 **이면서 판정이 되팔이**(resale_pick_ok)
+    | 실사용 '지금 사면 이득'), **시세 대비 절감률 × 시세 신뢰도** 순. 홈은 오늘의 추천 캐러셀에 있는 차를 빼고 상위 8, 목록(?picks=1)은 전부 —
     홈의 8대는 항상 이 목록의 부분집합이다.
 
     2026-09-14 실측: 예전 유망 물건은 '검토가능' 7대를 절감액(원) 순으로 보여줬는데 오늘의 추천 5대와 **100% 겹치고**,
@@ -5339,7 +5437,10 @@ def promising_rows(bt: Optional[dict] = None, exclude_ids=(), limit: Optional[in
         if v.get("auction_result") in ("낙찰", "종결") or v.get("status") in ("종결", "상세없음"):
             continue
         kind = None
-        if v.get("judgment") == "입찰 검토 가능" and _review_biddable(v):
+        # 재판매 칸은 캐러셀과 **같은 판단**(resale_pick_ok — 판정이 되팔이일 때만). 앞의 두 조건은 bid_state 를
+        # 후보에만 부르려는 순서다(저장 판정·기일이 아니면 어차피 이 칸이 아니다).
+        if (v.get("judgment") == "입찰 검토 가능" and _review_biddable(v)
+                and resale_pick_ok(v, bid_state(v, bt))):
             kind = "resale"
         else:
             t = personal_use_tier(v, bt)
@@ -5469,14 +5570,13 @@ def _daily_pick_gate(v: dict, kind: str, bt: dict, tier: Optional[dict] = None) 
     if not exp or not med:
         return None
     if kind == "resale":
-        if v.get("judgment") != "입찰 검토 가능":
-            return None
         # ⚠ REC-7 ⑺(2026-10-01 라이브): judgment '입찰 검토 가능'은 **최저가**로 매긴 값이다. 예상 경쟁가로는 되팔이
         #   손익분기를 넘는 물건(bid_state usepick '지금 사면 이득')이 캐러셀에서 '되팔아도 남음'을 달았다 —
         #   REC-1 재조회 첫날 520d(예상 840만 > 되팔이 손익분기 753만)·벨라가 그랬고, 상세는 같은 차를
-        #   '되팔이 차익은 어렵습니다'라고 말했다. 재판매 칸은 판정이 되팔이(resale)일 때만 — 아니면 아래 실사용
-        #   칸(now·cheap)으로 다시 심사받는다(compute_daily_picks 의 두 번째 순회).
-        if bs.get("state") != "resale":
+        #   '되팔이 차익은 어렵습니다'라고 말했다. 재판매 칸은 판정이 되팔이(resale)일 때만 — 유망 물건과 같은 함수
+        #   (resale_pick_ok, REC-8). 떨어진 물건은 compute_daily_picks 의 두 번째 순회(personal_use_tier)로 가지만, 저장 판정이
+        #   '입찰 검토 가능'이면 그 함수가 None 이라 캐러셀에서 **빠진다**(실사용 카드로 바뀌지 않는다 — resale_pick_ok 독스트링).
+        if not resale_pick_ok(v, bs):
             return None
     else:
         t = tier if tier is not None else personal_use_tier(v, bt)

@@ -61,7 +61,7 @@
     <h3 class="text-sm font-bold text-txt flex items-center gap-1.5">
       <span class="material-symbols-outlined text-amber-500 text-lg">local_fire_department</span>
       오늘의 추천 물건 <span class="text-[11px] font-normal text-mut hidden sm:inline">· 매일 아침 갱신</span></h3>
-    <a href="/vehicles?judgment=입찰 검토 가능&sort=expected" class="text-xs text-primary hover:underline shrink-0">더보기 →</a>
+    <a href="/vehicles?bucket=review&sort=expected" class="text-xs text-primary hover:underline shrink-0">더보기 →</a>
   </div>
   <div id="pickTrack" class="flex gap-3 overflow-x-auto snap-x snap-mandatory custom-scrollbar -mx-1 px-1 pb-1">
     {% for v in daily_picks %}
@@ -148,7 +148,7 @@
   {% endif %}
   {% set chip = "text-xs border border-line text-txt rounded-full px-3 py-1.5 hover:border-primary hover:text-primary hover:bg-primary/5 transition-colors whitespace-nowrap" %}
   <div class="flex flex-wrap gap-2 mt-3 pt-3 border-t border-line">
-    <a href="/vehicles?judgment=입찰 검토 가능&sort=expected" class="{{ chip }}">✅ 검토 가능</a>
+    <a href="/vehicles?bucket=review&sort=expected" class="{{ chip }}">✅ 검토 가능</a>
     <a href="/vehicles?upcoming=7&sort=sale_date" class="{{ chip }}">⏰ 임박 7일</a>
     <a href="/vehicles?sort=min_sale_price&upcoming=30" class="{{ chip }}">💸 저가순</a>
     <a href="/vehicles?sort=mileage&upcoming=30" class="{{ chip }}">🛣️ 짧은 주행</a>
@@ -334,7 +334,9 @@
     </a>
     {% endfor %}
   </div>
-  {% if alerts|length > 6 %}<div class="text-right mt-2"><a href="/vehicles?upcoming=3&sort=sale_date" class="text-sm text-primary hover:underline">전체 {{ alerts|length }}건 →</a></div>{% endif %}
+  {#- REC-8 ⑶: 알림은 '지금 입찰 추천'(review) 칸 ∩ 3일 이내다(service._alert_rows). 예전 링크(?upcoming=3)는 칸 조건 없이 3일 이내 전체를 열어
+     '전체 N건'과 목록 수가 갈릴 수 있었다. /vehicles 는 bucket(파이썬)·upcoming(SQL)을 함께 받는다 — 같은 모수(hide_incomplete). #}
+  {% if alerts|length > 6 %}<div class="text-right mt-2"><a href="/vehicles?bucket=review&upcoming=3&sort=sale_date" class="text-sm text-primary hover:underline">전체 {{ alerts|length }}건 →</a></div>{% endif %}
 </div>
 {% endif %}
 
@@ -374,7 +376,9 @@
           <span class="ml-1 inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded whitespace-nowrap {{ 'bg-emerald-50 text-emerald-700 border border-emerald-200' if v.pick_kind == 'now' else 'bg-amber-50 text-amber-800 border border-amber-200' }}"><span class="material-symbols-outlined text-[12px] leading-none">{{ pick_icons[v.pick_kind] }}</span>{{ v.pick_label }}</span></td>
         <td class="py-2.5 text-mut text-xs whitespace-nowrap hidden md:table-cell">{{ (v.court or '—')|replace('지방법원','지법') }}</td>
         <td class="py-2.5 text-right font-mono {{ 'text-rose-600' if exp and v.min_sale_price and v.min_sale_price > exp else '' }}">{{ v.min_sale_price|won }}</td>
-        <td class="py-2.5 text-right font-mono text-mut">{{ v.upper_bid|won }}</td>
+        {#- REC-9 2회차: 목록·관심 표와 같은 칸 — 0원 이하는 '산정 불가'(실사용 '지금 사면 이득' 물건은 재판매 상한가가 0원 이하일 수 있다).
+           이 표의 물건은 판정이 되팔이·실사용 이득이라 침수·전손(no_estimate)은 오지 않는다(service.promising_rows). 그 밖은 바이트 그대로. #}
+        <td class="py-2.5 text-right font-mono text-mut">{% if v.upper_bid is not none and v.upper_bid <= 0 %}<span class="font-sans text-xs font-medium text-mut whitespace-nowrap" title="0원 이하 — 되팔이로 목표마진을 남길 낙찰가가 없습니다">산정 불가</span>{% else %}{{ v.upper_bid|won }}{% endif %}</td>
         <td class="py-2.5 text-right font-mono text-txt font-semibold">{{ exp|won if exp else '—' }}{{ ui.minigauge(v.min_sale_price, exp, v.median_price) }}</td>
         <td class="py-2.5 text-right font-mono text-mut">{{ v.median_price|won }}</td>
         <td class="py-2.5 text-right font-mono font-semibold text-emerald-700">−{{ v.pick_disc }}%</td>

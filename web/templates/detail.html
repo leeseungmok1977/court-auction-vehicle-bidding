@@ -204,7 +204,7 @@
     {# 입찰 상한선은 시세·사고 감가·세율로만 계산한다 — 최저가와 무관하다(service.personal_use_max_bid).
        가드가 예상낙찰가 카드를 통째로 빼면서 이 숫자까지 사라졌다(1회차 교차검수 지적 2). 조건문으로 되살린다.
        ⚠ 표시된(낡은) 최저가와 비교하는 말('초과'·'써낼 수 없는 금액')은 쓰지 않는다 — 비교 대상이 이번 기일 값이 아니다. #}
-    {% if bidst and bidst.max_bid %}
+    {% if bidst and bidst.max_bid and not bidst.no_estimate %}
     {#- REC-1 3회차: '(직접 탈 목적)' — 바로 아래 산정 근거의 재판매 손익분기(되팔이 선)와 섞이지 않게 한정한다(app-design 2회차 노트 6).
        '근거:' 줄 — 상한선을 AI 카드 밖으로 옮기며 신뢰 신호가 떨어졌다(design-critic 2회차 #3). 사고 감가는 이 값을 만든 입력이고
        (520d 16.9M→13.8M 의 이유가 30%), 시세 근거 칩은 아래 '이 시세의 근거'와 **같은 말·같은 톤**이다(새 색 없음). #}
@@ -284,7 +284,7 @@
     <span class="text-xs text-mut inline-flex items-center gap-0.5 shrink-0 whitespace-nowrap">펼치기<span class="material-symbols-outlined text-base">expand_more</span></span>
   </summary>
   <div class="px-5 pb-5 pt-0 space-y-4 text-sm">
-    {% if allin %}
+    {% if allin and not (bidst and bidst.no_estimate) %}
     <div class="rounded-lg bg-primary/5 border border-primary/20 p-3.5">
       <div class="text-xs text-mut mb-1">낙찰 시 최소 예상비용 <span class="text-mut">· 예상낙찰가 기준</span></div>
       <div class="font-mono text-xl font-bold text-primary tnum">{{ allin.total|won }} 원</div>
@@ -364,7 +364,7 @@
 <div class="relative overflow-hidden rounded-2xl p-5 text-white" style="background:linear-gradient(150deg,#16305e 0%,#0f2247 55%,#0b1730 100%)">
   <div class="absolute -right-8 -top-10 w-40 h-40 rounded-full bg-amber-400/10 blur-2xl pointer-events-none"></div>
   <div class="relative inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/10 border border-white/15 text-xs font-semibold text-amber-300 mb-4">
-    <span class="material-symbols-outlined text-[15px]">psychology</span> AI 낙찰 예측 분석{% if expected.source %} <span class="text-white/50 font-normal">· {{ expected.source }}</span>{% endif %}
+    <span class="material-symbols-outlined text-[15px]">psychology</span> AI 낙찰 예측 분석{% if expected.source and not (bidst and bidst.no_estimate) %} <span class="text-white/50 font-normal">· {{ expected.source }}</span>{% endif %}
   </div>
   {% if verdict %}
   {# tone에 'stop'이 없어 "입찰하지 마세요"가 마지막 else(text-white/50 + lock)로 떨어져
@@ -405,7 +405,15 @@
     {# 대표 숫자는 **얼마까지 써도 되나**(입찰 상한선)다. 예전엔 '얼마에 팔릴까'(예상낙찰가)가 가장 컸는데,
        60·70대 3인이 그 큰 숫자를 '이 정도까지 쓰면 되는구나'로 읽었다(2회차 패널, 오독이 곧 과다 입찰).
        상한선을 못 구한 물건에서만 예상낙찰가가 대표 숫자 자리를 갖는다. #}
-    {% if bidst and bidst.max_bid %}
+    {% if bidst and bidst.no_estimate %}
+    {#- REC-9: 침수·전손 판정 물건은 대표 숫자 자리에 숫자를 두지 않는다. 바로 위 판정 상자가 '예상낙찰가·입찰 상한선을 제공하지
+       않습니다'라고 말한 아래에 13,100,000원이 가장 큰 글자로 서 있었다(2026-09-30 교차검수, 34408). 같은 뜻을 짧게(ui.withheld).
+       숫자가 아니라 문장이라 mono·tnum 을 걸지 않고, 없는 값이 있는 값보다 강하지 않게 한 단계 낮춘다(white/85 · base). #}
+    <div class="min-w-0 max-w-full">
+      <div class="text-xs text-white/55 mb-0.5" style="word-break:keep-all">AI 예상낙찰가 · 입찰 상한선</div>
+      <div class="text-base font-semibold text-white/85 leading-snug" style="word-break:keep-all">{{ ui.withheld() }}</div>
+    </div>
+    {% elif bidst and bidst.max_bid %}
     {# ⚠ **색은 크기와 다른 것을 말한다.** 크기는 "이게 핵심 숫자", 색은 "지금 써도 되는가"다.
        상한선을 대표 숫자로 올리면서 색을 state 로만 갈랐더니, 기일이 지났거나(wait) 판정을 보류한
        물건에서도 초록이 켜졌다 — 최저매각가가 상한선을 48% 넘어 **써낼 수조차 없는 금액**인데
@@ -451,14 +459,17 @@
     </div>
     <div class="ml-auto text-right">
       <div class="text-xs text-white/55 mb-1">시세 신뢰도</div>
-      {% set cbadge = 'bg-emerald-400 text-[#0b142b]' if cl=='높음' else 'bg-amber-400 text-[#0b142b]' if cl=='보통' else 'bg-rose-400 text-white' %}
+      {#- REC-9 2회차(app-design-expert 고칠 것 2d): 침수·전손 판정 물건(bidst.no_estimate)은 바로 위가 '입찰하지 마세요'라 신호등 색이
+         반대로 읽힌다('높음' 침수차면 초록). 리포트 `.masthead.is-stop` 과 같은 중립 — 흰 12% 채움 · 흰 30% 윤곽 · 흰 90% 글자.
+         윤곽은 ring-inset 이라 크기가 다른 상태와 같다. 다른 물건은 바이트 그대로. #}
+      {% set cbadge = 'bg-white/[0.12] text-white/90 ring-1 ring-inset ring-white/30' if (bidst and bidst.no_estimate) else 'bg-emerald-400 text-[#0b142b]' if cl=='높음' else 'bg-amber-400 text-[#0b142b]' if cl=='보통' else 'bg-rose-400 text-white' %}
       <span class="text-xs font-bold px-2.5 py-1 rounded-full {{ cbadge }}" title="{{ conf_scale }}">{{ cl }}{% if v.market_confidence %} · {{ v.market_confidence }}/100{% endif %}</span>
       {# 몇 점부터 '높음'인지 밝힌다 — 출처가 아니라 경계라 공개해도 되는 값이다(2회차 패널).
          ⚠ nowrap 을 걸었더니 이 줄이 칸을 늘려 320px 큰글씨에서 신뢰도 배지까지 카드 밖으로 밀렸다(육안). #}
       <div class="text-[10px] text-white/45 mt-1 max-w-full" style="word-break:keep-all">{{ conf_scale }}</div>
     </div>
   </div>
-  {% if v.min_sale_price and v.median_price %}
+  {% if v.min_sale_price and v.median_price and not (bidst and bidst.no_estimate) %}
   {% set mkt = eff_median or v.median_price %}   {# 소매 차익·코멘트와 동일한 시세(엔카+케이카 블렌드) #}
   {# 축은 **세 값의 최소~최대**다. 예전엔 0원~최대여서 최저매각가가 73% 지점에 그려지는데 라벨은 막대
      왼쪽 끝에 있었고, 그래서 81% 의 예상 마커가 실제보다 훨씬 높은 값으로 읽혔다(2026-09-14 디자인 검수).
@@ -509,19 +520,20 @@
   </div>
   {% endif %}
   {% endif %}
-  {% if expected.basis %}
+  {% if expected.basis %}{% if not (bidst and bidst.no_estimate) %}{#- REC-9: 산정 기준 줄도 침수·전손 판정 물건에는 없다.
+     ⚠ 바깥 `{% if expected.basis %}` 는 그대로 둔다 — tests/test_panel_r2_fixes.py 가 이 문자열을 히어로 블록의 끝 앵커로 쓴다. #}
   {% set b = expected.basis %}
   <div class="relative gloss-row mt-4 pt-3 border-t border-white/10 text-[11px] text-white/55 leading-relaxed" style="word-break:keep-all">
     <span class="text-white/75 font-semibold">산정 기준</span> ·
     {% if b.kind == 'min_premium' %}최저매각가 <b class="text-white/85 tnum">{{ b.min_sale_price|man }}</b> × 유찰 {{ b.fail_count }}회 낙찰 프리미엄 <b class="text-amber-300">×{{ b.premium }}</b>{% else %}소매 시세 <b class="text-white/85 tnum">{% if b.median %}{{ b.median|man }}{% else %}—{% endif %}</b> × 경매 할인율 <b class="text-amber-300">×{{ b.discount }}</b>{% endif %}{% if expected.comp_n %} · 동급 낙찰 {{ expected.comp_n }}건{{ ' 반영' if expected.comp_used else '은 참고용(미반영)' }}{% endif %}{% if expected.acc %} · {{ ui.acc_why() }}({{ expected.acc.label }}, {{ expected.acc.n }}건) 실측 오차 ±{{ expected.acc.mae }}%{% else %} · <b class="text-amber-300">이 유형은 검증 표본 부족</b>{% endif %}
   </div>
-  {% endif %}
+  {% endif %}{% endif %}
 </div>
 
-{% if comps_won or (dist and is_admin(request)) %}
+{% if comps_won or (dist and is_admin(request) and not (bidst and bidst.no_estimate)) %}
 <div class="bg-surface border border-line rounded-lg p-5">
     {# 동급 매물 시세 분포(엔카 매물 viz)는 관리자 전용 — 사용자는 유사 낙찰 사례(법원 데이터)만 #}
-  {% if dist and is_admin(request) %}
+  {% if dist and is_admin(request) and not (bidst and bidst.no_estimate) %}
   <div>
     <div class="text-xs text-mut mb-1">동급 매물 시세 분포 <span class="text-mut">— 예상낙찰가가 실매물 분포의 어디에 위치하는가</span></div>
     {{ ui.histogram(dist) }}
@@ -531,7 +543,7 @@
   {% if comps_won %}
   <div class="mt-4 pt-4 border-t border-line">
     <div class="text-xs text-mut mb-2">유사 낙찰 사례 <span class="text-mut">— 같은 차종·유사 연식/주행의 과거 실제 낙찰
-      {% if expected and expected.comp_used %}(예상낙찰가 산정에 반영){% elif expected and expected.comp_n %}(<b class="text-txt">산정에는 미반영</b> — 최저매각가×유찰 프리미엄으로 계산했습니다){% else %}(표본 부족으로 참고용 — 산정엔 모델·전역 할인율 사용){% endif %}</span></div>
+      {% if bidst and bidst.no_estimate %}{# REC-9 2회차: 숨긴 예상낙찰가의 산정을 가리키는 주석은 세 갈래 모두 그리지 않는다 #}{% elif expected and expected.comp_used %}(예상낙찰가 산정에 반영){% elif expected and expected.comp_n %}(<b class="text-txt">산정에는 미반영</b> — 최저매각가×유찰 프리미엄으로 계산했습니다){% else %}(표본 부족으로 참고용 — 산정엔 모델·전역 할인율 사용){% endif %}</span></div>
     <div class="overflow-x-auto custom-scrollbar"><table class="w-full text-xs whitespace-nowrap">
       <thead><tr class="text-mut border-b border-line">
         <th class="text-left py-1 font-medium pr-3">사건</th>
@@ -567,7 +579,7 @@
    초보자는 문장보다 금액 박스와 확률을 믿는다 — 상한선을 넘는 금액은 제시하지 않는다. #}
 {% if expected and expected.lo and expected.hi and expected.price and not _closed %}
 {% set _mb = bidst.max_bid if bidst else None %}
-{% set _hide = bidst and (bidst.tone in ('stop', 'wait') or v.accident_grade == 'flood') %}
+{% set _hide = bidst and (bidst.tone in ('stop', 'wait') or bidst.no_estimate) %}
 <div class="bg-surface border border-line rounded-lg p-5">
   <div class="flex items-center gap-2 mb-1">
     <span class="material-symbols-outlined {{ 'text-rose-600' if _hide else 'text-primary' }}">strategy</span>
@@ -576,11 +588,11 @@
   {% if _hide %}
   <div class="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800 leading-relaxed">
     <b>이 물건에는 입찰가를 제시하지 않습니다.</b>
-    {% if v.accident_grade == 'flood' %}침수·전손 의심 물건이라 잔존 가치를 산정할 수 없습니다.
+    {% if bidst.no_estimate %}침수·전손 의심 물건이라 잔존 가치를 산정할 수 없습니다.
     {% elif bidst.state == 'blocked' %}최저매각가({{ bidst.floor|won }}원)가 이미 실사용 손익분기{% if _mb %}({{ _mb|won }}원){% endif %}를 넘어, 써낼 수 있는 모든 금액이 손해입니다.
     {% elif bidst.state == 'over_market' %}예상낙찰가가 소매 시세를 넘습니다 — 같은 차를 소매에서 더 싸게 삽니다.
     {% else %}최저매각가가 예상낙찰가보다 높습니다 — 추가 유찰을 기다리는 편이 낫습니다.{% endif %}
-    {% if next_min %}<span class="block mt-1">다음 기일 예상 최저가는 <b>{{ next_min.price|won }}원</b>입니다.</span>{% endif %}
+    {% if next_min and not bidst.no_estimate %}<span class="block mt-1">다음 기일 예상 최저가는 <b>{{ next_min.price|won }}원</b>입니다.</span>{% endif %}
   </div>
   {% else %}
   <p class="text-sm text-mut mb-4">세 값 모두 <b>위 예상낙찰가와 같은 기준</b>(최저매각가 × 유찰 프리미엄)이며, <b class="text-primary">균형 = 상단 예상낙찰가</b>입니다.{% if expected.p_mid is not none %} 낙찰 확률은 과거 낙찰 {{ expected.prob_n }}건의 <b>낙찰가÷최저매각가 분포</b>에서 이 금액 이하로 낙찰된 비율입니다(실측).<span class="block mt-1">입찰자가 없어 유찰된 기일은 이 분포에 들어 있지 않아, 실제 낙찰 가능성은 이 값보다 높습니다.</span>{% else %} <b class="text-txt">표본이 부족해 낙찰 확률은 표시하지 않습니다.</b>{% endif %} 높게 쓸수록 낙찰 가능성↑·차익↓.{% if _mb %} <b class="text-txt">입찰 상한선 {{ _mb|won }}원</b>을 넘는 칸은 금액을 제시하지 않습니다.{% endif %}</p>
@@ -610,7 +622,7 @@
 {% endif %}
 
 {# 소매 시장 대비 차익 분석 (소매 시세 vs 예상낙찰가) #}
-{% if expected and expected.price and eff_median and eff_median > expected.price and not _closed %}
+{% if expected and expected.price and eff_median and eff_median > expected.price and not _closed and not (bidst and bidst.no_estimate) %}
 <div class="bg-surface border border-line rounded-lg p-5">
   <div class="flex items-center gap-2 mb-3">
     <span class="material-symbols-outlined text-emerald-600">savings</span>
@@ -956,7 +968,7 @@
 
     <div class="bg-surface border border-line rounded-lg p-5">
       <h3 class="text-lg font-semibold mb-3">입찰가 산정 근거</h3>
-      {% if expected and expected.price and expected.basis and expected.basis.kind == 'min_premium' %}
+      {% if expected and expected.price and expected.basis and expected.basis.kind == 'min_premium' and not (bidst and bidst.no_estimate) %}
       {% set b = expected.basis %}
       <div class="bg-primary/5 border border-primary/20 rounded-lg p-4 mb-4">
         <div class="text-xs text-primary font-semibold mb-2 flex items-center gap-1">
@@ -1036,11 +1048,13 @@
         <div class="text-sm text-mut px-4">수입·상용/특수차 등 자동 동급 매칭이 되지 않아 시세를 계산하지 못했습니다.
           상세(주행거리·사진·사고이력)는 확보되었으니, 중고차 시세를 직접 확인하세요.</div>
       </div>
-      {% elif v.judgment == '입찰 보류' %}
+      {% elif v.judgment == '입찰 보류' or (bidst and bidst.no_estimate) %}
       <div class="text-center bg-rose-50 border border-rose-200 rounded-lg py-4 mb-4">
         <div class="text-xs text-rose-600 mb-1 font-semibold">⛔ 입찰 보류 — 침수·전손 의심</div>
-        <div class="text-sm text-mut px-4">감정평가서에 침수·전손 이력이 감지되었습니다. 자동 산정을 제공하지 않으니
-          현장 점검 후 판단하세요.</div>
+        {#- REC-9 2회차(Steward 문구 2026-10-01): 히어로 판정 상자의 '입찰하지 마세요'와 같은 지시. 예전 '현장 점검 후 판단하세요'는
+           조건부라 더 약했다(두 검수 공통). 이 상자가 서는 경우 전부(침수 등급·키워드 보류·no_estimate)에 같은 문장이다. #}
+        <div class="text-sm text-mut px-4">감정평가서에 침수·전손 이력이 감지되었습니다. 자동 산정을 제공하지 않습니다 —
+          입찰하지 마세요.</div>
       </div>
       {% elif v.judgment == '시세 신뢰도 낮음, 수동 검토' %}
       {% set reasons = [] %}
@@ -1117,6 +1131,12 @@
                       ('취득세', bd.get('취득세', 0)),
                       ('고정 부대비', bd.get('고정부대비', 0)),
                       ('목표 마진', bd.get('마진', 0))] %}
+      {#- REC-9 2회차(design-critic 고칠 것 3 · app-design-expert 고칠 것 1): 끝줄 막대 폭은 `upper_bid / 기준시세` 라 음수면 `width:-38.2%` —
+         CSS 가 무효로 버리고 auto(트랙 전폭)가 되어 **값은 −38% 인데 그림은 +100% 초록**이었다(0원 이하 상한가를 가진 모든 물건).
+         ⑴ 0원 이하: 막대·초록 없이 '산정 불가 — 0원 이하'(리포트 01 과 같은 말) ⑵ 가린 상한가(no_estimate, 키워드 보류 물건은 양수):
+         '내지 않음 — 침수·전손 의심'. 0원 이하가 먼저다(34408 은 둘 다 — 리포트 01 요점과 같은 말). 차감 행은 그대로 둔다.
+         값이 아니라 말이라 mono·고정폭(w-28)을 풀고 오른쪽으로 민다(sm:ml-auto). 접힘은 ' — ' 뒤에서만(ui.judge_label) — 큰글씨 320px 에서
+         한 줄로 묶어 두면 행 밖으로 6px 넘쳤다(실측 2026-10-01). 양수·비침수 물건은 바이트 그대로. #}
       <div class="text-xs text-mut mb-2 font-medium">재판매 손익분기 산정 <span class="text-mut">— 소매 시세에서 되팔이 비용 차감(참고)</span></div>
       {# 라벨(w-36) + 금액(w-28) + 여백을 빼면 360px에서 막대에 남는 폭이 16px다.
          16px 막대는 비율을 못 보여주면서 자리만 차지한다 — 읽을 수 없는 그래프는
@@ -1147,9 +1167,9 @@
         <div class="sm:flex sm:items-center sm:gap-2 text-xs pt-1.5 border-t border-line">
           <div class="flex items-center justify-between gap-2 sm:contents">
             <span class="sm:w-36 sm:shrink-0 font-semibold whitespace-nowrap">= 손익분기 상한</span>
-            <span class="sm:w-28 sm:text-right font-mono font-semibold text-emerald-700 tnum sm:shrink-0 sm:order-last">{{ v.upper_bid|won }}</span>
+            {% set _ubtxt = '산정 불가 — 0원 이하' if v.upper_bid <= 0 else ('내지 않음 — 침수·전손 의심' if (bidst and bidst.no_estimate) else none) %}{% if _ubtxt %}<span class="sm:ml-auto min-w-0 text-right font-semibold text-mut">{{ ui.judge_label(_ubtxt) }}</span>{% else %}<span class="sm:w-28 sm:text-right font-mono font-semibold text-emerald-700 tnum sm:shrink-0 sm:order-last">{{ v.upper_bid|won }}</span>{% endif %}
           </div>
-          <div class="flex-1 h-2.5 sm:h-6 rounded bg-emerald-100 mt-1 sm:mt-0"><div class="bg-emerald-500 h-2.5 sm:h-6 rounded" style="width:{{ (v.upper_bid / base * 100)|round(1) if base else 0 }}%"></div></div>
+          {% if not _ubtxt %}<div class="flex-1 h-2.5 sm:h-6 rounded bg-emerald-100 mt-1 sm:mt-0"><div class="bg-emerald-500 h-2.5 sm:h-6 rounded" style="width:{{ (v.upper_bid / base * 100)|round(1) if base else 0 }}%"></div></div>{% endif %}
         </div>
       </div>
       <div class="text-xs text-mut mb-4 leading-relaxed border-t border-line pt-2">

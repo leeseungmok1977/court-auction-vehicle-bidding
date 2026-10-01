@@ -390,14 +390,23 @@ def test_disc_differs_only_by_the_red_tag(client):
 
 
 def test_disc_gate_uses_the_body_predicate_and_writes_the_sentence_once():
-    """원문 검사: 게이트는 본문과 같은 `{% if report %}` 하나(새 판정 없음), 문장은 한 번만 적혀 있고 태그만 감싼다."""
+    """원문 검사: 게이트는 본문과 같은 술어 하나(새 판정 없음), 문장은 한 번만 적혀 있고 태그만 감싼다.
+
+    REC-9 2회차(지시서 2026-10-01-16 · design-critic 고칠 것 1 ⑵ 배포 조건): 술어가 `report` → `report and not _noest` 로 넓어졌다.
+    원칙은 그대로다 — **권장가가 없는 곳에서 빨간 굵기를 쓰지 않는다**(PANEL-56 4회차 오너 결정). 침수·전손 판정 물건은 본문이
+    있어도 권장가가 없다. `_noest` 는 새 판정이 아니라 본문의 REC-9 갈래들이 이미 쓰는 신호(bidst.no_estimate) 그대로다.
+    같은 물건에서는 숨긴 예상가의 정확도 '(±N%)'도 끼워 넣지 않는다(MAE 게이트에 같은 신호)."""
     src = (_TPL / "report.html").read_text(encoding="utf-8")
     d0 = src.index(_DISC_OPEN)
     block = src[d0:src.index("</div>", d0)]
     assert src.count(_DISC_LAST) == 1, "문장이 두 번 적혔다 — 두 분기가 따로 놀 수 있다"
-    assert ("{% if report %}" + _RED_B + "{% endif %}" + _DISC_LAST + "{% if report %}</b>{% endif %}") in block
-    # 이 블록의 if 는 셋뿐 — 본문 게이트와 같은 술어 둘 + 기존 MAE 게이트 하나
-    assert re.findall(r"{% if [^%]*%}", block) == ["{% if expected and expected.acc %}", "{% if report %}", "{% if report %}"]
+    assert ("{% if report and not _noest %}" + _RED_B + "{% endif %}" + _DISC_LAST
+            + "{% if report and not _noest %}</b>{% endif %}") in block
+    # 이 블록의 if 는 셋뿐 — 본문 게이트와 같은 술어 둘 + 기존 MAE 게이트 하나(셋 다 같은 `_noest` 신호로 좁힘)
+    assert re.findall(r"{% if [^%]*%}", block) == ["{% if expected and expected.acc and not _noest %}",
+                                                    "{% if report and not _noest %}", "{% if report and not _noest %}"]
+    # `_noest` 는 리포트 머리에서 한 번 정한 그 값이다(판정 단일 소스 bidst 의 no_estimate) — 면책 블록이 따로 계산하지 않는다
+    assert "{%- set _noest = bidst and bidst.no_estimate %}" in src and src.index("{%- set _noest =") < d0
     for banned in ("is_admin", "bid_state(", "_stop0", "_tone0", "median"):
         assert banned not in block, f"면책 게이트에 다른 판정이 들어왔다: {banned}"
     # 본문 자체가 같은 술어로 갈린다(그 else 가지에 시세 없는 안내 그릇이 있다)

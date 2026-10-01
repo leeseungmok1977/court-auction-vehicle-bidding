@@ -24,8 +24,11 @@ BASE = {"court": "수원지방법원", "maker": "현대", "model": "쏘나타", 
 def _rows():
     return [
         # 재판매 검토가능 — 시세 1,300만 · 최저 1,000만 → 예상 1,130만, 절감 13%
+        # REC-8(2026-10-01): 되팔이 손익분기(upper_bid)를 채운 **진짜 되팔이 후보**다. 이 값이 없으면 판정은
+        # '예상 경쟁가가 상한선 초과'(over_market)인데 예전 유망 물건은 저장 문자열만 보고 '되팔아도 남음'을 달았다 —
+        # 재판매 칸은 이제 판정이 되팔이일 때만 선다(service.resale_pick_ok, 캐러셀과 같은 함수 · REC-7 ⑺ 픽스처와 같은 처방).
         dict(BASE, id="R1_1", case_no="2026타경31", judgment="입찰 검토 가능", min_sale_price=10_000_000,
-             appraisal_value=12_000_000, median_price=13_000_000),
+             appraisal_value=12_000_000, median_price=13_000_000, upper_bid=12_000_000),
         # 실사용 '지금 사면 이득' — 시세 4,000만 · 최저 1,600만 → 예상 1,808만, 절감 55% (가장 위)
         dict(BASE, id="N1_1", case_no="2026타경32", judgment="유찰 대기", min_sale_price=16_000_000,
              appraisal_value=30_000_000, median_price=40_000_000),

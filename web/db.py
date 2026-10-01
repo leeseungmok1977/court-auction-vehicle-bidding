@@ -571,6 +571,22 @@ def list_vehicles(judgment: Optional[str] = None, maker: Optional[str] = None,
     return [_decode(r) for r in rows]
 
 
+def count_vehicles(**filters) -> int:
+    """`list_vehicles(**filters)` 의 **건수만** — 같은 WHERE 조립(_vehicles_where)을 쓰는 COUNT(*) 한 쿼리.
+
+    REC-8 ⑵: 수집 실행 중 `/run/status` 폴링(2초)이 홈 KPI '곧 열리는 경매 30일'을 덮어쓰는데, 예전 값
+    (upcoming_count — 숨김 물건까지 센다)은 홈의 정의(lifecycle_partition 의 upcoming30 = hide_incomplete 목록 건수)와 달라
+    417 → 491 로 튀었다(09-29 백업 사본). 행을 읽어 len 을 재면 폴링마다 수백 행을 디코딩하므로 COUNT 로 센다."""
+    where, params = _vehicles_where(**filters)
+    sql = "SELECT COUNT(*) c FROM vehicles"
+    if where:
+        sql += " WHERE " + " AND ".join(where)
+    conn = connect()
+    n = conn.execute(sql, params).fetchone()["c"]
+    conn.close()
+    return n
+
+
 def count_by_price_band(bands, **filters) -> dict:
     """가격대(최저매각가) 구간별 건수 — **한 쿼리**(CASE WHEN … GROUP BY). FEAT-1 셀렉트 라벨용.
 
@@ -660,6 +676,11 @@ def update_fields(vid: str, **fields) -> None:
 
 
 def counts_by_judgment() -> dict:
+    """저장 판정 문자열(judgment 컬럼)별 건수 — **화면의 판정 수로 쓰지 않는다**(REC-8 ⑵).
+
+    이 수는 옛 분석이 저장한 문자열을 센 것이다. 홈 '지금 입찰 추천'·'유찰 대기'는 칸 판정(service.lifecycle_partition)
+    이 정하므로 둘은 다른 수다 — 수집 실행 중 `/run/status` 가 이 값으로 홈 KPI 를 덮어 3 → 4 · 725 → 576 으로 바꿨다
+    (09-29 백업 사본). 2026-10-01 부터 web/ 의 어떤 화면·응답도 이 함수를 쓰지 않는다(수집·유지보수 점검용으로만 남긴다)."""
     conn = connect()
     rows = conn.execute(
         "SELECT judgment, COUNT(*) c FROM vehicles GROUP BY judgment").fetchall()

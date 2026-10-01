@@ -12,7 +12,7 @@
 <link rel="icon" type="image/png" sizes="16x16" href="/static/icons/favicon-16.png"/>
 <link rel="stylesheet" href="/static/app.css?v={{ css_v }}"/>
 <style>
-  :root{--ink:#0d253d;--mut:#64748d;--line:#e3e8ee;--navy:#0b142b;--amber:#f59e0b}
+  :root{--ink:#0d253d;--mut:#5e6c85;--line:#e3e8ee;--navy:#0b142b;--amber:#f59e0b}
   body{background:#f6f9fc;color:var(--ink);font-family:'Pretendard','Malgun Gothic',sans-serif;line-height:1.7;font-size:15px}
   .wrap{max-width:760px;margin:0 auto;padding:28px 20px 72px}
   .mast{background:linear-gradient(150deg,#16305e,#0b1730);color:#fff;border-radius:16px;padding:24px 24px 20px;margin-bottom:24px}
@@ -26,7 +26,18 @@
   th,td{border:1px solid var(--line);padding:7px 9px;text-align:left;vertical-align:top}
   th{background:#eef2f8;font-weight:600}
   code{background:#eef2f8;padding:1px 5px;border-radius:4px;font-size:13px}
+  .plan{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 16px;margin:12px 0}
+  .plan p{margin:0}.plan ul{margin:6px 0 0 2px}
   a{color:#533afd}.foot{margin-top:28px;color:var(--mut);font-size:13px;border-top:1px solid var(--line);padding-top:14px}
+  /* PLAY-1 2회차(app-design-expert 고칠 것 3) — 문안은 한 글자도 바꾸지 않고 줄바꿈만 다룬다.
+     .tel: 320px 에서 '국번 없이 / 182' 로 번호가 다음 줄에 홀로 떨어졌다 — 한 덩어리로.
+     .hist: 개정 이력의 둘째 줄이 날짜 아래로 파고들었다 — 날짜를 한 열로 세우고 설명은 그 오른쪽에서만 접는다(hanging indent).
+     날짜 칸은 고정 폭(5.75em)이다 — 이 페이지 서체에서는 tabular-nums 를 걸어도 날짜 폭이 줄마다 80~85px 로 달라(2026-10-01 실측)
+     max-content 로 두면 줄마다 설명 시작점이 최대 5px 어긋났다. 더 넓은 대체 서체가 오면 그 줄만 max-content 로 넓어진다(겹침 없음).
+     글머리표는 날짜 열이 대신한다. */
+  .tel{white-space:nowrap}
+  ul.hist{list-style:none;padding-left:0}
+  .hist li{display:grid;grid-template-columns:minmax(max-content,5.75em) minmax(0,1fr);column-gap:.6em}
 </style>
 </head>
 <body>
@@ -43,13 +54,22 @@
   <h2>1. 수집하는 항목과 방법</h2>
   <table>
     <tr><th>구분</th><th>항목</th><th>수집 시점</th></tr>
-    <tr><td>계정</td><td>이메일, 계정 고유식별자(Google 계정 sub)</td><td>Google 로그인 시 <b>(예정)</b></td></tr>
-    <tr><td>결제·구독</td><td>Google Play 구매 토큰, 구독 상태·상품ID (신용카드 등 결제수단 정보는 <b>수집하지 않음</b> — Google Play가 처리)</td><td>구독 결제 시 <b>(예정)</b></td></tr>
-    <tr><td>광고</td><td>광고 식별자(Android 광고 ID/AAID 등), 대략적 기기·앱 사용 정보</td><td>광고 노출 시 <b>(예정)</b></td></tr>
     <tr><td>자동 수집</td><td>접속 로그(IP·시각·요청), 기기·브라우저 정보, 쿠키·로컬 저장소(세션·설정 유지)<div class="text-mut text-xs mt-1">웹서버 인프라 로그로만 사용합니다 — 분석·프로필 연결·외부 제공이 없고 14일 후 자동 삭제되므로, Google Play '데이터 안전'의 <b>수집</b>에는 해당하지 않아 스토어에 '수집 없음'으로 신고했습니다.</div></td><td>서비스 이용 시</td></tr>
     <tr><td>이용자 입력</td><td>즐겨찾기·메모·최종입찰가 등 이용자가 직접 입력한 값 — <b>기기 내 로컬 저장소(localStorage)에만 보관되며 서버로 전송·수집하지 않음</b></td><td>기능 사용 시</td></tr>
   </table>
-  <p class="mut">※ 서비스가 제공하는 <b>법원경매 물건 정보</b>는 대법원 법원경매정보 등 공개된 자료로, 특정 개인을 식별하는 개인정보가 아닙니다.
+  {# 문안은 docs/compliance-review.md §13.2 ①②(PLAY-1, 2026-10-01) 그대로다 — 고칠 때는 그 절을 먼저 고친다.
+     ② ※ 문장은 정정안(A). 오너가 원안(B) '차주 등 개인 정보와 결합하지 않습니다'를 고르면 그 한 구절만 바꾼다
+     (앵커: tests/test_privacy_play1.py 의 N1_SENTENCE). #}
+  <div class="plan">
+    <p><b>향후 도입 예정 기능 (현재 적용되지 않음)</b></p>
+    <p class="mut">아래 기능은 현재 서비스에 없으며, 아래 정보는 지금 수집하지 않습니다. 기능을 도입할 때는 그 전에 이 방침을 개정해 알립니다.</p>
+    <ul>
+      <li>계정(Google 로그인 도입 시): 이메일, 계정 고유식별자(Google 계정 sub)</li>
+      <li>결제·구독(구독 결제 도입 시): Google Play 구매 토큰, 구독 상태·상품ID — 신용카드 등 결제수단 정보는 수집하지 않습니다(Google Play가 처리)</li>
+      <li>광고(광고 도입 시): 광고 식별자(Android 광고 ID/AAID 등), 대략적 기기·앱 사용 정보</li>
+    </ul>
+  </div>
+  <p class="mut">※ 서비스가 제공하는 <b>법원경매 물건 정보</b>는 대법원 법원경매정보 등이 공개한 자료이며, 서비스는 이를 특정 개인을 식별할 목적으로 수집·이용하지 않고 차주 등에 관한 정보를 따로 조회해 결합하지 않습니다.
   <b>(예정)</b> 표시는 로그인·결제·광고 기능 도입 후 적용됩니다.</p>
 
   <h2>2. 이용 목적</h2>
@@ -73,17 +93,22 @@
   이 과정에서 관련 정보가 처리·이전될 수 있습니다.</p>
   <table>
     <tr><th>수탁·연동</th><th>목적</th></tr>
-    <tr><td>Google Firebase Authentication</td><td>Google 로그인·본인 식별 (예정)</td></tr>
-    <tr><td>Google Play Billing / Developer API</td><td>구독 결제·검증·해지 반영 (예정)</td></tr>
-    <tr><td>Google AdMob</td><td>광고 노출·측정 (예정)</td></tr>
     <tr><td>Amazon Web Services (AWS, 서울 리전)</td><td>서버·데이터 호스팅</td></tr>
   </table>
-  <p class="mut">Google 서비스 이용에 따라 정보가 국외(Google 데이터센터)로 이전·처리될 수 있습니다.
-  각 사업자의 개인정보 처리는 해당 사업자 방침(예: Google 개인정보처리방침)을 따릅니다.</p>
+  <div class="plan">
+    <p><b>향후 도입 예정 기능 (현재 적용되지 않음)</b></p>
+    <p class="mut">아래 연동은 해당 기능을 도입할 때 적용되며, 현재는 적용되지 않습니다.</p>
+    <ul>
+      <li>Google Firebase Authentication — Google 로그인·본인 식별</li>
+      <li>Google Play Billing / Developer API — 구독 결제·검증·해지 반영</li>
+      <li>Google AdMob — 광고 노출·측정</li>
+    </ul>
+    <p class="mut" style="margin-top:6px">이 기능들을 도입하면 정보가 국외(Google 데이터센터)로 이전·처리될 수 있으며, 각 사업자의 개인정보 처리는 해당 사업자 방침(예: Google 개인정보처리방침)을 따릅니다. 도입 전에 이 방침을 개정해 알립니다.</p>
+  </div>
 
   <h2>5. 이용자의 권리</h2>
   <ul>
-    <li><span class="text-mut">(예정)</span> 계정 기능 도입 후, 본인 정보의 열람·정정·삭제와 <b>회원 탈퇴(계정 삭제)</b>를 요청할 수 있습니다. 현재는 로그인·계정이 없어 서버에 보관되는 개인정보가 없습니다.</li>
+    <li><span class="text-mut">(예정)</span> 계정 기능 도입 후, 본인 정보의 열람·정정·삭제와 <b>회원 탈퇴(계정 삭제)</b>를 요청할 수 있습니다. 현재는 로그인·계정이 없어 <b>서버에 보관하는 계정 정보가 없습니다.</b></li>
     <li>현재 앱에는 <b>광고가 없습니다</b>(제3자 광고·분석 스크립트 0개). 도입 시 기기 설정의 <b>광고 ID 재설정/삭제</b>로 거부할 수 있습니다.</li>
     <li>쿠키는 브라우저 설정으로 거부·삭제할 수 있으나, 일부 기능이 제한될 수 있습니다.</li>
   </ul>
@@ -95,11 +120,48 @@
   <p>서비스가 제공하는 예상낙찰가·시세·리포트는 공개 데이터와 통계 모델에 기반한 <b>참고용 추정치</b>로 오차가 있으며,
   투자 권유가 아닙니다. 최종 입찰 판단과 결과의 책임은 이용자 본인에게 있습니다.</p>
 
-  <h2>8. 문의처</h2>
-  <p>개인정보 관련 문의·열람·삭제 요청: <a href="mailto:{{ contact }}">{{ contact }}</a></p>
+  {# 절 번호 8 은 그대로 둔다 — compliance-review §8.5·§10.2 가 '방침 §8(이메일)'을 창구로 가리킨다(§13.2-⑤). #}
+  <h2>8. 개인정보 보호책임자 및 문의처</h2>
+  <p>서비스는 개인정보 처리에 관한 업무를 총괄해서 책임지고, 개인정보 처리와 관련한 정보주체의 문의·불만 처리 및 피해 구제를 담당하는 개인정보 보호책임자를 다음과 같이 두고 있습니다.</p>
+  <ul>
+    <li><b>개인정보 보호책임자</b>: 경매로 내차GET 개인정보보호 담당(대표)</li>
+    <li><b>연락처</b>: <a href="mailto:{{ contact }}">{{ contact }}</a></li>
+  </ul>
+  <p>개인정보에 관한 문의와 열람·정정·삭제·처리정지 요청은 위 연락처로 보내 주십시오. 지체 없이 답변하고 처리하겠습니다.</p>
+  <p class="mut">※ 현재 서비스는 로그인·계정이 없어 계정 정보를 보관하지 않습니다. 위 창구에서는 웹서버 접속 로그 등 서비스 이용 중 자동으로 생성되는 정보에 관한 문의와 요청도 받습니다.</p>
 
-  <h2>9. 방침의 변경</h2>
+  {# 실제로 하고 있는 조치만 적는다(§13.2-⑥) — 확인하지 않은 조치(저장 암호화·보안 패치 등)를 더하면 과장이 된다. #}
+  <h2>9. 개인정보의 안전성 확보 조치</h2>
+  <p>서비스는 개인정보를 안전하게 처리하기 위해 다음 조치를 하고 있습니다.</p>
+  <ul>
+    <li><b>전송 구간 암호화</b>: 이용자와 서비스 사이의 모든 통신을 HTTPS로 암호화합니다.</li>
+    <li><b>관리 기능 접근 통제</b>: 관리 기능은 공개 주소에서 열리지 않으며, 운영자만 SSH 보안 접속을 거쳐 사용합니다.</li>
+    <li><b>접속 로그 보관 최소화</b>: 웹서버 접속 로그(IP·시각·요청)는 서버에만 보관하고 14일이 지나면 자동으로 삭제합니다.</li>
+    <li><b>백업</b>: 서비스 데이터베이스를 매일 백업합니다.</li>
+  </ul>
+
+  {# 기관 전화·주소는 §13.4 에서 공식 사이트로 확인한 값이다(2026-10-01). 링크는 https 로만 건다. #}
+  <h2>10. 권익침해 구제 방법</h2>
+  <p>정보주체는 개인정보 침해로 인한 구제를 받기 위하여 개인정보분쟁조정위원회, 한국인터넷진흥원 개인정보침해신고센터 등에 분쟁 해결이나 상담 등을 신청할 수 있습니다. 이 밖에 개인정보 침해의 신고·상담은 아래 기관에 문의하실 수 있습니다.</p>
+  <ul>
+    <li>개인정보분쟁조정위원회: 1833-6972 (<a href="https://www.kopico.go.kr">www.kopico.go.kr</a>)</li>
+    <li>개인정보침해신고센터(한국인터넷진흥원): <span class="tel">국번 없이 118</span> (<a href="https://privacy.kisa.or.kr">privacy.kisa.or.kr</a>)</li>
+    <li>대검찰청: <span class="tel">국번 없이 1301</span> (<a href="https://www.spo.go.kr">www.spo.go.kr</a>)</li>
+    <li>경찰청 사이버범죄 신고시스템: <span class="tel">국번 없이 182</span> (<a href="https://ecrm.police.go.kr">ecrm.police.go.kr</a>)</li>
+  </ul>
+
+  {# 개정 이력 마지막 줄 날짜 = web/app.py privacy() 의 updated(시행일). 배포일이 바뀌면 **둘을 같은 커밋에서** 바꾼다(§13.2-⑨).
+     {{ updated }} 로 그리지 않는다 — 다음 개정 때 이 줄의 날짜까지 따라 바뀌면 이력이 거짓이 된다. 일치는 테스트가 본다. #}
+  <h2>11. 방침의 변경</h2>
   <p>본 방침은 법령·서비스 변경에 따라 개정될 수 있으며, 개정 시 본 페이지에 게시합니다.</p>
+  <p style="margin-top:10px"><b>개정 이력</b></p>
+  <ul class="hist">
+    <li><span class="hd">2026-09-06</span> 제정</li>
+    <li><span class="hd">2026-09-11</span> 문의처 변경, 접속 로그 보관 기간 정정</li>
+    <li><span class="hd">2026-09-12</span> 계정·광고 기능이 아직 없음을 명확화, 자동 수집 정보에 대한 Google Play '데이터 안전' 신고 근거 기재</li>
+    <li><span class="hd">2026-09-23</span> 이용 목적 정정(결제 처리를 '(예정)'으로 구분, 푸시 알림 미발송·기기 내 저장 명시)</li>
+    <li><span class="hd">2026-10-01</span> 개인정보 보호책임자·안전성 확보 조치·권익침해 구제 방법 기재, 향후 도입 예정 기능 분리, 법원경매 물건 정보와 서버 보관 정보에 관한 설명 정정</li>
+  </ul>
 
   <div class="foot">
     시행일 {{ updated }} · 경매로 내차GET · <a href="/">서비스로 돌아가기</a>

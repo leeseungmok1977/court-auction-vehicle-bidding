@@ -43,7 +43,7 @@
     </p>
     <div class="mt-9 flex flex-wrap items-center justify-center gap-3">
       <a href="/vehicles" class="btn-primary">무료로 물건 보기 <span class="material-symbols-outlined text-lg">arrow_forward</span></a>
-      <a href="/vehicles?judgment=입찰 검토 가능&sort=expected" class="btn-ghost">지금 검토 가능한 물건 →</a>
+      <a href="/vehicles?bucket=review&sort=expected" class="btn-ghost">지금 검토 가능한 물건 →</a>
     </div>
     <div class="mt-6 text-sm text-mut">
       {# '낙찰 이력'과 '그중 실제로 대조한 건수'는 다른 수다 — 한 낱말로 뭉치면 413과 249 중
@@ -152,7 +152,7 @@
   <div class="max-w-4xl mx-auto px-5 py-16 sm:py-20 text-center">
     <h2 class="text-3xl sm:text-4xl font-bold tracking-tight" style="text-wrap:balance">지금 검토 가능한 물건이 <span class="text-primary">기다립니다</span></h2>
     <p class="mt-4 text-mut text-lg">이번 달 매각예정 {{ upcoming }}건 중, 데이터가 추천하는 유망 물건부터 확인하세요.</p>
-    <a href="/vehicles?judgment=입찰 검토 가능&sort=expected" class="btn-primary mt-8 text-base px-6 py-3">유망 물건 보기 <span class="material-symbols-outlined">arrow_forward</span></a>
+    <a href="/vehicles?bucket=review&sort=expected" class="btn-primary mt-8 text-base px-6 py-3">유망 물건 보기 <span class="material-symbols-outlined">arrow_forward</span></a>
   </div>
 </section>
 

@@ -316,7 +316,7 @@ FLOOR_HOLD_MSG = {
 
 def _floor_hold(v: dict) -> Optional[str]:
     """최저가 지연 말고 예상낙찰가·판정을 막는 사유(FLOOR_HOLD_MSG 의 키) — 없으면 None(최저가만 확인하면 된다)."""
-    if v.get("accident_grade") == "flood" or v.get("judgment") == "입찰 보류":
+    if service.flood_hold(v):          # bid_state 침수·전손 분기와 같은 술어(REC-9 — 한 곳)
         return "flood"
     if v.get("runnable") == "no":
         return "stop"
@@ -573,7 +573,8 @@ def _startup():
 
 @app.get("/", response_class=HTMLResponse)
 def dashboard(request: Request):
-    counts = db.counts_by_judgment()
+    # REC-8 ⑵: 예전엔 여기서 db.counts_by_judgment()(저장 판정 문자열 수)를 'counts' 로 넘겼다 — 어느 템플릿도 읽지 않는
+    # 죽은 계산이었고, 누가 그것으로 KPI 를 그리면 '지금 입찰 추천'과 다른 수가 된다. 홈의 판정 수는 lifecycle 이 정한다.
     run = db.latest_run()
     # 헤더 "총 N대 모니터링" — 목록과 같은 모수여야 한다. COUNT(*)를 쓰면 1320이라 띄우고
     # 눌러 들어가면 1167이 나온다(2026-09-12 2회차 패널 앱품질 지적 3).
@@ -605,7 +606,7 @@ def dashboard(request: Request):
     _adm = is_admin(request)
     _pv = lambda rows: rows if _adm else [service.public_view(r, False) for r in rows]  # noqa: E731
     return templates.TemplateResponse("dashboard.html", {
-        "request": request, "counts": counts, "run": run, "total": total,
+        "request": request, "run": run, "total": total,
         "encar_health": service.encar_health_status(),   # 시세 수집 차단·지연 정직 고지
         "candidates": _pv(candidates), "running": service.is_running(),
         "pick_labels": service.PICK_LABELS, "pick_icons": service.PICK_ICONS, "pick_subtitle": service.PICK_SUBTITLE,
@@ -667,7 +668,8 @@ def ads_txt():
 def privacy(request: Request):
     """개인정보처리방침(공개 독립 페이지) — Play·AdMob 심사 필수. 문의 이메일은 설정으로 교체 가능."""
     return templates.TemplateResponse("privacy.html", {
-        "request": request, "updated": "2026-09-11", "site": "naechaget.co.kr",
+        # 시행일 — 방침 본문을 고치는 커밋이 **같은 커밋에서** 이 값을 올린다(compliance-review §9.2). 2026-10-01: 준법 최종 문안.
+        "request": request, "updated": "2026-10-01", "site": "naechaget.co.kr",
         "contact": db.get_setting("privacy_contact", "koreanplus@gmail.com"),
     })
 
@@ -759,8 +761,13 @@ def vehicles(request: Request, judgment: str = "", maker: str = "", q: str = "",
     # 파이썬으로 세야 셀렉트 라벨의 숫자가 목록 '총 N건'과 맞는다(자기 축만 뺀 나머지 필터 전부 적용).
     # SQL 로만 거르는 보통 경로에서만 WHERE 조각 + 축마다 한 쿼리 COUNT(db.count_by_price_band·count_by_year_min·
     # count_by_km_max)를 쓴다.
-    _py_filtered = bool(segment or bucket or usepick in USEPICK_VALUES or picks == "1")
-    _sql_filters = dict(judgment=judgment or None, maker=maker or None, q=q or None,
+    # REC-8 ⑴: 판정 값이 **칸으로 읽히면**(service.JUDGMENT_FILTER_BUCKETS — '입찰 검토 가능' → review) 저장 문자열을
+    # SQL 에 넘기지 않고 파이썬에서 칸으로 거른다. 그러면 SQL 이 `?bucket=review` 와 같은 질의가 되어 결과·순서·'총 N건'·
+    # 페이지·축별 건수가 그 링크와 같다(옛 공유 링크 포함). 예전엔 저장 문자열로 걸러 '총 4건 중 2건'이 칸 밖이었다
+    # (09-29 백업 사본 12:00 — 이번 회차 최저가 미확인 E300 · 기일 경과 체로키). 다른 판정 값은 예전처럼 SQL 이다.
+    _jbucket = service.judgment_filter_bucket(judgment)
+    _py_filtered = bool(segment or bucket or _jbucket or usepick in USEPICK_VALUES or picks == "1")
+    _sql_filters = dict(judgment=(None if _jbucket else (judgment or None)), maker=maker or None, q=q or None,
                         result=result or None, status=status or None, cond=cond or None,
                         upcoming_days=up or None, hide_incomplete=_hide_incomplete,
                         date=date or None, court=court or None, promising=bool(promising))
@@ -773,6 +780,8 @@ def vehicles(request: Request, judgment: str = "", maker: str = "", q: str = "",
     _bt = service.backtest_stats()
     if bucket:       # 대시보드 카드 링크 — 카드 수와 목록 수가 정확히 같아야 한다
         rows = [r for r in rows if service.in_lifecycle_bucket(r, bucket, _bt)]
+    if _jbucket:     # REC-8 ⑴ 판정 드롭다운·진입 링크 '입찰 검토 가능' = '지금 입찰 추천' 칸(카드·?bucket=review 와 같은 함수)
+        rows = [r for r in rows if service.in_judgment_filter(r, judgment, _bt)]
     # 파이썬 경로의 축별 건수 모수 = 축 3종(가격대·연식·주행거리)만 뺀 나머지 필터를 전부 통과한 행(패싯 규칙).
     # 각 축의 건수는 _apply_axes(_band_basis, skip=그 축) 으로 나머지 두 축까지 얹어 센다.
     _band_basis = rows if _py_filtered else None
@@ -964,8 +973,8 @@ def vehicles_count(request: Request, judgment: str = "", maker: str = "", q: str
     ⚠️ `/vehicles`와 **같은 모수**를 써야 한다. 예전엔 hide_incomplete를 넘기지 않아
     "현재 1,320건"이라고 알린 뒤 눌러 들어가면 1,167건이 나왔다(2026-09-12 패널 지적).
     가격대(price, FEAT-1)·연식 하한(year_min)·주행거리 상한(km_max, FEAT-2)도 /vehicles 와 같은 규칙:
-    SQL 경로는 WHERE 조각, 파이썬 경로(segment·bucket·usepick·picks)는 마지막에 파이썬으로 거른다 —
-    술어가 독립이라 순서는 총수에 무관.
+    SQL 경로는 WHERE 조각, 파이썬 경로(segment·bucket·칸으로 읽는 판정 값·usepick·picks)는 마지막에 파이썬으로 거른다 —
+    술어가 독립이라 순서는 총수에 무관. 판정 '입찰 검토 가능'은 저장 문자열이 아니라 '지금 입찰 추천' 칸이다(REC-8 ⑴).
     """
     up = int(upcoming) if upcoming.strip().lstrip("-").isdigit() else 0
     price = _price_key(request, price)
@@ -974,20 +983,26 @@ def vehicles_count(request: Request, judgment: str = "", maker: str = "", q: str
     km_max = _km_max_key(request, km_max)
     _ym = service.year_min_value(year_min)
     _km = service.km_max_value(km_max)
-    _py_filtered = bool(segment or bucket or usepick in USEPICK_VALUES or picks == "1")
+    _jbucket = service.judgment_filter_bucket(judgment)     # REC-8 ⑴ — /vehicles 와 같은 규칙(칸으로 읽는 판정 값)
+    _py_filtered = bool(segment or bucket or _jbucket or usepick in USEPICK_VALUES or picks == "1")
     _sql_price = {"price_min": _pb[0], "price_max": _pb[1]} if (_pb and not _py_filtered) else {}
     _sql_year = {"year_min": _ym} if (_ym is not None and not _py_filtered) else {}
     _sql_km = {"km_max": _km} if (_km is not None and not _py_filtered) else {}
+    # 칸으로 읽는 판정 값도 저장 문자열을 SQL 에 **후보 조건**으로 넘긴다(/vehicles 와 다른 점). 그 문자열은 review 칸의
+    # 필요조건이라 아래 in_judgment_filter 뒤의 집합은 /vehicles 와 같고, 여기는 건수만 세므로 순서가 필요 없다 — /vehicles 는
+    # 페이지까지 ?bucket=review 와 같게 하려고 같은 SQL 을 쓰지만, 이 API 가 전 행을 읽으면 요청당 12~16ms → 약 0.2~0.26초다.
     rows = db.list_vehicles(judgment=judgment or None, maker=maker or None, q=q or None,
                             result=result or None, status=status or None, cond=cond or None,
                             upcoming_days=(up or None), date=date or None, court=court or None,
                             hide_incomplete=(all != "1"), **_sql_price, **_sql_year, **_sql_km)
     if segment:
         rows = [r for r in rows if service.vehicle_segment(r) == segment]
-    if bucket or usepick in USEPICK_VALUES:     # /vehicles와 같은 필터를 타야 건수가 일치한다
+    if bucket or _jbucket or usepick in USEPICK_VALUES:     # /vehicles와 같은 필터를 타야 건수가 일치한다
         _bt = service.backtest_stats()
         if bucket:
             rows = [r for r in rows if service.in_lifecycle_bucket(r, bucket, _bt)]
+        if _jbucket:
+            rows = [r for r in rows if service.in_judgment_filter(r, judgment, _bt)]
         if usepick in USEPICK_VALUES:
             rows = [r for r in rows
                     if (t := service.personal_use_tier(r, _bt)) and (usepick == "1" or t["tier"] == usepick)]
@@ -1547,7 +1562,12 @@ def watchlist(request: Request, sort: str = "sale_date", ids: Optional[str] = No
         # 즐겨찾기한 사용자는 법정에 갈 가능성이 가장 높은 사용자다 — 레거시 '유찰 대기'+로즈는 상세가 거둬들인
         # '이번 기일 건너뛰기'를 되살렸다. 가드가 아닌 물건은 bidst 를 만들지 않는다(칩 체계·렌더 바이트 불변).
         v["floor_check"] = _floor_unconf(v)
-        v["bidst"] = _bidst_view(v, service.bid_state(v, bt), _tdy) if v["floor_check"] else None
+        # REC-9: 침수·전손 판정 물건(service.estimate_withheld)은 예상낙찰가·상한선을 그리지 않는다 — 판정 문장이
+        # '제공하지 않습니다'라고 말하는 그 조건이다. 모든 행에 bidst 를 달면 위 규칙(칩 체계·렌더 바이트 불변)이 깨지므로
+        # 신호만 따로 싣는다. 침수·전손 술어(flood_hold)가 아니면 답이 거짓이라 판정 계산을 하지 않는다.
+        _st = service.bid_state(v, bt) if (v["floor_check"] or service.flood_hold(v)) else None
+        v["bidst"] = _bidst_view(v, _st, _tdy) if v["floor_check"] else None
+        v["no_estimate"] = bool(_st) and service.estimate_withheld(v, _st)
     keys = {
         "sale_date": lambda v: (v.get("sale_date") or "9999"),
         "dday": _dday_sort_key,
@@ -1636,7 +1656,6 @@ def _db_running(run: dict | None) -> bool:
 
 @app.get("/run/status")
 def run_status(request: Request):
-    counts = db.counts_by_judgment()
     run = db.latest_run()
     running = service.is_running() or _db_running(run)
     # 공개 응답은 화면이 실제로 쓰는 것만 준다. 유휴 상태의 지난 런 기록(실행 시각·소요·건수)은
@@ -1644,13 +1663,19 @@ def run_status(request: Request):
     # UI(base.html poll)는 running이 false면 run/카운트를 읽지 않으므로 동작에 지장이 없다.
     if not is_admin(request) and not running:
         return {"running": False}
-    return {
+    # REC-8 ⑵ — 저장 판정 문자열 수(예전 ok·wait·hold = db.counts_by_judgment)를 내지 않는다. base.html 폴링이 그 값으로
+    #   홈 KPI '지금 입찰 추천'·'유찰 대기'를 2초마다 덮어 3 → 4 · 725 → 576 으로 바꿨다(09-29 백업 사본 09:00). 홈의 두 수는
+    #   칸 판정(service.lifecycle_partition)이 정하고, 그것을 폴링마다 전 행 판정으로 다시 세면 요청마다 수백 ms 다 —
+    #   실행이 끝나면 base.html 이 홈을 새로고침해 바른 수를 그린다. 키가 없으면 base.html 의 setTxt 가 쓰지 않으므로
+    #   (null 가드) 이 응답만으로 덮어쓰기가 멈춘다. 관리자 화면도 그 세 키를 읽지 않아 함께 뺐다.
+    #   '곧 열리는 경매 30일'(upcoming)은 홈과 **같은 정의**로 센다 — lifecycle_partition 의 upcoming30(hide_incomplete
+    #   목록 건수)과 같은 필터의 COUNT. 예전 upcoming_count 는 숨김 물건까지 세어 417 → 491 로 튀었다.
+    out = {
         "running": running,
         "run": run,
-        "total": db.total_vehicles(),
-        "upcoming": db.upcoming_count(30),
-        "pending": db.pending_count(),
-        "ok": counts.get("입찰 검토 가능", 0),
-        "wait": counts.get("유찰 대기", 0),
-        "hold": counts.get("입찰 보류", 0),
+        "upcoming": db.count_vehicles(upcoming_days=30, hide_incomplete=True),
+        "pending": db.pending_count(),        # 홈 '분석 대기'(dashboard 의 pending)와 같은 함수
     }
+    if is_admin(request):
+        out["total"] = db.total_vehicles()    # 운영 지표(COUNT(*) — 숨김 물건 포함). 어느 화면도 읽지 않는다
+    return out

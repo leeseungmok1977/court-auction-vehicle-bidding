@@ -244,7 +244,7 @@
     {% if promising %}{# 집계 카드 '검토 추천'에서 진입 — 신뢰도 높음+오매칭 제외 큐레이션. 클릭 시 전체 보기.
        2026-09-26: 줄 끝(상태 토글 뒤)에 있던 것을 다른 진입 칩 옆으로 옮기고 nowrap(4줄·74px → 1줄). 이모지는 320px 에서
        해제 ✕ 가 페이드 앞이면 유지한다는 규칙으로 측정해 유지. #}
-    <a href="/vehicles?judgment=입찰 검토 가능&sort=expected" class="text-xs bg-amber-50 text-amber-700 border border-amber-200 rounded-full px-3 py-1 inline-flex items-center gap-1 whitespace-nowrap shrink-0" title="신뢰도 높음 + 오매칭 제외한 검토 추천만. 클릭하면 전체 검토가능을 봅니다.">🎯 검토 추천 ✕</a>
+    <a href="/vehicles?bucket=review&sort=expected" class="text-xs bg-amber-50 text-amber-700 border border-amber-200 rounded-full px-3 py-1 inline-flex items-center gap-1 whitespace-nowrap shrink-0" title="신뢰도 높음 + 오매칭 제외한 검토 추천만. 클릭하면 전체 검토가능을 봅니다.">🎯 검토 추천 ✕</a>
     {% endif %}
     {# ⚠ 이 이름표는 service.LIFECYCLE_BUCKETS 와 따로 관리된다 — 버킷을 늘리면서 여기를
        잊으면 아래 폴백이 걸려 **영문 키가 그대로 칩에 찍힌다**(2026-09-19 실제 발생:
@@ -439,7 +439,7 @@ d.addEventListener('toggle',function(){try{localStorage.setItem('ncListLegend',d
   {# 핵심 고지는 접지 않는다 — 절감액이 '사고차 가정'으로 나온 값이라는 사실은
      이 숫자를 읽는 데 반드시 필요하다. 나머지 계산 근거만 접는다. #}
   <span class="block mt-1 text-mut">사고 이력을 확인하지 못한 차는 <b class="text-txt">사고차로 가정</b>한 보수적 금액입니다.
-  <a href="/vehicles?judgment=입찰 검토 가능&sort=expected" class="underline whitespace-nowrap">되팔이 기준 보기</a></span>
+  <a href="/vehicles?bucket=review&sort=expected" class="underline whitespace-nowrap">되팔이 기준 보기</a></span>
   <details id="usepickBasis" class="mt-1.5 border-t border-emerald-200/70 pt-1.5">
     <summary class="cursor-pointer list-none text-mut hover:text-txt select-none inline-flex items-center gap-0.5">
       <span class="material-symbols-outlined text-[14px] leading-none">expand_more</span>두 갈래 뜻·계산 기준 보기</summary>
@@ -563,12 +563,16 @@ d.addEventListener('toggle',function(){try{localStorage.setItem('ncUsepickBasis'
           {# 최저매각가 (+ 감정가 대비 %) #}
           <td class="py-2.5 px-3 text-right whitespace-nowrap {{ 'text-rose-600' if over_mkt else 'text-amber-700' if over_bid else 'text-mut' }}"
               {% if over_mkt %}title="경매 최저가가 소매 시세보다 높음 — 시세보다 비싼 입찰"{% elif over_bid %}title="최저가가 산정 상한가(재판매 기준)보다 높음"{% endif %}><span class="font-mono text-sm">{{ v.min_sale_price|won }}</span>{% if v.appr_pct %}<div class="text-[10px] text-mut tnum" title="최저매각가 ÷ 감정가">감정가 {{ v.appr_pct }}%</div>{% endif %}</td>
-          {# 상한가(재판매 손익분기) #}
+          {# 상한가(재판매 손익분기)
+             REC-9 2회차: 0원 이하는 '산정 불가'(리포트·상세와 같은 말 — 음수를 그대로 찍으면 '-13,321,000'이 바로 옆 '내지 않음'과 나란히 섰다),
+             침수·전손 판정으로 가린 값(no_estimate, 키워드로만 보류된 물건은 양수)은 예상가 칸과 같은 '내지 않음'. 값이 없으면(None) 예전처럼 '—' —
+             가릴 값이 없는 칸까지 바꾸지 않는다. 매각 종료도 예전처럼 '—'.
+             말이라 mono 를 풀고(font-sans) 값이 없으니 한 단계 낮춘다(text-xs·font-medium). 그 밖의 물건은 바이트 그대로. #}
           <td class="py-2.5 px-3 font-mono text-right text-sm text-mut whitespace-nowrap"
-              title="재판매 손익분기가(마진·부대비 차감) — 이 값 이하 낙찰 시 차익">{{ v.upper_bid|won if (v.upper_bid and not closed) else '—' }}</td>
+              title="재판매 손익분기가(마진·부대비 차감) — 이 값 이하 낙찰 시 차익">{% if v.upper_bid is not none and v.upper_bid <= 0 and not closed %}<span class="font-sans text-xs font-medium text-mut" title="0원 이하 — 되팔이로 목표마진을 남길 낙찰가가 없습니다">산정 불가</span>{% elif v.bidst and v.bidst.no_estimate and v.upper_bid %}<span class="font-sans text-xs font-medium text-mut">내지 않음</span>{% else %}{{ v.upper_bid|won if (v.upper_bid and not closed) else '—' }}{% endif %}</td>
           {# 예상낙찰가(+미니 게이지) #}
           <td class="py-2.5 px-3 font-mono text-right text-[15px] bg-primary/5 {{ 'text-mut font-normal' if closed else 'text-mut font-medium' if (lowconf or exp_far) else 'text-txt font-bold' }}"
-              title="{% if closed %}매각 종료 — 입찰 불가{% elif lowconf %}시세 신뢰도 낮음 — 참고용{% elif exp_far %}현 최저매각가가 예상낙찰가보다 높음 — 추가 유찰 후 도달{% endif %}">{{ v.expected_win|won if v.expected_win else '—' }}{% if v.expected_win and not closed and lowconf %}<span class="text-rose-600/70 text-xs align-top">*</span>{% elif v.expected_win and not closed and exp_far %}<span class="text-mut text-xs align-top">↑</span>{% endif %}{% if not closed %}{{ ui.minigauge(v.min_sale_price, v.expected_win, v.median_price) }}{% endif %}</td>
+              title="{% if closed %}매각 종료 — 입찰 불가{% elif v.bidst and v.bidst.no_estimate %}침수·전손 의심 — 예상낙찰가·입찰 상한선을 내지 않습니다{% elif lowconf %}시세 신뢰도 낮음 — 참고용{% elif exp_far %}현 최저매각가가 예상낙찰가보다 높음 — 추가 유찰 후 도달{% endif %}">{% if v.bidst and v.bidst.no_estimate %}<span class="font-sans text-xs font-medium text-mut">내지 않음</span><span class="block font-sans text-[11px] font-normal text-mut">침수·전손 의심</span>{% else %}{{ v.expected_win|won if v.expected_win else '—' }}{% if v.expected_win and not closed and lowconf %}<span class="text-rose-600/70 text-xs align-top">*</span>{% elif v.expected_win and not closed and exp_far %}<span class="text-mut text-xs align-top">↑</span>{% endif %}{% if not closed %}{{ ui.minigauge(v.min_sale_price, v.expected_win, v.median_price) }}{% endif %}{% endif %}</td>
           {# 시세중앙값 · 신뢰도 #}
           <td class="py-2.5 px-3 text-right whitespace-nowrap">
             <div class="font-mono {{ 'text-rose-600' if over_mkt else 'text-txt' }}">{{ v.median_price|won }}{% if v.market_platform == '동급참조' %}<span class="ml-1 text-[10px] font-sans font-bold text-amber-700 align-middle" title="외부 시세 조회가 막힌 기간 — 같은 차종·연식의 기존 실측 시세를 참조(신뢰도 한 단계 하향)">참조</span>{% endif %}</div>
@@ -711,12 +715,13 @@ d.addEventListener('toggle',function(){try{localStorage.setItem('ncUsepickBasis'
                  숫자**(최저매각가)보다 '없다'는 말이 강해진다. 보라는 이 앱에서 "AI가 낸 값"의
                  색이라 한순간 "예상가가 나왔다"로 읽힌다(같은 검수 2번 지적).
                  → 값이 없으면 한 단계 낮춘다. 위계 조정일 뿐 표기 원칙과는 무관하다. #}
-            <div class="font-mono tnum whitespace-nowrap {{ 'font-semibold text-mut' if not v.expected_win else 'font-bold text-mut' if (closed or lowconf or exp_far) else 'font-bold text-primary' }}" style="font-size:{{ 'min(0.95rem,4.4vw)' if not v.expected_win else 'min(1.125rem,5.2vw)' }}">{{ v.expected_win|won if v.expected_win else '미산출' }}{% if v.expected_win and not closed and lowconf %}<span class="text-rose-500 text-[11px] align-top">*</span>{% elif v.expected_win and not closed and exp_far %}<span class="text-mut text-[11px] align-top">↑</span>{% endif %}</div>
+            {# REC-9: 침수·전손 판정 물건(v.bidst.no_estimate)은 숫자 대신 '내지 않음' + 사유 — 판정 문장과 같은 뜻(ui.withheld 의 좁은 칸 판).
+               '미산출'(자료가 없어 못 낸 값)과 다른 말이다. 문장이라 sans(mono 스택엔 한글이 없다). #}{% if v.bidst and v.bidst.no_estimate %}<div class="font-semibold text-mut leading-tight whitespace-nowrap" style="font-size:min(0.95rem,4.4vw)">내지 않음</div><div class="text-[10px] text-mut leading-tight mt-0.5 whitespace-nowrap">침수·전손 의심</div>{% else %}<div class="font-mono tnum whitespace-nowrap {{ 'font-semibold text-mut' if not v.expected_win else 'font-bold text-mut' if (closed or lowconf or exp_far) else 'font-bold text-primary' }}" style="font-size:{{ 'min(0.95rem,4.4vw)' if not v.expected_win else 'min(1.125rem,5.2vw)' }}">{{ v.expected_win|won if v.expected_win else '미산출' }}{% if v.expected_win and not closed and lowconf %}<span class="text-rose-500 text-[11px] align-top">*</span>{% elif v.expected_win and not closed and exp_far %}<span class="text-mut text-[11px] align-top">↑</span>{% endif %}</div>{% endif %}
           </div>
         </div>
         {# '얼마까지 써도 되나'를 카드에 둔다 — 카드에서 가장 큰 숫자(예상낙찰가)를 '써도 되는 금액'으로
            읽은 사용자가 2회차 패널에 3명 있었다. 예상가가 법원 하한에 걸린 물건(전체의 24%)은 예측인 척하지 않는다. #}
-        {% if not closed and v.bidst and (v.bidst.max_bid or v.bidst.exp_pinned) %}
+        {% if not closed and v.bidst and (v.bidst.max_bid or v.bidst.exp_pinned) and not v.bidst.no_estimate %}
         {# 스캔은 목록에서 일어난다 — 상세는 상한선을 대표로 올려놓고 목록만 '큰 보라 숫자 = 그 숫자'를
            가르치면 고친 오독을 목록이 다시 심는다(디자인 검수). 보조줄이되 무게를 예상낙찰가와 동률로. #}
         {#- REC-1 2회차: 표시된 최저가가 이번 기일 값으로 확인되지 않은 물건(floor_check)은 그 값과 상한을 비교하지 않는다 —

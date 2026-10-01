@@ -247,7 +247,8 @@ def test_court_usepick_picks_chips_have_no_icon_and_promising_nowrap(client):
         m = re.search(rf'<a href="/vehicles"[^>]*title="{ttl}">(.*?)</a>', html, re.S)
         if m:   # 픽스처에서 추천 0건이면 칩이 없을 수 있다(total 0 이어도 칩은 그려지므로 보통 있다)
             assert "material-symbols" not in m.group(1), f"{ttl} 칩 아이콘 제거(높이 34→26)"
-    pm = re.search(r'<a href="/vehicles\?judgment=입찰 검토 가능&sort=expected" class="([^"]*)"', _get(client, "/vehicles?promising=1"))
+    # REC-8 ⑴(2026-10-01): 진입 링크는 저장 판정 문자열(?judgment=입찰 검토 가능)이 아니라 '지금 입찰 추천' 칸(?bucket=review)으로 간다.
+    pm = re.search(r'<a href="/vehicles\?bucket=review&sort=expected" class="([^"]*)"', _get(client, "/vehicles?promising=1"))
     assert pm and "whitespace-nowrap" in pm.group(1) and "shrink-0" in pm.group(1) and "inline-flex" in pm.group(1)
 
 

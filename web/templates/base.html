@@ -547,9 +547,9 @@
       // 대시보드 진행 요소
       setTxt('sc', r.scanned); setTxt('pr', done); setTxt('msg', r.message||'');
       const bar=$('bar'); if(bar && r.target) bar.style.width=Math.min(100,Math.round(100*r.processed/r.target))+'%';
-      // KPI 실시간
+      // KPI 실시간 — 홈과 같은 정의인 두 수만(곧 열리는 경매 30일 · 분석 대기).
       setTxt('kpi-upcoming', fmt(d.upcoming)); setTxt('kpi-pending', fmt(d.pending));
-      setTxt('kpi-ok', fmt(d.ok)); setTxt('kpi-wait', fmt(d.wait));
+      // ⚠ '지금 입찰 추천'·'유찰 대기' 칸 수는 덮지 않는다(REC-8 ⑵ — 옛 ok·wait 는 저장 판정 문자열 수라 칸 수와 갈렸다). 끝나면 아래 새로고침이 그린다.
     } else if(badge){
       badge.style.display='none';
     }
@@ -564,7 +564,7 @@
   }
   /* ⚠ prerender(미리 렌더) 중에는 시작하지 않는다. 사용자가 열지도 않은 화면이 2~4초마다
      /run/status 를 때리면, 미리 렌더한 화면 수만큼 배경 부하가 그대로 서버로 간다.
-     또 위 443행의 location.reload() 가 보이지도 않는 문서에서 돌 수 있다.
+     또 위 poll() 의 location.reload() 가 보이지도 않는 문서에서 돌 수 있다.
      → 실제로 그 화면으로 이동(활성화)한 뒤에 시작한다. prerender 미지원 브라우저는 즉시 시작. */
   function start(){ if (started) return; started = true; poll(); }
   if (document.prerendering) { document.addEventListener('prerenderingchange', start, {once:true}); }
