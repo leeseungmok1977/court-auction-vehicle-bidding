@@ -316,11 +316,18 @@ html.rmode-resale .rmode-hint{display:none}
 .proc li b{color:var(--ink)}
 /* ⚠ 입찰 중단 기준 박스 전용. 판정 톤 클래스와 이름이 겹치면 .card 전체가 가로 배치된다
    — 실제로 §01이 3열로 무너져 육각형이 화면 밖으로 나갔다(4회차 디자인 P0). */
-.stop{margin-top:20px;display:flex;gap:12px;align-items:flex-start;border-radius:10px;padding:13px 16px}
+{#- REC-9 3회차(app-design-expert 2회차 고칠 것 3 · Steward B5): 태그(.tg, flex:none · mono · 큰글씨 16px)가 폭을 먼저 가져가 큰글씨 320 에서
+   문장 칸이 70~98px(11~16줄)이었고, stop_active 갈래 문장은 상자 오른쪽으로 넘쳐 잘렸다(8e8fc2e 실측: 상자 sw 256 > cw 244 — 대체 서체면 275,
+   off 갈래도 260). → 문장 기준폭 12em(보통 150px·큰글씨 186px)이 태그 옆에 안 들어가면 줄을 바꿔 태그 아래 전폭으로 쌓는다(보통 320·360 · 큰글씨 폰 폭).
+   보통 글씨 390 이상은 태그 옆 그대로다 — 문장 칸 폭·줄 수 예전과 같다(문장 칸이 남는 폭까지 늘어날 뿐 글자 배치는 같다 — 왼쪽 정렬).
+   세로 간격 8px 는 쌓였을 때만 쓰인다(가로 간격 12px 그대로). 12 '지참' 상자도 같은 컴포넌트라 같은 규칙을 탄다.
+   큰글씨 320 대(≤359px)만 좌우 안쪽 여백 16→12px: 웹폰트가 늦거나 안 오면(대체 서체가 더 넓다) off 갈래가 7줄이 된다 — 12px 면 6줄. #}
+.stop{margin-top:20px;display:flex;flex-wrap:wrap;gap:8px 12px;align-items:flex-start;border-radius:10px;padding:13px 16px}
 .stop.on{background:var(--red-tint);border:1px solid #F2C8C8}.stop.off{background:#F4F6F9;border:1px solid var(--line)}
 .stop .tg{flex:none;font-family:var(--mono);font-size:13px;font-weight:700;letter-spacing:.08em;color:#fff;padding:4px 9px;border-radius:5px;margin-top:1px}
 .stop.on .tg{background:var(--red)}.stop.off .tg{background:var(--ink-faint)}
-.stop p{font-size:12.5px;line-height:1.55}.stop.on p{color:#7A2B2A}.stop.on b{color:var(--red)}.stop.off p{color:var(--ink-soft)}
+.stop p{flex:1 1 12em;min-width:0;font-size:12.5px;line-height:1.55}.stop.on p{color:#7A2B2A}.stop.on b{color:var(--red)}.stop.off p{color:var(--ink-soft)}
+@media screen and (max-width:359px){html.nc-large .stop{padding-left:12px;padding-right:12px}}
 .spectrum{margin-top:22px;padding-top:22px;border-top:1px dashed var(--line-strong)}
 .sp-title{font-size:12px;font-weight:600;color:var(--ink-soft);margin-bottom:12px}
 .sp-wrap{position:relative;margin:0 8px}
@@ -978,7 +985,12 @@ document.addEventListener('click', function(e){
           {% endif %}
         </div>
         <ul class="vpts">
-          {%- if floor_guard %}
+          {%- if floor_guard and _noest %}
+          {#- REC-9 3.5회차(design-critic 3회차 고칠 것 1ⓒ · Steward 문구): 최저가 미확인(floor_guard) 침수·전손 판정 물건은 가드 갈래(추정 최저가·
+             '입찰 전 … 확인하세요')가 첫 요점을 통째로 가져가 빨간 정지 문장이 없었다 — 정지 문장을 먼저 쓰고, 최저가는 '표시된' 값이라고만 밝힌다.
+             가드가 아닌 _noest 는 아래 else 의 예전 문장 그대로, 가드인 다른 물건은 아래 가드 갈래 그대로. #}
+          <li>표시된 최저매각가 <b class="num">{{ floor|won }}원</b>(이번 회차 확인 전) — <b style="color:var(--red)">침수·전손 의심이라 입찰 보류입니다</b></li>
+          {%- elif floor_guard %}
           {# REC-1 2회차 — 상세 '가격 확인 필요' 행과 같은 사실·같은 할 일. '추가 유찰 대기 권장'은 낡은 최저가로 낸 권고라 쓰지 않는다. #}
           {% set fg = floor_guard %}
           {# REC-1 3회차 — 상세와 **같은 분기**: 저감률 출처(est.basis — 이 법원 / 전국 기준), '수집된' 기일내역(‘법원’은 법원 사이트에만),
@@ -1014,8 +1026,12 @@ document.addEventListener('click', function(e){
           {#- REC-1 2회차: 가드 물건의 next_min 은 사실상 **이번** 기일 값이라 '다음 기일'로 부르면 한 문서에서 두 기일을 가리킨다. #}
           {% if next_min and not floor_guard and not _noest %}<li class="gloss-row">이번 기일에 {{ ui.gloss('유찰', '입찰한 사람이 없어 팔리지 않은 것이에요. 유찰될 때마다 법원이 최저매각가를 낮춰(보통 20~30%) 다음 기일에 다시 내놓습니다.') }}되면 <b>다음 기일 예상 최저가는 <span class="num">{{ next_min.price|won }}원</span></b>({{ ((1-next_min.ratio)*100)|round|int }}% {{ ui.gloss('저감', '유찰 뒤 법원이 최저매각가를 낮추는 것이에요. 저감률은 법원·사건마다 다를 수 있습니다.') }}{% if next_min.basis == 'court' %} · 이 법원 실측 {{ next_min.court_n }}회{% if next_min.share and next_min.share < 0.85 %} 중 {{ (next_min.share*100)|round|int }}%{% endif %}{% else %} · 전국 기준(이 법원 표본 부족){% endif %})</li>{% endif %}
           {#- REC-1 3회차(design-critic 2회차 #2ⓑ): 가드 물건에서 '미확정 요소는 현장확인뿐'은 같은 상자 첫 요점('이번 회차 최저가 확인 필요')과
-             모순이고, 예상낙찰가가 없으면 '밴드'도 없다(없는 것을 가리키는 참조). 예상가가 있는 물건의 문장은 바이트 그대로다. #}
-          <li><b>시세 신뢰도 {{ conf }}/100</b> — 이 결론이 딛고 선 <b>소매 시세</b>를 얼마나 믿을 수 있는지의 점수입니다(차량 상태·사고 이력의 확실성은 별개 · 02 참조). {% if floor_guard %}미확정 요소는 <b>이번 회차 최저가</b>와 현장확인(상태·정비비)입니다(09){% elif exp and not _noest %}미확정 요소는 현장확인(상태·정비비)뿐이며 결과에 따라 밴드가 조정될 수 있음(09){% else %}미확정 요소는 현장확인(상태·정비비)입니다(09){% endif %}</li>
+             모순이고, 예상낙찰가가 없으면 '밴드'도 없다(없는 것을 가리키는 참조). 예상가가 있는 물건의 문장은 바이트 그대로다.
+             REC-9 3회차(design-critic 2회차 고칠 것 1 — 2회째 · app-design-expert 2ⓓ, Steward 문구 2026-10-01): `_noest` 면 이 요점 전체를 바꾼다.
+             결론('입찰하지 마세요')은 시세가 아니라 법원 자료의 침수·전손 기재에 기대고(같은 점수를 육각형에서 내린 결정 (나)와 같은 원칙),
+             '미확정 요소'는 무조건 보류를 다시 조건부로 열었다. '입찰 보류'는 calculator `_is_flood`(등급 flood — 감정서·명세 비고의 보험이력/낱말 —
+             또는 감정서 낱말) 뿐이라 이 문장은 모든 `_noest` 에 참이다. 아래 else 의 `elif exp` 는 예전 `exp and not _noest` 와 같은 값이다. #}
+          {% if _noest %}<li><b>이 결론은 시세가 아니라</b> 감정평가서 등 법원 자료의 <b>침수·전손 기재</b>에 근거합니다.</li>{% else %}<li><b>시세 신뢰도 {{ conf }}/100</b> — 이 결론이 딛고 선 <b>소매 시세</b>를 얼마나 믿을 수 있는지의 점수입니다(차량 상태·사고 이력의 확실성은 별개 · 02 참조). {% if floor_guard %}미확정 요소는 <b>이번 회차 최저가</b>와 현장확인(상태·정비비)입니다(09){% elif exp %}미확정 요소는 현장확인(상태·정비비)뿐이며 결과에 따라 밴드가 조정될 수 있음(09){% else %}미확정 요소는 현장확인(상태·정비비)입니다(09){% endif %}</li>{% endif %}
         </ul>
       </div>
       {# 종합 프로필 6축 육각형 — 단일 시리즈(범례 없음), 값은 우측 표·툴팁, 자료 없는 축은 미산출로 둔다 #}
@@ -1051,11 +1067,13 @@ document.addEventListener('click', function(e){
       {% endif %}
       {#- REC-9 2회차(design-critic 고칠 것 1 ⑴ · 배포 조건, Steward 문구 2026-10-01): `_noest` 물건에는 '권장가'가 없다 — 예전 문장은
          없는 권장가를 무효로 선언하고, 한줄 판정의 무조건 '입찰하지 마세요'를 '확정 시 보류'로 되돌렸다(뒤집으면 '확정되지 않으면 유효').
-         on·off 두 갈래 모두 같은 문장이다(키워드로만 보류된 물건은 stop_active 거짓이라 off 회색 상자로 온다). 상자 색은 stop_active 그대로.
-         다른 물건은 바이트 그대로(아래 elif·else 는 예전 if·else 와 같은 본문). #}
-      <div class="stop {{ 'on' if report.stop_active else 'off' }}">
+         REC-9 3회차(두 검수 2회차 공통 · Steward): 상자 색 술어는 `report.stop_active or _noest` 다. stop_active 는 등급(accident·flood)만 봐서
+         키워드로만 보류된 물건(등급 none · 저장 '입찰 보류')이 회색 off 상자 안에서 "이미 해당합니다"라고 말했다 — 문장을 낮추지 않고 상자를 올린다
+         (09 '사고·침수' 칩도 같은 술어). 문장 끝 '(01)'은 뺐다 — 이 상자가 01 안에 있어 자기 절을 가리켰다.
+         다른 물건은 바이트 그대로(`_noest` 가 아니면 술어 값이 stop_active 와 같고, 아래 elif·else 는 예전 if·else 와 같은 본문). #}
+      <div class="stop {{ 'on' if (report.stop_active or _noest) else 'off' }}">
         <span class="tg">입찰 중단 기준</span>
-        <p class="gloss-row">{% if _noest %}<b>침수·전손 의심</b>으로 이미 입찰 중단 기준에 해당합니다 — 이 리포트는 예상낙찰가·입찰 상한선을 내지 않습니다(01).
+        <p class="gloss-row">{% if _noest %}<b>침수·전손 의심</b>으로 이미 입찰 중단 기준에 해당합니다 — 이 리포트는 예상낙찰가·입찰 상한선을 내지 않습니다.
         {% elif report.stop_active %}<b>사고/침수 이력이 감지</b>되었습니다. 현장에서 골격(프레임) 손상·침수 확정 시 본 리포트의 권장가는 <b>즉시 무효</b>이며 입찰 보류를 권장합니다.
         {% else %}현장/서류에서 <b>골격(프레임) 사고 · 침수 · 미기재 중대 결함 · {{ ui.gloss('인수 부담 권리관계', '낙찰가 말고 따로 물어내야 하는 돈이에요. 차량 경매에서는 ① 정비·보관업자의 유치권(수리비·보관료) ② 말소되지 않는 저당권·압류 ③ 체납 자동차세·과태료(내지 않으면 이전등록 자체가 막힙니다) ④ 검사 만료 시 재검사비가 해당합니다. 부동산 경매에서 쓰는 권리 개념은 차량에 그대로 적용되지 않습니다. 자동차등록원부(갑구·을구)로 확인하세요.', q=false) }}</b> 중 하나라도 확인되면 본 리포트의 권장가는 무효로 간주하고 입찰을 보류하십시오.{% endif %}</p>
       </div>
@@ -1422,8 +1440,10 @@ document.addEventListener('click', function(e){
           <tr><td class="k">보관료·견인비</td><td class="sub">낙찰 후 인도까지의 보관료는 낙찰자 부담이 될 수 있음 — 보관장소에 금액 문의</td><td class="c tagcell"><span class="chip warn">사전 문의</span></td></tr>
           <tr><td class="k">사고·침수</td><td class="sub">{{ v|accv }}{% if v.accident_hits %} — {{ v.accident_hits|join(', ') }}{% endif %} · 골격 손상 여부 현장 확인</td>{# '이력 미확인'에 초록 ok 칩을 달면 확인하지 못한 것을 확인해서 괜찮은 것처럼
              읽힌다. 이 앱에서 가장 하면 안 되는 종류의 오독이다 — 초록은 이력이 실제로
-             있고 양호할 때만. 미확인은 앰버다. (5회차 미조치) #}
-          <td class="c tagcell"><span class="chip {{ 'risk' if report.stop_active else ('ok' if v.insurance_history else 'warn') }}">{{ 'STOP 대상' if report.stop_active else ('이력상 양호' if v.insurance_history else '이력 미확인') }}</span></td></tr>
+             있고 양호할 때만. 미확인은 앰버다. (5회차 미조치)
+             REC-9 3회차: 술어는 01 '입찰 중단 기준' 상자와 같은 `report.stop_active or _noest` — 키워드로만 보류된 물건에 보험이력이 있으면
+             초록 '이력상 양호'가 01 의 '입찰하지 마세요'와 정반대로 섰다. 칸 글자(v|accv '무사고' 등)는 이번에 손대지 않는다(REC-12 ⑷). #}
+          <td class="c tagcell"><span class="chip {{ 'risk' if (report.stop_active or _noest) else ('ok' if v.insurance_history else 'warn') }}">{{ 'STOP 대상' if (report.stop_active or _noest) else ('이력상 양호' if v.insurance_history else '이력 미확인') }}</span></td></tr>
           <tr><td class="k">기관·하체</td><td class="sub">시동·누유·변속·하체 부식 — 매각기일 전 보관장소 확인</td><td class="c tagcell"><span class="chip warn">현장확인</span></td></tr>
           <tr><td class="k">상태·옵션·정비</td><td class="sub">정비 필요 범위(타이어·소모품)에 따라 정비비 변동 → 06·08 반영{% if asum and (asum.condition.major or asum.condition.poor or asum.condition.minor) %} · <span class="{{ 'neg' if asum.condition.major or asum.condition.poor else 'neu' }}">감정 요항에 외관·상태 손상 언급</span>{% endif %}</td><td class="c tagcell"><span class="chip {{ 'risk' if asum and (asum.condition.major or asum.condition.poor) else 'warn' }}">현장확인</span></td></tr>
           {% if asum and asum.inspection %}<tr><td class="k">자동차검사 유효기간</td><td class="sub" class="num">{{ asum.inspection.valid_to }}{% if asum.inspection.expired %} · <span class="neg">경과(재검사 필요)</span>{% elif asum.inspection.days_left is not none %} · D{{ asum.inspection.days_left }}{% endif %} <span style="color:var(--ink-faint);font-family:var(--sans)">— 감정 요항 기준</span></td><td class="c tagcell"><span class="chip {{ 'risk' if asum.inspection.expired else 'ok' }}">{{ '재검사 필요' if asum.inspection.expired else '유효' }}</span></td></tr>{% endif %}
@@ -1507,8 +1527,10 @@ document.addEventListener('click', function(e){
       {% endif %}
       <div class="logic"><span class="ln">3</span><div class="ld">− 취득세 − 고정부대비 − 목표마진<small>취득세 {{ bd['취득세']|man }}(기준시세의 {{ ((report.tax_rate or 0)*100)|round|int }}%) + 고정부대비 {{ bd['고정부대비']|man }}(이전 {{ report.transfer|man }} + 탁송 {{ report.delivery|man }}) + 목표마진 {{ bd['마진']|man }}(기준시세의 {{ ((report.margin_rate or 0)*100)|round|int }}%)</small></div><span class="lv num">−{{ (bd['취득세']+bd['고정부대비']+bd['마진'])|won }}</span></div>
       {#- REC-9 2회차: `_noest` 물건은 끝줄 값을 그리지 않는다 — 차감 행은 남긴다(상세 '재판매 손익분기 산정'과 같은 규칙). 0원 이하는
-         01 요점과 같은 '산정 불가', 양수(키워드로만 보류된 물건)는 '내지 않음'. 숫자가 아니라 말이라 mono 를 풀고, 없는 값이라 코발트 대신 ink-soft. #}
-      <div class="logic"><span class="ln">＝</span><div class="ld"><b>재판매 상한가</b><small>{% if upper_na %}0원 이하 — 산정 불가: 되팔이로 목표마진을 남길 낙찰가가 없습니다{% elif _noest %}침수·전손 의심 — 내지 않습니다(01){% else %}이 값 이하로 낙찰 시 목표마진 확보{% endif %}</small></div>{% if _noest %}<span class="lv" style="font-family:var(--sans);color:var(--ink-soft)">{{ '산정 불가' if upper_na else '내지 않음' }}</span>{% else %}<span class="lv num">{{ upper|won }}</span>{% endif %}</div>
+         01 요점과 같은 '산정 불가', 양수(키워드로만 보류된 물건)는 '내지 않음'. 숫자가 아니라 말이라 mono 를 풀고, 없는 값이라 코발트 대신 ink-soft.
+         REC-9 3회차(두 검수 2회차 ⑶·판단 2): 0원 이하 작은 설명에서 '산정 불가: '를 뺐다 — `_noest` 면 값 칸이 이미 '산정 불가'라 한 줄에 두 번이었다.
+         값 칸 로직은 그대로다 — 비침수 0원 이하는 숫자를 둔다(Steward 판정 '통일하지 않음': 산정 섹션은 검산이 닫혀야 한다). #}
+      <div class="logic"><span class="ln">＝</span><div class="ld"><b>재판매 상한가</b><small>{% if upper_na %}0원 이하 — 되팔이로 목표마진을 남길 낙찰가가 없습니다{% elif _noest %}침수·전손 의심 — 내지 않습니다(01){% else %}이 값 이하로 낙찰 시 목표마진 확보{% endif %}</small></div>{% if _noest %}<span class="lv" style="font-family:var(--sans);color:var(--ink-soft)">{{ '산정 불가' if upper_na else '내지 않음' }}</span>{% else %}<span class="lv num">{{ upper|won }}</span>{% endif %}</div>
       {# 두 줄의 합이 같아 보이면 복사 오류로 읽힌다(2회차 패널 4인이 여기서 결론 금액을 못 믿었다).
          실제로는 요율이 우연히 겹친 것이므로, 겹칠 때만 그 사실을 한 줄로 밝힌다. #}
       {% if (bd['예상수리비']+bd['사고감가']+bd['리스크프리미엄']) == (bd['취득세']+bd['고정부대비']+bd['마진']) %}

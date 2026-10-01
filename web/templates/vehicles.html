@@ -559,10 +559,12 @@ d.addEventListener('toggle',function(){try{localStorage.setItem('ncUsepickBasis'
           {% set over_bid = v.min_sale_price and v.upper_bid and v.min_sale_price > v.upper_bid %}
           {% set closed = v.auction_result == '낙찰' or v.judgment == '종결' %}
           {% set exp_far = v.expected_win and v.min_sale_price and v.min_sale_price > v.expected_win %}
-          {% set lowconf = v.market_confidence_label=='낮음' %}
-          {# 최저매각가 (+ 감정가 대비 %) #}
-          <td class="py-2.5 px-3 text-right whitespace-nowrap {{ 'text-rose-600' if over_mkt else 'text-amber-700' if over_bid else 'text-mut' }}"
-              {% if over_mkt %}title="경매 최저가가 소매 시세보다 높음 — 시세보다 비싼 입찰"{% elif over_bid %}title="최저가가 산정 상한가(재판매 기준)보다 높음"{% endif %}><span class="font-mono text-sm">{{ v.min_sale_price|won }}</span>{% if v.appr_pct %}<div class="text-[10px] text-mut tnum" title="최저매각가 ÷ 감정가">감정가 {{ v.appr_pct }}%</div>{% endif %}</td>
+          {% set lowconf = v.market_confidence_label=='낮음' %}{% set _ne = v.bidst and v.bidst.no_estimate %}
+          {# 최저매각가 (+ 감정가 대비 %)
+             REC-9 3회차(qa 2회차 §9-5 · Steward C2): 침수·전손 판정 행(_ne = v.bidst.no_estimate)은 앰버·로즈 강조와 title 을 붙이지 않는다 —
+             '최저가가 산정 상한가보다 높음'은 가린 상한가(옆 칸 '내지 않음'·'산정 불가')와의 비교를 드러낸다. 판정은 이미 '입찰 보류'다. 그 밖의 행은 바이트 그대로. #}
+          <td class="py-2.5 px-3 text-right whitespace-nowrap {{ 'text-mut' if _ne else 'text-rose-600' if over_mkt else 'text-amber-700' if over_bid else 'text-mut' }}"
+              {% if _ne %}{% elif over_mkt %}title="경매 최저가가 소매 시세보다 높음 — 시세보다 비싼 입찰"{% elif over_bid %}title="최저가가 산정 상한가(재판매 기준)보다 높음"{% endif %}><span class="font-mono text-sm">{{ v.min_sale_price|won }}</span>{% if v.appr_pct %}<div class="text-[10px] text-mut tnum" title="최저매각가 ÷ 감정가">감정가 {{ v.appr_pct }}%</div>{% endif %}</td>
           {# 상한가(재판매 손익분기)
              REC-9 2회차: 0원 이하는 '산정 불가'(리포트·상세와 같은 말 — 음수를 그대로 찍으면 '-13,321,000'이 바로 옆 '내지 않음'과 나란히 섰다),
              침수·전손 판정으로 가린 값(no_estimate, 키워드로만 보류된 물건은 양수)은 예상가 칸과 같은 '내지 않음'. 값이 없으면(None) 예전처럼 '—' —
@@ -573,12 +575,17 @@ d.addEventListener('toggle',function(){try{localStorage.setItem('ncUsepickBasis'
           {# 예상낙찰가(+미니 게이지) #}
           <td class="py-2.5 px-3 font-mono text-right text-[15px] bg-primary/5 {{ 'text-mut font-normal' if closed else 'text-mut font-medium' if (lowconf or exp_far) else 'text-txt font-bold' }}"
               title="{% if closed %}매각 종료 — 입찰 불가{% elif v.bidst and v.bidst.no_estimate %}침수·전손 의심 — 예상낙찰가·입찰 상한선을 내지 않습니다{% elif lowconf %}시세 신뢰도 낮음 — 참고용{% elif exp_far %}현 최저매각가가 예상낙찰가보다 높음 — 추가 유찰 후 도달{% endif %}">{% if v.bidst and v.bidst.no_estimate %}<span class="font-sans text-xs font-medium text-mut">내지 않음</span><span class="block font-sans text-[11px] font-normal text-mut">침수·전손 의심</span>{% else %}{{ v.expected_win|won if v.expected_win else '—' }}{% if v.expected_win and not closed and lowconf %}<span class="text-rose-600/70 text-xs align-top">*</span>{% elif v.expected_win and not closed and exp_far %}<span class="text-mut text-xs align-top">↑</span>{% endif %}{% if not closed %}{{ ui.minigauge(v.min_sale_price, v.expected_win, v.median_price) }}{% endif %}{% endif %}</td>
-          {# 시세중앙값 · 신뢰도 #}
+          {# 시세중앙값 · 신뢰도
+             REC-9 3.5회차(REC-12 ⑻ · Steward): 침수·전손 판정 행(_ne)은 숫자를 중립 회색으로(관심 lg 표와 같다) — 예상가 칸이 비어 이 행에서 가장 진한 숫자가
+             시세였고('시세 대비 최저가'로 읽힌다), 최저가가 시세보다 높을 때의 로즈 강조도 판정이 이미 '입찰 보류'라 붙이지 않는다. 그 밖의 행은 바이트 그대로. #}
           <td class="py-2.5 px-3 text-right whitespace-nowrap">
-            <div class="font-mono {{ 'text-rose-600' if over_mkt else 'text-txt' }}">{{ v.median_price|won }}{% if v.market_platform == '동급참조' %}<span class="ml-1 text-[10px] font-sans font-bold text-amber-700 align-middle" title="외부 시세 조회가 막힌 기간 — 같은 차종·연식의 기존 실측 시세를 참조(신뢰도 한 단계 하향)">참조</span>{% endif %}</div>
+            <div class="font-mono {{ 'text-mut' if _ne else 'text-rose-600' if over_mkt else 'text-txt' }}">{{ v.median_price|won }}{% if v.market_platform == '동급참조' %}<span class="ml-1 text-[10px] font-sans font-bold text-amber-700 align-middle" title="외부 시세 조회가 막힌 기간 — 같은 차종·연식의 기존 실측 시세를 참조(신뢰도 한 단계 하향)">참조</span>{% endif %}</div>
             {% if v.market_confidence_label and v.median_price is not none %}
             {% set cl = v.market_confidence_label %}
-            {% set dot = 'bg-emerald-500' if cl=='높음' else 'bg-amber-500' if cl=='보통' else 'bg-rose-500' %}
+            {#- REC-9 3회차(design-critic 2회차 고칠 것 3 · app-design-expert 다듬기): 침수·전손 판정 행(_ne)은 점을 신호등 색으로 칠하지 않는다 —
+               '높음' 침수차면 로즈 '입찰 보류' 칩 옆에 초록 점이 섰다. 상세 히어로 배지(REC-9 2회차 2d)와 같이 등급과 무관한 중립 하나,
+               색은 이 파일 모바일 신뢰도 막대(confbar — 신뢰도는 판정이 아니라 단일 색조)의 slate 계열. 글자(높음·보통·낮음)는 그대로. #}
+            {% set dot = 'bg-slate-400' if _ne else 'bg-emerald-500' if cl=='높음' else 'bg-amber-500' if cl=='보통' else 'bg-rose-500' %}
             <div class="inline-flex items-center gap-1 text-xs text-mut mt-0.5"
                  title="시세 신뢰도 {{ cl }}{% if is_admin(request) %} · 표본 {{ v.sample_count }}건{% if v.market_cv is not none %} · 편차 ±{{ (v.market_cv*100)|round(0)|int }}%{% endif %}{% endif %}">
               <span class="w-1.5 h-1.5 rounded-full {{ dot }}"></span>{{ cl }}{% if is_admin(request) %}<span class="text-mut">·{{ v.sample_count }}</span>{% endif %}

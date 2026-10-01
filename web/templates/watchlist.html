@@ -67,8 +67,10 @@
            최저가가 이번 회차 값으로 확인되지 않은 물건(v.floor_check)은 목록과 **같은 칩**(v.bidst — app.py _bidst_view)을 쓰고,
            낡은 최저가 > 상한가 로즈를 켜지 않으며(목록 `_cover … not floor_check` 와 같은 조건), '미산출' 아래에 이유를 한 줄 단다.
            레거시 '유찰 대기'+로즈는 상세가 거둬들인 '이번 기일 건너뛰기'를 되살렸다(카니발 10-01: 추정 784만 < 상한선 970만).
-           가드가 아닌 줄은 예전과 같은 바이트다(칩 체계 전체 통일은 별도 판단 — KCAR-3 ②). #}
-        {% set overfloor = v.min_sale_price and v.upper_bid and v.min_sale_price > v.upper_bid and not v.floor_check %}
+           가드가 아닌 줄은 예전과 같은 바이트다(칩 체계 전체 통일은 별도 판단 — KCAR-3 ②).
+           REC-9 3회차(qa 2회차 §9-5 · Steward C2 — 목록 lg 표와 같은 패턴): 침수·전손 판정 행(v.no_estimate)도 로즈·title 을 켜지 않는다 —
+           옆 칸이 '내지 않음'·'산정 불가'로 가린 상한가와의 비교를 드러낸다. #}
+        {% set overfloor = v.min_sale_price and v.upper_bid and v.min_sale_price > v.upper_bid and not v.floor_check and not v.no_estimate %}
         <tr class="even:bg-slate-50 hover:bg-slate-50 transition-colors">
           <td class="py-2.5 px-4">
             <a href="/vehicle/{{ v.id }}" class="text-primary font-medium hover:underline" style="word-break:keep-all">{{ v.model|mdl }}</a>
@@ -99,7 +101,7 @@
   <!-- 모바일 카드 -->
   <div class="lg:hidden divide-y divide-line">
     {% for v in rows %}
-    {% set overfloor = v.min_sale_price and v.upper_bid and v.min_sale_price > v.upper_bid and not v.floor_check %}
+    {% set overfloor = v.min_sale_price and v.upper_bid and v.min_sale_price > v.upper_bid and not v.floor_check and not v.no_estimate %}{# REC-9 3.5회차(REC-12 ⑻): 침수·전손 판정 행은 lg 표와 같이 로즈를 켜지 않는다 — 가린 상한가와의 비교를 드러냈다(09-29 사본 34408) #}
     <a href="/vehicle/{{ v.id }}" class="block px-4 py-3 hover:bg-slate-50 transition-colors nc-pricegrid-host">
       {# 320px 에서 제목이 `토레스 EVX 20…` 으로 잘렸다(qa 실측). 12자 nowrap 판정 칩이 자리를 먹는데
          제목에 `truncate` 가 걸려 min-content 가 0 이라, 칩이 줄을 바꾸는 대신 **제목만 계속 줄었다.**

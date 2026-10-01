@@ -29,12 +29,13 @@
   .plan{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 16px;margin:12px 0}
   .plan p{margin:0}.plan ul{margin:6px 0 0 2px}
   a{color:#533afd}.foot{margin-top:28px;color:var(--mut);font-size:13px;border-top:1px solid var(--line);padding-top:14px}
-  /* PLAY-1 2회차(app-design-expert 고칠 것 3) — 문안은 한 글자도 바꾸지 않고 줄바꿈만 다룬다.
+  {#- PLAY-1 2회차(app-design-expert 고칠 것 3) — 문안은 한 글자도 바꾸지 않고 줄바꿈만 다룬다.
      .tel: 320px 에서 '국번 없이 / 182' 로 번호가 다음 줄에 홀로 떨어졌다 — 한 덩어리로.
      .hist: 개정 이력의 둘째 줄이 날짜 아래로 파고들었다 — 날짜를 한 열로 세우고 설명은 그 오른쪽에서만 접는다(hanging indent).
      날짜 칸은 고정 폭(5.75em)이다 — 이 페이지 서체에서는 tabular-nums 를 걸어도 날짜 폭이 줄마다 80~85px 로 달라(2026-10-01 실측)
      max-content 로 두면 줄마다 설명 시작점이 최대 5px 어긋났다. 더 넓은 대체 서체가 오면 그 줄만 max-content 로 넓어진다(겹침 없음).
-     글머리표는 날짜 열이 대신한다. */
+     글머리표는 날짜 열이 대신한다.
+     REC-9 3회차(qa 2회차 §9-11): 이 메모는 CSS 주석이었다 — 공개 /privacy 소스에 내부 실측 메모가 그대로 실렸다. Jinja 주석이라 렌더 0바이트. #}
   .tel{white-space:nowrap}
   ul.hist{list-style:none;padding-left:0}
   .hist li{display:grid;grid-template-columns:minmax(max-content,5.75em) minmax(0,1fr);column-gap:.6em}

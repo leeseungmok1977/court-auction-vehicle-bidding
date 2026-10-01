@@ -5,9 +5,11 @@
 배포 조건(design-critic 필수)
   1. 리포트 01 '입찰 중단 기준'(`.stop` on·off): 침수·전손 판정 물건(`_noest`)은 없는 '권장가'를 무효로 선언하지 않고 한줄 판정과 같은
      무조건 보류를 말한다(Steward 문구). 키워드로만 보류된 물건은 off 갈래(회색 상자)로 오는데 같은 문장이다.
+     (REC-9 3회차: 상자 색 술어가 `stop_active or _noest` 로 바뀌어 키워드 보류 물건도 로즈 on — tests/test_rec9_r3_frontend.py B2.)
   2. 문서 끝 면책 `.disc` 의 빨강 굵기 술어 `report and not _noest`(PANEL-56 4회차 오너 결정 원칙) · `_noest` 면 '(±N%)' 생략.
 같은 배포(권고 → Steward 채택)
   3. 상세 '입찰가 산정 근거' 보류 상자 — "자동 산정을 제공하지 않습니다 — 입찰하지 마세요."
+     (REC-9 3.5회차 F4: 본문은 하우스 낱말 "…예상낙찰가·입찰 상한선을 내지 않습니다 — 입찰하지 마세요."로 바뀌었다 — 아래 HOLD_NEW.)
   4. 상세 히어로 '시세 신뢰도' 배지 — no_estimate 면 중립색(초록·앰버·로즈 금지).
   5. 0원 이하·가린 재판매 상한가 — 상세 산정표 끝줄(음수 width·초록 금지) · 목록 lg 표 · 관심 표 · 홈 '유망 물건' 표.
   6. 관심 화면 칩 — 저장 판정 '시세 신뢰도 낮음'인 침수차는 로즈 '입찰 보류'(기존 저장 문자열).
@@ -29,13 +31,17 @@ from tests.test_rec9_frontend import KW_BD, _body, _flood, _url, cars, get  # no
 from web import service
 from web.app import _won
 
+# REC-9 3회차(Steward B2): 문장 끝 '(01)'을 뺐다 — 상자가 01 안에 있어 자기 절을 가리켰다(design-critic 2회차 판단 3).
 STOP_SENTENCE = ("<b>침수·전손 의심</b>으로 이미 입찰 중단 기준에 해당합니다 — "
-                 "이 리포트는 예상낙찰가·입찰 상한선을 내지 않습니다(01).")
+                 "이 리포트는 예상낙찰가·입찰 상한선을 내지 않습니다.")
 # 대조군 문장 — 예전과 바이트 그대로여야 한다(침수·전손 판정이 아닌 물건)
 STOP_ON_ORIG = ("<b>사고/침수 이력이 감지</b>되었습니다. 현장에서 골격(프레임) 손상·침수 확정 시 본 리포트의 권장가는 "
                 "<b>즉시 무효</b>이며 입찰 보류를 권장합니다.")
 DISC_RED_ORIG = '<b style="color:var(--red)">입찰 중단 기준에 해당하는 사실을 미리 발견하면 권장가는 무효입니다.</b>'
-HOLD_NEW = "감정평가서에 침수·전손 이력이 감지되었습니다. 자동 산정을 제공하지 않습니다 —\n          입찰하지 마세요."
+# REC-9 3회차(Steward A1): '입찰하지 마세요'를 한 덩어리로 묶는다(큰글씨 320 에서 "입찰하지 / 마세요."로 갈렸다)
+# REC-9 3.5회차(Steward F4): 하우스 낱말 '예상낙찰가·입찰 상한선 … 내지 않습니다', 출처는 '감정평가서 등 법원 자료'(리포트 01 셋째 요점과 같은 범위)
+HOLD_NEW = ("감정평가서 등 법원 자료에서 침수·전손 기재가 감지되었습니다. 예상낙찰가·입찰 상한선을 내지 않습니다 —\n"
+            '          <span class="whitespace-nowrap">입찰하지 마세요</span>.')
 NA_TITLE = "0원 이하 — 되팔이로 목표마진을 남길 낙찰가가 없습니다"
 NA_CELL = f'<span class="font-sans text-xs font-medium text-mut" title="{NA_TITLE}">산정 불가</span>'
 HELD_CELL = '<span class="font-sans text-xs font-medium text-mut">내지 않음</span>'
@@ -110,14 +116,16 @@ _JL = ('<span class="sm:ml-auto min-w-0 text-right font-semibold text-mut"><span
 
 
 # ── 1 · 2 — 리포트 '입찰 중단 기준' · 면책 (배포 조건) ─────────────────────────────
-@pytest.mark.parametrize("vid,cls", [("FLOOD", "on"), ("FLDR2", "on"), ("KWFLOOD", "off")])
+@pytest.mark.parametrize("vid,cls", [("FLOOD", "on"), ("FLDR2", "on"), ("KWFLOOD", "on")])
 def test_리포트_입찰_중단_기준은_무조건_보류를_말한다(cars, get, vid, cls):
     st = service.bid_state(cars[vid], BT)
     assert st["no_estimate"] is True, (vid, st["state"])                       # 전제 — 침수·전손 판정 물건
     ctx, html = get(f"/vehicle/{vid}/report")
     assert ctx["report"], "리포트 본문 갈래(시세 있음)여야 '입찰 중단 기준' 상자가 선다"
     got_cls, txt = _stop(html)
-    assert got_cls == cls, "상자 색은 stop_active 그대로 — 키워드로만 보류된 물건은 off(회색) 갈래로 온다"
+    # REC-9 3회차(Steward B2): 상자 색 술어 `report.stop_active or _noest` — 키워드로만 보류된 물건(KWFLOOD, stop_active 거짓)도 로즈 on.
+    # 2회차엔 회색 off 상자 안에서 "이미 해당합니다"였다(두 검수 공통 지적).
+    assert got_cls == cls, "침수·전손 판정 물건은 상자도 로즈(on) — 문장과 같은 세기"
     assert txt.strip() == STOP_SENTENCE
     assert "권장가" not in txt and "확정 시" not in txt
 
@@ -463,7 +471,9 @@ def test_리포트_10_재판매_상한가_끝줄도_가린다(cars, more, get):
                      r'<span class="lv[^"]*"[^>]*>[^<]*</span></div>')
     end_fl, end_kw = pat.search(fl), pat.search(kw)
     assert end_fl and end_kw, "전제 — 10 재판매 상한가 표가 선다"
-    assert ">산정 불가</span>" in end_fl.group(0) and "0원 이하 — 산정 불가" in end_fl.group(0)
+    # REC-9 3회차(Steward B4): 작은 설명에서 '산정 불가: '를 뺐다 — 값 칸이 이미 '산정 불가'라 한 줄에 두 번이었다.
+    assert ">산정 불가</span>" in end_fl.group(0) and "0원 이하 — 되팔이로 목표마진을 남길 낙찰가가 없습니다" in end_fl.group(0)
+    assert end_fl.group(0).count("산정 불가") == 1
     assert ">내지 않음</span>" in end_kw.group(0) and "침수·전손 의심 — 내지 않습니다(01)" in end_kw.group(0)
     for e in (end_fl.group(0), end_kw.group(0)):
         assert 'class="lv num"' not in e and not re.search(r"\d{1,3}(,\d{3})+", e)

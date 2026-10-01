@@ -370,11 +370,20 @@ def test_only_floor_reason_keeps_the_promise(client):
     ("flood_1", "최저가를 확인해도 침수·전손 의심이라 입찰 보류입니다."),
 ])
 def test_other_blocking_reason_is_said_instead_of_the_promise(client, vid, msg):
-    a = _amber(_get(client, vid))
+    html = _get(client, vid)
+    a = _amber(html)
     assert msg in a, (vid, a)
     assert "확인 전까지 예상낙찰가" not in a, f"{vid}: 최저가를 확인해도 풀리지 않는데 풀릴 것처럼 약속한다"
     if vid == "stop_1":
         assert "판정 보류가 풀린 뒤에" in a and "입찰 전" not in a, "시동 불가는 '입찰 전 확인'이 할 일이 아니다"
+    elif vid == "flood_1":
+        # REC-9 3.5회차(design-critic 3회차 고칠 것 1 · 지시서 2026-10-01-24 F1): 침수·전손 판정은 최저가를 확인해도 풀리지 않는 **정지**다 —
+        # 예전 단언("입찰 전" in a)은 멈추라고 한 칸이 입찰 준비('입찰 전 … 확인하세요')를 시키는 것을 굳혀 두었다. 이제 칸은 정지 문장으로 끝나고,
+        # 추정 최저가('(추정)' · '이번 기일 예상 최저가' 행)도 그리지 않는다. 다른 사유(stop·lowconf·nomed·nomarket)는 예전 단언 그대로.
+        assert a.rstrip().endswith(msg), a
+        for gone in ("입찰 전", "(추정)", "다음 기일이 잡히면"):
+            assert gone not in a, gone
+        assert "이번 기일 예상 최저가" not in _text(html)
     else:
         assert "입찰 전" in a
 
