@@ -249,13 +249,21 @@ _REGIONS = {
     "report:01": ('id="sec01"', 'id="sec02"'),
 }
 _PLAIN_MD5 = {   # 측정: 변경 전 트리에서 이 파일의 seed()·_region_md5() 를 그대로 돌린 값(보고서 §테스트)
-    "g90_1": {"detail:물건정보": "fb500dcd49e54d85e2f4ecb8045d2b4e",
+    # REC-15(지시서 2026-10-01-35)가 '물건정보' 구역의 사고판정 말풍선에 한 문장(_GLOSS_REC15)을 **의도적으로** 더해 그 칸만 다시 쟀다.
+    # 예전 값은 _PLAIN_MD5_PRE_REC15 에 남기고, 그 문장만 지우면 예전 값이 그대로 나오는지를 아래 테스트가 함께 본다.
+    # 같은 지시서 이어서 Steward 가 문장을 줄여(큰글씨 320 말풍선 넘침) 한 번 더 쟀다 — 첫 문안 때 값 02bc9088 · 2b182f91.
+    # 마지막 손질(design-critic 고칠 것 1 — 한쪽만 부정하던 둘째 문안을 양쪽 다 모른다로)로 다시 쟀다 — 둘째 문안 때 값 72b578bc · d33183af.
+    "g90_1": {"detail:물건정보": "0c089eb40ac039234c6dd0a76fc7f85e",
               "detail:산정근거": "fb1000134e61cd35e5c28dd86cfb125c",
               "report:01": "45cc954fee7d5b6fbcd9538e08d02a35"},
-    "sm6_1": {"detail:물건정보": "81728f9087954a2575134954b3984b40",
+    "sm6_1": {"detail:물건정보": "7b7b5b640808c8e945176c57f5ae82c6",
               "detail:산정근거": "9b3532ef020026e0cde7c73e620d05d6",
               "report:01": "13a5a9d90dcbe87754944214a243262c"},
 }
+_PLAIN_MD5_PRE_REC15 = {"g90_1": "fb500dcd49e54d85e2f4ecb8045d2b4e", "sm6_1": "81728f9087954a2575134954b3984b40"}
+# 말풍선·aria-label 두 곳에 들어가는 새 문장(자동 이스케이프된 모양 — 홑따옴표가 &#39;).
+_GLOSS_REC15 = (" &#39;이력 미확인&#39;은 사고 기록을 확인하지 못했다는 뜻이에요. "
+                "사고차인지 아닌지 모르니, 가격은 사고차로 가정해 계산합니다.")
 
 
 def _region_md5(client, vid):
@@ -273,6 +281,17 @@ def _region_md5(client, vid):
 def test_non_guard_render_is_byte_identical_to_before(client, vid):
     got = _region_md5(client, vid)
     assert got == _PLAIN_MD5[vid], f"{vid}: 가드가 아닌 물건의 렌더가 바뀌었다 {got}"
+
+
+@pytest.mark.parametrize("vid", PLAIN)
+def test_non_guard_info_region_differs_only_by_rec15_gloss_sentence(client, vid):
+    """REC-15 재측정의 근거 — '물건정보' 구역에서 새 말풍선 문장(두 곳)만 지우면 예전 md5 그대로다. 다른 바이트가 섞이면 빨강."""
+    a, b = _REGIONS["detail:물건정보"]
+    html = _get(client, vid, "detail")
+    i = html.index(a)
+    seg = html[i:html.index(b, i)]
+    assert seg.count(_GLOSS_REC15) == 2, "말풍선·aria-label 두 곳"
+    assert hashlib.md5(seg.replace(_GLOSS_REC15, "").encode("utf-8")).hexdigest() == _PLAIN_MD5_PRE_REC15[vid]
 
 
 @pytest.mark.parametrize("vid", PLAIN)

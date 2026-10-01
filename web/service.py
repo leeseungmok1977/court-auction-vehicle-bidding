@@ -25,7 +25,7 @@ from src.collect import kcar
 from src.parse.list_parser import parse_list_response
 from src.parse.detail_parser import parse_detail
 from src.parse.market_match import summarize, _confidence_label, cross_source_check
-from src.bidcalc.calculator import BidInput, calculate, judge
+from src.bidcalc.calculator import BidInput, calculate, judge, reprice_accident
 from src.pipeline import resolve_mapping
 
 from . import db
@@ -474,10 +474,11 @@ def apply_accident_rate(bi, v: dict, config: Optional[dict] = None):
 
 
 def accident_hit_count(v: dict) -> Optional[int]:
-    """확인된 사고 건수(내차피해 + 상대차피해). 이력을 확보하지 못했으면 None.
+    """확인된 사고 건수(**내차피해만** — 상대차피해는 세지 않는다, 아래 주석). 이력을 확보하지 못했으면 None.
 
-    보험이력 JSON의 own_damage/opp_damage가 정본이다. 이 값이 없으면 '0건'이 아니라
-    '모른다' — 0으로 치면 근거 없는 무사고가 된다(1회차 P0와 같은 함정)."""
+    보험이력 JSON의 own_damage/opp_damage가 정본이다. 두 키가 다 없으면 '0건'이 아니라
+    '모른다' — 0으로 치면 근거 없는 무사고가 된다(1회차 P0와 같은 함정). 이 None 판단이 사고 근거
+    술어(insurance_accident_known → accident_evidence, REC-15)의 보험이력 쪽 정본이다."""
     ih = v.get("insurance_history")
     if isinstance(ih, str):
         try:
@@ -1395,18 +1396,43 @@ def _hx_pt(i: int, frac: float):
 ACCIDENT_LABELS = {"none": "무사고", "minor": "단순수리", "accident": "사고", "flood": "침수의심"}
 
 
+def insurance_accident_known(v: dict) -> bool:
+    """보험이력에 **일반 사고 항목**(own_damage 내차피해 · opp_damage 상대차피해)이 있는가 — 값이 0 이어도 '조회했다'.
+
+    판단은 accident_hit_count 한 곳이 한다(두 키가 다 없으면 None = 모른다). accident_evidence 의 ②이고,
+    리포트 데이터 신뢰도 패널의 '사고·이력' 칸(90 검증 / 60 추정, report_data)이 이 함수를 쓴다.
+    패널이 accident_evidence 전체(① accident_hits 포함)를 쓰지 않는 이유: 등급 accident 물건 가운데 감정서
+    손상 낱말('사고'·'파손' 등)로만 잡힌 것(10-01 백업 306대)은 사고가 **있다**는 것만 알 뿐 이력(건수)을
+    조회하지 못했다 — 감가도 건수표가 아닌 단일값이다. 그 칸을 '검증'으로 올리면 확인하지 못한 것을 확인했다고
+    말하게 된다. 이 술어는 예전 칸 기준('보험이력 dict 가 비지 않음')의 부분집합이라 REC-15 로 칸이 올라가는
+    물건은 없다 — 내려가는 물건만 있다(소유자·번호·특수사고 카운트만 있는 보험이력)."""
+    return accident_hit_count(v) is not None
+
+
 def accident_evidence(v: dict) -> bool:
     """사고 이력을 **실제로 조회한 근거**가 있는가.
 
     감정평가서에 사고 문구가 없다는 것과 '사고가 없다'는 것은 전혀 다르다. 파서는 키워드를
     못 찾으면 등급을 'none'으로 두는데 이건 조회 결과가 아니라 **자료 없음**이다.
-    보험사고이력 카운트가 파싱된 경우에만(0건이라고 적혀 있어도 '조회했다'는 뜻) 이력을
-    확인했다고 말할 수 있다 — 데이터 신뢰도 패널의 90/60 기준과 같은 근거를 쓴다.
+    근거는 둘 중 하나뿐이다.
+      ① accident_hits — 파서가 사고 근거(내차·상대차 피해 건수, 손상 낱말 등)를 실제로 찾았다.
+      ② 보험이력의 일반 사고 항목(내차피해·상대차피해) 키 — 0건이라고 적혀 있어도 '조회했다'는 뜻이다
+         (insurance_accident_known → accident_hit_count 한 곳).
+    소유자·차량번호 변경, 특수사고(전손·도난·침수)·특수용도 카운트**만** 있는 보험이력은 근거가 아니다 —
+    특수사고가 없다는 기재이지 일반 사고를 말하지 않는다. 이 술어가 거짓이면 accident_label 은 '이력 미확인',
+    use_accident_rate 는 사고차 가정(→ apply_accident_rate 산정표 표기 · 실사용 상한선 · bid_state), 육각형
+    사고·상태 축은 미산출이다 — 모두 이 함수 하나를 부른다. 술어를 다른 곳에 다시 적지 않는다.
 
     2026-09-12 전문가 패널 지적: 자료 없음이 '무사고 + 육각형 100점'으로 승격되고 있었고,
     같은 리포트의 신뢰도 패널은 같은 항목을 '60점·추정'이라 말해 한 화면에서 모순됐다.
+    REC-15(2026-10-01, 오너 승인 "무사고 권고기준을 강화합니다"): 예전 술어는 보험이력 dict 가 비어 있지만
+    않으면 근거로 쳤다. 2026타경50904_1 은 보험이력이 소유자변경 3회·차량번호변경 1회뿐인데(감정 요항 원문
+    "…전손보험사고, 도난보험사고, 침수보험사고, 특수용도 이력 없음." — 일반 사고는 언급 없음) 화면이 초록
+    '무사고'·사고 감가 0% 로 계산해 '입찰 검토 가능'에 올라 있었다(10-01 백업: 등급 none·보험이력 있음 9대 중
+    8대가 이 꼴, 일반 사고 키가 있는 것은 1대). 이미 저장된 산정표·상한가·판정은 이 술어로 저절로 바뀌지 않는다 —
+    `python -m web.maint reprice-accidents`(reprice_accidents)로 다시 계산한다.
     """
-    return bool(v.get("insurance_history")) or bool(v.get("accident_hits"))
+    return bool(v.get("accident_hits")) or insurance_accident_known(v)
 
 
 def accident_label(v: dict) -> str:
@@ -3619,6 +3645,113 @@ def regrade_accidents(ids: Optional[list] = None, apply: bool = False,
             "upper_bid": [v.get("upper_bid"), after.get("upper_bid")],
             "max_bid": [personal_use_max_bid(v, None, cfg), personal_use_max_bid(after, None, cfg)],
             "judgment": [v.get("judgment"), after.get("judgment")]})
+        if apply:
+            db.update_fields(v["id"], **fields)
+            out["applied"] += 1
+    out["targets"] = len(out["rows"])
+    if out["applied"]:
+        invalidate_backtest_cache()
+    return out
+
+
+# ── 사고 근거 규칙이 바뀐 물건의 저장 산정 다시 계산(REC-15) — 외부 요청 0 · 파일 I/O 0 ─────────────
+# accident_evidence 가 엄격해지면(소유자·번호 변경만 있는 보험이력은 근거 아님) 화면의 라벨·칩·실사용 상한선은
+# 바로 따라오지만, 저장된 산정표(사고표기·사고감가율)·상한가(upper_bid)·판정(judgment)은 분석 시점 값으로 남는다.
+# regrade_accidents 는 **파서 결과가 달라진 행**만 고르므로(등급·보험이력이 그대로인 이 경우는 same_parse 로 건너뜀)
+# 이 경우를 다시 계산하지 못한다 — 그래서 따로 둔다.
+_REPRICE_JUDGMENTS = ("입찰 검토 가능", "유찰 대기")   # judge() 가 상한가로 가르는 판정(rejudge_floor 와 같은 범위)
+
+
+def _reprice_accident_plan(v: dict, cfg: dict) -> tuple:
+    """(고칠 값 dict, 사유) — 저장 산정표의 사고 감가율·표기가 **지금 규칙**(apply_accident_rate)과 다르면 고칠 값만.
+
+    사유: "target"(고칠 값 있음) · "closed"(매각 끝남·상세없음) · "flood"(침수·전손 보류) · "no_breakdown"(상한가·산정표
+    없음 — 시세 없는 물건은 저장할 산정이 없고 라벨만 화면에서 바뀐다) · "already"(이미 지금 규칙과 같다).
+    등급·보험이력은 그대로 두고 사고 감가 한 항만 바꾼다(calculator.reprice_accident — 나머지 항은 분석 시점 값).
+    판정은 rejudge_floor 와 같은 judge() + _final_judgment 를 지금 저장된 최저가·표본 수로 다시 낸다 — 저장 판정이
+    judge() 가 상한가로 가르는 둘(_REPRICE_JUDGMENTS)일 때만. 그 밖의 판정(시세 신뢰도 낮음 등)은 그대로 둔다."""
+    if (v.get("auction_result") in ("낙찰", "종결") or v.get("judgment") == "종결"
+            or v.get("status") in ("종결", "상세없음")):
+        return {}, "closed"
+    if flood_hold(v):
+        return {}, "flood"
+    bd = v.get("breakdown")
+    if isinstance(bd, str):
+        try:
+            bd = json.loads(bd)
+        except (TypeError, ValueError):
+            bd = None
+    if v.get("upper_bid") is None or not isinstance(bd, dict):
+        return {}, "no_breakdown"
+    # 표기·감가율은 분석 경로와 **같은 함수**로 낸다(apply_accident_rate → use_accident_rate → accident_evidence).
+    want = apply_accident_rate(BidInput(median_price=0, min_sale_price=0, sample_count=0), v, cfg)
+    if bd.get("사고감가율") == want.accident_rate and bd.get("사고표기") == want.accident_label:
+        return {}, "already"
+    rep = reprice_accident(bd, v["upper_bid"], want.accident_rate, want.accident_label)
+    if rep is None:                                       # 산정표가 침수(사고등급 flood)이거나 기준시세·감가율이 없다
+        return {}, ("flood" if bd.get("사고등급") == "flood" else "no_breakdown")
+    upper, bd_new = rep
+    out = {"upper_bid": upper, "breakdown": bd_new}
+    if v.get("judgment") in _REPRICE_JUDGMENTS:
+        try:
+            mn = int(v.get("min_sale_price") or 0)
+        except (TypeError, ValueError):
+            mn = 0
+        if mn > 0:
+            out["judgment"] = _final_judgment(
+                judge(upper, mn, int(v.get("sample_count") or 0), False, cfg),
+                v.get("market_confidence_label"))
+            if bd_new.get(_BD_FLOOR_KEY) != mn:          # 판정에 쓴 최저가를 산정표에도(rejudge_floor 와 같은 규칙)
+                bd_new[_BD_FLOOR_KEY] = mn
+            if v.get("lower_bound") != mn:
+                out["lower_bound"] = mn
+    return out, "target"
+
+
+def reprice_accidents(ids: Optional[list] = None, apply: bool = False,
+                      config: Optional[dict] = None) -> dict:
+    """사고 근거 규칙 변경을 저장 산정에 반영한다(REC-15) — `python -m web.maint reprice-accidents`. 외부 요청 0.
+
+    대상: 저장 산정표의 사고감가율·사고표기가 지금 규칙과 다른 행(_reprice_accident_plan). `ids` 를 주면 그 안에서만.
+    apply=False(기본)면 **쓰지 않고** 행별 [전, 후]만 돌려준다. apply=True 면 같은 행을 쓴다(analyzed_at 은 두지
+    않는다 — 시세 나이로 읽히는 값이다, rejudge_floor 와 같다). 다시 돌리면 대상 0(멱등).
+
+    반환: {"apply", "checked", "targets", "applied", "skipped": {closed, flood, no_breakdown, already}, "not_found", "rows"}
+      rows[i]: id · case_no · model · sale_date · grade · insurance_history · evidence(지금 규칙의 근거 여부) ·
+               label(산정표 사고표기) · rate(사고감가율) · upper_bid · judgment · max_bid(입찰 상한선 = 실사용 손익분기,
+               화면이 지금 규칙으로 매번 계산하므로 전후가 같다) · bid_state([상태, 라벨]) — 값은 모두 [전, 후]."""
+    cfg = config or load_config()
+    rows_db = db.list_vehicles()
+    not_found: list = []
+    if ids:
+        want = [str(x).strip() for x in ids if str(x).strip()]
+        by_id = {v["id"]: v for v in rows_db}
+        not_found = [i for i in want if i not in by_id]
+        rows_db = [by_id[i] for i in dict.fromkeys(want) if i in by_id]
+    out = {"apply": bool(apply), "checked": 0, "targets": 0, "applied": 0,
+           "skipped": {"closed": 0, "flood": 0, "no_breakdown": 0, "already": 0},
+           "not_found": not_found, "rows": []}
+    bt = backtest_stats()
+    for v in rows_db:
+        out["checked"] += 1
+        fields, why = _reprice_accident_plan(v, cfg)
+        if why != "target":
+            out["skipped"][why] += 1
+            continue
+        after = {**v, **fields}
+        _bd0 = v.get("breakdown") if isinstance(v.get("breakdown"), dict) else {}
+        _bd1 = after.get("breakdown") if isinstance(after.get("breakdown"), dict) else {}
+        st0, st1 = bid_state(v, bt, cfg), bid_state(after, bt, cfg)
+        out["rows"].append({
+            "id": v["id"], "case_no": v.get("case_no"), "model": v.get("model"),
+            "sale_date": v.get("sale_date"), "grade": v.get("accident_grade"),
+            "insurance_history": v.get("insurance_history"), "evidence": accident_evidence(v),
+            "label": [_bd0.get("사고표기"), _bd1.get("사고표기")],
+            "rate": [_bd0.get("사고감가율"), _bd1.get("사고감가율")],
+            "upper_bid": [v.get("upper_bid"), after.get("upper_bid")],
+            "judgment": [v.get("judgment"), after.get("judgment")],
+            "max_bid": [st0.get("max_bid"), st1.get("max_bid")],
+            "bid_state": [[st0.get("state"), st0.get("label")], [st1.get("state"), st1.get("label")]]})
         if apply:
             db.update_fields(v["id"], **fields)
             out["applied"] += 1
@@ -5885,8 +6018,11 @@ def report_data(v: dict, config: dict, bt: dict) -> Optional[dict]:
         {"name": "경매 가격정보", "score": 100, "tag": "confirmed"},
         {"name": "차량 기본정보", "score": 100 if v.get("mileage_km") else 60,
          "tag": "confirmed" if v.get("mileage_km") else "estimated"},
-        {"name": "사고·이력", "score": 90 if v.get("insurance_history") else 60,
-         "tag": "verified" if v.get("insurance_history") else "estimated"},
+        # REC-15: '보험이력 dict 가 비어 있지 않음'이 아니라 일반 사고 항목(내차·상대차피해)을 조회했는가 —
+        #   예전 기준이면 소유자·번호 변경만 있는 물건(2026타경50904_1)이 이 칸은 '검증 90', 사고판정은
+        #   '이력 미확인'으로 한 화면에서 갈린다. 술어는 insurance_accident_known 한 곳(accident_hits 를 왜 안 보는지도 거기에).
+        {"name": "사고·이력", "score": 90 if insurance_accident_known(v) else 60,
+         "tag": "verified" if insurance_accident_known(v) else "estimated"},
         # '시장 가격' 축은 뺐다 — 값이 conf 와 **완전히 같아** §02 헤드라인 숫자와
         # 그 아래 막대에 같은 72가 두 번 찍혔다. 게다가 다섯 축 평균(71.4)이 우연히
         # 72와 비슷해, 헤드라인이 종합점수처럼 읽혔다(실제로는 시세 신뢰도 하나).

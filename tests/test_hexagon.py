@@ -16,7 +16,10 @@ def _v(**kw):
             "accident_grade": "none", "condition_level": "unknown", "inspection_to": "2027-03-01",
             # 2026-09-12부터 사고 축은 **이력을 실제로 조회한 근거**가 있어야 점수가 매겨진다.
             # 0건이라도 카운트가 파싱됐다는 건 '조회했다'는 뜻이다(service.accident_evidence).
-            "insurance_history": {"내차피해": 0},
+            # REC-15(2026-10-01): 근거는 **일반 사고 항목 키**(own_damage·opp_damage — 파서 _HIST_PATTERNS 의 키)다.
+            #   예전 픽스처의 '내차피해' 키는 파서가 만들지 않는 가짜 키라, 'dict 가 비어 있지만 않으면 근거'라는
+            #   옛 술어에서만 근거로 통했다 — 운영에서 소유자변경만 있는 보험이력이 '무사고'가 된 것과 같은 구멍이다.
+            "insurance_history": {"own_damage": 0},
             "year": 2020, "mileage_km": 90_000, "encar_total": 1_000,
             "newcar_min": 3_000, "newcar_max": 4_000}          # 출시가 범위(만원) → 중간 3,500만원
     base.update(kw)
@@ -82,6 +85,16 @@ def test_condition_axis_needs_evidence_not_just_absence_of_keywords():
     with_src = _hx(_v())
     assert _score(with_src, "cond")["score"] == 100
     assert service.accident_label(_v()) == "무사고"
+
+    # REC-15: 보험이력이 **있어도** 일반 사고 항목(내차·상대차피해)이 없으면 근거가 아니다 — 사고축 미산출.
+    for ih in ({"owner_changes": 3, "plate_changes": 1},        # 2026타경50904_1 그대로
+               {"total_loss": 0, "theft": 0, "flood": 0},       # 특수사고만(2026타경503268_1)
+               {"내차피해": 0}):                                  # 파서가 만들지 않는 키(옛 픽스처)
+        h = _hx(_v(insurance_history=ih))
+        assert _score(h, "cond")["score"] is None, f"일반 사고 항목 없이 사고축에 점수를 매겼다: {ih}"
+        assert "미확인" in _score(h, "cond")["note"]
+        assert service.accident_label(_v(insurance_history=ih)) == "이력 미확인"
+    assert _score(_hx(_v(insurance_history={"opp_damage": 0})), "cond")["score"] == 100   # 상대차 키만 있어도 조회함
 
 
 def test_mileage_scale():

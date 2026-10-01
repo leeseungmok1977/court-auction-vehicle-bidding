@@ -177,7 +177,11 @@ def test_unverified_history_is_never_green():
     초록 칩에 '이력 미확인'이라고 적혀 나갔다. 확인하지 못한 것을 확인해서
     괜찮은 것처럼 읽히게 만드는 것은 이 앱에서 가장 하면 안 되는 오독이다.
 
-    초록은 `v.insurance_history`가 **실제로 내용이 있을 때만**. 미확인은 앰버.
+    5회차 처방: 초록은 `v.insurance_history`가 **실제로 내용이 있을 때만**, 미확인은 앰버.
+
+    REC-15(2026-10-01, 오너 승인): '내용이 있다'만으로는 모자랐다 — 소유자·번호 변경이나 특수사고 카운트만 있는
+    보험이력도 dict 가 비지 않아 초록이 됐고, 같은 행의 칸 글자(v|accv)는 '이력 미확인'이었다(2026타경50904_1 등 8대).
+    이제 초록은 **칸 글자가 '무사고'일 때만**(`_accl = v|accv` — 근거의 정의는 service.accident_evidence 한 곳).
     """
     import pathlib
     import re
@@ -185,8 +189,10 @@ def test_unverified_history_is_never_green():
     m = re.search(r'<span class="chip \{\{([^}]+)\}\}">\{\{[^}]*이력 미확인', src, re.S)
     assert m, "사고·침수 행의 칩 표현식을 찾지 못했다"
     expr = m.group(1)
-    assert "insurance_history" in expr, (
-        "칩 색이 이력 유무를 보지 않는다 — 이력이 없어도 초록이 된다: " + expr.strip())
-    # 초록('ok')은 이력이 있을 때만 나올 수 있어야 한다
-    assert re.search(r"'ok'\s+if\s+v\.insurance_history", expr), (
-        "초록이 이력 유무와 무관하게 걸린다: " + expr.strip())
+    assert "_accl" in expr, (
+        "칩 색이 칸 글자(v|accv)를 보지 않는다 — 글자가 '이력 미확인'이어도 초록이 된다: " + expr.strip())
+    # 초록('ok')은 칸 글자가 '무사고'일 때만 나올 수 있어야 한다
+    assert re.search(r"'ok'\s+if\s+_accl\s*==\s*'무사고'", expr), (
+        "초록이 칸 글자와 무관하게 걸린다: " + expr.strip())
+    # 그 글자는 리포트가 다시 판정한 값이 아니라 v|accv(service.accident_label) 그대로다
+    assert re.search(r"\{%-?\s*set\s+_accl\s*=\s*v\|accv\s*%\}", src[:m.start()]), "_accl 이 v|accv 가 아니다"

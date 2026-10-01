@@ -79,11 +79,25 @@ def _fixed_backtest(monkeypatch):
 
 
 # ── P0-2 사고 이력 근거 ──────────────────────────────────────
+# REC-15(2026-10-01): 근거는 보험이력의 **일반 사고 항목 키**(own_damage·opp_damage — 파서 _HIST_PATTERNS 의 키)다.
+#   예전 픽스처는 파서가 만들지 않는 '내차피해' 키로 '조회함'을 표현했다 — 'dict 가 비어 있지만 않으면 근거'라는 옛 술어에서만
+#   통하던 표현이라, 같은 구멍으로 운영의 소유자변경만 있는 보험이력(2026타경50904_1)이 '무사고'가 됐다. 단언은 그대로 두고
+#   진짜 키로 바꾼 뒤, 근거가 **아닌** 보험이력 꼴을 더한다(지운 단언 0).
 @pytest.mark.parametrize("v,expected", [
     ({"accident_grade": "none"}, "이력 미확인"),                                  # 자료 없음
     ({"accident_grade": "none", "insurance_history": {}}, "이력 미확인"),          # 빈 dict도 자료 없음
-    ({"accident_grade": "none", "insurance_history": {"내차피해": 0}}, "무사고"),   # 0건이라도 '조회함'
-    ({"accident_grade": "none", "insurance_history": {"내차피해": 2}}, "무사고"),
+    ({"accident_grade": "none", "insurance_history": {"own_damage": 0}}, "무사고"),   # 0건이라도 '조회함'
+    ({"accident_grade": "none", "insurance_history": {"own_damage": 0, "opp_damage": 2}}, "무사고"),  # 상대차만 — 내차는 무사고
+    ({"accident_grade": "none", "insurance_history": {"opp_damage": 0}}, "무사고"),   # 상대차 키만 있어도 '조회함'
+    # ── 일반 사고 항목이 없는 보험이력 — 근거 아님(REC-15)
+    ({"accident_grade": "none", "insurance_history": {"owner_changes": 3, "plate_changes": 1}}, "이력 미확인"),  # 50904
+    ({"accident_grade": "none", "insurance_history": {"owner_changes": 1}}, "이력 미확인"),
+    ({"accident_grade": "none", "insurance_history": {"plate_changes": 0}}, "이력 미확인"),
+    ({"accident_grade": "none", "insurance_history": {"total_loss": 0, "theft": 0, "flood": 0}}, "이력 미확인"),
+    ({"accident_grade": "none", "insurance_history": {"special_use": 0}}, "이력 미확인"),
+    ({"accident_grade": "none", "insurance_history": {"내차피해": 0}}, "이력 미확인"),    # 파서가 만들지 않는 키
+    ({"accident_grade": "none", "insurance_history": '{"owner_changes": 3}'}, "이력 미확인"),   # JSON 문자열도 같다
+    ({"accident_grade": "none", "insurance_history": '{"own_damage": 0}'}, "무사고"),
     ({"accident_grade": "accident", "accident_hits": ["판금"]}, "사고"),
     ({"accident_grade": "flood"}, "침수의심"),
     ({"accident_grade": None}, "—"),
@@ -101,7 +115,7 @@ def test_hexagon_accident_axis_unscored_without_evidence():
 
 
 def test_hexagon_accident_axis_scored_with_evidence():
-    v = {"accident_grade": "none", "insurance_history": {"내차피해": 0},
+    v = {"accident_grade": "none", "insurance_history": {"own_damage": 0},   # REC-15: 파서 키(위 매개변수 주석)
          "year": 2020, "mileage_km": 50000}
     ax = {a["key"]: a for a in service.hexagon_scores(v)["axes"]}
     assert ax["cond"]["score"] == 100

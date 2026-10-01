@@ -202,13 +202,17 @@ def test_unverified_accident_history_is_assumed_accident():
     적용하고 있었다. 화면은 '이력 미확인'이라 적으면서 계산만 무사고로 치는 모순이었다."""
     rate_unknown, assumed = service.use_accident_rate(v(accident_grade="none"))
     assert assumed is True and rate_unknown > 0
-    # 보험이력 등 근거가 있으면 가정하지 않는다
+    # 보험이력 등 근거가 있으면 가정하지 않는다 — 근거는 일반 사고 항목 키(own_damage·opp_damage, REC-15).
+    #   예전 픽스처의 '내차피해' 키는 파서가 만들지 않는 가짜 키였다(옛 술어 'dict 가 비지 않음'에서만 통함).
     rate_known, assumed2 = service.use_accident_rate(
-        v(accident_grade="none", insurance_history={"내차피해": 0}))
+        v(accident_grade="none", insurance_history={"own_damage": 0}))
     assert assumed2 is False and rate_known == 0
+    # 소유자·번호 변경만 있는 보험이력은 근거가 아니다 — 미확인과 같은 가정(REC-15, 2026타경50904_1 꼴)
+    assert service.use_accident_rate(
+        v(accident_grade="none", insurance_history={"owner_changes": 3, "plate_changes": 1})) == (rate_unknown, True)
     # 가정을 적용하면 절감액은 반드시 더 보수적(작거나 없음)이다
     assumed_saving = service.personal_use_saving(v(), BT)
-    known_saving = service.personal_use_saving(v(insurance_history={"내차피해": 0}), BT)
+    known_saving = service.personal_use_saving(v(insurance_history={"own_damage": 0}), BT)
     assert known_saving > assumed_saving
 
 

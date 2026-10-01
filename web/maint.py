@@ -8,12 +8,22 @@
                                                         입찰 상한선·판정)만 출력한다. --apply 일 때만 같은 행을 쓴다.
                                                         대상: 요항 파일이 있고, 직전 파서와 지금 파서의 보험이력이
                                                         다른 행만(service.regrade_accidents). --dry-run 은 기본과 같다.
+    python -m web.maint reprice-accidents [--ids A,B] [--apply]
+                                                        사고 근거 **규칙** 변경(REC-15)을 저장 산정에 반영(요청 0 ·
+                                                        파일 I/O 0). 등급·보험이력은 그대로 두고 산정표의 사고감가율·
+                                                        사고표기가 지금 규칙과 다른 행만 사고 감가 한 항을 다시 계산
+                                                        → 상한가·판정(service.reprice_accidents). 기본은 **미리보기**
+                                                        (쓰기 0). --apply 는 --ids 와 함께일 때만 쓴다. 매각이 끝난 행·
+                                                        침수·전손 보류 행은 건드리지 않는다. --dry-run 은 기본과 같다.
     python -m web.maint floor-refresh [기간일수]        최저가 지연 재조회 실행 — config min_refresh_enabled 가
                                                         true 일 때만 법원에 요청한다(false 면 계획만 출력)
 
 REC-1(2026-09-29). 배포 뒤 순서: ⓪ regrade-accidents 로 바뀔 행을 보고(쓰기 0) → ① 오너 확인 뒤
 regrade-accidents --apply(파서 수정 반영) ② rejudge-floor ③ floor-refresh-plan 으로
 대상·예상 요청 수를 오너에게 보고 → 승인 후 config 를 켠다(C.4-6). ②는 다음 날 매일 갱신도 돈다.
+REC-15(2026-10-01). 사고 근거 술어(service.accident_evidence) 배포 뒤 바로: ⓪ reprice-accidents(미리보기)로 대상·
+skipped 를 보고 → ① 오너 확인 뒤 reprice-accidents --ids <대상 id> --apply. 배포와 ① 사이에는 화면 라벨·칩·입찰 상한선은
+새 규칙인데 저장 판정('입찰 검토 가능')·상한가·산정표 표기는 옛 값이라 '지금 입찰 추천' 칸에 남는다 — 간격을 두지 않는다.
 ⚠ 예전의 `regrade-accidents --force`(범위 없는 전체 재등급)는 없앴다 — 요항 파일이 없는 행을 매각물건명세만으로
   다시 매겨 무사고로 내렸다(qa 2026-09-29 F4). 2026-09-21 류의 전체 재산정이 필요하면
   service.backfill_accident_grades(force=True) 를 **미리보기부터** 따로 검토한다.
@@ -75,6 +85,20 @@ def main(argv=None) -> int:
             print("--ids 뒤에 물건 id 를 쉼표로 적는다(예: --ids 2026타경30118_1,2026타경30178_1)")
             return 2
         _print(service.regrade_accidents(ids=ids, apply="--apply" in argv))
+        return 0
+    if cmd == "reprice-accidents":
+        if "--apply" in argv and "--dry-run" in argv:
+            print("--apply 와 --dry-run 을 함께 쓸 수 없다 — 쓸지 말지를 하나로 정한다")
+            return 2
+        ids = _ids(argv)
+        if ids == []:
+            print("--ids 뒤에 물건 id 를 쉼표로 적는다(예: --ids 2026타경50904_1,2026타경52708_1)")
+            return 2
+        if "--apply" in argv and ids is None:
+            # 쓰기는 사람이 미리보기에서 고른 행에만 — 범위 없는 일괄 쓰기를 열어 두지 않는다(regrade --force 의 교훈).
+            print("--apply 는 --ids 와 함께 쓴다 — 먼저 미리보기(인자 없이)로 대상을 보고, 그 id 를 --ids 로 넘긴다")
+            return 2
+        _print(service.reprice_accidents(ids=ids, apply="--apply" in argv))
         return 0
     if cmd == "floor-refresh":
         res = service.refresh_lagged_floors(within_days=_within(argv))

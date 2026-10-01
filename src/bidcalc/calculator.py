@@ -202,6 +202,36 @@ def calculate(inp: BidInput, config: dict) -> BidResult:
     )
 
 
+def reprice_accident(breakdown: dict, upper_bid: float, accident_rate: float,
+                     accident_label: str = "") -> Optional[tuple]:
+    """저장된 산정표에서 **사고 감가 한 항만** 갈아 끼운다 → (새 상한가, 새 산정표). 없으면 None.
+
+    calculate() 의 상한가는 항의 단순 차감(기준시세 − 수리비 − **사고감가** − 리스크 − 취득세 − 고정비 − 마진 −
+    상태·사진)이고 사고감가 = 기준시세 × 사고감가율이다. 그래서 사고감가율만 바꾼 값은 calculate() 를 같은 입력·
+    새 감가율로 다시 부른 값과 같다(tests/test_rec15_accident_evidence.py 가 calculate() 와 대조한다).
+    ⚠ 1원까지 같으려면 각 항이 정수여야 한다 — 저장 상한가는 이미 반올림된 값이라, 1원 단위 기준시세(예: 9,001,995)에서는
+      ±1원 차이가 날 수 있다. 실데이터의 기준시세는 모두 1,000원 단위다(10-01 백업 산정표 1,025개 전부 — 항이 정수).
+    감정 요항·시세·설정을 다시 읽지 않으므로 요항 파일 유무·케이카 나이 게이트·설정 변경 같은 **다른 표류가
+    섞이지 않는다** — 바뀌는 것은 사고감가율·사고감가·사고표기와 상한가뿐이다. 판정은 호출부가 judge() 로 다시 낸다.
+
+    침수(산정표 사고등급 flood — 등급이든 감정서 낱말이든)는 감가율이 flood 율로 고정이라 바꾸지 않는다(None).
+    산정표가 dict 가 아니거나 기준시세·사고감가율·상한가가 없어도 None.
+    REC-15(2026-10-01): 사고 근거 술어(service.accident_evidence)가 엄격해져 등급은 none 그대로 감가만
+    0% → 사고 가정으로 바뀌는 물건을 다시 계산하려고 만들었다(service.reprice_accidents)."""
+    if not isinstance(breakdown, dict) or upper_bid is None:
+        return None
+    if breakdown.get("사고등급") == AccidentGrade.FLOOD.value:
+        return None
+    base, old_rate = breakdown.get("기준시세"), breakdown.get("사고감가율")
+    if base is None or old_rate is None:
+        return None
+    new_rate = float(accident_rate)
+    new_upper = round(float(upper_bid) + base * float(old_rate) - base * new_rate)
+    bd = {**breakdown, "사고표기": accident_label or "", "사고감가율": new_rate,
+          "사고감가": round(base * new_rate)}
+    return new_upper, bd
+
+
 def _demo() -> None:
     """단독 실행 예시: python -m src.bidcalc.calculator"""
     config = load_config()

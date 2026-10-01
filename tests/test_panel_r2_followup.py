@@ -74,11 +74,15 @@ def test_max_bid_is_the_breakeven_of_the_saving_formula():
 
 def test_max_bid_reflects_condition_and_accident_assumption():
     """상태가 나쁘거나 사고 이력이 확인되면 상한선은 내려가야 한다."""
-    good = service.personal_use_max_bid(v(insurance_history={"내차피해": 0}), BT)
+    # REC-15: '무사고 확인'은 파서 키(own_damage)로 — 예전 '내차피해' 키는 파서가 만들지 않는 가짜 키였다.
+    good = service.personal_use_max_bid(v(insurance_history={"own_damage": 0}), BT)
     unknown = service.personal_use_max_bid(v(), BT)                    # 이력 미확인 → 사고 가정
     poor = service.personal_use_max_bid(v(condition_level="poor"), BT)
     assert unknown < good, "이력 미확인이 무사고 확인보다 상한선이 높으면 안 된다"
     assert poor < unknown, "상태 불량은 정비 충당만큼 상한선이 내려가야 한다"
+    # 소유자·번호 변경만 있는 보험이력은 확인이 아니다 — 상한선이 '이력 미확인'과 **같아야** 한다(REC-15, 50904 꼴)
+    owner_only = service.personal_use_max_bid(v(insurance_history={"owner_changes": 3, "plate_changes": 1}), BT)
+    assert owner_only == unknown < good
 
 
 def test_max_bid_absent_when_we_cannot_claim_it():
