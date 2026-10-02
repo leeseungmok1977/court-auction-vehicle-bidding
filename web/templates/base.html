@@ -450,7 +450,7 @@
   <div class="px-5 mt-auto border-t border-line pt-4 text-xs text-mut leading-relaxed">
     <a href="/landing" class="inline-flex items-center gap-1 text-primary hover:underline mb-2"><span class="material-symbols-outlined text-sm">campaign</span> 서비스 소개</a>
     · <a href="/privacy" class="text-primary hover:underline">개인정보처리방침</a><br>
-    대법원 법원경매정보 기반 분석 · 소매 시세 참고<br>참고용 분석 도구(투자 권유 아님)
+    대법원 법원경매정보 기반 분석 · 소매 시세 참고<br>참고용 분석 도구(투자 권유 아님)<br><span class="inline-block" style="text-wrap:pretty">사고 이력을 확인하지 못한 차는 사고차로 가정해 계산합니다.</span>{# MKT-1(오너 결정 2026-10-02) 판정 원칙 한 문장 — 모바일 푸터에도 같은 문장. 근거 service.use_accident_rate·accident_evidence · 원칙 전체는 landing.html 의 '모르는 건 안전한 쪽으로 계산합니다' 블록. 줄 끝 외톨이('계산합니다.' 한 낱말)를 막으려고 문장만 감쌌다 #}
     {% if is_admin(request) %}<br><span class="text-mut">데이터: 대법원 · SK엔카 · config.yaml · 검증용 소량·저속 수집</span>{% endif %}
   </div>
 </aside>
@@ -497,13 +497,16 @@
     {% block content %}{% endblock %}
     {# 모바일 푸터 — '서비스 소개'·'개인정보처리방침'이 사이드바에만 있어 모바일에서
        도달 불가였다(3회차 디자인 지적 5). 헤더에 버튼을 넣었더니 320~360px에서
-       헤더가 넘쳐(16~20px, 큰글씨 54~114px) 푸터로 바꿨다 — 온보딩 링크도 같이 놓는다. #}
+       헤더가 넘쳐(16~20px, 큰글씨 54~114px) 푸터로 바꿨다 — 온보딩 링크도 같이 놓는다.
+       아래 두 줄은 줄 끝 외톨이를 막는 줄바꿈 규칙을 쓴다(MKT-1 — 큰글씨 390 에서 '없습니다.' 한 낱말이 다음 줄로 떨어졌다).
+       기존 줄의 '입찰할 수 없습니다'는 한 덩어리로 묶었다 — 그 규칙만으로는 큰글씨 390 에서 '입찰할 / 수 없습니다'로 '할 수'가 갈렸다(디자인 검수 10-02). #}
     <div class="lg:hidden pt-2 mt-2 border-t border-line text-xs text-mut flex flex-wrap items-center gap-x-3 gap-y-1">
       <a href="/landing" class="text-primary hover:underline inline-flex items-center gap-1">
         <span class="material-symbols-outlined text-sm leading-none">campaign</span>이 앱은 무엇인가요?</a>
       <a href="/privacy" class="text-primary hover:underline">개인정보처리방침</a>
       <a href="/accuracy" class="text-primary hover:underline">예측 적중률</a>
-      <span class="w-full text-[11px]">법원경매 분석 도구입니다 — 이 앱에서는 입찰할 수 없습니다.</span>
+      <span class="w-full text-[11px]" style="text-wrap:pretty">법원경매 분석 도구입니다 — 이 앱에서는 <span class="whitespace-nowrap">입찰할 수 없습니다.</span></span>
+      <span class="w-full text-[11px]" style="text-wrap:pretty">사고 이력을 확인하지 못한 차는 사고차로 가정해 계산합니다.</span>
     </div>
   </div>
   <!-- 하단 탭 바 (모바일 전용, flex 자식) — 고정 오버레이 대신 실제 하단 배치라 스크롤 영역이 탭 위에서 끝남
