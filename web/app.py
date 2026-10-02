@@ -1190,7 +1190,9 @@ def vehicle_detail(request: Request, vid: str, cc: str = "", an: str = ""):
         "dist": dist if _adm else None,                   # 동급 매물 분포(엔카 viz)는 관리자만
         "verdict": verdict, "comps_won": comps[:6],
         "eff_median": eff_med,
-        "kcar_enabled": kcar.ENABLED, "cc_msg": cc, "an_msg": an,
+        "kcar_enabled": kcar.ENABLED, "cc_msg": cc,
+        # SEC-1: 단건 분석 안내는 관리자에게만 — 공개 화면에서 ?an= 문장을 그리면 누구나 공식 안내 상자를 띄울 수 있었다
+        "an_msg": an if _adm else "",
         "newcar_public": bool(_cfg.get("newcar_public", False)),   # 당시 출시가 공개 여부(config 전환)
         # 낙찰 시 간이 총비용(낙찰가+취득세+이전·탁송) — 초보용 '그래서 총 얼마' 답변. 전체는 리포트 06.
         "allin": service.allin_estimate(expected["price"] if expected else None, _cfg, v),
