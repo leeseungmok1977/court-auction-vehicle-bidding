@@ -52,16 +52,69 @@ def _sale_time(row: dict, fail_count: Optional[int]) -> Optional[str]:
     return times[min(fail_count or 0, len(times) - 1)]
 
 
+# 표시용 사건번호 형식 'YYYY타경N' — `web/db.py` `_vehicles_where` 의 목록 GLOB 가드와 같은 뜻.
+_CASE_RE = re.compile(r"\d{4}타경\d+")
+# saNo(14자리) = 연도 4 + 사건구분 '0130'(타경) + 일련번호 6(0 채움). 상세 조회 키(csNo)와 같은 값이다.
+_SANO_CASE_RE = re.compile(r"(\d{4})0130(\d{6})")
+
+
+def case_no_from_sano(sa_no) -> Optional[str]:
+    """saNo('20260130030526') → 표시용 사건번호('2026타경30526'). 규칙에 맞지 않으면 None(추측하지 않는다).
+
+    근거(AUD-04, 2026-10-02): 운영 DB 백업(2026-10-01) 정상 행 **1,571/1,571** 에서 printCsNo 끝부분과
+    이 규칙의 결과가 같다(불일치 0 · 전 1,587행의 사건구분이 '0130'). 감사 검증 B(09-27)도 1,476/1,476."""
+    m = _SANO_CASE_RE.fullmatch(str(sa_no or "").strip())
+    return f"{m.group(1)}타경{int(m.group(2))}" if m else None
+
+
 def _case_no(row: dict) -> str:
-    """표시용 사건번호(예: '2025타경103470'). printCsNo 끝부분 우선, 없으면 saNo."""
+    """표시용 사건번호(예: '2025타경103470'). printCsNo 끝부분 우선, 형식 밖이면 saNo 에서 복원.
+
+    ⚠ AUD-04(2026-10-02): 중복·병합 사건은 printCsNo 마지막 `<br/>` 조각이 '(중복)'·'(병합)' 이라
+      그 문자열이 사건번호가 됐다. 그래서 여러 법원의 물건이 `(중복)_1` 같은 **한 id** 를 두고 다퉜고
+      (09-30 하루 14건 버려짐 — 백업 anomaly_log), 저장된 행도 목록 GLOB 가드에 숨겨졌다. 끝 조각이 사건번호 형식이 아니면
+      saNo(상세 조회에 쓰는 바로 그 사건) 로 되돌린다. 정상 행은 바뀌지 않는다(끝 조각 == saNo 규칙, 위 근거).
+      saNo 도 규칙 밖이면 예전 그대로 돌려준다 — 모르는 형식을 지어내지 않는다(C.4-3)."""
     printed = str(row.get("printCsNo", "") or "")
+    cand = ""
     if "<br/>" in printed:
-        tail = printed.split("<br/>")[-1].strip()
-        if tail:
-            return tail
-    if printed and "타경" in printed:
-        return printed.strip()
-    return str(row.get("saNo", "") or "").strip()
+        cand = printed.split("<br/>")[-1].strip()
+    if not cand and printed and "타경" in printed:
+        cand = printed.strip()
+    if cand and _CASE_RE.fullmatch(cand):
+        return cand
+    restored = case_no_from_sano(row.get("saNo"))
+    if restored:
+        return restored
+    return cand or str(row.get("saNo", "") or "").strip()
+
+
+# ── 저장 id(=폴더명) ────────────────────────────────────────────────────────────────
+# 예전 규칙 id 는 `사건번호_물건번호` 뿐이라 **법원 코드가 없다.** 사건번호는 법원마다 따로 매기므로
+# 다른 법원의 같은 번호가 한 id 를 두고 충돌한다(AUD-02: 09-30 하루 27쌍 + '(중복)' 14건이 버려짐 — 백업 anomaly_log).
+# 기존 행의 id 는 바꾸지 않는다(URL·기기 즐겨찾기/메모 키·사진 폴더·낙찰 이력이 id 에 묶여 있다).
+# **충돌한 새 물건만** 법원 구분 id `사건번호_물건번호@법원코드` 로 저장한다(web/db.py resolve_listing_id).
+#   - '@' 는 URL 경로 조각에 그대로 쓸 수 있고(RFC 3986 pchar) Windows·Linux 파일 이름에도 안전하다.
+#   - 예전 규칙 id 에는 '@' 가 없다(아래 _id_part 가 지운다 · 백업 1,587행 실측 0) → 두 형식은 절대 겹치지 않는다.
+#   - 법원코드(boCd, 예 B000250)는 영숫자만 남긴다.
+COURT_SEP = "@"
+_ID_UNSAFE = re.compile(r'[\s/\\:?#%@*"<>|\x00-\x1f]')
+
+
+def _id_part(s) -> str:
+    """id 조각 정리 — 공백·경로·URL 예약 문자·'@' 제거. 지금까지 저장된 id(영숫자·한글·괄호·'_')는 그대로다."""
+    return _ID_UNSAFE.sub("", str(s or ""))
+
+
+def court_qualified_key(base_key: str, court_code) -> Optional[str]:
+    """법원 구분 id: `{예전 규칙 id}@{법원코드}`. 법원코드가 비면 None(구분할 수 없다)."""
+    cc = re.sub(r"[^0-9A-Za-z]", "", str(court_code or ""))
+    return f"{base_key}{COURT_SEP}{cc}" if cc and base_key else None
+
+
+def is_court_qualified(key) -> bool:
+    """법원 구분 id 인가(충돌로 따로 저장된 물건)."""
+    return COURT_SEP in str(key or "")
 
 
 def _clean_location(v) -> str:
@@ -99,12 +152,19 @@ class VehicleItem:
     status_code: str           # 물건상태코드
     doc_id: str                # 상세조회 키(docid)
     mileage: Optional[int] = None   # 주행거리(상세에서 확정)
+    # 저장 id(=폴더명)를 정해 줄 때만 채운다 — 이미 저장된 행의 id(재분석 경로)나 법원 구분 id(AUD-02).
+    # 비어 있으면 예전 규칙(base_key)이다. 법원 목록 파서는 이 값을 채우지 않는다.
+    key: Optional[str] = None
+
+    @property
+    def base_key(self) -> str:
+        """예전 규칙 id: `{사건번호}_{물건번호}`(법원 코드 없음)."""
+        return f"{_id_part(self.case_no)}_{_id_part(self.item_no)}"
 
     @property
     def folder_key(self) -> str:
-        """data/{사건번호}_{물건번호} 폴더명."""
-        safe = self.case_no.replace(" ", "").replace("/", "")
-        return f"{safe}_{self.item_no}"
+        """저장 id 이자 data/<폴더명>. `key` 가 있으면 그것, 없으면 예전 규칙."""
+        return self.key or self.base_key
 
     def to_dict(self) -> dict:
         d = asdict(self)

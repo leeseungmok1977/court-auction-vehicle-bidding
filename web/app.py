@@ -137,7 +137,9 @@ def admin_anomalies(request: Request):
         "table{border-collapse:collapse;width:100%}th,td{border:1px solid #ddd;padding:6px 8px;text-align:left;vertical-align:top}"
         "th{background:#f4f6f9}td:nth-child(3){font-weight:600}</style></head><body>"
         f"<h2>무결성 검토 기록 <span style='color:#888;font-weight:400'>· {len(rows)}건</span></h2>"
-        "<p><a href='/admin'>← 관리자</a> · resolved=재확인 후 복원, quarantined=등록 보류(숨김), error=재조회 오류</p>"
+        "<p><a href='/admin'>← 관리자</a> · resolved=재확인 후 복원, quarantined=등록 보류(숨김), error=재조회 오류"
+        " · stored-as=다른 법원의 같은 사건번호 — 법원 구분 id 로 따로 저장(기존 행 유지)"
+        " · skipped=다른 법원 충돌로 반영 안 함(2026-10-02 전 기록·마지막 방어선)</p>"
         "<table><thead><tr><th>시각</th><th>사건번호</th><th>조치</th><th>사유</th><th>메모</th></tr></thead>"
         f"<tbody>{trs or '<tr><td colspan=5>기록 없음</td></tr>'}</tbody></table></body></html>")
     return HTMLResponse(doc)

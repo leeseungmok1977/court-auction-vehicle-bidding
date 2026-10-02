@@ -22,7 +22,7 @@ from src.collect.courtauction_list import new_session, warmup, fetch_list_page
 from src.collect.courtauction_detail import fetch_detail, save_item_folder
 from src.collect import encar
 from src.collect import kcar
-from src.parse.list_parser import parse_list_response
+from src.parse.list_parser import parse_list_response, is_court_qualified
 from src.parse.detail_parser import parse_detail
 from src.parse.market_match import summarize, _confidence_label, cross_source_check
 from src.bidcalc.calculator import BidInput, calculate, judge, reprice_accident
@@ -228,6 +228,7 @@ def _run_collection(max_items: int, scan_limit: int, repair_cost: int, run_id: i
         raws = list_resp["data"]["dlt_srchResult"]
         items = parse_list_response(list_resp)
         es = encar.new_session()
+        index = db.listing_index()      # 저장 id 조회표(AUD-02) — 매일 갱신과 같은 규칙으로 id 를 정한다
 
         processed = 0
         consecutive_fail = 0
@@ -236,6 +237,11 @@ def _run_collection(max_items: int, scan_limit: int, repair_cost: int, run_id: i
                 break
             db.update_run(run_id, scanned=idx + 1,
                           message=f"{item.case_no} {item.model} 분석 중…")
+            # ⚠ AUD-02: 예전엔 예전 규칙 id 를 그대로 써서, 다른 법원이 같은 사건번호 행을 갖고 있으면
+            #   upsert_vehicle 이 **그 행을 덮었다**(가드는 upsert_listing 에만 있었다) — 사진 폴더까지.
+            base = item.folder_key
+            rid, blocked_by = db.resolve_listing_id(base, item.court_code, item.doc_id, index)
+            item.key = rid
             try:
                 rec = _analyze_item(cs, es, raw, item, config, repair_cost, search)
                 consecutive_fail = 0
@@ -247,8 +253,13 @@ def _run_collection(max_items: int, scan_limit: int, repair_cost: int, run_id: i
                     raise RuntimeError("비정상 응답 3회 연속 — 중단")
                 rec = {"id": item.folder_key, "case_no": item.case_no,
                        "item_no": item.item_no, "model": item.model,
+                       "court": item.court, "court_code": item.court_code,
+                       "doc_id": item.doc_id, "folder_key": item.folder_key,
                        "status": f"오류: {e}", "collected_at": _now()}
             db.upsert_vehicle(rec)
+            db.index_add(index, rid, item.court_code, item.doc_id)
+            if blocked_by:
+                _log_court_split(rid, item, base, blocked_by)
             if rec.get("status") == "완료":
                 processed += 1
                 db.update_run(run_id, processed=processed)
@@ -910,7 +921,12 @@ def _sa_no_from_docid(doc_id: str) -> Optional[str]:
 
 
 def _rebuild_item(v: dict):
-    """DB 레코드 → VehicleItem 재구성 (재분석용)."""
+    """DB 레코드 → VehicleItem 재구성 (재분석용).
+
+    ⚠ `key` 에 **그 행의 id** 를 싣는다(AUD-02). `_analyze_item` 은 `item.folder_key` 를 저장 id·사진 폴더로
+      쓰는데, 싣지 않으면 사건번호+물건번호로 예전 규칙 id 를 다시 만든다 — 법원 구분 id 행(`…@법원코드`)을
+      재분석하면 결과가 **다른 법원의 같은 사건번호 행**에 쓰이고 사진 폴더까지 덮인다(09-13 '벤츠 제목에
+      그랜저 사진'과 같은 사고). 행 id 를 그대로 쓰면 예전 행도 지금과 똑같다(id == 예전 규칙 id)."""
     from src.parse.list_parser import VehicleItem
     return VehicleItem(
         case_no=v.get("case_no") or "", item_no=v.get("item_no") or "1",
@@ -921,7 +937,7 @@ def _rebuild_item(v: dict):
         fail_count=v.get("fail_count"), sale_date=v.get("sale_date"),
         sale_time=v.get("sale_time"), sale_place=v.get("sale_place") or "",
         usage_name="", location=v.get("location") or "", status_code="",
-        doc_id=v.get("doc_id") or "")
+        doc_id=v.get("doc_id") or "", key=v.get("id") or None)
 
 
 def _reanalyze(max_items: int, repair_cost: int, run_id: int) -> None:
@@ -1007,14 +1023,36 @@ def _listing_rec(item) -> dict:
     }
 
 
+# 직전 collect_upcoming 의 법원 구분 저장 수(AUD-02) — daily_update 가 실행 기록 한 조각으로 옮긴다.
+# collect_upcoming 이 시작할 때 비우고 끝까지 돌았을 때만 채운다(중간에 멈추면 빈 채로 남는다).
+_LAST_COLLECT: dict = {}
+
+
+def _log_court_split(rid: str, item, base: str, blocked_by: str) -> None:
+    """법원 구분 id 로 **새로** 저장한 물건을 감사기록에 한 번 남긴다(이튿날부터는 그 id 로 갱신만 된다).
+
+    action 'stored-as' — 예전 'skipped'(새 물건을 버림)와 갈라 센다. 같은 쌍이 매일 다시 쌓이지 않는다."""
+    _log_anomaly(rid, item.case_no, "사건번호 충돌(다른 법원)", "stored-as",
+                 f"기존 {base}({blocked_by}) 유지 · 신규 {item.court_code} "
+                 f"({item.maker} {item.model}) → {rid} 로 저장")
+
+
 def collect_upcoming(within_days: int = 30, run_id: Optional[int] = None,
                      max_pages: int = 25, finalize: bool = True) -> int:
-    """전국 자동차 경매 목록을 순회해 매각기일이 within_days 이내인 물건만 갱신."""
+    """전국 자동차 경매 목록을 순회해 매각기일이 within_days 이내인 물건만 갱신.
+
+    저장 id 는 `db.resolve_listing_id` 가 정한다(AUD-02, 2026-10-02). 다른 법원이 같은 사건번호 id 를
+    이미 쓰고 있으면 새 물건을 **버리지 않고** 법원 구분 id(`사건번호_물건번호@법원코드`)로 따로 저장한다.
+    기존 행은 바이트 하나 건드리지 않는다. 외부 요청 수는 예전과 같다(목록 페이지만 — 요청 상한 max_pages)."""
     today = date.today()
     end = today + timedelta(days=within_days)
+    _LAST_COLLECT.clear()
     cs = new_session(); warmup(cs)
     stored = 0
-    collided = 0
+    collided = 0                 # 마지막 방어선(CaseCollision)에 걸려 버린 수 — 조회표가 낡지 않았으면 0
+    split_new = 0                # 법원 구분 id 로 **새로** 저장한 물건
+    split_seen = 0               # 이번 창에서 법원 구분 id 로 저장·갱신한 물건(새로 + 이미 있던 것)
+    index = db.listing_index()   # id·법원·doc_id 조회표 — 한 번 읽고 이번 런에 넣은 행은 바로 반영
     page = 1
     total = None
     seen_ids: set[str] = set()   # 이번 스캔에서 관측한 모든 물건 id(목록이탈 감지용)
@@ -1027,7 +1065,12 @@ def collect_upcoming(within_days: int = 30, run_id: Optional[int] = None,
             complete = True
             break
         for item in parse_list_response(resp):
-            seen_ids.add(item.folder_key)      # 날짜 무관 — 목록에 '존재'하는 모든 물건
+            base = item.folder_key
+            rid, blocked_by = db.resolve_listing_id(base, item.court_code, item.doc_id, index)
+            item.key = rid
+            # 날짜 무관 — 목록에 '존재'하는 모든 물건. **그 물건이 저장된 바로 그 id** 를 센다: 예전엔 예전 규칙
+            # id 를 넣어서, 다른 법원의 같은 사건번호 물건이 목록에 있으면 기존 행이 '보였다'로 잘못 셌다.
+            seen_ids.add(rid)
             if not item.sale_date:
                 continue
             try:
@@ -1039,14 +1082,20 @@ def collect_upcoming(within_days: int = 30, run_id: Optional[int] = None,
                     db.upsert_listing(_listing_rec(item))
                     stored += 1
                 except db.CaseCollision as e:
-                    # 다른 법원의 같은 사건번호 — 병합하면 한 행이 두 대의 차가 된다.
-                    # 새 물건을 버리는 것이 아니라 **기존 행을 지키고** 기록만 남긴다.
-                    # id에 법원 코드를 넣는 마이그레이션 전까지의 방어선이다.
+                    # 마지막 방어선 — 조회표가 낡았거나(다른 프로세스가 먼저 씀) 법원 구분 id 자리에 다른 법원이
+                    # 있는 경우. 병합하면 한 행이 두 대의 차가 되므로 **기존 행을 지키고** 기록만 남긴다.
                     collided += 1
                     _log_anomaly(e.vid, item.case_no, "사건번호 충돌(다른 법원)",
                                  "skipped",
                                  f"기존 {e.old_court} 유지 · 신규 {e.new_court} "
                                  f"({item.maker} {item.model}) 반영 안 함")
+                    continue
+                db.index_add(index, rid, item.court_code, item.doc_id)
+                if is_court_qualified(rid):
+                    split_seen += 1
+                if blocked_by:
+                    split_new += 1
+                    _log_court_split(rid, item, base, blocked_by)
         if run_id:
             db.update_run(run_id, scanned=page * 40, processed=stored,
                           message=f"목록 {page}페이지 순회 · 입찰예정 {stored}건")
@@ -1060,11 +1109,15 @@ def collect_upcoming(within_days: int = 30, run_id: Optional[int] = None,
     if complete and total and len(seen_ids) >= int(total * 0.8):
         sweep = db.mark_disappeared(seen_ids, today.isoformat(), end.isoformat())
         db.set_setting("last_disappear_sweep", f"{_now()} {sweep}")
-    if collided:
-        # 조용히 넘기면 왜 물건이 안 들어오는지 아무도 모른다 — 실행 결과에 드러낸다.
-        db.set_setting("last_case_collisions", f"{_now()} {collided}건")
+    # 조용히 넘기면 왜 물건이 안 들어오는지 아무도 모른다 — 매 런 기록한다(0 이어도 — 시각이 '세고 있다'는 증거).
+    # 예전 값은 '{시각} {버린 수}건' 이었다. 이제 버리지 않으므로 법원 구분 저장 수와 마지막 방어선 수를 함께 적는다.
+    db.set_setting("last_case_collisions",
+                   f"{_now()} 법원구분 신규 {split_new}건 · 이번 목록의 법원구분 물건 {split_seen}건 · 보류 {collided}건")
+    _LAST_COLLECT.update({"court_split_new": split_new, "court_split_seen": split_seen,
+                          "collided": collided})
     if finalize and run_id:
-        _cl = f" · 사건번호 충돌 {collided}건 보류" if collided else ""
+        _cl = f" · 법원구분 신규 {split_new}건" if split_new else ""
+        _cl += f" · 사건번호 충돌 {collided}건 보류" if collided else ""
         db.update_run(run_id, status="done", finished_at=_now(),
                       message=f"입찰예정 {stored}건 갱신 (≤{within_days}일){_cl}")
     return stored
@@ -2191,6 +2244,7 @@ def daily_update(within_days: int = 30, analyze: bool = True,
                  repair_cost: int = 500000) -> dict:
     """일일 갱신: ① 입찰예정 목록 수집 → ② 국산차 시세 분석까지 연속 진행."""
     config = load_config()
+    _LAST_COLLECT.clear()      # 수집을 대역으로 바꾼 실행(테스트)에서도 앞 실행의 값이 새지 않게
     stored = collect_upcoming(within_days=within_days, run_id=run_id, finalize=False)
     _reconcile_min_from_dxdy(within_days)   # 목록이 덮은 dxdy 보정 최저매각가 복원
     # ①-1 최저가 지연 물건의 법원 상세 재조회(REC-1). 기본 꺼짐(config min_refresh_enabled) — 꺼져 있으면
@@ -2328,7 +2382,15 @@ def daily_update(within_days: int = 30, analyze: bool = True,
         _ru += f" · ⚠최저가 재판정 오류 {rejudge['error_type']}" if rejudge.get("error_type") else ""
         _ph = (f" · 사진정렬 {photos['sorted']}건" if photos.get("sorted")
                else (" · ⚠사진정렬 건너뜀" if photos.get("error") else ""))
-        _base = f"입찰예정 {stored} · 분석 {analyzed}{_ru}{_ph} · 낙찰결과 {results}건{_rv}{_hv}"
+        # AUD-02: 다른 법원의 같은 사건번호라 법원 구분 id 로 **새로** 저장한 물건 수(없으면 조각 없음).
+        # '입찰예정 N · 분석 N' 사이에 넣지 않는다 — 일일 리포트가 그 두 조각으로 요약 문장을 알아본다.
+        # 마지막 방어선에 걸려 **버린** 물건이 있으면 ⚠ 조각 — 정상이면 0 이고, 0 이 아니면 물건이 빠진 것이다
+        # (A-01: 버린 기록이 관리자 화면에만 남아 14일간 아무도 몰랐다). ⚠ 는 ops_health 실행 기록 신호가 경고로 읽는다.
+        _sp = (f" · 법원구분 신규 {_LAST_COLLECT['court_split_new']}"
+               if _LAST_COLLECT.get("court_split_new") else "")
+        _sp += (f" · ⚠사건번호 충돌 {_LAST_COLLECT['collided']} 보류"
+                if _LAST_COLLECT.get("collided") else "")
+        _base = f"입찰예정 {stored} · 분석 {analyzed}{_sp}{_ru}{_ph} · 낙찰결과 {results}건{_rv}{_hv}"
         # 긴 수집을 시작하기 **전에** 여기까지의 요약을 남긴다. 서버가 재시작되면 마지막 메시지 뒤에
         # '(서버 재시작으로 중단됨)'만 붙는다 — 진행 메시지만 남아 있으면 앞 단계 건수가 통째로 사라진다.
         db.update_run(run_id, message=f"{_base} · 출시가 수집 중")
@@ -3297,6 +3359,8 @@ def find_court_mismatch() -> list:
       사건번호는 법원마다 따로 매기므로 다른 법원의 같은 번호가 한 폴더·한 행으로
       충돌한다. 목록(가격·기일)은 A법원 것이 남고, 폴더(사진·감정서)는 B법원 것이
       덮어써진 상태가 된다.
+      AUD-02(2026-10-02)부터 충돌한 새 물건은 법원 구분 id(`…@법원코드`)·제 폴더로 저장된다
+      (db.resolve_listing_id). 이 점검은 그 전에 섞인 행을 찾는 데 남는다.
 
     영향이 크다 — 사진·감정서가 남의 차라서 시세 매칭·예상낙찰가·상한가·사고판정이
     전부 다른 차 값이 된다. 실측(2026-09-13): 1,301건 중 29건(2.2%), 진행 중 16건.
@@ -3323,7 +3387,8 @@ def find_court_mismatch() -> list:
             jc = str(o.get("court_code") or "").strip()
             dc = str(v.get("court_code") or "").strip()
             if jc and dc and jc != dc:
-                out.append({"id": v["id"], "db_court": dc, "db_court_name": v.get("court"),
+                out.append({"id": v["id"], "case_no": v.get("case_no"),
+                            "db_court": dc, "db_court_name": v.get("court"),
                             "file_court": jc, "db_model": f"{v.get('maker')} {v.get('model')}",
                             "file_model": f"{o.get('maker')} {o.get('model')}",
                             "status": v.get("status"), "sale_date": v.get("sale_date")})
@@ -3347,8 +3412,8 @@ _DERIVED_ON_DETAIL = (
 def quarantine_court_mismatch(apply: bool = False) -> dict:
     """법원이 어긋난 행을 목록에서 감추고 파생값을 지운다(무네트워크).
 
-    삭제하지 않는다 — 사건 자체는 실재하므로, 나중에 id에 법원 코드를 넣어 다시
-    수집하면 복구된다. 지금은 **남의 차 정보를 보여주지 않는 것**이 우선이다.
+    삭제하지 않는다 — 사건 자체는 실재하므로, 다른 법원 물건은 다시 수집될 때 법원 구분 id 로
+    따로 저장된다(AUD-02). 지금은 **남의 차 정보를 보여주지 않는 것**이 우선이다.
     """
     rows = find_court_mismatch()
     out = {"found": len(rows), "quarantined": 0, "already": 0}
@@ -3365,7 +3430,8 @@ def quarantine_court_mismatch(apply: bool = False) -> dict:
             conn.execute(
                 "INSERT INTO anomaly_log (ts, vehicle_id, case_no, reasons, action, note)"
                 " VALUES (?,?,?,?,?,?)",
-                (db._now(), r["id"], r["id"].rsplit("_", 1)[0],
+                # 사건번호는 행에서 읽는다 — id 를 잘라 쓰지 않는다(법원 구분 id 는 '@법원코드' 가 붙는다, AUD-02)
+                (db._now(), r["id"], r.get("case_no") or "",
                  "법원코드 불일치(사건번호 충돌)", "quarantined",
                  f"DB {r['db_court']}({r['db_court_name']}) vs 저장파일 {r['file_court']} · "
                  f"표시 '{r['db_model']}' vs 파일 '{r['file_model']}'"))
@@ -5848,12 +5914,18 @@ def multi_lot_ids(refresh: bool = False) -> set:
     if _multi_lot_cache["ids"] is not None and not refresh:
         return _multi_lot_cache["ids"]
     conn = db.connect()
-    rows = conn.execute("SELECT id FROM vehicles WHERE COALESCE(photo_count,0) > 0").fetchall()
+    rows = conn.execute("SELECT id, court_code, case_no FROM vehicles "
+                        "WHERE COALESCE(photo_count,0) > 0").fetchall()
+    conn.close()
     from collections import defaultdict
     by_case = defaultdict(list)
     for r in rows:
         vid = r["id"]
-        by_case[vid.rsplit("_", 1)[0]].append(vid)   # 사건번호 = id에서 _물건 제거
+        # 같은 사건 = **같은 법원 + 같은 사건번호**(AUD-02). 예전엔 id 에서 '_물건번호' 를 떼어 사건번호로 썼다 —
+        # 법원 코드가 없어 다른 법원의 같은 번호까지 한 사건으로 묶였고, 법원 구분 id(`…_1@B000250`)는
+        # 앞부분이 기존 행과 같아 둘 다 '사진 혼재?' 가 붙는다. 행의 법원·사건번호로 묶는다.
+        case = (r["case_no"] or "").strip() or vid.rsplit("_", 1)[0]
+        by_case[((r["court_code"] or "").strip(), case)].append(vid)
     ids = {vid for grp in by_case.values() if len(grp) > 1 for vid in grp}
     _multi_lot_cache["ids"] = ids
     return ids

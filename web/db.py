@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from src.paths import DATA_DIR
+from src.parse.list_parser import court_qualified_key
 
 DB_PATH = DATA_DIR / "auction.db"
 
@@ -22,7 +23,7 @@ def _now() -> str:
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS vehicles (
-    id            TEXT PRIMARY KEY,   -- folder_key: 사건번호_물건번호
+    id            TEXT PRIMARY KEY,   -- folder_key: 사건번호_물건번호 (다른 법원과 충돌한 새 물건만 …@법원코드 — resolve_listing_id)
     case_no       TEXT,
     item_no       TEXT,
     court         TEXT,
@@ -363,16 +364,77 @@ class CaseCollision(RuntimeError):
         super().__init__(f"{vid}: 기존 {old_court} vs 신규 {new_court}")
 
 
+# ── 목록 물건의 저장 id 정하기(AUD-02 · 2026-10-02) ─────────────────────────────────
+# 예전엔 다른 법원이 같은 사건번호 id 를 쓰고 있으면 새 물건을 **버렸다**(백업 anomaly_log: 09-30 하루 41건,
+# 09-14 부터 누적 585행 · 서로 다른 (id, 법원) 60쌍).
+# 이제 기존 행은 그대로 두고 새 물건만 법원 구분 id(`사건번호_물건번호@법원코드`)로 저장한다.
+def index_add(idx: dict, vid: str, court_code, doc_id) -> None:
+    """조회표에 행 하나를 반영한다(이번 런에 새로 넣거나 갱신한 행)."""
+    idx["court"][vid] = str(court_code or "").strip()
+    d = str(doc_id or "").strip()
+    if d:
+        idx["doc"].setdefault(d, vid)
+
+
+def listing_index() -> dict:
+    """목록 갱신 한 번 동안 쓰는 id 조회표 — `{"court": {id: 법원코드}, "doc": {doc_id: id}}`.
+
+    목록은 런당 1,000행 안팎이라 행마다 SELECT 하지 않고 한 번 읽어 메모리로 쓴다. 이번 런에 넣은 행은
+    호출부가 `index_add` 로 바로 반영한다 — 같은 런에 같은 사건번호의 다른 법원 물건이 둘 들어와도 갈린다."""
+    conn = connect()
+    rows = conn.execute("SELECT id, court_code, doc_id FROM vehicles").fetchall()
+    conn.close()
+    idx: dict = {"court": {}, "doc": {}}
+    for r in rows:
+        index_add(idx, r["id"], r["court_code"], r["doc_id"])
+    return idx
+
+
+def resolve_listing_id(base_id: str, court_code, doc_id=None,
+                       index: Optional[dict] = None) -> tuple:
+    """목록 물건 한 건이 저장될 id → `(id, 막힌_법원)`.
+
+    `막힌_법원` 은 예전 규칙 id(`base_id`)를 **다른 법원** 행이 이미 쓰고 있어서 법원 구분 id 를 **새로**
+    쓰게 됐을 때만 그 기존 행의 법원코드다. 나머지는 None(호출부가 감사기록을 처음 한 번만 남긴다).
+
+    순서 — 같은 물건은 몇 번을 다시 수집해도 같은 id 가 나온다(멱등):
+      ① doc_id(법원코드 7 + saNo 14 + 순번 — 물건마다 하나, 백업 1,587행 중복 0)가 같은 행이 있으면 그 행.
+         사건번호 표기가 바뀐 예전 행(AUD-04 의 `(중복)_N`)도 여기서 제자리를 찾는다. 그 행의 법원이
+         다르면 쓰지 않는다(doc_id 앞 7자리가 법원코드라 정상이면 일어나지 않는다).
+      ② 법원 구분 id(`base_id@법원코드`) 행이 이미 있으면 그 id.
+      ③ base_id 행이 없거나, 같은 법원(또는 한쪽 법원 미상)이면 base_id — 지금까지와 같다.
+      ④ base_id 를 **다른 법원** 행이 쓰고 있으면 법원 구분 id(새 행). 기존 행은 건드리지 않는다.
+    `index` 를 주지 않으면 DB 를 한 번 읽는다(단건 호출용)."""
+    idx = index if index is not None else listing_index()
+    courts, docs = idx["court"], idx["doc"]
+    cc = str(court_code or "").strip()
+    d = str(doc_id or "").strip()
+    if d and d in docs:                                          # ①
+        rid = docs[d]
+        rc = courts.get(rid, "")
+        if not cc or not rc or rc == cc:
+            return rid, None
+    qid = court_qualified_key(base_id, cc) if cc else None
+    if qid and qid in courts and courts[qid] in ("", cc):       # ②
+        return qid, None
+    old = courts.get(base_id)
+    if old is None or not old or not cc or old == cc:           # ③
+        return base_id, None
+    return (qid or base_id), old                                 # ④ (qid 가 None 일 수 없다 — cc 가 있다)
+
+
 def upsert_listing(rec: dict) -> None:
     """목록 갱신용 upsert. 신규는 status='미분석', 기존은 목록 필드(가격·기일 등)만 갱신하고
-    분석 결과·사용자 선택·상태는 보존한다.
+    분석 결과·사용자 선택·상태는 보존한다. `rec["id"]` 는 호출부가 `resolve_listing_id` 로 정한다.
 
-    ⚠ **다른 법원의 같은 사건번호는 병합하지 않는다.** id가 `사건번호_물건번호` 뿐이라
+    ⚠ **다른 법원의 같은 사건번호는 병합하지 않는다.** 예전 id 는 `사건번호_물건번호` 뿐이라
       법원이 다르면 충돌하는데, 그대로 덮으면 목록(가격·기일)은 A법원 것이 되고
       상세(사진·감정서·시세)는 B법원 것이 되어 **한 행이 두 대의 차가 된다.**
       실측 2026-09-13: 그렇게 섞인 행이 1,301건 중 29건이었고, 18인 페르소나 패널이
       '벤츠 제목에 그랜저 사진'으로 발견했다. 조용히 병합하는 대신 예외로 올려
       호출부가 기록·보고하게 한다(무시하고 넘어가면 같은 일이 반복된다).
+      AUD-02 부터는 호출부가 충돌을 미리 법원 구분 id 로 피하므로, 이 예외는 **마지막 방어선**이다
+      (조회표가 낡았거나 다른 프로세스가 같은 id 를 먼저 쓴 경우).
     """
     rec = _encode(rec)
     vid, new_court = rec.get("id"), str(rec.get("court_code") or "").strip()
