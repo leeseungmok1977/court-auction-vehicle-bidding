@@ -63,7 +63,7 @@
 | 응답 필드 | 의미 | A.5 물건 열 |
 |---|---|---|
 | `saNo` / `printCsNo`(뒤부분) | 사건번호(20자리 / 표시용) | 사건번호 |
-| `mokmulSer` / `maemulSer` | 물건/목적물 순번 | 물건번호 |
+| `mokmulSer` / `maemulSer` | 목적물 번호 / 매각물건 번호 (AUD-18) | 물건번호 = `mokmulSer`(앱의 item_no) · 상세 요청 키 = `maemulSer` |
 | `jiwonNm` / `boCd` | 법원명 / 법원사무소코드 | 법원 |
 | `jejosaNm` | 제조사 | 제조사 |
 | `carNm` | 차명 | 모델 |
@@ -87,6 +87,13 @@
 - **URL**: `POST /pgj/pgj15B/selectAuctnCsSrchRslt.on`
 - **화면**: `PGJ154M03.xml`
 - **요청 Body** (JSON): 목록 행에서 `csNo=saNo`, `cortOfcCd=boCd`, `dspslGdsSeq=maemulSer` 사용
+  - **두 번호는 다를 수 있다**(AUD-18, Steward 라이브 검증 2026-10-02 · 법원 요청 4회). `docid` 끝 두 자리가
+    (`maemulSer`, `mokmulSer`)다. 예: 끝 '34' → `dspslGdsSeq=3` 으로 물으면 응답 목적물의 `dspslObjctSeq=4`.
+    `mokmulSer`(목적물 번호)로 물으면 법원은 **그 번호의 다른 매각물건**(옆 차)을 주거나 빈 응답을 준다.
+  - 일괄매각이면 매각물건 하나에 목적물이 여럿이다 — 응답 `gdsDspslObjctLst` 에서 `dspslObjctSeq == mokmulSer` 인
+    원소를 고른다([0] 고정 금지). 받은 응답의 `dspslGdsDxdyInfo.csNo·cortOfcCd·dspslGdsSeq` 가 보낸 값과 다르거나
+    그 원소가 없으면 저장하지 않는다(`src/parse/detail_parser.py::detail_identity`).
+  - 감정요항(`aeeWevlMnpntLst`)은 사건 단위 글이고 그 안의 '기호N' 은 **목적물 번호**다.
 
 ```json
 { "dma_srchGdsDtlSrch": {
@@ -100,7 +107,7 @@
 
 | 위치 | 필드 | 의미 |
 |---|---|---|
-| `dma_result.gdsDspslObjctLst[0]` | `drvnDistIndctCtt` | **주행거리(km)** |
+| `dma_result.gdsDspslObjctLst[i]` (`dspslObjctSeq == mokmulSer` 인 원소) | `drvnDistIndctCtt` | **주행거리(km)** |
 | " | `carDsplcCtt` | 배기량(cc) |
 | " | `carVidCtt` | 차대번호(VIN) |
 | " | `objctRegNo` | 자동차등록번호 |

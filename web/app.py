@@ -139,7 +139,9 @@ def admin_anomalies(request: Request):
         f"<h2>무결성 검토 기록 <span style='color:#888;font-weight:400'>· {len(rows)}건</span></h2>"
         "<p><a href='/admin'>← 관리자</a> · resolved=재확인 후 복원, quarantined=등록 보류(숨김), error=재조회 오류"
         " · stored-as=다른 법원의 같은 사건번호 — 법원 구분 id 로 따로 저장(기존 행 유지)"
-        " · skipped=다른 법원 충돌로 반영 안 함(2026-10-02 전 기록·마지막 방어선)</p>"
+        " · skipped=다른 법원 충돌로 반영 안 함(2026-10-02 전 기록·마지막 방어선)"
+        " · detail-mismatch=받은 법원 상세가 보낸 키의 물건이 아님 — 저장 안 함(기존 행 유지)"
+        " · requeued=상세 조회 키 정정으로 다음 매일 갱신에 다시 받기 예약</p>"
         "<table><thead><tr><th>시각</th><th>사건번호</th><th>조치</th><th>사유</th><th>메모</th></tr></thead>"
         f"<tbody>{trs or '<tr><td colspan=5>기록 없음</td></tr>'}</tbody></table></body></html>")
     return HTMLResponse(doc)
@@ -1463,6 +1465,9 @@ def analyze_one(request: Request, vid: str):
     an = ""
     if r is None:
         an = "분석 실패 — 사건번호 복원 불가(doc_id 없음)."
+    elif r.get("detail_mismatch"):     # AUD-18: 받은 상세가 이 물건이 아니라 저장하지 않았다(행 그대로)
+        an = (f"법원 상세가 이 물건과 달라 저장하지 않았습니다({r['detail_mismatch']}). "
+              "관리자 무결성 검토 기록에 남겼습니다.")
     elif r.get("status") == "미매핑":
         an = "국산 승용 자동 시세 매핑 대상이 아닙니다(수입·상용·특수차)."
     elif r.get("median_price") is None and r.get("status") not in ("완료",) \

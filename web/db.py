@@ -246,7 +246,12 @@ def init_db() -> None:
                     "newcar_model", "newcar_release", "newcar_checked_at",   # 당시 출시가(보배드림) 표기
                     # 최저가 지연 재조회(REC-1)가 이 물건의 법원 상세를 마지막으로 받은 시각 — 재조회 백오프용.
                     # 법원이 아직 이번 회차를 공고하지 않았으면 매일 같은 물건에 헛요청하지 않게 한다.
-                    "floor_checked_at"):
+                    "floor_checked_at",
+                    # AUD-18(2026-10-02) 상세 조회 키. maemul_ser = 목록 행의 매각물건 번호(maemulSer — 상세 요청
+                    # dspslGdsSeq, 수집URL정의서 L3). 목록 갱신이 매번 덮는다(_LISTING_KEEP 아님).
+                    # detail_seq = 지금 저장된 상세를 받을 때 보낸 dspslGdsSeq — 응답이 같은 사건·매각물건이고 목적물
+                    # 번호(dspslObjctSeq)가 item_no 와 같다고 확인한 뒤에만 쓴다. 비어 있으면 AUD-18 전 상세다.
+                    "maemul_ser", "detail_seq"):
             if col not in cols:
                 conn.execute(f"ALTER TABLE vehicles ADD COLUMN {col} TEXT")
         for col in ("newcar_min", "newcar_max", "newcar_n", "newcar_basis_year"):
@@ -353,6 +358,9 @@ _LISTING_KEEP = {
     "storage_addr", "storage_src", "storage_conf", "map_photos", "map_ocr_at",
     # 최저가 지연 재조회 시각(REC-1) — 목록 레코드엔 없는 열이지만 규칙을 명시해 둔다.
     "floor_checked_at",
+    # 확인된 상세의 매각물건 번호(AUD-18) — 분석이 쓴다. 목록 레코드엔 없는 열이지만 규칙을 명시해 둔다.
+    # (maemul_ser 는 여기 없다 — 목록 값이 권위라 목록 갱신이 덮는다. 빈 값은 호출부가 아예 싣지 않는다.)
+    "detail_seq",
 }
 
 

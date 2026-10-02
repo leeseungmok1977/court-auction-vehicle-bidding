@@ -19,7 +19,7 @@ from .collect.courtauction_list import new_session, warmup, fetch_list_page
 from .collect.courtauction_detail import fetch_detail, save_item_folder
 from .collect import encar
 from .parse.list_parser import parse_list_response
-from .parse.detail_parser import parse_detail
+from .parse.detail_parser import parse_detail, detail_identity, narrow_to_object
 from .parse.market_match import summarize
 from .bidcalc.calculator import BidInput, calculate
 
@@ -61,8 +61,17 @@ def run(max_items: int = 3, scan_limit: int = 15, repair_cost: int = 500_000,
                             "status": "미매핑(모델매핑 필요)"})
             continue
 
-        # 상세
-        dresp = fetch_detail(cs, raw["saNo"], raw["boCd"], raw.get("maemulSer", "1")).json()
+        # 상세 — dspslGdsSeq = 매각물건 번호(목록 maemulSer, 정의서 L3). 받은 상세가 이 물건(목적물 번호
+        # dspslObjctSeq == item_no)인지 확인한 뒤에만 읽고 저장한다(AUD-18 — 운영 경로 web/service.py 와 같은 규칙).
+        seq = raw.get("maemulSer", "1")
+        dresp = fetch_detail(cs, raw["saNo"], raw["boCd"], seq).json()
+        ident = detail_identity(dresp, raw["saNo"], raw["boCd"], seq, item.item_no)
+        if not ident["ok"]:
+            results.append({"case_no": item.case_no, "model": item.model,
+                            "status": "상세 불일치(저장 안 함): " + ", ".join(ident["reasons"])})
+            processed += 1
+            continue
+        dresp = narrow_to_object(dresp, ident["obj_index"])
         detail = parse_detail(dresp, config)
         save_item_folder(dresp, item.folder_key, config)
 

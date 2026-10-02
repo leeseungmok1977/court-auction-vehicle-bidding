@@ -67,6 +67,18 @@ def case_no_from_sano(sa_no) -> Optional[str]:
     return f"{m.group(1)}타경{int(m.group(2))}" if m else None
 
 
+_CASE_PARTS_RE = re.compile(r"(\d{4})타경(\d{1,6})")
+
+
+def sano_from_case_no(case_no) -> Optional[str]:
+    """표시용 사건번호('2025타경53697') → saNo('20250130053697'). `case_no_from_sano` 의 역. 형식 밖이면 None.
+
+    AUD-18: 저장된 doc_id 의 가운데 14자리가 **이 행의 사건**인지 맞춰 보는 데만 쓴다(상세 조회 키 해석).
+    '(중복)'·'(병합)' 처럼 사건번호 형식이 아닌 행은 None — 그 행은 doc_id 해석을 쓰지 않는다."""
+    m = _CASE_PARTS_RE.fullmatch(str(case_no or "").strip())
+    return f"{m.group(1)}0130{int(m.group(2)):06d}" if m else None
+
+
 def _case_no(row: dict) -> str:
     """표시용 사건번호(예: '2025타경103470'). printCsNo 끝부분 우선, 형식 밖이면 saNo 에서 복원.
 
@@ -155,6 +167,11 @@ class VehicleItem:
     # 저장 id(=폴더명)를 정해 줄 때만 채운다 — 이미 저장된 행의 id(재분석 경로)나 법원 구분 id(AUD-02).
     # 비어 있으면 예전 규칙(base_key)이다. 법원 목록 파서는 이 값을 채우지 않는다.
     key: Optional[str] = None
+    # 매각물건 번호(목록 maemulSer) — 상세 조회 요청의 dspslGdsSeq(수집URL정의서 L3). AUD-18(2026-10-02).
+    # ⚠ item_no(물건번호)는 **목적물 번호**(mokmulSer = 상세 응답 dspslObjctSeq)다. 두 번호가 다른 물건이 있다
+    #   (일괄매각·다물건 사건 — 운영 DB 10-02 사본 1,621행 중 22행). item_no 로 상세를 물으면 법원은
+    #   그 번호의 **다른 매각물건**(옆 차)을 주거나 빈 응답을 준다. 비어 있으면 모른다는 뜻이다(재분석 경로 등).
+    maemul_ser: str = ""
 
     @property
     def base_key(self) -> str:
@@ -199,6 +216,7 @@ def parse_row(row: dict) -> VehicleItem:
         location=_clean_addr(row.get("printSt")) or _clean_location(row.get("convAddr")),
         status_code=str(row.get("mulStatcd", "") or "").strip(),
         doc_id=str(row.get("docid", "") or "").strip(),
+        maemul_ser=str(row.get("maemulSer", "") or "").strip(),
     )
 
 

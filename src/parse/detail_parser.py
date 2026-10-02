@@ -4,13 +4,19 @@
 출력: DetailInfo (차량 상세 + 회차별 최저가 + 감정 요항 텍스트 + 사고 1차 판정 + 사진 메타)
 
 핵심 필드(실측, PGJ154M03.xml / 실제 응답 확인):
-  gdsDspslObjctLst[0].drvnDistIndctCtt  주행거리(km)   ← 목록에 없던 값
-  gdsDspslObjctLst[0].carDsplcCtt       배기량(cc)
-  gdsDspslObjctLst[0].carVidCtt         차대번호(VIN)
+  gdsDspslObjctLst[i].drvnDistIndctCtt  주행거리(km)   ← 목록에 없던 값
+  gdsDspslObjctLst[i].carDsplcCtt       배기량(cc)
+  gdsDspslObjctLst[i].carVidCtt         차대번호(VIN)
   dspslGdsDxdyInfo.*PbancLwsDspslPrc    회차별 최저매각가(기일이력)
   dspslGdsDxdyInfo.dspslGdsSpcfcEcdocId 감정평가서/명세서 전자문서 ID
   aeeWevlMnpntLst[].aeeWevlMnpntCtt     감정평가 요항 텍스트(사고 판정 근거)
   csPicLst[].picFile                    사진(base64) — 별도 다운로드 불필요
+
+두 번호(AUD-18, Steward 라이브 검증 2026-10-02 — 법원 요청 4회):
+  요청 dspslGdsSeq = 목록 maemulSer = **매각물건 번호**. 응답 gdsDspslObjctLst[].dspslObjctSeq = 목록 mokmulSer
+  = **목적물 번호** = 우리 item_no. doc_id 끝 두 자리가 (매각물건, 목적물)이다. 일괄매각이면 매각물건 하나에
+  목적물이 여럿이다 — [0] 은 남의 차일 수 있어 **목적물 번호로 고른다**(pick_vehicle_object).
+  감정요항의 '기호N' 도 목적물 번호다(53697 사건: 기호4 = 벤츠, 기호3 = 기아 — 매각물건 3 의 목적물은 4).
 """
 
 from __future__ import annotations
@@ -360,14 +366,127 @@ class DetailInfo:
     # 기일내역 / 낙찰결과
     dxdy_history: list = field(default_factory=list)   # 회차별 기일·결과·낙찰가
     winning_price: Optional[int] = None                # 낙찰가 (매각된 경우)
+    # 고른 목적물의 번호(dspslObjctSeq = 목록 mokmulSer = item_no). 응답에 번호가 없으면 ''(AUD-18).
+    object_seq: str = ""
 
     def to_dict(self) -> dict:
         return asdict(self)
 
 
-def _vehicle_obj(result: dict) -> dict:
-    lst = result.get("gdsDspslObjctLst") or []
-    return lst[0] if lst else {}
+# ── 이 물건의 목적물 고르기 · 응답 신원 확인 (AUD-18) ──────────────────────────────
+# 예전 `_vehicle_obj` 는 gdsDspslObjctLst[0] 을 무조건 집었다. 일괄매각처럼 매각물건 하나에 목적물이 여럿이면
+# [0] 은 남의 차다(예: 2026타경30359_2 '_1 과 일괄매각', doc 끝 '12'). 그리고 상세를 엉뚱한 매각물건 번호로
+# 물으면 법원은 **옆 물건의 상세**를 그대로 준다 — 2025타경53697_4(벤츠 CLS350)에 매각물건 4(그랜드 스타렉스)의
+# 2,497cc·디젤·'뒤바퀴 부식' 비고가 저장돼 있었다(운영 DB 10-02). 그래서 저장 전에 두 가지를 본다:
+#   ① 응답의 사건(csNo)·법원(cortOfcCd)·매각물건(dspslGdsSeq)이 **보낸 값**과 같은가
+#   ② 목적물 목록에 **dspslObjctSeq == item_no** 인 원소가 정확히 하나 있는가
+_SEQ_RE = re.compile(r"[0-9]+")
+
+
+def _seq(v) -> str:
+    """순번 정규화 — 4 · '4' · ' 04 ' → '4'. 비었으면 ''. 숫자가 아니면 공백만 뗀 원문."""
+    s = str(v if v is not None else "").strip()
+    return str(int(s)) if _SEQ_RE.fullmatch(s) else s
+
+
+def _objects(result: dict) -> list:
+    return [o for o in (result.get("gdsDspslObjctLst") or []) if isinstance(o, dict)]
+
+
+def _pick_object_index(result: dict, item_no=None) -> tuple:
+    """(목적물 위치 또는 None, 사유). 사유가 matched·legacy·only 면 고른 것, 그 밖은 못 고른 것.
+
+    - item_no(목적물 번호)를 주면: dspslObjctSeq 가 같은 원소 **하나**(matched). 없으면 not_found, 둘 이상 duplicate.
+    - 응답에 dspslObjctSeq 가 아예 없는 옛 모양(축소 픽스처·합성 응답)이면 **목적물이 하나이고 매각물건 번호
+      (dspslGdsSeq)가 item_no 와 같을 때만** 그것(legacy). 두 번호가 같으면 '어느 목적물인가'가 갈릴 여지가 없다 —
+      운영 DB 1,621행 중 1,599행이 그 꼴이다. 그 밖은 고르지 않는다(unnumbered) — 모르면 남의 차를 집지 않는다.
+    - item_no 를 모르는 호출(데모·검증 CLI·단위 테스트)은 목적물이 하나일 때만(only), 여럿이면 고르지 않는다(ambiguous).
+    - 목적물이 없으면 (None, 'none') — 빈 응답(종결·취하·조회불가)은 호출부의 기존 규칙(상세없음)이 정한다."""
+    lst = _objects(result)
+    if not lst:
+        return None, "none"
+    want = _seq(item_no)
+    if not want:
+        return (0, "only") if len(lst) == 1 else (None, "ambiguous")
+    if any(_seq(o.get("dspslObjctSeq")) for o in lst):
+        hit = [i for i, o in enumerate(lst) if _seq(o.get("dspslObjctSeq")) == want]
+        if len(hit) == 1:
+            return hit[0], "matched"
+        return None, ("duplicate" if hit else "not_found")
+    dx = result.get("dspslGdsDxdyInfo") or {}
+    gds = _seq(dx.get("dspslGdsSeq")) or _seq(lst[0].get("dspslGdsSeq"))
+    if len(lst) == 1 and gds == want:
+        return 0, "legacy"
+    return None, "unnumbered"
+
+
+def pick_vehicle_object(result: dict, item_no=None) -> tuple:
+    """상세 응답(dma_result)에서 이 물건의 목적물 → (목적물 dict, 사유). 못 고르면 ({}, 사유). 규칙은 _pick_object_index."""
+    idx, how = _pick_object_index(result, item_no)
+    return (_objects(result)[idx] if idx is not None else {}), how
+
+
+def _vehicle_obj(result: dict, item_no=None) -> dict:
+    return pick_vehicle_object(result, item_no)[0]
+
+
+_PICK_WHY = {"not_found": "목적물 {want} 없음", "duplicate": "목적물 {want} 중복",
+             "unnumbered": "목적물 번호 없음 — 고를 수 없음", "ambiguous": "목적물 번호 미상 — 고를 수 없음"}
+
+
+def detail_identity(resp_json: dict, sa_no, court_code, gds_seq, item_no) -> dict:
+    """상세 응답이 **보낸 키의 물건**인가 — 저장(행 갱신·사진 폴더·분석) 전에 부른다(AUD-18). 외부 요청 0.
+
+    sa_no·court_code·gds_seq = 보낸 csNo·cortOfcCd·dspslGdsSeq, item_no = 이 행의 목적물 번호.
+    반환 {"ok", "reasons": [불일치 사유], "obj_index": 고른 목적물 위치(없으면 None), "pick": 사유, "got": 받은 값 요약}.
+
+    규칙 — 값이 **있는데 다르면** 불일치다(없는 키는 비교하지 않는다):
+      · 사건·법원: 기일정보(dspslGdsDxdyInfo — 요청 키를 그대로 되돌려 준다)의 csNo·cortOfcCd 가 보낸 값과 다르면
+        다른 사건이다. 사건 단위 블록(csBaseInfo·사진·감정요항)은 보지 않는다 — 중복·병합 사건에서 그 값이 무엇인지
+        원문을 본 적이 없다(C.4-3). 모르는 값으로 정상 상세를 막지 않는다.
+      · 매각물건: 기일정보·목적물의 dspslGdsSeq 가 보낸 값과 다르면 다른 매각물건.
+      · 목적물: `_pick_object_index` 가 못 고르면(not_found·duplicate·unnumbered·ambiguous) 불일치.
+        목적물이 아예 없으면(none) 불일치로 보지 않는다 — 빈 응답은 호출부의 기존 규칙(상세없음)이 처리한다.
+    실측(라이브 2건·픽스처): 실제 응답에는 위 키가 모두 있다. 키가 빠진 응답은 축소 픽스처·합성 응답뿐이다."""
+    result = ((resp_json or {}).get("data") or {}).get("dma_result") if isinstance(resp_json, dict) else None
+    result = result if isinstance(result, dict) else {}
+    dx = result.get("dspslGdsDxdyInfo") or {}
+    dx = dx if isinstance(dx, dict) else {}
+    lst = _objects(result)
+    want_cs, want_cc = str(sa_no or "").strip(), str(court_code or "").strip()
+    want_gds, want_obj = _seq(gds_seq), _seq(item_no)
+    reasons: list = []
+    for key, want, label in (("csNo", want_cs, "사건"), ("cortOfcCd", want_cc, "법원")):
+        got = str(dx.get(key) or "").strip()
+        if got and want and got != want:
+            reasons.append(f"{label} {got}≠{want}")
+    gds_got = sorted({_seq(d.get("dspslGdsSeq")) for d in (dx, *lst)} - {""})
+    bad = [g for g in gds_got if want_gds and g != want_gds]
+    if bad:
+        reasons.append(f"매각물건 {'·'.join(bad)}≠{want_gds}")
+    idx, how = _pick_object_index(result, item_no)
+    if how in _PICK_WHY:
+        reasons.append(_PICK_WHY[how].format(want=want_obj or "?"))
+    got = {"csNo": dx.get("csNo"), "cortOfcCd": dx.get("cortOfcCd"), "dspslGdsSeq": dx.get("dspslGdsSeq"),
+           "objects": [[_seq(o.get("dspslObjctSeq")),
+                        " ".join(str(o.get(k) or "").strip() for k in ("gdsVendNm", "carMdlNm", "carDelvYr")).strip()]
+                       for o in lst]}
+    return {"ok": not reasons, "reasons": reasons, "obj_index": idx if not reasons else None,
+            "pick": how, "got": got}
+
+
+def narrow_to_object(resp_json: dict, index) -> dict:
+    """목적물 목록을 고른 하나로 줄인 **얕은 사본**(원본은 그대로). index 가 None 이면 원본을 그대로 돌려준다.
+
+    저장·파싱(`parse_detail`·`save_item_folder` 의 detail.json)이 [0] 이 아니라 **확인한 목적물**을 읽게 한다.
+    사진(csPicLst)·감정요항은 사건 단위라 그대로 둔다(사진 혼재는 DATA-03 계열 — 이번 범위 밖)."""
+    if index is None or not isinstance(resp_json, dict):
+        return resp_json
+    data = dict(resp_json.get("data") or {})
+    result = dict(data.get("dma_result") or {})
+    result["gdsDspslObjctLst"] = [_objects(result)[index]]
+    data["dma_result"] = result
+    return {**resp_json, "data": data}
 
 
 # 기일 결과 코드 (확인분). 매각(낙찰)은 낙찰가 + '비매각이 아닌' 코드로 판정.
@@ -403,9 +522,12 @@ def _parse_dxdy(result: dict):
     return hist, winning
 
 
-def parse_detail(resp_json: dict, config: Optional[dict] = None) -> DetailInfo:
+def parse_detail(resp_json: dict, config: Optional[dict] = None, item_no=None) -> DetailInfo:
+    """상세 응답 → DetailInfo. `item_no`(목적물 번호)를 주면 그 목적물을 읽는다(AUD-18 — 규칙은
+    `_pick_object_index`). 운영 경로(`web/service.py::_analyze_item`)는 `detail_identity` 로 확인한 뒤
+    `narrow_to_object` 로 목적물을 하나로 줄인 응답을 넘긴다. 못 고르면 차량 필드는 비운다(남의 차를 집지 않는다)."""
     result = (resp_json.get("data", {}) or {}).get("dma_result", {}) or {}
-    obj = _vehicle_obj(result)
+    obj = _vehicle_obj(result, item_no)
     dx = result.get("dspslGdsDxdyInfo", {}) or {}
 
     # 감정 요항 텍스트
@@ -415,9 +537,11 @@ def parse_detail(resp_json: dict, config: Optional[dict] = None) -> DetailInfo:
     # 주행거리: 구조화 필드 우선, 없으면 요항 텍스트에서 보조 추출
     mileage = _to_int(obj.get("drvnDistIndctCtt"))
     if mileage is None:
-        # 물건번호(기호)를 넘겨 다물건 감정서에서 남의 차 값을 집지 않게 한다
-        _seq = str(dx.get("dspslGdsSeq") or obj.get("dspslGdsSeq") or "").strip()
-        mileage = _mileage_from_text(appraisal_text, item_no=_seq or None)
+        # 다물건 감정서의 '기호N' 은 **목적물 번호**다(AUD-18). 예전엔 매각물건 번호(dspslGdsSeq)를 넘겨
+        # 53697 사건 매각물건 3(목적물 4 벤츠)이 기호3(기아 237,768km)을 집을 수 있었다. 목적물 번호를 모르면
+        # 넘기지 않는다 — 다물건 글이면 값을 만들지 않는다(_mileage_from_text 의 기존 규칙).
+        _sym = _seq(item_no) or _seq(obj.get("dspslObjctSeq"))
+        mileage = _mileage_from_text(appraisal_text, item_no=_sym or None)
 
     dxdy_history, winning_price = _parse_dxdy(result)
 
@@ -467,4 +591,5 @@ def parse_detail(resp_json: dict, config: Optional[dict] = None) -> DetailInfo:
         photo_count=len(result.get("csPicLst") or []),
         dxdy_history=dxdy_history,
         winning_price=winning_price,
+        object_seq=_seq(obj.get("dspslObjctSeq")),
     )

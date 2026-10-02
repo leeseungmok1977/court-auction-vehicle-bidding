@@ -19,7 +19,7 @@ import requests
 
 from .courtauction_list import BASE, INDEX, new_session, warmup, REQUEST_DELAY_SEC, _check_block
 from ..paths import DATA_DIR
-from ..parse.detail_parser import parse_detail
+from ..parse.detail_parser import parse_detail, detail_identity, narrow_to_object
 
 DETAIL_ENDPOINT = f"{BASE}/pgj/pgj15B/selectAuctnCsSrchRslt.on"
 
@@ -110,8 +110,13 @@ def main() -> None:
     raw = list_resp["data"]["dlt_srchResult"][items.index(target)]
 
     print("target:", target.case_no, target.model, target.court)
-    resp = fetch_detail(s, cs_no=raw["saNo"], cort_ofc_cd=raw["boCd"],
-                        dspsl_gds_seq=raw.get("maemulSer", "1")).json()
+    seq = raw.get("maemulSer", "1")              # 매각물건 번호(정의서 L3) — item_no(목적물 번호)가 아니다(AUD-18)
+    resp = fetch_detail(s, cs_no=raw["saNo"], cort_ofc_cd=raw["boCd"], dspsl_gds_seq=seq).json()
+    ident = detail_identity(resp, raw["saNo"], raw["boCd"], seq, target.item_no)
+    if not ident["ok"]:                          # 받은 상세가 이 물건이 아니면 저장하지 않는다
+        print("상세 불일치 — 저장 안 함:", ", ".join(ident["reasons"]))
+        return
+    resp = narrow_to_object(resp, ident["obj_index"])
     folder = save_item_folder(resp, target.folder_key)
     info = parse_detail(resp)
     print("saved folder:", folder)

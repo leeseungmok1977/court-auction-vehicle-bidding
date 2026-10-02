@@ -22,8 +22,8 @@ from src.collect.courtauction_list import new_session, warmup, fetch_list_page
 from src.collect.courtauction_detail import fetch_detail, save_item_folder
 from src.collect import encar
 from src.collect import kcar
-from src.parse.list_parser import parse_list_response, is_court_qualified
-from src.parse.detail_parser import parse_detail
+from src.parse.list_parser import parse_list_response, is_court_qualified, sano_from_case_no
+from src.parse.detail_parser import parse_detail, detail_identity, narrow_to_object
 from src.parse.market_match import summarize, _confidence_label, cross_source_check
 from src.bidcalc.calculator import BidInput, calculate, judge, reprice_accident
 from src.pipeline import resolve_mapping
@@ -92,8 +92,20 @@ def _analyze_item(cs, es, raw: dict, item, config: dict, repair_cost: int,
         "folder_key": item.folder_key, "collected_at": _now(),
     }
 
+    if str(getattr(item, "maemul_ser", "") or "").strip():
+        base["maemul_ser"] = str(item.maemul_ser).strip()       # AUD-18: 목록의 매각물건 번호(있을 때만)
+
     # 1) 상세는 항상 수집 (수입·상용/특수차 포함) — 주행거리·사진·사고이력·요항
-    dresp = fetch_detail(cs, raw["saNo"], raw["boCd"], raw.get("maemulSer", "1")).json()
+    #    요청 키 dspslGdsSeq = 매각물건 번호(raw["maemulSer"] — 목록 행 그대로이거나 `_detail_raw` 가 정한 값, AUD-18)
+    sent_seq = raw.get("maemulSer", "1")
+    dresp = fetch_detail(cs, raw["saNo"], raw["boCd"], sent_seq).json()
+    # AUD-18: 저장(행 갱신·사진 폴더·분석) **전에** 응답이 보낸 키의 물건인지 본다. 사건·법원·매각물건 번호가 다르거나
+    # 목적물 목록에 이 물건(dspslObjctSeq == item_no)이 없으면 아무것도 쓰지 않는다 — 옆 물건 상세가 이 행에 붙던 것.
+    ident = detail_identity(dresp, raw["saNo"], raw["boCd"], sent_seq, item.item_no)
+    if not ident["ok"]:
+        raise DetailMismatch({"saNo": raw["saNo"], "boCd": raw["boCd"], "maemulSer": sent_seq,
+                              "seq_src": raw.get("seq_src") or "목록", "item_no": item.item_no}, ident)
+    dresp = narrow_to_object(dresp, ident["obj_index"])     # 확인한 목적물 하나만 읽고 저장한다([0] 고정 제거)
     detail = parse_detail(dresp, config)
     # 법원 상세가 완전히 비어 있으면(종결·취하·조회불가) 기존에 확보한 사진·주행거리·요항을
     # 빈 값(0/None)으로 덮지 않고 보존한다. 저장(save_item_folder)도 건너뛴다.
@@ -127,9 +139,12 @@ def _analyze_item(cs, es, raw: dict, item, config: dict, repair_cost: int,
         "appraisal_ecdoc_id": detail.appraisal_ecdoc_id, "spec_remark": detail.spec_remark,
         "photo_count": detail.photo_count,
         "repair_cost": repair_cost, "analyzed_at": _now(),
+        # AUD-18: 이 상세를 받을 때 보낸(그리고 응답으로 확인한) 매각물건 번호 — 복구 명령(redetail-key)의 멱등 기준
+        "detail_seq": str(sent_seq),
     })
-    base.update(_appraisal_signals(detail.appraisal_text, config,
-                                   item_no=getattr(detail, "item_no", None) or item.item_no))
+    # 감정요항 '기호N' 은 목적물 번호다 = item_no(mokmulSer = 응답 dspslObjctSeq, AUD-18 확인 완료).
+    # (예전 식의 `getattr(detail, "item_no", None)` 은 DetailInfo 에 그런 필드가 없어 늘 None 이었다 — 값은 같다.)
+    base.update(_appraisal_signals(detail.appraisal_text, config, item_no=item.item_no))
     # 낙찰결과는 데이터가 있을 때만 기록(빈 종결 물건이 기존 확정결과를 NULL로 덮지 않도록)
     if detail.dxdy_history or detail.winning_price is not None:
         base.update({
@@ -245,6 +260,10 @@ def _run_collection(max_items: int, scan_limit: int, repair_cost: int, run_id: i
             try:
                 rec = _analyze_item(cs, es, raw, item, config, repair_cost, search)
                 consecutive_fail = 0
+            except DetailMismatch as e:
+                # AUD-18: 받은 상세가 이 물건이 아니다 — 아무것도 쓰지 않고(기존 행 그대로) 기록만. 연속 실패 카운터 무관.
+                _log_detail_mismatch(rid, item.case_no, e, "수동 수집(/run)")
+                continue
             except Exception as e:  # noqa: BLE001
                 if _is_block(e):     # 차단 → 외부에서 즉시 중단 (C.4-5)
                     raise
@@ -920,6 +939,83 @@ def _sa_no_from_docid(doc_id: str) -> Optional[str]:
     return d[7:21] if len(d) >= 21 else None
 
 
+# ── 상세 조회 키(AUD-18 · 2026-10-02) ─────────────────────────────────────────────────
+# 법원 상세는 csNo=saNo · cortOfcCd=boCd · **dspslGdsSeq=maemulSer(매각물건 번호)** 로 묻는다(수집URL정의서 L3).
+# 예전 재조회 다섯 곳(매일 갱신 분석·_reanalyze·review_daily_anomalies·analyze_single·refresh_lagged_floors)은
+# item_no(= 목적물 번호 mokmulSer)를 보냈다. 두 번호가 다른 물건(10-02 사본 1,621행 중 22행 — 일괄매각·다물건 사건)은
+# 법원이 빈 응답을 줘 '상세없음'으로 숨겨지거나(2025타경53697_5·2026타경101080_2) **옆 매각물건의 상세**를 줘
+# 그대로 저장됐다(2025타경53697_4 벤츠에 스타렉스의 2,497cc·디젤·비고 — Steward 라이브 검증 10-02).
+# 키를 바로잡고(`detail_request_seq`), 받은 상세는 저장 전에 `detail_identity` 로 확인한다(`_analyze_item`).
+_SEQ_RE = re.compile(r"[1-9][0-9]*")
+_DOCID_TAIL_RE = re.compile(r"[1-9][0-9]")
+
+
+def _docid_seqs(v: dict) -> Optional[tuple]:
+    """doc_id 끝 두 자리 → (매각물건 번호, 목적물 번호). 형식 검사를 **모두** 통과할 때만, 아니면 None.
+
+    doc_id = 법원코드 7 + saNo 14 + (maemulSer, mokmulSer) 각 한 자리. 근거: 운영 DB 10-02 사본 1,621행 전부 23자 ·
+    끝 두 자리가 다른 22행 모두 둘째 자리 == item_no · 라이브 2건('34' → 응답 dspslGdsSeq 3·dspslObjctSeq 4,
+    '12' → 1·2). 검사: 23자 · 앞 7자 == court_code · 다음 14자 == 사건번호로 만든 saNo(`sano_from_case_no`) ·
+    끝 두 자리 숫자(0 아님) · **둘째 자리 == item_no**(해석이 이 행의 목적물과 맞을 때만 쓴다 — 실측 1,621/1,621 만족).
+    '(중복)'·'(병합)' 처럼 사건번호 형식이 아닌 행은 None — 그 행은 저장값이나 item_no 로 간다."""
+    d = str(v.get("doc_id") or "").strip()
+    cc = str(v.get("court_code") or "").strip()
+    sa = sano_from_case_no(v.get("case_no"))
+    tail = d[21:23]
+    if (len(d) == 23 and cc and d[:7] == cc and sa and d[7:21] == sa
+            and _DOCID_TAIL_RE.fullmatch(tail) and tail[1] == str(v.get("item_no") or "").strip()):
+        return tail[0], tail[1]
+    return None
+
+
+def detail_request_seq(v: dict) -> tuple:
+    """저장된 행의 상세 요청 dspslGdsSeq(매각물건 번호) → (값, 출처 'stored'|'doc_id'|'item_no').
+
+    ⑴ 목록 행에서 저장해 둔 maemul_ser(정의서 근거 — 목록 갱신마다 덮인다) ⑵ 아직 없으면 doc_id 해석
+    (`_docid_seqs` 형식 검사 통과 시) ⑶ 그래도 없으면 item_no — 예전과 **같은 식**(`item_no or "1"`).
+    두 번호가 같은 행(사본 1,599행)은 어느 출처든 예전과 같은 값이다. 어느 경우든 응답은 저장 전에 확인한다."""
+    s = str(v.get("maemul_ser") or "").strip()
+    if _SEQ_RE.fullmatch(s):
+        return s, "stored"
+    ds = _docid_seqs(v)
+    if ds:
+        return ds[0], "doc_id"
+    return (v.get("item_no") or "1"), "item_no"
+
+
+def _detail_raw(v: dict) -> dict:
+    """저장된 행 → `_analyze_item` 의 raw 자리(목록 행 모양 saNo·boCd·maemulSer) + 키 출처(seq_src)."""
+    seq, src = detail_request_seq(v)
+    return {"saNo": _sa_no_from_docid(v.get("doc_id") or ""), "boCd": v.get("court_code"),
+            "maemulSer": seq, "seq_src": src}
+
+
+class DetailMismatch(Exception):
+    """법원 상세가 **보낸 키의 물건이 아니다**(AUD-18) — 저장하지 않는다(기존 행 그대로).
+
+    차단·비정상 응답이 아니다(정상 JSON 이 왔다). 그래서 C.4-5 연속 실패 카운터를 올리지도, 0 으로 되돌리지도
+    않는다 — 예전엔 같은 응답을 '성공'으로 보고 카운터를 0 으로 되돌렸으니 그보다 약해지지 않는다.
+    메시지에 '차단'을 넣지 않는다(`_is_block` 이 문자열로도 판정한다)."""
+
+    def __init__(self, sent: dict, ident: dict):
+        self.sent, self.ident = dict(sent), dict(ident)
+        super().__init__("상세 불일치: " + ", ".join(self.ident.get("reasons") or ["사유 미상"]))
+
+
+DETAIL_MISMATCH_REASON = "상세 불일치(보낸 키와 다른 물건)"
+
+
+def _log_detail_mismatch(vid: str, case_no, err: "DetailMismatch", step: str) -> None:
+    """불일치 한 건을 감사기록에 남긴다(action 'detail-mismatch' — AUD-02 의 stored-as·skipped 와 같은 결).
+    차대번호·등록번호는 적지 않는다 — 받은 쪽은 매각물건·목적물 번호와 제조사·차명·연식만."""
+    s, g = err.sent, (err.ident.get("got") or {})
+    objs = ", ".join(f"{o[0] or '?'}={o[1]}" for o in (g.get("objects") or [])) or "없음"
+    _log_anomaly(vid, case_no or "", DETAIL_MISMATCH_REASON, "detail-mismatch",
+                 f"{step} — 보냄 사건 {s.get('saNo')}·법원 {s.get('boCd')}·매각물건 {s.get('maemulSer')}"
+                 f"({s.get('seq_src') or '목록'})·목적물 {s.get('item_no')} / 받음 매각물건 {g.get('dspslGdsSeq')}·"
+                 f"목적물 {objs} / " + ", ".join(err.ident.get("reasons") or []))
+
+
 def _rebuild_item(v: dict):
     """DB 레코드 → VehicleItem 재구성 (재분석용).
 
@@ -937,7 +1033,8 @@ def _rebuild_item(v: dict):
         fail_count=v.get("fail_count"), sale_date=v.get("sale_date"),
         sale_time=v.get("sale_time"), sale_place=v.get("sale_place") or "",
         usage_name="", location=v.get("location") or "", status_code="",
-        doc_id=v.get("doc_id") or "", key=v.get("id") or None)
+        doc_id=v.get("doc_id") or "", key=v.get("id") or None,
+        maemul_ser=str(v.get("maemul_ser") or "").strip())   # AUD-18: 목록에서 저장한 매각물건 번호(없으면 '')
 
 
 def _reanalyze(max_items: int, repair_cost: int, run_id: int) -> None:
@@ -968,12 +1065,14 @@ def _reanalyze(max_items: int, repair_cost: int, run_id: int) -> None:
             db.update_run(run_id, scanned=i + 1,
                           message=f"{v['case_no']} {v['model']} 재분석 중…")
             item = _rebuild_item(v)
-            raw = {"saNo": _sa_no_from_docid(v["doc_id"]), "boCd": v.get("court_code"),
-                   "maemulSer": v.get("item_no") or "1"}
+            raw = _detail_raw(v)       # AUD-18: dspslGdsSeq = 매각물건 번호(저장값 → doc_id → item_no)
             try:
                 rec = _analyze_item(cs, es, raw, item, config,
                                     v.get("repair_cost") or repair_cost)
                 consecutive_fail = 0
+            except DetailMismatch as e:   # 받은 상세가 이 물건이 아니다 — 쓰지 않는다(연속 실패 카운터 무관)
+                _log_detail_mismatch(v["id"], v.get("case_no"), e, "재분석")
+                rec = None
             except Exception as e:  # noqa: BLE001
                 if _is_block(e):
                     raise
@@ -1012,7 +1111,7 @@ def start_reanalyze(max_items: int = 20, repair_cost: int = 500000) -> Optional[
 # =========================================================================
 
 def _listing_rec(item) -> dict:
-    return {
+    rec = {
         "id": item.folder_key, "case_no": item.case_no, "item_no": item.item_no,
         "court": item.court, "court_code": item.court_code, "location": item.location,
         "maker": item.maker, "model": item.model, "year": item.year,
@@ -1021,6 +1120,11 @@ def _listing_rec(item) -> dict:
         "sale_time": item.sale_time, "sale_place": item.sale_place,
         "doc_id": item.doc_id, "folder_key": item.folder_key, "collected_at": _now(),
     }
+    # AUD-18: 매각물건 번호(상세 요청 키)를 목록 갱신 때마다 저장한다(신규·갱신 모두). 목록 행에 값이 없으면
+    # 싣지 않는다 — 빈 값으로 저장값을 지우지 않는다(upsert_listing 은 실린 열만 덮는다).
+    if str(getattr(item, "maemul_ser", "") or "").strip():
+        rec["maemul_ser"] = str(item.maemul_ser).strip()
+    return rec
 
 
 # 직전 collect_upcoming 의 법원 구분 저장 수(AUD-02) — daily_update 가 실행 기록 한 조각으로 옮긴다.
@@ -1356,11 +1460,19 @@ def refresh_lagged_floors(within_days: int = 30, run_id: Optional[int] = None, d
                 db.update_run(run_id, message=f"최저가 재조회 {i + 1}/{len(todo)} · {v.get('case_no')}")
             time.sleep(random.uniform(*MIN_REFRESH_JITTER_SEC))
             res["requests"] += 1                      # 나갔는지 모르는 요청도 센다(보수적)
+            raw = _detail_raw(v)                      # AUD-18: dspslGdsSeq = 매각물건 번호(예전엔 item_no)
+            ident = {"ok": True}
+            detail = None
             try:
-                resp = fetch_detail(cs, _sa_no_from_docid(v["doc_id"]), v.get("court_code"),
-                                    v.get("item_no") or "1")
-                detail = parse_detail(resp.json(), cfg)
-                consecutive_fail = 0
+                resp = fetch_detail(cs, raw["saNo"], raw["boCd"], raw["maemulSer"])
+                payload = resp.json()
+                # 기일내역은 매각물건 단위다 — 보낸 키의 물건인지 먼저 본다(옆 매각물건의 최저가를 쓰지 않게).
+                # 불일치는 정상 JSON 이므로 연속 실패 카운터를 올리지도 0 으로 되돌리지도 않는다.
+                ident = detail_identity(payload, raw["saNo"], raw["boCd"], raw["maemulSer"],
+                                        v.get("item_no") or "1")
+                if ident["ok"]:
+                    detail = parse_detail(narrow_to_object(payload, ident["obj_index"]), cfg)
+                    consecutive_fail = 0
             except Exception as e:  # noqa: BLE001
                 if _is_block(e):
                     res["stopped"] = f"차단 감지 — 중단: {str(e)[:60]}"
@@ -1373,7 +1485,14 @@ def refresh_lagged_floors(within_days: int = 30, run_id: Optional[int] = None, d
                     break
                 continue
             res["fetched"] += 1
-            f, kind = _floor_refresh_fields(v, detail)
+            if not ident["ok"]:
+                # 다른 물건 응답 — 기일내역·최저가를 섞지 않고 재조회 시각만(백오프) 남긴다(법원 불일치와 같은 처리)
+                _log_detail_mismatch(v["id"], v.get("case_no"),
+                                     DetailMismatch({**raw, "item_no": v.get("item_no") or "1"}, ident),
+                                     "최저가 재조회")
+                f, kind = {"floor_checked_at": _now()}, "mismatch"
+            else:
+                f, kind = _floor_refresh_fields(v, detail)
             res[kind] += 1
             f.update(rejudge_floor({**v, **f}, cfg))
             if "judgment" in f:
@@ -2239,6 +2358,17 @@ def supply_health(now: Optional[datetime] = None) -> dict:
     return ops_health.evaluate(snap, ops_health.load_thresholds(load_config()), now=now)
 
 
+def detail_mismatch_total(analysis: int, review: Optional[dict], floor: Optional[dict]) -> int:
+    """매일 갱신 한 번에서 '받은 상세가 이 물건이 아니라 쓰지 않은' 수(AUD-18) — 분석 + 최종 검토 + 최저가 재조회.
+    최저가 재조회의 mismatch 는 예전부터 세던 '다른 법원 응답'을 포함한다(그것도 신원 불일치다)."""
+    def _n(d, k):
+        try:
+            return int((d or {}).get(k) or 0)
+        except (TypeError, ValueError, AttributeError):
+            return 0
+    return int(analysis or 0) + _n(review, "mismatch") + _n(floor, "mismatch")
+
+
 def daily_update(within_days: int = 30, analyze: bool = True,
                  analyze_limit: int = 0, run_id: Optional[int] = None,
                  repair_cost: int = 500000) -> dict:
@@ -2270,6 +2400,7 @@ def daily_update(within_days: int = 30, analyze: bool = True,
         rejudge = {"checked": 0, "updated": 0, "judgment_changed": 0, "to_review": 0, "to_wait": 0,
                    "error": f"{type(e).__name__}: {str(e)[:80]}", "error_type": type(e).__name__}
     analyzed = 0
+    detail_mismatch = 0                             # AUD-18: 받은 상세가 이 물건이 아니라 쓰지 않은 수(분석 단계)
     cs = es = None                                  # 세션(⑤ 최종 검토 재확인에서도 재사용)
     # ②-0 엔카 차단 조기 감지 — 차단 상태면 시세 분석을 통째로 건너뛴다.
     #     (차단 중 80건을 재시도해봐야 전부 실패하고 차단만 심화된다 — 2026-09 실장애 교훈)
@@ -2303,8 +2434,7 @@ def daily_update(within_days: int = 30, analyze: bool = True,
                 db.update_run(run_id, scanned=i + 1,
                               message=f"시세 분석 {i + 1}/{len(targets)} · {v.get('model')}")
             item = _rebuild_item(v)
-            raw = {"saNo": _sa_no_from_docid(v["doc_id"]), "boCd": v.get("court_code"),
-                   "maemulSer": v.get("item_no") or "1"}
+            raw = _detail_raw(v)       # AUD-18: dspslGdsSeq = 매각물건 번호(저장값 → doc_id → item_no)
             try:
                 rec = _analyze_item(cs, es, raw, item, config,
                                     v.get("repair_cost") or repair_cost)
@@ -2314,6 +2444,11 @@ def daily_update(within_days: int = 30, analyze: bool = True,
                 consecutive_fail = 0
                 if rec.get("status") == "완료":
                     analyzed += 1
+            except DetailMismatch as e:
+                # 받은 상세가 이 물건이 아니다 — 쓰지 않는다(기존 행 그대로). 실행 기록에 ⚠ 조각으로 센다.
+                # 정상 JSON 이므로 연속 실패 카운터(C.4-5)는 올리지도 0 으로 되돌리지도 않는다.
+                _log_detail_mismatch(v["id"], v.get("case_no"), e, "매일 갱신 분석")
+                detail_mismatch += 1
             except Exception as e:  # noqa: BLE001
                 if _is_block(e):       # 엔카 차단 → 이 단계만 중단(C.4-5), 낙찰결과 등 이후 단계는 계속
                     _code = getattr(getattr(e, "response", None), "status_code", None)
@@ -2390,6 +2525,11 @@ def daily_update(within_days: int = 30, analyze: bool = True,
                if _LAST_COLLECT.get("court_split_new") else "")
         _sp += (f" · ⚠사건번호 충돌 {_LAST_COLLECT['collided']} 보류"
                 if _LAST_COLLECT.get("collided") else "")
+        # AUD-18: 받은 상세가 보낸 키의 물건이 아니라 **쓰지 않은** 수(분석·최종 검토·최저가 재조회 합). 정상이면 0 이라
+        # 조각이 없다. 0 이 아니면 ⚠ — ops_health 실행 기록 신호가 경고로 읽는다. 어느 물건인지는 anomaly_log
+        # (action 'detail-mismatch')에 있다. 조각 안에 ' · ' 를 넣지 않는다(warn_parts 가 그것으로 가른다).
+        _dm = detail_mismatch_total(detail_mismatch, review, floor)
+        _sp += f" · ⚠상세 불일치 {_dm} 보류" if _dm else ""
         _base = f"입찰예정 {stored} · 분석 {analyzed}{_sp}{_ru}{_ph} · 낙찰결과 {results}건{_rv}{_hv}"
         # 긴 수집을 시작하기 **전에** 여기까지의 요약을 남긴다. 서버가 재시작되면 마지막 메시지 뒤에
         # '(서버 재시작으로 중단됨)'만 붙는다 — 진행 메시지만 남아 있으면 앞 단계 건수가 통째로 사라진다.
@@ -2422,7 +2562,8 @@ def daily_update(within_days: int = 30, analyze: bool = True,
         pass
     return {"stored": stored, "analyzed": analyzed, "results": results, "review": review,
             "encar_health": health, "reuse": reuse, "requery": requery, "newcar": newcar, "photos": photos,
-            "floor": floor, "rejudge": rejudge}
+            "floor": floor, "rejudge": rejudge,
+            "detail_mismatch": detail_mismatch_total(detail_mismatch, review, floor)}
 
 
 def newcar_stop_label(res: dict) -> str:
@@ -2474,7 +2615,8 @@ def review_daily_anomalies(cs, es, config, run_id: Optional[int] = None,
     from datetime import date as _date
     today = _date.today().isoformat()
     anomalous = [v for v in db.list_vehicles() if _result_anomaly(v, today)]
-    out = {"found": len(anomalous), "reviewed": 0, "resolved": 0, "quarantined": 0}
+    # mismatch(AUD-18): 다시 받은 상세가 이 물건이 아니라 쓰지 않은 수 — 기존 값이 남아 목록 가드가 계속 숨긴다
+    out = {"found": len(anomalous), "reviewed": 0, "resolved": 0, "quarantined": 0, "mismatch": 0}
     for v in anomalous:
         if out["reviewed"] >= max_recheck:
             break
@@ -2486,9 +2628,13 @@ def review_daily_anomalies(cs, es, config, run_id: Optional[int] = None,
             out["quarantined"] += 1
             continue
         item = _rebuild_item(v)
-        raw = {"saNo": sa, "boCd": v.get("court_code"), "maemulSer": v.get("item_no") or "1"}
+        raw = _detail_raw(v)                        # AUD-18: dspslGdsSeq = 매각물건 번호(저장값 → doc_id → item_no)
         try:
             rec = _analyze_item(cs, es, raw, item, config, v.get("repair_cost") or 500000)
+        except DetailMismatch as e:                 # 받은 상세가 이 물건이 아니다 — 쓰지 않는다(기존 값 유지 → 숨김 유지)
+            _log_detail_mismatch(v["id"], v.get("case_no"), e, "최종 검토(재확인)")
+            out["mismatch"] += 1
+            continue
         except Exception as e:  # noqa: BLE001
             if _is_block(e):
                 raise                               # 차단 → 상위로 전파(C.4-5)
@@ -3824,6 +3970,81 @@ def reprice_accidents(ids: Optional[list] = None, apply: bool = False,
     out["targets"] = len(out["rows"])
     if out["applied"]:
         invalidate_backtest_cache()
+    return out
+
+
+# ── 예전 키로 받은 상세 다시 받기 예약(AUD-18) — 외부 요청 0 · 파일 I/O 0 ──────────────────────────────────────
+# 키를 고쳐도 이미 **옆 매각물건의 상세로 채워진 행**(10-02 사본: 2025타경53697_4 — 상태 '완료')은 매일 갱신 분석
+# 대상(미분석·미매핑·동급참조)이 아니라 다시 받지 않는다. 이 명령이 그 행을 '미분석'으로 돌려 놓으면 다음 매일 갱신의
+# 분석 단계가 **기존 상한(런당 80)·지연(요청마다 5초) 안에서** 올바른 키로 다시 받는다 — 별도 법원 요청은 만들지 않는다.
+# '상세없음' 행(53697_5·101080_2)은 목록에 다시 보이면 db.mark_disappeared 가 매일 '미분석'으로 되돌려 분석 단계가
+# 다시 묻는다(10-02 06:37 에도 그렇게 물었다 — 예전 키라 빈 응답). 완전 스캔(관측 80%↑)이 아니면 그 복구가 건너뛰어지므로
+# 이 명령은 그 행도 함께 예약한다(이미 '미분석'이면 queued 로 건너뛴다).
+_REDETAIL_SKIPS = ("past", "closed", "no_key", "same_key", "queued", "verified")
+
+
+def _redetail_reason(v: dict, today: str) -> tuple:
+    """(사유, 새 키, 출처). target_wrong(옆 물건 상세가 저장됐을 수 있음) · target_missing(상세없음 — 예전 키로 빈 응답)
+    은 대상, 그 밖(_REDETAIL_SKIPS)은 건너뛴다. 예전 키 = HEAD 재조회 식 그대로 `item_no or "1"`."""
+    seq, src = detail_request_seq(v)
+    if str(v.get("sale_date") or "") < today:
+        return "past", seq, src                      # 지난 기일은 건드리지 않는다(다시 목록에 나오면 자연히 받는다)
+    if (v.get("auction_result") in ("낙찰", "종결") or v.get("status") == "종결"
+            or v.get("judgment") == "종결"):
+        return "closed", seq, src
+    if not (_sa_no_from_docid(v.get("doc_id") or "") and v.get("court_code")):
+        return "no_key", seq, src                    # 분석 단계가 받을 수 없는 행 — 예약해도 '미분석'에 갇힌다
+    if str(seq) == str(v.get("item_no") or "1"):
+        return "same_key", seq, src                  # 예전에도 같은 키로 물었다 — 고칠 것이 없다
+    if v.get("status") in ("미분석", "미매핑"):
+        return "queued", seq, src                    # 분석 단계가 이미 새 키로 받는다
+    if str(v.get("detail_seq") or "") == str(seq):
+        return "verified", seq, src                  # 새 키로 받아 확인한 상세다(예약 뒤 다시 받았다)
+    return ("target_missing" if v.get("status") == "상세없음" else "target_wrong"), seq, src
+
+
+def redetail_key(ids: Optional[list] = None, apply: bool = False, today: Optional[str] = None) -> dict:
+    """AUD-18 복구 — `python -m web.maint redetail-key`. 외부 요청 0 · 파일 I/O 0.
+
+    입찰예정 행 가운데 **예전 키(item_no)로 상세를 물었던** 행을 다음 매일 갱신이 올바른 키(매각물건 번호)로 다시 받게
+    예약한다 — status 를 '미분석'으로. 상세 값은 지우지 않는다(다시 받으면 덮인다 · 받기 전까지 화면은 지금 그대로).
+    감사기록에 'requeued' 한 줄. `ids` 를 주면 그 안에서만 고른다(규칙은 그대로).
+    apply=False(기본)면 **쓰지 않고** 행별 정보만 돌려준다. 다시 돌리면 대상 0(멱등) — 예약한 행은 '미분석'이라
+    queued 로, 다시 받은 뒤에는 detail_seq 가 새 키라 verified 로 빠진다.
+
+    반환: {"apply", "today", "checked", "targets", "applied", "skipped": {past, closed, no_key, same_key, queued,
+            verified}, "not_found", "rows"} — rows[i]: id · case_no · model · sale_date · status · item_no ·
+            key([예전, 새]) · key_src · why · stored(지금 저장된 배기량·연료코드·주행거리·명세 앞 40자 — 의심 값)"""
+    td = today or date.today().isoformat()
+    rows_db = db.list_vehicles()
+    not_found: list = []
+    if ids:
+        want = [str(x).strip() for x in ids if str(x).strip()]
+        by_id = {v["id"]: v for v in rows_db}
+        not_found = [i for i in want if i not in by_id]
+        rows_db = [by_id[i] for i in dict.fromkeys(want) if i in by_id]
+    out = {"apply": bool(apply), "today": td, "checked": 0, "targets": 0, "applied": 0,
+           "skipped": {k: 0 for k in _REDETAIL_SKIPS}, "not_found": not_found, "rows": []}
+    for v in rows_db:
+        out["checked"] += 1
+        why, seq, src = _redetail_reason(v, td)
+        if why in out["skipped"]:
+            out["skipped"][why] += 1
+            continue
+        old = str(v.get("item_no") or "1")
+        out["rows"].append({
+            "id": v["id"], "case_no": v.get("case_no"), "model": v.get("model"),
+            "sale_date": v.get("sale_date"), "status": v.get("status"), "item_no": v.get("item_no"),
+            "key": [old, str(seq)], "key_src": src, "why": why,
+            "stored": {"displacement_cc": v.get("displacement_cc"), "fuel_code": v.get("fuel_code"),
+                       "mileage_km": v.get("mileage_km"), "spec_remark": (v.get("spec_remark") or "")[:40]}})
+        if apply:
+            db.update_fields(v["id"], status="미분석")
+            _log_anomaly(v["id"], v.get("case_no") or "", "상세 조회 키 정정(AUD-18)", "requeued",
+                         f"매각물건 {seq}({src}) — 예전 키 {old} · 상태 {v.get('status')} → 미분석"
+                         f"(다음 매일 갱신 분석 단계가 다시 받는다)")
+            out["applied"] += 1
+    out["targets"] = len(out["rows"])
     return out
 
 
@@ -6134,10 +6355,14 @@ def analyze_single(vid: str, repair_cost: Optional[int] = None) -> Optional[dict
     cs = new_session(); warmup(cs)
     es = encar.new_session()
     item = _rebuild_item(v)
-    raw = {"saNo": sa, "boCd": v.get("court_code"), "maemulSer": v.get("item_no") or "1"}
+    raw = _detail_raw(v)                    # AUD-18: dspslGdsSeq = 매각물건 번호(저장값 → doc_id → item_no)
     try:
         rec = _analyze_item(cs, es, raw, item, config,
                             repair_cost or v.get("repair_cost") or 500000)
+    except DetailMismatch as e:
+        # 받은 상세가 이 물건이 아니다 — 행은 그대로 두고(상태도 바꾸지 않는다) 기록만. 화면 안내용 표지를 붙여 돌려준다.
+        _log_detail_mismatch(vid, v.get("case_no"), e, "단건 분석")
+        return {**(db.get_vehicle(vid) or {}), "detail_mismatch": ", ".join(e.ident.get("reasons") or [])}
     except Exception as e:  # noqa: BLE001 — 차단/네트워크 오류 시 500 대신 상태 기록
         db.update_fields(vid, status="차단 감지 — 잠시 후 재시도" if _is_block(e)
                          else f"오류: {str(e)[:40]}")
